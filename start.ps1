@@ -1,4 +1,4 @@
-# LandmarkEmu launcher: run start.bat.
+﻿# LandmarkEmu launcher: run start.bat.
 #
 # First run: asks where Landmark (the 0.589 client) is installed and for an account name / password, then sets
 # everything up once — builds the servers, creates the database user, fills gameData from the game's own data tables,
@@ -159,9 +159,11 @@ function Invoke-Setup {
     # 8. Account.
     $user = $Account
     while ($user -notmatch '^[A-Za-z0-9_]{3,32}$') { $user = Read-Host 'Choose an account name (3-32 letters / digits)' }
+    # The server refuses passwords under 6 characters (WebAPI /create), so ask until it would accept one.
     $password = $Password
-    if (-not $password) {
-        $pw = Read-Host 'Choose a password' -AsSecureString
+    while (-not $password -or $password.Length -lt 6) {
+        if ($password) { Say 'The password needs at least 6 characters.' 'Yellow' }
+        $pw = Read-Host 'Choose a password (at least 6 characters)' -AsSecureString
         $password = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($pw))
     }
 
@@ -180,9 +182,14 @@ function Start-Server([string]$name, [int]$port) {
     Wait-Port $port 'UDP'
 }
 
+# Returns @{ Status = HTTP status code; Body = response text }.
 function Invoke-Api([string]$method, [string]$path, [string]$user, [string]$password) {
     $url = "http://127.0.0.1:5000/$path`?username=$([uri]::EscapeDataString($user))&password=$([uri]::EscapeDataString($password))"
-    return (& curl.exe -s -X $method $url)
+    $out = & curl.exe -s -X $method -w "`n%{http_code}" $url
+    $lines = @($out)
+    $status = [int]$lines[-1]
+    $body = if ($lines.Count -gt 1) { ($lines[0..($lines.Count - 2)] -join "`n") } else { '' }
+    return @{ Status = $status; Body = $body }
 }
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -198,7 +205,9 @@ Start-Server 'WorldServer' 19000
 
 if (-not $settings.Created) {
     $r = Invoke-Api 'POST' 'create' $settings.Account $settings.Password
-    Say "Account '$($settings.Account)': $r"
+    if ($r.Status -eq 200) { Say "Account '$($settings.Account)' created." 'Green' }
+    elseif ($r.Status -eq 409) { Say "Account '$($settings.Account)' already exists; logging in with the saved password." 'Yellow' }
+    else { throw "Could not create account '$($settings.Account)' (HTTP $($r.Status)): $($r.Body)`nRun start.bat -Setup to choose another name / password." }
     $settings.Created = $true
     $settings | ConvertTo-Json | Set-Content $settingsFile -Encoding UTF8
 }
@@ -206,7 +215,11 @@ if (-not $settings.Created) {
 if ($NoGame) { Say 'Servers are up.' 'Green'; return }
 
 $response = Invoke-Api 'POST' 'authenticate' $settings.Account $settings.Password
-$session = ($response | ConvertFrom-Json).sessionKey
-if (-not $session) { throw "Login failed: $response" }
+if ($response.Status -eq 403) {
+    throw "Login failed: wrong password for account '$($settings.Account)' (or it does not exist). If that name was already taken by an earlier setup with another password, run start.bat -Setup and pick a new account name."
+}
+if ($response.Status -eq 429) { throw 'Login failed: too many wrong passwords; wait 5 minutes and try again.' }
+$session = if ($response.Status -eq 200) { ($response.Body | ConvertFrom-Json).sessionKey }
+if (-not $session) { throw "Login failed (HTTP $($response.Status)): $($response.Body)" }
 Say "Launching Landmark as $($settings.Account)..." 'Green'
 Start-Process (Join-Path $settings.GamePath 'Landmark64.exe') -ArgumentList "SessionId=$session CasSessionId=0 STEAM_ENABLED=0" -WorkingDirectory $settings.GamePath
