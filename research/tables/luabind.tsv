@@ -1,0 +1,2082 @@
+table entry	name	function	sends packet	packet classes	namespace
+0x1445d6a70	queue	FUN_1400020e0			
+0x1445d6be0	semaphore	FUN_140003e00			
+0x144613670	print	FUN_142e3b6d0			
+0x144613680	clear	FUN_142e3b680			
+0x144613690	BindCommandToLua	FUN_142e3beb0			
+0x144613e50	_G	FUN_14391b4c0			
+0x144613e60	package	FUN_143922610			
+0x144613e70	coroutine	FUN_14391bb80			
+0x144613e80	table	FUN_14391c880			
+0x144613e90	string	FUN_14391f250			
+0x144613ea0	math	FUN_1439217c0			
+0x144613eb0	utf8	FUN_143920c80			
+0x1446d8ce0	SaveChatTabs	FUN_1434fdf10			Chat
+0x1446d8cf0	GetChatTabs	FUN_1434fdfd0			Chat
+0x1446d8d00	RequestCloseChatTab	FUN_1434fe6e0	sends	BasePacket PlayerPublicChatLeaveRoomRequestPacket	Chat
+0x1446d8d10	HandleRightClick	FUN_1434fe730	sends	PacketRadialMenuRequest PacketTunnelPacketFromExternalConnection	Chat
+0x1446d8d20	ClearNewContentForTab	FUN_1434fe7b0			Chat
+0x1446d8ec0	Start	FUN_1434fe920			Cinematic
+0x1446d8ed0	End	FUN_1434fe940			Cinematic
+0x1446d8ee0	LookAt	FUN_1434fe960			Cinematic
+0x1446d8ef0	PlayerLookAtLoc	FUN_1434feaf0			Cinematic
+0x1446d8f00	PlayerLookAtGuid	FUN_1434fecb0			Cinematic
+0x1446d8f10	GuidLookAtGuid	FUN_1434fedf0			Cinematic
+0x1446d8f20	GuidLookAtLoc	FUN_1434fef90			Cinematic
+0x1446d8f30	LocLookAtGuid	FUN_1434ff1c0			Cinematic
+0x1446d8f40	LocLookAtLoc	FUN_1434ff3c0			Cinematic
+0x1446d9170	StartRequisition	FUN_1434ff690			RequisitionScreen
+0x1446d9180	AddRequisitionItem	FUN_1434ff6a0			RequisitionScreen
+0x1446d9190	FinishRequisition	FUN_1434ff7a0	sends	PacketTunnelPacketFromExternalConnection RequisitionItemsRequestPacket	RequisitionScreen
+0x1446d91a0	GetLastRequisitionItemNow	FUN_1434ff7f0	sends	PacketTunnelPacketFromExternalConnection RequisitionItemsRequestPacket	RequisitionScreen
+0x1446d91b0	SelectRequisitionItem	FUN_1434ff880	sends		RequisitionScreen
+0x1446d9320	SelectClass	FUN_1434ff980			ProfilePoint
+0x1446d9330	Spend	FUN_1434ff9e0	sends	PacketTunnelPacketFromExternalConnection SkillPacketSpendClassPoints	ProfilePoint
+0x1446d9450	LockObject	FUN_1434ffe60			Design
+0x1446d9460	UnlockObject	FUN_143500070			Design
+0x1446d9470	SaveObject	FUN_143500280			Design
+0x1446d9480	GetDefinitions	FUN_143500560			Design
+0x1446d9490	GetDefinitionData	FUN_143500710			Design
+0x1446d94a0	GetObjectByID	FUN_143500c40			Design
+0x1446d94b0	GetObjectsByClass	FUN_143500a30			Design
+0x1446d94c0	GetTemplates	FUN_143500ec0			Design
+0x1446d94d0	Publish	FUN_1435016e0			Design
+0x1446d9ba8	SelectCollection	FUN_1435056f0			CollectionScreen
+0x1446d9cd0	Populate	FUN_1435057a0			EquipScreen
+0x1446d9ce0	SelectJob	FUN_1435057f0			EquipScreen
+0x1446d9cf0	EquipItem	FUN_143505840	sends	InventoryPacketEquipByGuid InventoryPacketEquippedRemove PacketTunnelPacketFromExternalConnection	EquipScreen
+0x1446d9d00	EquipItemGroup	FUN_1435058c0	sends	InventoryPacketEquipItemGroup PacketTunnelPacketFromExternalConnection	EquipScreen
+0x1446d9d10	GetItemPreviewType	FUN_143505910			EquipScreen
+0x1446d9d20	PreviewEquipItemByGuid	FUN_143505980			EquipScreen
+0x1446d9d30	PreviewEquipItemById	FUN_1435059f0			EquipScreen
+0x1446d9d40	ClearPreviewEquipItem	FUN_143505b70			EquipScreen
+0x1446d9d50	GetItemEquippableState	FUN_143505ba0			EquipScreen
+0x1446d9d60	CanPreviewItem	FUN_143505c30			EquipScreen
+0x1446d9d70	GetBundlePreviewType	FUN_143505dd0			EquipScreen
+0x1446d9d80	PreviewEquipBundleById	FUN_143505e60			EquipScreen
+0x1446d9d90	ClearPreviewEquipBundle	FUN_143505f10			EquipScreen
+0x1446d9da0	GetBundleEquippableState	FUN_143505f40			EquipScreen
+0x1446d9db0	CanPreviewBundle	FUN_143505fe0			EquipScreen
+0x1446d9dc0	InitCustomizationData	FUN_143506080			EquipScreen
+0x1446d9dd0	GetMaxItemsPurchasable	FUN_143505cb0			EquipScreen
+0x1446d9de0	GetMaxBundlesPurchasable	FUN_143505d30			EquipScreen
+0x1446d9df0	SelectVehicle	FUN_1435060a0			EquipScreen
+0x1446d9e00	EquipVehicleItem	FUN_1435060c0			EquipScreen
+0x1446d9e10	RemoveVehicleItem	FUN_1435060e0			EquipScreen
+0x1446d9e20	SetVehicleTypeFilter	FUN_143506100			EquipScreen
+0x1446da090	Create	FUN_1435065a0	sends	GuildCreatePacket PacketTunnelPacketFromExternalConnection	Guild
+0x1446da0a0	Disband	FUN_1435067a0	sends	GuildDisbandPacket PacketTunnelPacketFromExternalConnection	Guild
+0x1446da0b0	Rename	FUN_1435068f0	sends	BasePacket GuildRenamePacket PacketTunnelPacketFromExternalConnection	Guild
+0x1446da0c0	SetTag	FUN_143506b50	sends	GuildUpdateAppDataFieldPacket PacketTunnelPacketFromExternalConnection	Guild
+0x1446da0d0	SetDescription	FUN_143506e40	sends	GuildDescriptionUpdatePacket PacketTunnelPacketFromExternalConnection	Guild
+0x1446da0e0	Invite	FUN_143507040	sends	GuildInvitePacket PacketTunnelPacketFromExternalConnection	Guild
+0x1446da0f0	InviteReply	FUN_143507a30	sends	GuildInviteReplyPacket PacketTunnelPacketFromExternalConnection	Guild
+0x1446da100	InviteRevoke	FUN_143507b00	sends	GuildInviteRevokePacket PacketTunnelPacketFromExternalConnection	Guild
+0x1446da110	Petition	FUN_143507b90	sends	BasePacket GuildPetitionPacket PacketTunnelPacketFromExternalConnection	Guild
+0x1446da120	PetitionReply	FUN_143507cd0	sends	GuildPetitionReplyPacket PacketTunnelPacketFromExternalConnection	Guild
+0x1446da130	PetitionRevoke	FUN_143507da0	sends	GuildPetitionRevokePacket PacketTunnelPacketFromExternalConnection	Guild
+0x1446da140	ChangeMemberRank	FUN_143507e30	sends	BasePacket GuildChangeMemberRankPacket PacketTunnelPacketFromExternalConnection	Guild
+0x1446da150	PromoteMember	FUN_143508070	sends	BasePacket GuildChangeMemberRankPacket PacketTunnelPacketFromExternalConnection	Guild
+0x1446da160	DemoteMember	FUN_143508260	sends	BasePacket GuildChangeMemberRankPacket PacketTunnelPacketFromExternalConnection	Guild
+0x1446da170	SetMotd	FUN_143508450	sends	BasePacket GuildMotdUpdatePacket PacketTunnelPacketFromExternalConnection	Guild
+0x1446da180	Kick	FUN_143508640	sends	GuildKickPacket PacketTunnelPacketFromExternalConnection	Guild
+0x1446da190	Quit	FUN_143508850	sends	GuildQuitPacket PacketTunnelPacketFromExternalConnection	Guild
+0x1446da1a0	CanCreateGuild	FUN_1435088e0			Guild
+0x1446da1b0	Select	FUN_143508930			Guild
+0x1446da1c0	RankAdd	FUN_143508990	sends	GuildUpdateRankPacket PacketTunnelPacketFromExternalConnection	Guild
+0x1446da1d0	RankRemove	FUN_143508d90	sends	GuildUpdateRankPacket PacketTunnelPacketFromExternalConnection	Guild
+0x1446da1e0	RankSetName	FUN_143508fe0	sends	GuildUpdateRankPacket PacketTunnelPacketFromExternalConnection	Guild
+0x1446da1f0	RankSetDescription	FUN_143509470	sends	GuildDescriptionUpdatePacket PacketTunnelPacketFromExternalConnection	Guild
+0x1446da200	RankAddPermission	FUN_143509740	sends	BasePacket GuildUpdateRankPacket PacketTunnelPacketFromExternalConnection	Guild
+0x1446da210	RankRemovePermission	FUN_143509a50	sends	BasePacket GuildUpdateRankPacket PacketTunnelPacketFromExternalConnection	Guild
+0x1446da220	RankToggleAllPermissions	FUN_143509d60	sends	GuildUpdateRankPacket PacketTunnelPacketFromExternalConnection	Guild
+0x1446da230	MutePlayer	FUN_143509ed0	sends	BasePacket GuildRequestMutePlayerPacket PacketTunnelPacketFromExternalConnection	Guild
+0x1446da240	GetRankPermissions	FUN_14350a050			Guild
+0x1446da250	HasPermission	FUN_14350a110			Guild
+0x1446da260	HandleRightClick	FUN_14350a240	sends	PacketRadialMenuRequest PacketTunnelPacketFromExternalConnection	Guild
+0x1446da270	OpenComposeWindowForTarget	FUN_1435061a0			Guild
+0x1446da280	StartChatToMember	FUN_1435062f0			Guild
+0x1446da290	TransferGuildLeadershipConfirm	FUN_1435064e0	sends	PacketTunnelPacketFromExternalConnection	Guild
+0x1446da2a0	IsInGuild	FUN_143506540			Guild
+0x1446daae0	OpenInbox	FUN_14350a380	sends	PacketMailInboxListRequest PacketTunnelPacketFromExternalConnection	Mail
+0x1446daaf0	CloseInbox	FUN_14350a3d0			Mail
+0x1446dab00	OpenMessage	FUN_14350a400	sends	PacketMailReadMessageRequest PacketTunnelPacketFromExternalConnection	Mail
+0x1446dab10	SendMessage	FUN_14350a460	sends	BasePacket PacketMailComposeRequest PacketTunnelPacketFromExternalConnection	Mail
+0x1446dab20	SendMessageForClaimFeedback	FUN_14350a490	sends	BasePacket PacketMailComposeRequest PacketTunnelPacketFromExternalConnection	Mail
+0x1446dab30	DeleteMessage	FUN_14350a4c0	sends	PacketMailDeleteMessageRequest PacketTunnelPacketFromExternalConnection	Mail
+0x1446dab40	RetrieveAttachment	FUN_14350a520	sends	PacketMailConsumeAttachmentRequest PacketTunnelPacketFromExternalConnection	Mail
+0x1446dab50	RetrieveAllAttachments	FUN_14350a5b0	sends	PacketMailConsumeAttachmentRequest PacketTunnelPacketFromExternalConnection	Mail
+0x1446dab60	AttachItemToCompose	FUN_14350a610	sends	PacketMailAttachItemToComposeRequest PacketTunnelPacketFromExternalConnection	Mail
+0x1446dab70	RemoveItemToCompose	FUN_14350a730			Mail
+0x1446dab80	OnOpenComposeWindow	FUN_14350a7c0			Mail
+0x1446dab90	PayCashOnDelivery	FUN_14350a800	sends	PacketMailConsumeAttachmentRequest PacketTunnelPacketFromExternalConnection	Mail
+0x1446dadd8	SetPropertyValue	FUN_14350a8c0			PropertyEditor
+0x1446dade8	OnClose	FUN_14350ab30			PropertyEditor
+0x1446dbbe0	PostItem	FUN_143511060	sends	LiveGamerPostItemPacket PacketTunnelPacketFromExternalConnection	LiveGamer
+0x1446dbbf0	GoToLiveGamerSite	FUN_143511120			LiveGamer
+0x1446dbdd0	Populate	FUN_143511940			MerchantSell
+0x1446dbde0	BuyFromMerchant	FUN_1435119a0			MerchantSell
+0x1446dbdf0	Close	FUN_143511aa0	sends	PacketTunnelPacketFromExternalConnection	MerchantSell
+0x1446dbe10	Populate	FUN_143511b10			MerchantBuy
+0x1446dbe20	SellToMerchant	FUN_143511b20			MerchantBuy
+0x1446dbe30	SelectInventoryCategory	FUN_143511bb0			MerchantBuy
+0x1446dbf20	LoadData	FUN_143511cd0			MiniGameFlashC
+0x1446dbf30	SendMessage	FUN_143511e20	sends	MiniGamePayloadPacket PacketTunnelPacketFromExternalConnection	MiniGameFlashC
+0x1446dbf40	RequestTintByName	FUN_143511ef0			MiniGameFlashC
+0x1446dc130	TogglePause	FUN_143512190	sends	BaseMiniGamePacket PacketTunnelPacketFromExternalConnection	MiniGame
+0x1446dc140	Pause	FUN_1435121b0	sends	BaseMiniGamePacket PacketTunnelPacketFromExternalConnection	MiniGame
+0x1446dc150	Unpause	FUN_1435121d0	sends	BaseMiniGamePacket PacketTunnelPacketFromExternalConnection	MiniGame
+0x1446dc160	InviteToMiniGame	FUN_1435121f0			MiniGame
+0x1446dc170	RestartMiniGame	FUN_143512200	sends	BaseMiniGamePacket PacketTunnelPacketFromExternalConnection	MiniGame
+0x1446dc180	EndGameDialogClosed	FUN_143512250			MiniGame
+0x1446dc190	SetSelectedMiniGameDefinitionId	FUN_143512270			MiniGame
+0x1446dc1a0	SetHowToVisible	FUN_1435122a0			MiniGame
+0x1446dc1b0	IsInMiniGame	FUN_1435122e0			MiniGame
+0x1446dc1c0	IsInFlashMiniGame	FUN_143512320			MiniGame
+0x1446dc350	AcceptQuest	FUN_1435123e0	sends	PacketTunnelPacketFromExternalConnection QuestReplyPacket	QuestScreen
+0x1446dc360	DeclineQuest	FUN_143512400	sends	PacketTunnelPacketFromExternalConnection QuestReplyPacket	QuestScreen
+0x1446dc370	SelectQuest	FUN_143512420			QuestScreen
+0x1446dc380	AbandonQuest	FUN_143512480	sends	CommandPacketQuestAbandon PacketTunnelPacketFromExternalConnection	QuestScreen
+0x1446dc390	SelectQuestInHelper	FUN_143512510	sends	SelectQuestPacket	QuestScreen
+0x1446dc3a0	EndQuest	FUN_143512570	sends	PacketTunnelPacketFromExternalConnection QuestEndReplyPacket	QuestScreen
+0x1446dc3b0	GetSelectedQuest	FUN_143512590			QuestScreen
+0x1446dc3c0	SetAutoSwitchSelectedQuest	FUN_1435125d0	sends	SelectedQuestLockedPacket	QuestScreen
+0x1446dc3d0	GetAutoSwitchSelectedQuest	FUN_143512640			QuestScreen
+0x1446dc3e0	GetQuestLimit	FUN_143512680			QuestScreen
+0x1446dc5c0	RejectInvite	FUN_143512a40	sends	PacketTunnelPacketFromExternalConnection TradeInviteReplyPacket	Trade
+0x1446dc5d0	Accept	FUN_143512a60	sends	PacketTunnelPacketFromExternalConnection TradeAcceptPacket	Trade
+0x1446dc5e0	Cancel	FUN_143512a80	sends	PacketTunnelPacketFromExternalConnection TradeCancelPacket	Trade
+0x1446dc5f0	OfferItems	FUN_143512aa0	sends	PacketTunnelPacketFromExternalConnection TradeOfferItemPacket	Trade
+0x1446dc600	OfferCoins	FUN_143512b50	sends	PacketTunnelPacketFromExternalConnection TradeCoinCountPacket	Trade
+0x1446dc610	GetPartnerGuid	FUN_143512bb0			Trade
+0x1446dc620	GetPartnerName	FUN_143512c60			Trade
+0x1446dc630	GetPartnerCoinOffer	FUN_143512d10			Trade
+0x1446dc640	SelectInventoryCategory	FUN_143512d50			Trade
+0x1446dc790	ContinueDrag	FUN_1435148e0			Ui
+0x1446dc7a0	GetName	FUN_143519bb0			Ui
+0x1446dc7b0	SetTheme	FUN_14351cc20			Ui
+0x1446dc7c0	SetClickToMove	FUN_143517d50			Ui
+0x1446dc7d0	GetClickToMove	FUN_143517c70			Ui
+0x1446dc7e0	SetRailCamera	FUN_143517f80			Ui
+0x1446dc7f0	GetRailCamera	FUN_143517dd0			Ui
+0x1446dc800	SetAutoCamera	FUN_143518400			Ui
+0x1446dc810	GetAutoCamera	FUN_1435183a0			Ui
+0x1446dc820	GetItemCurrentCooldown	FUN_143515040			Ui
+0x1446dc830	GetItemCurrentCast	FUN_143515a60			Ui
+0x1446dc840	GetEffectDurationTaken	FUN_143514cd0			Ui
+0x1446dc850	CancelEffect	FUN_143515d20	sends	AbilityPacketRequestCancelEffect PacketTunnelPacketFromExternalConnection	Ui
+0x1446dc860	GetCastTimeCurrent	FUN_143515f10			Ui
+0x1446dc870	GetCooldownTaken	FUN_1435160a0			Ui
+0x1446dc880	GetItemHasAbility	FUN_143515670			Ui
+0x1446dc890	RequestSpeechPack	FUN_14351cf10	sends	PacketTunnelPacketFromExternalConnection SetSpeechPackPacket	Ui
+0x1446dc8a0	RequestSpeechPackList	FUN_14351cf60	sends	GetSpeechPackListPacket PacketTunnelPacketFromExternalConnection	Ui
+0x1446dc8b0	UpdateContinentBattleInfo	FUN_14351c5a0			Ui
+0x1446dc8c0	UpdateServerPopulationInfo	FUN_14351c5b0			Ui
+0x1446dc8d0	SetTooltipColumnCount	FUN_14351cfc0			Ui
+0x1446dc8e0	SetTooltipColumn	FUN_14351d080			Ui
+0x1446dc8f0	GetString	FUN_14351bd70			Ui
+0x1446dc900	GetStringById	FUN_14351c750			Ui
+0x1446dc910	Translate	FUN_14351a6e0			Ui
+0x1446dc920	BindStringValue	FUN_14351c880			Ui
+0x1446dc930	UnbindStringValue	FUN_14351c940			Ui
+0x1446dc940	SetStringValue	FUN_14351c980			Ui
+0x1446dc950	GetStringValue	FUN_14351ca30			Ui
+0x1446dc960	MakeHtmlSafe	FUN_14351c460			Ui
+0x1446dc970	GetMouseInvert	FUN_143512e20			Ui
+0x1446dc980	SetMouseInvert	FUN_143512e60			Ui
+0x1446dc990	SetScale	FUN_143513750			Ui
+0x1446dc9a0	IsInputModifierSet	FUN_14351c990			Ui
+0x1446dc9b0	RegisterElementTrayGFxPreview	FUN_1435135b0			Ui
+0x1446dc9c0	RegisterCharSelectGFxPreview	FUN_1435137d0			Ui
+0x1446dc9d0	RadialMenuClicked	FUN_14351d380	sends	CommandPacketInteractionSelect PacketTunnelPacketFromExternalConnection	Ui
+0x1446dc9e0	RadialMenuClosed	FUN_14351d130	sends	PacketTunnelPacketFromExternalConnection	Ui
+0x1446dc9f0	RadialMenuOpened	FUN_14351dcd0			Ui
+0x1446dca00	RadialMenuMouseOver	FUN_14351d610			Ui
+0x1446dca10	RadialMenuMouseOut	FUN_14351d820			Ui
+0x1446dca20	GetPlayerGuid	FUN_143519d00			Ui
+0x1446dca30	GetPlayerLoc	FUN_14351ddf0			Ui
+0x1446dca40	GetPlayerHeading	FUN_14351e3a0			Ui
+0x1446dca50	GetCameraHeading	FUN_14351e590			Ui
+0x1446dca60	GetPlayerScreenPos	FUN_1435199e0			Ui
+0x1446dca70	LosPlayer	FUN_1435193d0			Ui
+0x1446dca80	GetPlayerName	FUN_14351a0f0			Ui
+0x1446dca90	GetPlayerCoinCount	FUN_14351a250			Ui
+0x1446dcaa0	StartPendingEncounter	FUN_143513b70	sends	BaseMiniGamePacket EncounterParticipantRequestEntrancePacket PacketTunnelPacketFromExternalConnection	Ui
+0x1446dcab0	StartPendingMiniGame	FUN_143513c60	sends	BaseMiniGamePacket	Ui
+0x1446dcac0	CancelPendingEncounter	FUN_143513ce0	sends	BaseMiniGamePacket EncounterParticipantCancelPendingEncounterPacket PacketTunnelPacketFromExternalConnection	Ui
+0x1446dcad0	LeaveMiniGameOrEncounter	FUN_143513d50	sends	ActivityPacketActivityListRefreshRequest EncounterParticipantRequestExitPacket	Ui
+0x1446dcae0	GetFrameTime	FUN_143513df0			Ui
+0x1446dcaf0	SetHeadSize	FUN_143521ae0			Ui
+0x1446dcb00	GetMousePosition	FUN_143521c20			Ui
+0x1446dcb10	Quit	FUN_143513f70			Ui
+0x1446dcb20	Logout	FUN_143514040	sends	BasePacket PacketCharacterSelectSessionRequest PreferencePacketClientXml	Ui
+0x1446dcb30	DoCommand	FUN_143516e50			Ui
+0x1446dcb40	DoCommandWithStatus	FUN_143517260			Ui
+0x1446dcb50	SetMaximized	FUN_143516200			Ui
+0x1446dcb60	GetMaximized	FUN_143516500			Ui
+0x1446dcb70	UpdateMiniMap	FUN_1435187a0			Ui
+0x1446dcb80	SendMapPing	FUN_1435187b0	sends	GroupPacketMapPing PacketTunnelPacketFromExternalConnection	Ui
+0x1446dcb90	GetFriendPositions	FUN_1435189e0	sends	CommandPacketFriendsPositionRequest PacketTunnelPacketFromExternalConnection	Ui
+0x1446dcba0	GetItemCount	FUN_1435192d0			Ui
+0x1446dcbb0	GetActiveProfileId	FUN_1435194b0			Ui
+0x1446dcbc0	IsUnderage	FUN_143519d50			Ui
+0x1446dcbd0	IsMember	FUN_14351a090			Ui
+0x1446dcbe0	IsTrialMember	FUN_14351a1d0			Ui
+0x1446dcbf0	IsRunningOnMac	FUN_14351a280			Ui
+0x1446dcc00	GetRepeatingActivityCount	FUN_143519960			Ui
+0x1446dcc10	GetRepeatingActivityNextTime	FUN_143519b30			Ui
+0x1446dcc20	ShouldShowMemberNagScreen	FUN_14351a510			Ui
+0x1446dcc30	IsAdminClient	FUN_14351a5d0			Ui
+0x1446dcc40	GetPlayerKnockoutInfo	FUN_1435215c0			Ui
+0x1446dcc50	SetCollectionFilterByCategory	FUN_14351f3b0			Ui
+0x1446dcc60	RequestPlayerPositions	FUN_14351e6b0	sends	CommandPacketRequestPlayerPositions PacketTunnelPacketFromExternalConnection	Ui
+0x1446dcc70	GetGender	FUN_14351eb90			Ui
+0x1446dcc80	GetRace	FUN_14351efc0			Ui
+0x1446dcc90	GetLoginCount	FUN_14351a350			Ui
+0x1446dcca0	OnObjectiveEvent	FUN_143516150			Ui
+0x1446dccb0	DoAction	FUN_14351e8e0			Ui
+0x1446dccc0	DoAlternateAction	FUN_14351e9d0			Ui
+0x1446dccd0	AbilityStart	FUN_14351ebd0			Ui
+0x1446dcce0	TeleportToFriend	FUN_14351f5c0			Ui
+0x1446dccf0	SetActiveActionBar	FUN_14351e610			Ui
+0x1446dcd00	GetStringHashToValueInt	FUN_14351fe20			Ui
+0x1446dcd10	GetStringHashToValueFloat	FUN_143520520			Ui
+0x1446dcd20	GetStringHashToValueString	FUN_143520e70			Ui
+0x1446dcd30	PlaySoundFromDefinition	FUN_143512f60			Ui
+0x1446dcd40	PlayMusic	FUN_143513760			Ui
+0x1446dcd50	PlaySpawnMusic	FUN_143513b60			Ui
+0x1446dcd60	StopMusic	FUN_143513ba0			Ui
+0x1446dcd70	LockMusic	FUN_143513d00			Ui
+0x1446dcd80	GetIsMusicInCombatMode	FUN_143513d70			Ui
+0x1446dcd90	PlaySpeech	FUN_143513e60			Ui
+0x1446dcda0	StopSpeech	FUN_1435143c0			Ui
+0x1446dcdb0	TriggerMenuStateAudioMixer	FUN_1435145a0			Ui
+0x1446dcdc0	SetMasterVolume	FUN_143514720			Ui
+0x1446dcdd0	GetMasterVolume	FUN_143514bf0			Ui
+0x1446dcde0	SetUiVolume	FUN_143514dd0			Ui
+0x1446dcdf0	GetUiVolume	FUN_143515120			Ui
+0x1446dce00	SetMusicVolume	FUN_1435152f0			Ui
+0x1446dce10	GetMusicVolume	FUN_1435155d0			Ui
+0x1446dce20	SetGameVolume	FUN_1435159c0			Ui
+0x1446dce30	GetGameVolume	FUN_143515b60			Ui
+0x1446dce40	SetSoundQuality	FUN_143515c00			Ui
+0x1446dce50	GetSoundQuality	FUN_143515d90			Ui
+0x1446dce60	TutorialMuteMusicForVoiceOvers	FUN_143515eb0			Ui
+0x1446dce70	TutorialUnmuteMusicAfterVoiceOvers	FUN_143515f80			Ui
+0x1446dce80	GetLastClickedScreenLocation	FUN_14351bf20			Ui
+0x1446dce90	SetMovementEnabled	FUN_143519f80			Ui
+0x1446dcea0	GetMovementEnabled	FUN_14351a0c0			Ui
+0x1446dceb0	SetKeyboardEnabled	FUN_143519ec0			Ui
+0x1446dcec0	GetKeyboardEnabled	FUN_143519f10			Ui
+0x1446dced0	SetActiveProfile	FUN_14351a150			Ui
+0x1446dcee0	CreateProfile	FUN_14351a2b0			Ui
+0x1446dcef0	SelectProfile	FUN_14351a580			Ui
+0x1446dcf00	DeleteProfile	FUN_14351a600			Ui
+0x1446dcf10	CopyProfile	FUN_14351ac80			Ui
+0x1446dcf20	CopyActionSet	FUN_14351adb0			Ui
+0x1446dcf30	SaveAllProfiles	FUN_14351afd0			Ui
+0x1446dcf40	ResetActionToDefault	FUN_14351b0b0			Ui
+0x1446dcf50	ClearActionTrigger	FUN_14351b940			Ui
+0x1446dcf60	SetActionTrigger	FUN_14351bfb0			Ui
+0x1446dcf70	TrapNextKey	FUN_14351cb10			Ui
+0x1446dcf80	GetTriggerTextForAction	FUN_14351cc40			Ui
+0x1446dcf90	ProcessChatCommand	FUN_14351cfe0			Ui
+0x1446dcfa0	ChatSetPreviousCommand	FUN_143513640			Ui
+0x1446dcfb0	ChatSetNextCommand	FUN_1435138c0			Ui
+0x1446dcfc0	ChatTabCompletion	FUN_143513a30			Ui
+0x1446dcfd0	SetChatColorFgBgSz	FUN_143519c30	sends	CommandPacketSetChatBubbleColor PacketTunnelPacketFromExternalConnection	Ui
+0x1446dcfe0	ChannelOn	FUN_143521850	sends	CommandPacketChatChannelOn PacketTunnelPacketFromExternalConnection	Ui
+0x1446dcff0	ChannelOff	FUN_143521b30	sends	CommandPacketChatChannelOff PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd000	ClickedAbility	FUN_143513f60			Ui
+0x1446dd010	TeleportToPointOfInterest	FUN_143518090			Ui
+0x1446dd020	TeleportToSafePoint	FUN_143518170	sends	PacketTunnelPacketFromExternalConnection PacketZoneSafeTeleportRequest	Ui
+0x1446dd030	QuitMiniGame	FUN_143514130	sends	BaseMiniGamePacket EncounterParticipantRequestExitPacket PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd040	EndMiniGame	FUN_1435141b0	sends	BaseMiniGamePacket	Ui
+0x1446dd050	ExitMiniGame	FUN_1435141d0	sends	BaseMiniGamePacket	Ui
+0x1446dd060	CreateMiniGame	FUN_143514250	sends	BaseMiniGamePacket PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd070	CreateMultiplayerMiniGame	FUN_143514420	sends	BaseMiniGamePacket PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd080	CreateMiniGameGroup	FUN_143514620	sends	BaseMiniGamePacket PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd090	RequestMiniGameGroup	FUN_1435146c0	sends	BaseMiniGamePacket PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd0a0	CloseMinigameStartWindow	FUN_14351d0d0			Ui
+0x1446dd0b0	SelectMiniGameObjective	FUN_143514ff0			Ui
+0x1446dd0c0	GameTutorialGetInfo	FUN_14351c870			Ui
+0x1446dd0d0	GameTutorialShowAgain	FUN_14351c890	sends	BaseMiniGamePacket PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd0e0	OnMiniGameFeedback	FUN_14351f0e0			Ui
+0x1446dd0f0	OnBugReportUiSelectCategory	FUN_14351f1b0			Ui
+0x1446dd100	OnBugReportUiSubmit	FUN_14351f1e0	sends	BasePacket BugSubmissionPacketAddBug PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd110	OnClaimReportUiSubmit	FUN_14351f2e0	sends	BasePacket ClaimReportSubmissionPacketAddReport PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd120	EnableAbilityTriggers	FUN_143515bd0			Ui
+0x1446dd130	RequestPauseMiniGame	FUN_143515be0	sends	BaseMiniGamePacket PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd140	RequestUnpauseMiniGame	FUN_143515c50	sends	BaseMiniGamePacket PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd150	IsClientPaused	FUN_143515cf0			Ui
+0x1446dd160	SubmitLobbyGameOptions	FUN_14351f520			Ui
+0x1446dd170	CreateNewLobbyGame	FUN_14351f500			Ui
+0x1446dd180	JoinLobbyGame	FUN_14351f5a0			Ui
+0x1446dd190	QuickMatchLobbyGame	FUN_14351f7d0			Ui
+0x1446dd1a0	LeaveLobbyGame	FUN_14351f7f0			Ui
+0x1446dd1b0	FilterLobbyGameList	FUN_143520cc0			Ui
+0x1446dd1c0	StartLobbyGame	FUN_14351f8f0			Ui
+0x1446dd1d0	LeaveLobby	FUN_14351f900			Ui
+0x1446dd1e0	IsInLobby	FUN_14351f960			Ui
+0x1446dd1f0	GetLobbyGameId	FUN_14351f970			Ui
+0x1446dd200	GetLobbyGameCreatorGuid	FUN_14351fa00			Ui
+0x1446dd210	GetLobbyDescription	FUN_14351fa60			Ui
+0x1446dd220	GetLobbyGameDescription	FUN_14351fae0			Ui
+0x1446dd230	GetLobbyGameName	FUN_14351fc20			Ui
+0x1446dd240	GetLobbyGameIcon	FUN_1435204f0			Ui
+0x1446dd250	GetLobbyGameType	FUN_143520e20			Ui
+0x1446dd260	GetItemStatRow	FUN_14351eaa0			Ui
+0x1446dd270	GetItemDefinitionStatRow	FUN_14351f000			Ui
+0x1446dd280	GetAbilityDescription	FUN_1435217c0			Ui
+0x1446dd290	RequestStripEffect	FUN_143520c70	sends	PacketTunnelPacketFromExternalConnection PlayerUpdatePacketRequestStripEffect	Ui
+0x1446dd2a0	ClearItemNewFlag	FUN_14351f110			Ui
+0x1446dd2b0	SelectItemDefinition	FUN_14351f240			Ui
+0x1446dd2c0	CancelAbilityEffect	FUN_14351f320	sends	AbilityPacketRequestCancelEffect PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd2d0	CameraLookAtSelf	FUN_143515530			Ui
+0x1446dd2e0	CameraRestore	FUN_1435165b0			Ui
+0x1446dd2f0	CameraFlashMiniGame	FUN_143516130			Ui
+0x1446dd300	CameraRotateOnce	FUN_143516240			Ui
+0x1446dd310	SetDialogCameraOffset2D	FUN_143515930			Ui
+0x1446dd320	SetCameraOffset2D	FUN_143515e20			Ui
+0x1446dd330	SetCameraDistance	FUN_143516040			Ui
+0x1446dd340	SetMarketplaceCameraCenter2D	FUN_143515c70			Ui
+0x1446dd350	SetMarketplaceCameraZoom	FUN_143515af0			Ui
+0x1446dd360	ObscureScene	FUN_14351f800			Ui
+0x1446dd370	EnableSceneInput	FUN_14351f980			Ui
+0x1446dd380	RequestPortrait	FUN_14351fa70	sends	PacketGeneratePortraitRequest PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd390	RequestHeadshot	FUN_14351fbd0			Ui
+0x1446dd3a0	RequestSelectTask	FUN_143514860	sends	PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd3b0	SetWaypoint	FUN_143514970	sends	PacketTunnelPacketFromExternalConnection SetWaypointPacket	Ui
+0x1446dd3c0	RemoveWaypoint	FUN_143514b30	sends	PacketTunnelPacketFromExternalConnection SetWaypointPacket	Ui
+0x1446dd3d0	EnableHUDIndicators	FUN_143514bd0			Ui
+0x1446dd3e0	DisableHUDIndicators	FUN_143514cb0			Ui
+0x1446dd3f0	ToggleHUDIndicators	FUN_143514da0			Ui
+0x1446dd400	IsHUDIndicatorsEnabled	FUN_143514ea0			Ui
+0x1446dd410	DialogSelect	FUN_1435150d0	sends	PacketDialogResponse PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd420	DialogEnd	FUN_143515280	sends	CommandPacketEndDialog	Ui
+0x1446dd430	SetQuestDialogActive	FUN_1435152a0			Ui
+0x1446dd440	PrintSwfFrameInfo	FUN_1435168b0			Ui
+0x1446dd450	NotificationStart	FUN_143516ad0			Ui
+0x1446dd460	NotificationEnd	FUN_143516b50			Ui
+0x1446dd470	SetInteractionEnabled	FUN_1435154a0			Ui
+0x1446dd480	GetInteractionEnabled	FUN_1435154f0			Ui
+0x1446dd490	ProcessQuickChatCommand	FUN_14351d0e0	sends	PacketTunnelPacketFromExternalConnection QuickChatSendChatToChannelPacket	Ui
+0x1446dd4a0	ProcessQuickGroupChatCommand	FUN_14351d330	sends	PacketTunnelPacketFromExternalConnection QuickChatSendChatToChannelPacket	Ui
+0x1446dd4b0	ProcessQuickTellCommand	FUN_14351d440	sends	PacketTunnelPacketFromExternalConnection QuickChatSendTellPacket	Ui
+0x1446dd4c0	ProcessQuickChatChannelCommand	FUN_14351d580			Ui
+0x1446dd4d0	GetUserOptionsValue	FUN_143518bc0			Ui
+0x1446dd4e0	SetUserOptionsValue	FUN_143518ec0			Ui
+0x1446dd4f0	ResetGraphicsOptionsToDefault	FUN_143516590			Ui
+0x1446dd500	IsGraphicsAuto	FUN_1435167d0			Ui
+0x1446dd510	SetRenderDistanceInPercent	FUN_143516f70			Ui
+0x1446dd520	GetRenderDistanceInPercent	FUN_1435173a0			Ui
+0x1446dd530	SetTextureQuality	FUN_143517630			Ui
+0x1446dd540	GetTextureQuality	FUN_143517d20			Ui
+0x1446dd550	SetShadowQuality	FUN_143517d90			Ui
+0x1446dd560	GetShadowQuality	FUN_143517e00			Ui
+0x1446dd570	SetDynamicScale	FUN_1435180c0			Ui
+0x1446dd580	GetDynamicScale	FUN_1435181f0			Ui
+0x1446dd590	SetGamma	FUN_143518340			Ui
+0x1446dd5a0	GetGamma	FUN_1435183d0			Ui
+0x1446dd5b0	SetFloraEnabled	FUN_143518640			Ui
+0x1446dd5c0	GetFloraEnabled	FUN_143518a40			Ui
+0x1446dd5d0	SaveUserOptions	FUN_143516110			Ui
+0x1446dd5e0	AddFriend	FUN_14351d8b0	sends	CommandPacketAddFriendRequest PacketTunnelPacketFromExternalConnection QuestEndReplyPacket	Ui
+0x1446dd5f0	AddFriendByGuid	FUN_14351da30	sends	CommandPacketAddFriendRequest PacketTunnelPacketFromExternalConnection QuestEndReplyPacket	Ui
+0x1446dd600	RemoveFriend	FUN_14351df90	sends	CommandPacketRemoveFriendRequest PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd610	RemoveFriendByGuid	FUN_14351e410	sends	CommandPacketRemoveFriendRequest PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd620	TargetGroupMember	FUN_14351e670			Ui
+0x1446dd630	InitiateTradeByGuid	FUN_14351e960	sends	PacketTunnelPacketFromExternalConnection TradeInitiatePacket	Ui
+0x1446dd640	InviteToGroup	FUN_14351ea50	sends	GroupPacketInvite PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd650	IgnorePlayer	FUN_14351fcc0	sends	CommandPacketIgnoreRequest PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd660	IgnorePlayerByGuid	FUN_143520cd0	sends	BasePacket CommandPacketIgnoreRequest PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd670	StopIgnoringPlayer	FUN_143521620	sends	CommandPacketIgnoreRequest PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd680	StopIgnoringPlayerByGuid	FUN_143521990	sends	BasePacket CommandPacketIgnoreRequest PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd690	BlockPlayerByGuid	FUN_143521d80	sends	BasePacket CommandPacketIgnoreRequest PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd6a0	UnblockPlayerByGuid	FUN_143513270	sends	BasePacket CommandPacketIgnoreRequest PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd6b0	IsInCombat	FUN_143513570			Ui
+0x1446dd6c0	AssignToItemActionBar	FUN_14351aad0	sends	InventoryPacketItemActionBarAssign PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd6d0	RevivePlayer	FUN_14351ace0	sends		Ui
+0x1446dd6e0	SpotPlayer	FUN_14351aed0	sends	CommandPacketSpotPlayer PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd6f0	SpotPrimaryTarget	FUN_14351aef0	sends	CommandPacketSpotPrimaryTarget PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd700	StartTellByGuid	FUN_14351b450			Ui
+0x1446dd710	RequestRepairByGuid	FUN_14351b820	sends	HelpRequestPacket PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd720	RequestTransportByGuid	FUN_14351bc00	sends	HelpRequestPacket PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd730	RequestHealingByGuid	FUN_14351bd40	sends	HelpRequestPacket PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd740	RequestAmmoByGuid	FUN_14351be90	sends	HelpRequestPacket PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd750	OfferRepairByGuid	FUN_14351c390	sends	HelpOfferPacket PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd760	OfferTransportByGuid	FUN_14351c400	sends	HelpOfferPacket PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd770	OfferHealingByGuid	FUN_14351c570	sends	HelpOfferPacket PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd780	OfferAmmoByGuid	FUN_14351c830	sends	HelpOfferPacket PacketTunnelPacketFromExternalConnection	Ui
+0x1446dd790	ShowCursor	FUN_14351c9e0			Ui
+0x1446dd7a0	HideCursor	FUN_14351cac0			Ui
+0x1446dd7b0	SetCursor	FUN_14351cb80			Ui
+0x1446dd7c0	SetTooltipInventoryItem	FUN_14351cf80			Ui
+0x1446dd7d0	SetTooltipCollection	FUN_14351cfd0			Ui
+0x1446dd7e0	SetTooltipAbilityItem	FUN_14351d530			Ui
+0x1446dd7f0	SetTooltipJob	FUN_14351cf50			Ui
+0x1446dd800	SetTooltipRecipe	FUN_14351cf00			Ui
+0x1446dd810	SetTooltipAbility	FUN_14351d430			Ui
+0x1446dd820	SetTooltipItemDefinition	FUN_14351d090			Ui
+0x1446dd830	SetTooltipItemGroup	FUN_14351d2f0			Ui
+0x1446dd840	SetTooltipStoreBundle	FUN_14351d540			Ui
+0x1446dd850	SetTooltipRequisitionItem	FUN_14351d6a0			Ui
+0x1446dd860	SetItemAbility	FUN_14351cde0			Ui
+0x1446dd870	LogDebug	FUN_14351d720			Ui
+0x1446dd880	LogInfo	FUN_14351d930			Ui
+0x1446dd890	LogWarning	FUN_14351dcf0			Ui
+0x1446dd8a0	LogError	FUN_14351de90			Ui
+0x1446dd8b0	ShowChatBubble	FUN_14351e250			Ui
+0x1446dd8c0	ShowLootText	FUN_14351e760			Ui
+0x1446dd8d0	GetClientLuaMetric	FUN_143513150			Ui
+0x1446dd8e0	SetClientLuaMetric	FUN_1435133f0			Ui
+0x1446dd8f0	IncrementClientLuaMetric	FUN_143513500			Ui
+0x1446dd900	TriggerFirstTimeEvent	FUN_14351f480	sends		Ui
+0x1446dd910	StartClientTimer	FUN_143514150			Ui
+0x1446dd920	KillClientTimer	FUN_1435141f0			Ui
+0x1446dd930	SetActiveVehicleProfile	FUN_14351f4f0			Ui
+0x1446dd940	GetActiveVehicleProfile	FUN_14351f510			Ui
+0x1446dd950	GetActiveVehicleLoadout	FUN_14351f5b0			Ui
+0x1446dd960	GetActiveVehicleLoadoutType	FUN_14351f7e0			Ui
+0x1446dd970	ShouldDrawDirectionIndicators	FUN_1435204a0			Ui
+0x1446dd980	ReportAsOffensive	FUN_14351d6d0	sends	PacketTunnelPacketFromExternalConnection ReportPacketReportPlayer	Ui
+0x1446dd990	RequestRunningEncounterList	FUN_143512e10			Ui
+0x1446dd9a0	SetPreferredLanguage	FUN_143518e50	sends	PacketTunnelPacketFromExternalConnection PlayerUpdatePacketPreferredLanguages	Ui
+0x1446dd9b0	GetPreferredLanguage	FUN_143518cc0			Ui
+0x1446dd9c0	SetChatLanguage	FUN_143518fd0			Ui
+0x1446dd9d0	GetChatLanguage	FUN_1435191e0			Ui
+0x1446dd9e0	GetDayMonthYear	FUN_143514d30			Ui
+0x1446dd9f0	GetDateString	FUN_143514ed0			Ui
+0x1446dda00	GetDayOfWeek	FUN_1435151c0			Ui
+0x1446dda10	GetDateMonthYear	FUN_1435153c0			Ui
+0x1446dda20	GetElapsedTimeString	FUN_143515760			Ui
+0x1446dda30	GetLocaleString	FUN_143519390			Ui
+0x1446dda40	StopInspecting	FUN_1435137b0	sends	PacketTunnelPacketFromExternalConnection StopInspectPacket	Ui
+0x1446dda50	SelectPlayerTitle	FUN_143513860	sends	PacketTunnelPacketFromExternalConnection PlayerTitleRequestSelectPacket	Ui
+0x1446dda60	RequestPlayIntroEncounter	FUN_1435139d0	sends	CommandPacketRequestPlayIntroEncounter PacketTunnelPacketFromExternalConnection	Ui
+0x1446dda70	DoClosestInteraction	FUN_143513b90			Ui
+0x1446dda80	JobCustomizationSelectItem	FUN_143513c00			Ui
+0x1446dda90	JobCustomizationClearItem	FUN_143513e20			Ui
+0x1446ddaa0	JobCustomizationCommitChanges	FUN_143513ff0			Ui
+0x1446ddab0	JobCustomizationSelectGroup	FUN_143514000			Ui
+0x1446ddac0	RequestToJoinActivity	FUN_143514320	sends	ActivityPacketJoinActivityRequest PacketTunnelPacketFromExternalConnection	Ui
+0x1446ddad0	AddIdToActivityDatasource	FUN_143514680			Ui
+0x1446ddae0	RemoveIdFromActivityDatasource	FUN_1435147f0			Ui
+0x1446ddaf0	ClearActivityDatasource	FUN_143514830			Ui
+0x1446ddb00	RemoveActivityDatasource	FUN_1435148b0			Ui
+0x1446ddb10	AddIdToScheduledActivityDatasource	FUN_143514a80			Ui
+0x1446ddb20	RemoveIdFromScheduledActivityDatasource	FUN_143514ac0			Ui
+0x1446ddb30	ClearScheduledActivityDatasource	FUN_143514b00			Ui
+0x1446ddb40	RemoveScheduledActivityDatasource	FUN_143514ba0			Ui
+0x1446ddb50	ShowActivityPortalWindow	FUN_143514530			Ui
+0x1446ddb60	GetPowerHourTimeRemaining	FUN_143514c90			Ui
+0x1446ddb70	GetTintGroupRow	FUN_143515a30			Ui
+0x1446ddb80	GetAutoRefuse	FUN_143515fe0			Ui
+0x1446ddb90	SetAutoRefuse	FUN_143515dc0			Ui
+0x1446ddba0	LaunchBrowser	FUN_143516530			Ui
+0x1446ddbb0	ConvertPathToNative	FUN_1435165d0			Ui
+0x1446ddbc0	IsFTEAllowed	FUN_143513120			Ui
+0x1446ddbd0	ToggleNpcHitpointBar	FUN_143516b30			Ui
+0x1446ddbe0	IsNpcHitpointBar	FUN_143516bb0			Ui
+0x1446ddbf0	FlagFavoriteEmote	FUN_143516df0			Ui
+0x1446ddc00	UnflagFavoriteEmote	FUN_143517200			Ui
+0x1446ddc10	FlagRecentlyUsedEmote	FUN_1435175f0			Ui
+0x1446ddc20	InviteToActivity	FUN_14351eb00		ClientActivityLaunchPacketInviteMemberRequest	Ui
+0x1446ddc30	KickFromActivity	FUN_14351f050		ClientActivityLaunchPacketKickMemberRequest	Ui
+0x1446ddc40	CancelInviteToActivity	FUN_14351f410		ClientActivityLaunchPacketMemberQuit	Ui
+0x1446ddc50	QuitActivity	FUN_14351f280		ClientActivityLaunchPacketMemberQuit	Ui
+0x1446ddc60	ReadyForActivity	FUN_14351f530		ClientActivityLaunchPacketMemberReady	Ui
+0x1446ddc70	PlayerActivityReady	FUN_14351fb80		ClientActivityLaunchPacketMemberReady	Ui
+0x1446ddc80	OwnerLaunchActivity	FUN_14351f910		ClientActivityLaunchPacketOwnerLaunchRequest	Ui
+0x1446ddc90	OwnerMatchmakeActivity	FUN_14351fa10		ClientActivityLaunchPacketOwnerMatchmakingRequest	Ui
+0x1446ddca0	Create3dGuiModel	FUN_143517690			Ui
+0x1446ddcb0	Destroy3dGuiModel	FUN_14351ad40			Ui
+0x1446ddcc0	Set3dGuiModelCameraDistance	FUN_14351ae30			Ui
+0x1446ddcd0	Set3dGuiModelCameraAngle	FUN_14351af30			Ui
+0x1446ddce0	Set3dGuiModelCameraOffset	FUN_14351b660			Ui
+0x1446ddcf0	Set3dGuiModelCameraZoom	FUN_14351b7a0			Ui
+0x1446ddd00	Set3dGuiModelAnimation	FUN_14351b860			Ui
+0x1446ddd10	Set3dGuiModelAnimationVariable	FUN_14351bc40			Ui
+0x1446ddd20	AttachHeadTo3dGuiModel	FUN_143518440			Ui
+0x1446ddd30	AttachTo3dGuiModel	FUN_1435188a0			Ui
+0x1446ddd40	Set3dGuiModelPlayer	FUN_14351a200			Ui
+0x1446ddd50	Set3dGuiModelActor	FUN_143518ac0			Ui
+0x1446ddd60	Set3dGuiModelCameraRotation	FUN_14351b010			Ui
+0x1446ddd70	Set3dGuiModelLoadout	FUN_143519e00			Ui
+0x1446ddd80	Set3dGuiVehicleLoadout	FUN_143519fd0			Ui
+0x1446ddd90	Set3dGuiVehicleItemBySlot	FUN_143519a80			Ui
+0x1446ddda0	Set3dGuiModelItemBySlot	FUN_143519220			Ui
+0x1446dddb0	Set3dGuiModelByStoreBundleId	FUN_143519430			Ui
+0x1446dddc0	Set3dGuiModelCamera	FUN_143518dc0			Ui
+0x1446dddd0	Set3dGuiModelCameraZoomScale	FUN_143519010			Ui
+0x1446ddde0	Set3dGuiLoadoutByCharacterGuid	FUN_14351be60			Ui
+0x1446dddf0	Set3dGuiModelByGuid	FUN_14351bed0			Ui
+0x1446dde00	Set3dGuiModelHoloEffect	FUN_14351a3c0			Ui
+0x1446dde10	Set3dGuiModelByKillerLoadout	FUN_14351abd0			Ui
+0x1446dde20	Set3dGuiModelAutoRotateRate	FUN_143518220			Ui
+0x1446dde30	OnPoIHide	FUN_14351c3d0			Ui
+0x1446dde40	OnFirstTimeIntroFinished	FUN_14351c440	sends	GroupPacketAutoGroup	Ui
+0x1446dde50	SetWallOfData	FUN_14351c5c0	sends	BasePacket PacketTunnelPacketFromExternalConnection WallOfDataUIEventPacket	Ui
+0x1446dde60	DisableRendering	FUN_14351c920			Ui
+0x1446dde70	EnableRendering	FUN_14351c930			Ui
+0x1446dde80	IsRenderingDisabled	FUN_14351c950			Ui
+0x1446dde90	GetFramesPerSecond	FUN_14351ca00			Ui
+0x1446ddea0	GetLatency	FUN_14351cae0			Ui
+0x1446ddeb0	DoesFileExist	FUN_14351cbd0			Ui
+0x1446ddec0	GetTipString	FUN_14351ce00			Ui
+0x1446dded0	OpenSupportUrl	FUN_14351d170			Ui
+0x1446ddee0	StartEmpEffect	FUN_14351d910			Ui
+0x1446ddef0	EndEmpEffect	FUN_14351d920			Ui
+0x1446ddf00	OnPlayerFinalizeNameChange	FUN_14351dad0	sends	BasePacket CommandPacketNameChangeRequest PacketTunnelPacketFromExternalConnection	Ui
+0x1446ddf10	ValidatePlayerName	FUN_14351e0e0	sends	BasePacket CommandPacketNameValidationRequest PacketTunnelPacketFromExternalConnection	Ui
+0x1446ddf20	GetBusinessEnvironment	FUN_14351e550			Ui
+0x1446ddf30	IsActionBarLocked	FUN_143521780			Ui
+0x1446ddf40	SetActionBarLocked	FUN_143521940			Ui
+0x1446ddf50	OnActionBarChanged	FUN_143521b10			Ui
+0x1446ddf60	ClearSlot	FUN_143512eb0	sends	ActionManagerPacketRequestClearSlot	Ui
+0x1446ddf70	SetSlot	FUN_143521c80	sends	ActionManagerPacketRequestSetSlot	Ui
+0x1446ddf80	DefaultSlot	FUN_1435131c0	sends	ActionManagerPacketDefaultSlot	Ui
+0x1446ddf90	DefaultAllSlots	FUN_143513480	sends	ActionManagerPacketDefaultAllSlots	Ui
+0x1446ddfa0	ToggleWorldMap	FUN_143513ad0			Ui
+0x1446ddfb0	WorldMapClaimFilterCheckboxUpdate	FUN_143513af0			Ui
+0x1446ddfc0	WorldMapClaimTagFilterUpdate	FUN_143513c80	sends	PacketInGamePurchaseCommerceSearch	Ui
+0x1446ddfd0	OpenChest	FUN_143513da0	sends	PacketChestInventoryListRequest PacketTunnelPacketFromExternalConnection	Ui
+0x1446ddfe0	RequestCloseChest	FUN_143513fa0	sends	PacketChestStopObservingChest	Ui
+0x1446ddff0	RegisterDTObject	FUN_143514060			Ui
+0x1446de000	UnregisterDTObject	FUN_1435142a0			Ui
+0x1446de010	RegisterFCTRegion	FUN_143514470			Ui
+0x1446de020	MarketplaceCategorySelected	FUN_1435162f0	sends	BasePacket PacketTunnelPacketFromExternalConnection WallOfDataMarketplacePacket	Ui
+0x1446de030	MarketplaceItemDetailPanelActivated	FUN_1435168c0	sends	BasePacket PacketTunnelPacketFromExternalConnection WallOfDataMarketplacePacket	Ui
+0x1446de040	MarketplaceItemPurchasedFromDetailPanel	FUN_143516be0	sends	BasePacket PacketTunnelPacketFromExternalConnection WallOfDataMarketplacePacket	Ui
+0x1446de050	MarketplaceItemPurchasedFromBuyNowButton	FUN_143516ff0	sends	BasePacket PacketTunnelPacketFromExternalConnection WallOfDataMarketplacePacket	Ui
+0x1446de060	MarketplaceItemButtonClickShowcase	FUN_143517400	sends	BasePacket PacketTunnelPacketFromExternalConnection WallOfDataMarketplacePacket	Ui
+0x1446de070	SetClipboardText	FUN_143517670			Ui
+0x1446de080	GetMilliseconds	FUN_143517e70			Ui
+0x1446de090	UIEventTriggered	FUN_143517ca0	sends	PacketTunnelPacketFromExternalConnection UIEventTriggeredPacket	Ui
+0x1446de0a0	CanPerformNamedMovement	FUN_143517fc0			Ui
+0x1446de0b0	GetAbilityTooltip	FUN_143518120			Ui
+0x1446de0c0	IsReviveSelfEnabled	FUN_1435186b0			Ui
+0x1446de0d0	GetReviveItemRequiredCount	FUN_143518830			Ui
+0x1446de0e0	SetTooltipShowDelay	FUN_143518a70			Ui
+0x1446de0f0	GetTooltipShowDelay	FUN_143518d30			Ui
+0x1446de100	GetTooltipShowDelayMin	FUN_143518d60			Ui
+0x1446de110	GetTooltipShowDelayMax	FUN_143518f70			Ui
+0x1446de120	ToggleMatrixEffect	FUN_1435190a0			Ui
+0x1446de130	GetLockedTargetPosition	FUN_1435194f0			Ui
+0x1446de140	SetActivePaletteCategory	FUN_143519f40			Ui
+0x1446de150	IsInNewbieZone	FUN_14351a390			Ui
+0x1446de160	GetAutoCompleteLinks	FUN_14351a550			Ui
+0x1446de170	SetAutoCompleteLinks	FUN_14351a590			Ui
+0x1446de180	HandleEscape	FUN_14351abb0			Ui
+0x1446e18b0	Activate	FUN_1435251a0	sends	ToolPacketActivate	Area
+0x1446e18c0	Select	FUN_1435251d0			Area
+0x1446e18d0	Highlight	FUN_143525230			Area
+0x1446e18e0	Create	FUN_143525290	sends	AreaDefinitionCreateTriggerAreaRequestPacket	Area
+0x1446e18f0	Remove	FUN_143525540			Area
+0x1446e1900	Group	FUN_1435255f0	sends	AreaDefinitionTransferShapePacket	Area
+0x1446e1910	Ungroup	FUN_143525670	sends	AreaDefinitionTransferShapePacket	Area
+0x1446e1920	Nudge	FUN_143525300			Area
+0x1446e1930	Resize	FUN_143525420			Area
+0x1446e1940	SetName	FUN_1435256d0	sends	AreaDefinitionBasePacket AreaDefinitionUpdateDefinitionPacket	Area
+0x1446e1950	AddProperty	FUN_143525740	sends	AreaDefinitionBasePacket AreaDefinitionUpdateDefinitionPacket	Area
+0x1446e1960	RemoveProperty	FUN_1435257c0	sends	AreaDefinitionBasePacket AreaDefinitionUpdateDefinitionPacket	Area
+0x1446e1970	SetPropertyValue	FUN_143525830	sends	AreaDefinitionBasePacket AreaDefinitionUpdateDefinitionPacket	Area
+0x1446e1980	SetPropertyValues	FUN_143525900	sends	AreaDefinitionBasePacket AreaDefinitionUpdateDefinitionPacket	Area
+0x1446e1990	Rotate	FUN_143524f60	sends	AreaDefinitionBasePacket AreaDefinitionUpdateDefinitionPacket	Area
+0x1446e19a0	Grow	FUN_143525080			Area
+0x1446e1ba0	Respond	FUN_143525fc0			GameActionQueue
+0x1446e1bb0	Select	FUN_143526050			GameActionQueue
+0x1446e1bc0	Remove	FUN_1435260b0	sends	UpdateNotificationPacket	GameActionQueue
+0x1446e1bd0	SetNew	FUN_143526130			GameActionQueue
+0x1446e1be0	SetHidden	FUN_1435261b0			GameActionQueue
+0x1446e1bf0	ClearAllNew	FUN_143526110			GameActionQueue
+0x1446e1cb0	GetVideoCaptureOutputFile	FUN_143526290			VideoCapture
+0x1446e1cc0	SetVideoCaptureOutputFile	FUN_143526320			VideoCapture
+0x1446e1cd0	GetVideoCaptureResolution	FUN_143526370			VideoCapture
+0x1446e1ce0	SetVideoCaptureResolution	FUN_1435263a0			VideoCapture
+0x1446e1cf0	GetVideoCaptureQuality	FUN_1435263e0			VideoCapture
+0x1446e1d00	SetVideoCaptureQuality	FUN_143526410			VideoCapture
+0x1446e1d10	InitVideoCapture	FUN_143526450			VideoCapture
+0x1446e1d20	StartVideoCapture	FUN_143526490			VideoCapture
+0x1446e1d30	StopVideoCapture	FUN_1435264d0			VideoCapture
+0x1446e1d40	UninitVideoCapture	FUN_1435264f0			VideoCapture
+0x1446e1d50	IsVideoCaptureInProgress	FUN_143526510			VideoCapture
+0x1446e1d60	GetVideoLibraryMyVideosDirectory	FUN_143526550			VideoCapture
+0x1446e1d70	SetVideoLibraryWorkingDirectory	FUN_1435265e0			VideoCapture
+0x1446e1d80	GetVideoLibraryWorkingDirectory	FUN_143526650			VideoCapture
+0x1446e1d90	SetVideoLibraryRootFilename	FUN_143526690			VideoCapture
+0x1446e1da0	GetVideoLibraryRootFilename	FUN_143526700			VideoCapture
+0x1446e1db0	GetVideoLibraryVideoInfoCount	FUN_143526740			VideoCapture
+0x1446e1dc0	GetVideoLibraryVideoInfo	FUN_143526770			VideoCapture
+0x1446e1dd0	GetNextVideoLibraryFileName	FUN_1435267d0			VideoCapture
+0x1446e1de0	AddNewVideoLibraryVideoInfo	FUN_143526860			VideoCapture
+0x1446e1df0	SaveVideoLibraryVideoInfo	FUN_1435268c0			VideoCapture
+0x1446e1e00	SetVideoLibraryVideoInfoParam	FUN_143526930			VideoCapture
+0x1446e1e10	GetVideoLibraryVideoInfoParam	FUN_143526ac0			VideoCapture
+0x1446e1e20	ScanVideoLibraryWorkingDirectory	FUN_143526c00			VideoCapture
+0x1446e1e30	DeleteVideoLibraryVideo	FUN_143526c60			VideoCapture
+0x1446e2290	GetVideoStreamerResolution	FUN_143526ea0			VideoStreamer
+0x1446e22a0	SetVideoStreamerResolution	FUN_143526e60			VideoStreamer
+0x1446e22b0	GetVideoStreamerUsername	FUN_143526ee0			VideoStreamer
+0x1446e22c0	SetVideoStreamerUsername	FUN_143526f80			VideoStreamer
+0x1446e22d0	GetVideoStreamerPassword	FUN_143526fd0			VideoStreamer
+0x1446e22e0	SetVideoStreamerPassword	FUN_143527070			VideoStreamer
+0x1446e22f0	GetVideoStreamerFPS	FUN_1435270c0			VideoStreamer
+0x1446e2300	SetVideoStreamerFPS	FUN_143527100			VideoStreamer
+0x1446e2310	GetVideoStreamerBitrate	FUN_143527140			VideoStreamer
+0x1446e2320	SetVideoStreamerBitrate	FUN_143527180			VideoStreamer
+0x1446e2330	GetVideoStreamerMicRecordVolume	FUN_1435271c0			VideoStreamer
+0x1446e2340	SetVideoStreamerMicRecordVolume	FUN_143527200			VideoStreamer
+0x1446e2350	GetVideoStreamerSpeakerRecordVolume	FUN_143527250			VideoStreamer
+0x1446e2360	SetVideoStreamerSpeakerRecordVolume	FUN_143527290			VideoStreamer
+0x1446e2370	InitVideoStreamer	FUN_1435272e0			VideoStreamer
+0x1446e2380	StartVideoStreamer	FUN_143527320			VideoStreamer
+0x1446e2390	StopVideoStreamer	FUN_143527360			VideoStreamer
+0x1446e23a0	UninitVideoStreamer	FUN_143527380			VideoStreamer
+0x1446e23b0	IsVideoStreamerInProgress	FUN_1435273a0			VideoStreamer
+0x1446e26d0	VideoUploadInit	FUN_143527450			VideoUpload
+0x1446e26e0	VideoUploadAuthenticate	FUN_143527470			VideoUpload
+0x1446e26f0	VideoUploadPost	FUN_1435274f0			VideoUpload
+0x1446e2700	VideoUploadCancelAllRequests	FUN_143527570			VideoUpload
+0x1446e2710	VideoUploadUninit	FUN_143527590			VideoUpload
+0x1446e2850	SetCameraDistance	FUN_143527600			View
+0x1446e2860	SetCameraPitch	FUN_143527670			View
+0x1446e2870	SetCameraHeading	FUN_1435276f0			View
+0x1446e2880	SetCameraFov	FUN_143527770			View
+0x1446e2890	GetCameraDistance	FUN_143527840			View
+0x1446e28a0	GetCameraPitch	FUN_143527890			View
+0x1446e28b0	GetCameraHeading	FUN_1435278f0			View
+0x1446e28c0	GetCameraFov	FUN_143527950			View
+0x1446e28d0	ZoomCamera	FUN_143527990			View
+0x1446e29f0	BeginIMEDialog	FUN_143527a40			WebBrowser
+0x1446e2a00	ConfirmCompositionString	FUN_143527a50			WebBrowser
+0x1446e2a10	CancelCompositionString	FUN_143527a90			WebBrowser
+0x1446e2a90	UpdateRespawnLocations	FUN_143527b00	sends	PacketGetRespawnLocations PacketTunnelPacketFromExternalConnection	Respawn
+0x1446e2aa0	Redeploy	FUN_143527c40	sends	CommandPacketRedeployRequest PacketTunnelPacketFromExternalConnection	Respawn
+0x1446e2ab0	Respawn	FUN_143527b40	sends	PacketTunnelPacketFromExternalConnection PlayerUpdatePacketRespawn	Respawn
+0x1446e2ac0	ReviveSelf	FUN_143527b20	sends	PlayerUpdatePacketRespawn	Respawn
+0x1446e2ad0	AcceptRevivalRequest	FUN_143527c60	sends	PacketTunnelPacketFromExternalConnection PlayerUpdatePacketReadyToReviveResponse	Respawn
+0x1446e2ae0	DeclineRevivalRequest	FUN_143527c80	sends	PacketTunnelPacketFromExternalConnection PlayerUpdatePacketReadyToReviveResponse	Respawn
+0x1446e2af0	GetMissionRespawnTimer	FUN_143527ca0			Respawn
+0x1446e2b00	SquadHotspotDeploy	FUN_143527c20			Respawn
+0x1446e2b10	ShowGraveyardRespawn	FUN_143527ce0			Respawn
+0x1446e2b20	ReviveAtGraveyard	FUN_143527d20	sends	PacketTunnelPacketFromExternalConnection PlayerUpdatePacketRespawn	Respawn
+0x1446e2b30	ReviveAtHub	FUN_143527da0	sends	PacketTunnelPacketFromExternalConnection PlayerUpdatePacketRespawn	Respawn
+0x1446e2b40	ReviveFlee	FUN_143527d60	sends	PacketTunnelPacketFromExternalConnection PlayerUpdatePacketRespawn	Respawn
+0x1446e2d50	GetLeaderboard	FUN_143527e40	sends	PacketTunnelPacketFromExternalConnection ProfileStatsPacketGetLeaderboard	Leaderboard
+0x1446e2d60	GetPlayerLeaderboardEntry	FUN_143527f50	sends	PacketTunnelPacketFromExternalConnection ProfileStatsPacketGetPlayerLeaderboardRow	Leaderboard
+0x1446e2d70	GetPlayerProfileStats	FUN_143527ff0			Leaderboard
+0x1446e2d80	RequestTimeSeries	FUN_143528040			Leaderboard
+0x1446e2ec0	SetEmpire	FUN_1435280e0			CharacterSelect
+0x1446e2ed0	SetGender	FUN_143528150			CharacterSelect
+0x1446e2ee0	SetRace	FUN_1435281d0			CharacterSelect
+0x1446e2ef0	SetHeadType	FUN_1435282c0			CharacterSelect
+0x1446e2f00	SetCharacterName	FUN_143528630			CharacterSelect
+0x1446e2f10	SetServer	FUN_143528880			CharacterSelect
+0x1446e2f20	SetCharacter	FUN_143528920			CharacterSelect
+0x1446e2f30	GetEmpire	FUN_143528120			CharacterSelect
+0x1446e2f40	GetGender	FUN_1435281a0			CharacterSelect
+0x1446e2f50	GetName	FUN_143528850			CharacterSelect
+0x1446e2f60	GetServer	FUN_1435288c0			CharacterSelect
+0x1446e2f70	GetProfileType	FUN_1435288f0			CharacterSelect
+0x1446e2f80	GetCharacter	FUN_143528980			CharacterSelect
+0x1446e2f90	GetServerRegionName	FUN_1435289f0			CharacterSelect
+0x1446e2fa0	CreateCharacter	FUN_143528ac0			CharacterSelect
+0x1446e2fb0	DeleteCharacter	FUN_143528d50		PacketCharacterDeleteRequest	CharacterSelect
+0x1446e2fc0	EnterGame	FUN_143528db0		PacketCharacterLoginRequest	CharacterSelect
+0x1446e2fd0	CancelQueue	FUN_143528e10			CharacterSelect
+0x1446e2fe0	GetBusinessEnvironment	FUN_143528eb0			CharacterSelect
+0x1446e2ff0	GetFaceSlotCount	FUN_143528220			CharacterSelect
+0x1446e3000	GetSkintoneSlotCount	FUN_1435284f0			CharacterSelect
+0x1446e3010	GetHairSlotCount	FUN_143528310			CharacterSelect
+0x1446e3020	GetFacialHairSlotCount	FUN_1435283b0			CharacterSelect
+0x1446e3030	GetHairColorSlotCount	FUN_143528450			CharacterSelect
+0x1446e3040	GetEyeColorSlotCount	FUN_143528590			CharacterSelect
+0x1446e3050	SetFaceSlotIndex	FUN_143528270			CharacterSelect
+0x1446e3060	SetSkintoneSlotIndex	FUN_143528540			CharacterSelect
+0x1446e3070	SetHairSlotIndex	FUN_143528360			CharacterSelect
+0x1446e3080	SetFacialHairSlotIndex	FUN_143528400			CharacterSelect
+0x1446e3090	SetHairColorSlotIndex	FUN_1435284a0			CharacterSelect
+0x1446e30a0	SetEyeColorSlotIndex	FUN_1435285e0			CharacterSelect
+0x1446e30b0	Create	FUN_143528e70			CharacterSelect
+0x1446e30c0	RequestCharacterList	FUN_143528ef0		PacketCharacterSelectInfoRequest	CharacterSelect
+0x1446e30d0	GetIndexForOption	FUN_143528ff0			CharacterSelect
+0x1446e30e0	SelectGearSet	FUN_1435290e0			CharacterSelect
+0x1446e34f8	LoginGame	FUN_143529250			LoginScreen
+0x1446e3508	ExitGame	FUN_143529280			LoginScreen
+0x1446e35f0	KickPlayer	FUN_143529310	sends	PacketTunnelPacketFromExternalConnection VehicleKickPlayerPacket	VehicleManagement
+0x1446e3600	Deconstruct	FUN_143529360	sends	PacketTunnelPacketFromExternalConnection VehiclePacketDismissVehicle	VehicleManagement
+0x1446e3610	SetAccessType	FUN_143529380	sends	PacketTunnelPacketFromExternalConnection VehicleAccessTypePacket	VehicleManagement
+0x1446e3690	GetList	FUN_143529430	sends	PacketTunnelPacketFromExternalConnection TemplatePacketClientListRequest	Templates
+0x1446e36a0	Paste	FUN_143529490	sends	PacketTunnelPacketFromExternalConnection TemplatePacketClientVoxelDataRequest	Templates
+0x1446e36b0	PasteInCurrentClaim	FUN_143529510	sends	PacketTunnelPacketFromExternalConnection TemplatePacketClientVoxelDataRequest	Templates
+0x1446e36c0	SaveTemplate	FUN_143529dd0			Templates
+0x1446e36d0	TestPoN	FUN_143529f10		PacketInGamePurchasePointOfNeedPromptRequestPacket	Templates
+0x1446e36e0	SaveTemplateWithTags	FUN_143529f40			Templates
+0x1446e36f0	Delete	FUN_1435297a0	sends	PacketTunnelPacketFromExternalConnection TemplatePacketClientDeleteTemplateRequest	Templates
+0x1446e3700	SetName	FUN_143529800	sends	PacketTunnelPacketFromExternalConnection TemplatePacketClientRequestRenameTemplate	Templates
+0x1446e3710	Select	FUN_143529660	sends	TemplatePacketClientVoxelDataRequest	Templates
+0x1446e3720	PopulateTooltip	FUN_1435296c0	sends	TemplatePacketClientVoxelDataRequest	Templates
+0x1446e3730	TakeScreenshot	FUN_14352a170			Templates
+0x1446e3740	GetTemplateUrl	FUN_14352a490			Templates
+0x1446e3750	UploadLatestScreenShot	FUN_143529910	sends	BasePacket MarketplaceImagePacketUploadRequest PacketTunnelPacketFromExternalConnection	Templates
+0x1446e3760	SelectAdminContributors	FUN_143529720	sends	TemplatePacketClientVoxelDataRequest	Templates
+0x1446e3770	ClearScreenshots	FUN_143529b80			Templates
+0x1446e3780	MakePrimaryScreenshot	FUN_143529a10			Templates
+0x1446e3790	ExportToItem	FUN_14352a680	sends	PacketTunnelPacketFromExternalConnection TemplatePacketExportToItemRequest	Templates
+0x1446e37a0	SelectCategory	FUN_14352a6e0			Templates
+0x1446e37b0	SearchTemplates	FUN_14352a740			Templates
+0x1446e37c0	SelectPaletteSortType	FUN_14352a7a0			Templates
+0x1446e37d0	SelectPaletteSortOrder	FUN_14352a7e0			Templates
+0x1446e37e0	FilterTemplatesByAvailability	FUN_14352a820			Templates
+0x1446e37f0	GetTemplatesFilteredByAvailability	FUN_14352a880			Templates
+0x1446e3cd0	Copy	FUN_14352b450			VoxelClipboard
+0x1446e3ce0	Cut	FUN_14352b3f0			VoxelClipboard
+0x1446e3cf0	Paste	FUN_14352b2e0	sends	PacketTunnelPacketFromExternalConnection ToolPacketActivate UIEventTriggeredPacket	VoxelClipboard
+0x1446e3d00	Undo	FUN_14352b510	sends	PacketTunnelPacketFromExternalConnection VoxelConstructionPacketClientUndoRedoRequest	VoxelClipboard
+0x1446e3d10	Redo	FUN_14352b540	sends	PacketTunnelPacketFromExternalConnection VoxelConstructionPacketClientUndoRedoRequest	VoxelClipboard
+0x1446e3d20	Delete	FUN_14352b4b0			VoxelClipboard
+0x1446e3eb0	DropItemToScene	FUN_14352b600	sends	InventoryPacketActivateItem	ClientInventory
+0x1446e3ec0	GetList	FUN_14352b690			ClientInventory
+0x1446e3ed0	GetSlotCount	FUN_14352b6b0			ClientInventory
+0x1446e3ee0	ActivateItem	FUN_14352b700	sends	ToolPacketActivate	ClientInventory
+0x1446e3ef0	TransferItem	FUN_14352b770	sends	InventoryPacketRequestTransferItem PacketTunnelPacketFromExternalConnection	ClientInventory
+0x1446e3f00	TransferItemWithOwner	FUN_14352b8f0	sends	InventoryPacketRequestTransferItem PacketTunnelPacketFromExternalConnection	ClientInventory
+0x1446e3f10	DestroyItem	FUN_14352bab0	sends	InventoryPacketRequestDeleteItem PacketTunnelPacketFromExternalConnection	ClientInventory
+0x1446e3f20	SalvageItem	FUN_14352c3c0	sends	InventoryPacketRequestSalvageItem PacketTunnelPacketFromExternalConnection	ClientInventory
+0x1446e3f30	RequestDetailsForItem	FUN_14352cad0	sends	InventoryPacketItemDefinitionTooltipRequest InventoryPacketItemInstanceTooltipRequest PacketTunnelPacketFromExternalConnection	ClientInventory
+0x1446e3f40	RequestDetailsForItemWindowed	FUN_14352cb80	sends	InventoryPacketItemDefinitionTooltipRequest InventoryPacketItemInstanceTooltipRequest PacketTunnelPacketFromExternalConnection	ClientInventory
+0x1446e3f50	RequestDetailsForItemByDefId	FUN_14352ccb0	sends	InventoryPacketItemDefinitionTooltipRequest PacketTunnelPacketFromExternalConnection	ClientInventory
+0x1446e3f60	RequestDetailsForItemInChest	FUN_14352cd10	sends	InventoryPacketItemDefinitionTooltipRequest InventoryPacketItemInstanceTooltipRequest PacketTunnelPacketFromExternalConnection	ClientInventory
+0x1446e3f70	RequestDetailsForItemInMail	FUN_14352cda0	sends	InventoryPacketItemDefinitionTooltipRequest InventoryPacketItemInstanceFullTooltipRequest PacketTunnelPacketFromExternalConnection	ClientInventory
+0x1446e3f80	RequestDetailsForAttributeByDefId	FUN_14352ce50			ClientInventory
+0x1446e3f90	RequestDetailsForRecipeByDefId	FUN_14352cef0	sends	InventoryPacketItemDefinitionTooltipRequest	ClientInventory
+0x1446e3fa0	AddItemToCollection	FUN_14352cf50			ClientInventory
+0x1446e3fb0	AddAllItemsToCollections	FUN_14352cf90			ClientInventory
+0x1446e3fc0	SetItemsToSlots	FUN_14352cfb0	sends	BasePacket InventoryPacketRearrangeItemSlots PacketTunnelPacketFromExternalConnection	ClientInventory
+0x1446e3fd0	SplitStack	FUN_14352d280	sends	InventoryPacketRequestSplitStack PacketTunnelPacketFromExternalConnection	ClientInventory
+0x1446e3fe0	RemoveFilter	FUN_14352d3f0			ClientInventory
+0x1446e3ff0	AddFilter	FUN_14352d450			ClientInventory
+0x1446e4000	ResetFilters	FUN_14352d560			ClientInventory
+0x1446e4010	ClearOverflowWarning	FUN_14352d5a0			ClientInventory
+0x1446e4020	GetItemNameByGuid	FUN_14352d5e0			ClientInventory
+0x1446e4030	MoveOverflow	FUN_14352da80	sends	InventoryPacketRequestOverflowAbsorb PacketTunnelPacketFromExternalConnection	ClientInventory
+0x1446e45c0	Create	FUN_14352ec70			Browser
+0x1446e45d0	Destroy	FUN_14352f1a0			Browser
+0x1446e45e0	IsUrlLoading	FUN_14352f200			Browser
+0x1446e45f0	LoadUrl	FUN_14352f280			Browser
+0x1446e4600	ReLoadAuthedUrl	FUN_14352f320			Browser
+0x1446e4610	GetCurrentUrl	FUN_14352f3c0			Browser
+0x1446e4620	CanGoBack	FUN_14352f4a0			Browser
+0x1446e4630	CanGoForward	FUN_14352f520			Browser
+0x1446e4640	Back	FUN_14352f5a0			Browser
+0x1446e4650	Forward	FUN_14352f610			Browser
+0x1446e4660	Refresh	FUN_14352f680			Browser
+0x1446e4670	Stop	FUN_14352f6f0			Browser
+0x1446e4680	EnableRendering	FUN_14352f760			Browser
+0x1446e4690	EnableRenderOnPageLoad	FUN_14352f7e0			Browser
+0x1446e46a0	SetRenderSize	FUN_14352f860			Browser
+0x1446e46b0	DidSelectPopupMenuItem	FUN_14352f910			Browser
+0x1446e46c0	DidCancelPopupMenu	FUN_14352f990			Browser
+0x1446e46d0	OpenGalleryWithTags	FUN_14352fc00			Browser
+0x1446e46e0	OpenMarketplaceWithTags	FUN_14352fe80			Browser
+0x1446e46f0	OpenRegistrationExternally	FUN_1435304b0			Browser
+0x1446e4700	OpenGallery	FUN_143530100			Browser
+0x1446e4710	OpenMarketplace	FUN_143530290			Browser
+0x1446e4720	OpenCredits	FUN_143530420			Browser
+0x1446e4730	SetMarketplaceMode	FUN_14352eb10			Browser
+0x1446e4740	OnMouseEvent	FUN_14352f9f0			Browser
+0x1446e4750	OnKeyEvent	FUN_14352fa00			Browser
+0x1446e4760	OnFocusEvent	FUN_14352fa10			Browser
+0x1446e4770	OnHide	FUN_14352fab0	sends	PacketInGamePurchaseLoyaltyInfoAndStoreRequest PacketInGamePurchaseWalletInfoRequest PacketTunnelPacketFromExternalConnection	Browser
+0x1446e4780	OnShow	FUN_14352fb30			Browser
+0x1446e47a0	__tostring	FUN_14352fb90			
+0x1446e4d70	MoveFriends	FUN_143530b00			ClientFriends
+0x1446e4d80	CreateGroup	FUN_143530d10			ClientFriends
+0x1446e4d90	DeleteGroup	FUN_143530eb0			ClientFriends
+0x1446e4da0	RenameGroup	FUN_143530f10			ClientFriends
+0x1446e4db0	HandleRightClick	FUN_143531000	sends	PacketRadialMenuRequest PacketTunnelPacketFromExternalConnection	ClientFriends
+0x1446e4f80	GetOwnedClaimCount	FUN_143531290			Claims
+0x1446e4f90	ClaimConfirmDialogResponse	FUN_1435312e0	sends	ClaimsPacketPlaceClaimConfirm PacketTunnelPacketFromExternalConnection	Claims
+0x1446e4fa0	CreateGroup	FUN_1435313a0	sends	ClaimsPacketCreateGroup PacketTunnelPacketFromExternalConnection	Claims
+0x1446e4fb0	MoveClaimItemToGroup	FUN_143531400	sends	ClaimsPacketMoveItemToGroup PacketTunnelPacketFromExternalConnection	Claims
+0x1446e4fc0	DeleteClaim	FUN_143531490	sends	ClaimsPacketDeleteClaimItem PacketTunnelPacketFromExternalConnection	Claims
+0x1446e4fd0	RequestClaimManagmentDialogData	FUN_1435314f0	sends	ClaimsPacketClaimManagmentRequest PacketTunnelPacketFromExternalConnection	Claims
+0x1446e4fe0	RequestClaimItemDialogData	FUN_143531550	sends	ClaimsPacketRequestEditClaimItemData PacketTunnelPacketFromExternalConnection	Claims
+0x1446e4ff0	DepositUpkeepFunds	FUN_1435315e0	sends	ClaimsPacketAddUpkeepFundsRequest PacketTunnelPacketFromExternalConnection	Claims
+0x1446e5000	SetClaimName	FUN_143531660	sends	ClaimsPacketSetItemName PacketTunnelPacketFromExternalConnection	Claims
+0x1446e5010	SetClaimWelcomeMessage	FUN_1435317a0	sends	ClaimsPacketSetItemDescription PacketTunnelPacketFromExternalConnection	Claims
+0x1446e5020	SetClaimTags	FUN_1435318e0	sends	ClaimsPacketSetTagString PacketTunnelPacketFromExternalConnection	Claims
+0x1446e5030	GetAllClaimTags	FUN_143531dd0			Claims
+0x1446e5040	ClearScreenshots	FUN_143531e50	sends	PacketInGamePurchaseModifyScreenshots PacketTunnelPacketFromExternalConnection	Claims
+0x1446e5050	MakePrimaryScreenshot	FUN_143531f40	sends	PacketInGamePurchaseModifyScreenshots PacketTunnelPacketFromExternalConnection	Claims
+0x1446e5060	GetWhitelistedClaimTags	FUN_1435321a0			Claims
+0x1446e5070	SetBasicSecuritySettings	FUN_1435325d0	sends	ClaimsPacketSetItemBasicPermissions PacketTunnelPacketFromExternalConnection	Claims
+0x1446e5080	SetAdvancedSecuritySettings	FUN_1435326c0	sends	ClaimsPacketSetItemIndividualPermission PacketTunnelPacketFromExternalConnection	Claims
+0x1446e5090	AddAdvancedSecuritySetting	FUN_143532810			Claims
+0x1446e50a0	DeleteAdvancedSecuritySetting	FUN_143532820	sends	ClaimsPacketSetItemIndividualPermission PacketTunnelPacketFromExternalConnection	Claims
+0x1446e50b0	ResetClaim	FUN_143532950			Claims
+0x1446e50c0	RecoverFlag	FUN_143532960	sends	ClaimsPacketDeleteClaimItem PacketTunnelPacketFromExternalConnection	Claims
+0x1446e50d0	SellClaim	FUN_1435329c0			Claims
+0x1446e50e0	SetClaimMusicOverrideId	FUN_143532e10	sends	ClaimsPacketSetMusicOverrideId PacketTunnelPacketFromExternalConnection	Claims
+0x1446e50f0	GetClaimMusicOverrideId	FUN_143532e80			Claims
+0x1446e5100	ListClaimOnGallery	FUN_143533be0	sends	BasePacket PacketInGamePurchaseCommerceIsTemplateValidRequest PacketInGamePurchaseCommerceProductCreate	Claims
+0x1446e5110	DelistClaimOnGallery	FUN_143533ee0	sends	PacketInGamePurchaseCommerceProductRemove PacketTunnelPacketFromExternalConnection	Claims
+0x1446e5120	IsClaimListedOnGallery	FUN_143533fd0			Claims
+0x1446e5130	RateClaim	FUN_1435329d0	sends	BasePacket PacketTunnelPacketFromExternalConnection RatingPacketAddVote	Claims
+0x1446e5140	StartPayUpkeepPoN	FUN_143532f80			Claims
+0x1446e5150	PayUpkeepPoN	FUN_143532f00	sends	PacketInGamePurchasePointOfNeedRequestPacket PacketTunnelPacketFromExternalConnection	Claims
+0x1446e5160	CanLocalPlayerAccess	FUN_1435335f0			Claims
+0x1446e5170	GetClaimUrl	FUN_1435333f0			Claims
+0x1446e5180	TakeScreenshot	FUN_143533660	sends	PacketInGamePurchaseModifyScreenshots PacketTunnelPacketFromExternalConnection	Claims
+0x1446e5190	ClaimSnapshotSaveConfirmDialogResponse	FUN_1435338a0	sends	ClaimPacketIdSnapshotSaveConfirmResponse PacketTunnelPacketFromExternalConnection	Claims
+0x1446e51a0	ClaimSnapshotRestoreConfirmDialogResponse	FUN_143533960	sends	ClaimPacketIdSnapshotRestoreConfirmResponse PacketTunnelPacketFromExternalConnection	Claims
+0x1446e51b0	RequestGainActiveAuthorshipOfGame	FUN_143533a20	sends	InstancedGameRequestPacket PacketTunnelPacketFromExternalConnection	Claims
+0x1446e51c0	RequestLoseActiveAuthorshipOfGame	FUN_143533a70	sends	InstancedGameRequestPacket PacketTunnelPacketFromExternalConnection	Claims
+0x1446e51d0	JoinInstancedGame	FUN_143533ac0	sends	InstancedGameRequestPacket PacketTunnelPacketFromExternalConnection	Claims
+0x1446e51e0	LeaveInstancedGame	FUN_143533b70	sends	InstancedGameRequestLeavePacket InstancedGameRequestPacket PacketTunnelPacketFromExternalConnection	Claims
+0x1446e51f0	RespawnInstancedGame	FUN_143533bc0	sends	InstancedGameRequestPacket PacketTunnelPacketFromExternalConnection	Claims
+0x1446e5200	EnterContest	FUN_143534060	sends	BasePacket ClaimsPacketSubmitContestEntry PacketInGamePurchaseCommerceProductUpdate PacketTunnelPacketFromExternalConnection	Claims
+0x1446e5210	RemoveFromContest	FUN_143534430	sends	BasePacket PacketInGamePurchaseCommerceProductUpdate PacketTunnelPacketFromExternalConnection	Claims
+0x1446e5220	SetClaimTimeHour	FUN_1435310e0	sends	ClaimsPacketSetClaimTime PacketTunnelPacketFromExternalConnection	Claims
+0x1446e5230	SetClaimTimeRate	FUN_143531180	sends	ClaimsPacketSetClaimTime PacketTunnelPacketFromExternalConnection	Claims
+0x1446e5240	CycleClaimCamera	FUN_143531230			Claims
+0x1446e5250	ActivateCameraCharacter	FUN_143531da0			Claims
+0x1446e5260	ActivateCameraOrbit	FUN_143533b10			Claims
+0x1446e5270	ActivateCameraFree	FUN_143533fa0			Claims
+0x1446e5280	ActivateCameraCharacterFlight	FUN_143532030			Claims
+0x1446e5290	ToggleAdventureStatus	FUN_143534490	sends	ClaimsPacketSetAdventureStatus PacketTunnelPacketFromExternalConnection	Claims
+0x1446e5d00	UpdateAutoCompletionText	FUN_143535df0			Tags
+0x1446e5d10	GetAutoCompletionText	FUN_143535ed0			Tags
+0x1446e5d20	PerformAutoCompleteOnText	FUN_143535f30			Tags
+0x1446e5e40	RequestTeleportLocations	FUN_1435360d0	sends	PacketTeleportRequestLocations PacketTunnelPacketFromExternalConnection	Teleport
+0x1446e5e50	TeleportToLocation	FUN_143536020	sends	PacketTeleportRequest PacketTunnelPacketFromExternalConnection	Teleport
+0x1446e5e60	CancelQueue	FUN_143536090	sends	PacketTeleportCancelQueue PacketTunnelPacketFromExternalConnection	Teleport
+0x1446e5e70	TeleportToQueuedLocation	FUN_1435360b0	sends	PacketTeleportToQueuedLocation PacketTunnelPacketFromExternalConnection	Teleport
+0x1446e5e80	SelectServer	FUN_1435360f0			Teleport
+0x1446e5e90	SetFilter	FUN_143536130			Teleport
+0x1446e5ea0	SetCurrentLayer	FUN_1435361a0			Teleport
+0x1446e5eb0	ActivateLocalTravelMap	FUN_143536210			Teleport
+0x1446e5ec0	TravelConfirmation	FUN_143536240	sends	WarpNetworkClientRequestPacket	Teleport
+0x1446e5ed0	TeleportToRandomUndergroundCave	FUN_1435362a0	sends	PacketTeleportRandomUndergroundRequest PacketTunnelPacketFromExternalConnection	Teleport
+0x1446e5ee0	TeleportToNextUndergroundCave	FUN_143536310	sends	PacketTeleportNextUndergroundReply PacketTunnelPacketFromExternalConnection	Teleport
+0x1446e6040	Load	FUN_143536410			OnlineHelpWindow
+0x1446e6050	NavigateUrl	FUN_143536430			OnlineHelpWindow
+0x1446e6060	NavigatePetitionUri	FUN_1435364a0			OnlineHelpWindow
+0x1446e6070	Show	FUN_143536570			OnlineHelpWindow
+0x1446e6080	Hide	FUN_143536590			OnlineHelpWindow
+0x1446e6090	Forward	FUN_1435365b0			OnlineHelpWindow
+0x1446e60a0	Back	FUN_1435365d0			OnlineHelpWindow
+0x1446e60b0	Refresh	FUN_1435365f0			OnlineHelpWindow
+0x1446e60c0	Stop	FUN_143536610			OnlineHelpWindow
+0x1446e6290	IsMarketplaceEnabled	FUN_143536690			InGamePurchaseStoreScreen
+0x1446e62a0	IsStoreAvailable	FUN_1435366d0			InGamePurchaseStoreScreen
+0x1446e62b0	RequestServerStatus	FUN_143536770	sends	PacketInGamePurchaseServerStatusRequest PacketInGamePurchaseWalletInfoResponse PacketTunnelPacketFromExternalConnection	InGamePurchaseStoreScreen
+0x1446e62c0	CanPurchaseStoreBundle	FUN_1435367a0			InGamePurchaseStoreScreen
+0x1446e62d0	CreateNewOrder	FUN_143536850			InGamePurchaseStoreScreen
+0x1446e62e0	AddStoreBundleToOrder	FUN_143536910			InGamePurchaseStoreScreen
+0x1446e62f0	AdjustStoreBundleQuantityInOrder	FUN_143536a80			InGamePurchaseStoreScreen
+0x1446e6300	AddGiftMessageToOrder	FUN_143536a30			InGamePurchaseStoreScreen
+0x1446e6310	AddCouponCodeToOrder	FUN_143536a90			InGamePurchaseStoreScreen
+0x1446e6320	CancelOrder	FUN_143536b10			InGamePurchaseStoreScreen
+0x1446e6330	PreviewOrder	FUN_143536b40	sends	PacketTunnelPacketFromExternalConnection	InGamePurchaseStoreScreen
+0x1446e6340	PlaceOrder	FUN_143536bc0	sends		InGamePurchaseStoreScreen
+0x1446e6350	RequestStationCashProducts	FUN_143536c30	sends	PacketInGamePurchaseStationCashProductsRequest PacketTunnelPacketFromExternalConnection	InGamePurchaseStoreScreen
+0x1446e6360	RequestSubscriptionProducts	FUN_143536c70	sends	BasePacket PacketInGamePurchaseSubscriptionProductsRequest PacketTunnelPacketFromExternalConnection	InGamePurchaseStoreScreen
+0x1446e6370	RequestAcceptedCreditCards	FUN_143536cb0			InGamePurchaseStoreScreen
+0x1446e6380	RequestWalletInfo	FUN_143536cf0	sends	PacketInGamePurchaseWalletInfoRequest PacketTunnelPacketFromExternalConnection	InGamePurchaseStoreScreen
+0x1446e6390	RequestLoyaltyInfo	FUN_143536d30			InGamePurchaseStoreScreen
+0x1446e63a0	RequestCreditCardPaymentSources	FUN_143536d50			InGamePurchaseStoreScreen
+0x1446e63b0	IsPaypalPaymentSourceEnabled	FUN_143536da0			InGamePurchaseStoreScreen
+0x1446e63c0	IsSmsPaymentSourceEnabled	FUN_143536dd0			InGamePurchaseStoreScreen
+0x1446e63d0	AddCreditCard	FUN_143536e40			InGamePurchaseStoreScreen
+0x1446e63e0	UpdateCreditCard	FUN_143537320			InGamePurchaseStoreScreen
+0x1446e63f0	DeleteCreditCard	FUN_1435377b0			InGamePurchaseStoreScreen
+0x1446e6400	PreviewFundWalletWithCreditCard	FUN_143537860			InGamePurchaseStoreScreen
+0x1446e6410	FundWalletWithCreditCard	FUN_143537a60			InGamePurchaseStoreScreen
+0x1446e6420	FundWalletWithPaypal	FUN_143537c90			InGamePurchaseStoreScreen
+0x1446e6430	FundWalletWithSms	FUN_143537cb0			InGamePurchaseStoreScreen
+0x1446e6440	PreviewSubscriptionPurchaseWithCreditCard	FUN_143537cd0			InGamePurchaseStoreScreen
+0x1446e6450	PreviewSubscriptionPurchaseWithStationCash	FUN_143537e00			InGamePurchaseStoreScreen
+0x1446e6460	PurchaseSubscriptionWithCreditCard	FUN_143537f60			InGamePurchaseStoreScreen
+0x1446e6470	PurchaseSubscriptionWithStationCash	FUN_1435380c0			InGamePurchaseStoreScreen
+0x1446e6480	SetGiftOrderEntriesReferenceId	FUN_143538170			InGamePurchaseStoreScreen
+0x1446e6490	SelectStoreBundle	FUN_1435381e0			InGamePurchaseStoreScreen
+0x1446e64a0	SelectStoreBundleCategory	FUN_143538290			InGamePurchaseStoreScreen
+0x1446e64b0	SelectStoreBundleGroup	FUN_143538310			InGamePurchaseStoreScreen
+0x1446e64c0	EnableNewStoreBundleFilter	FUN_143538410			InGamePurchaseStoreScreen
+0x1446e64d0	SelectBillboard	FUN_143538390			InGamePurchaseStoreScreen
+0x1446e64e0	IsParentalPasswordEnabled	FUN_143538490			InGamePurchaseStoreScreen
+0x1446e64f0	IsWalletZipcodeOnFile	FUN_1435384d0			InGamePurchaseStoreScreen
+0x1446e6500	GetCurrencyCode	FUN_143536e00			InGamePurchaseStoreScreen
+0x1446e6510	OnCategorySelect	FUN_143538510			InGamePurchaseStoreScreen
+0x1446e6520	OnStoreBundlePreview	FUN_143538570			InGamePurchaseStoreScreen
+0x1446e6530	DisplayStoreBundlesContainingPlayerInspectGameItem	FUN_143538610			InGamePurchaseStoreScreen
+0x1446e6540	DisplayStoreBundlesContainingExpiredRentalGameItem	FUN_1435386d0			InGamePurchaseStoreScreen
+0x1446e6550	OnAddCreditCardScreenOpen	FUN_143538790			InGamePurchaseStoreScreen
+0x1446e6560	OnUpdateCreditCardScreenOpen	FUN_1435387c0			InGamePurchaseStoreScreen
+0x1446e6570	OnDeleteCreditCardScreenOpen	FUN_1435387f0			InGamePurchaseStoreScreen
+0x1446e6580	OnFundWalletScreenOpen	FUN_143538820			InGamePurchaseStoreScreen
+0x1446e6590	EquipStoreBundle	FUN_143538850			InGamePurchaseStoreScreen
+0x1446e65a0	AddSearchFilter	FUN_143538930			InGamePurchaseStoreScreen
+0x1446e65b0	RemoveSearchFilter	FUN_1435389e0			InGamePurchaseStoreScreen
+0x1446e65c0	ClearAllSearchFilters	FUN_143538a90			InGamePurchaseStoreScreen
+0x1446e65d0	ClearSearchFilter	FUN_143538ad0			InGamePurchaseStoreScreen
+0x1446e65e0	ApplySearchFilters	FUN_143538bd0			InGamePurchaseStoreScreen
+0x1446e65f0	InitializeSearchEngine	FUN_143538c10	sends	PacketInGamePurchaseStoreBundleContentRequest	InGamePurchaseStoreScreen
+0x1446e6600	IsSearchEngineInitialized	FUN_143538c40			InGamePurchaseStoreScreen
+0x1446e6610	SearchStoreBundles	FUN_143538c80			InGamePurchaseStoreScreen
+0x1446e6620	SortStoreBundles	FUN_143538da0			InGamePurchaseStoreScreen
+0x1446e6630	SelectStoreBundleDsForActiveFilters	FUN_143538e50			InGamePurchaseStoreScreen
+0x1446e6640	SelectStoreBundleDsForActiveSort	FUN_143538eb0			InGamePurchaseStoreScreen
+0x1446e6650	PurchaseBundleWithInGameCurrency	FUN_143538f10	sends	PacketClientInGamePurchase PacketTunnelPacketFromExternalConnection	InGamePurchaseStoreScreen
+0x1446e6660	SetActiveBundleId	FUN_143538ff0			InGamePurchaseStoreScreen
+0x1446e6670	HasValidPendingWalletOrder	FUN_143539050			InGamePurchaseStoreScreen
+0x1446e6680	UseExternalFundingSource	FUN_1435390a0			InGamePurchaseStoreScreen
+0x1446e6690	FundWalletExternal	FUN_1435390e0			InGamePurchaseStoreScreen
+0x1446e66a0	UseExternalMembershipFlow	FUN_143539130			InGamePurchaseStoreScreen
+0x1446e66b0	PurchaseMembershipExternal	FUN_143539180			InGamePurchaseStoreScreen
+0x1446e66c0	GetCountryCode	FUN_1435391c0			InGamePurchaseStoreScreen
+0x1446e66d0	IsPlayerStudioRegistered	FUN_143539220			InGamePurchaseStoreScreen
+0x1446e66e0	ProductInit	FUN_143539250			InGamePurchaseStoreScreen
+0x1446e66f0	ProductCreate	FUN_143539290	sends	BasePacket PacketInGamePurchaseCommerceIsTemplateValidRequest PacketInGamePurchaseCommerceProductCreate PacketTunnelPacketFromExternalConnection	InGamePurchaseStoreScreen
+0x1446e6700	ProductEdit	FUN_143539320			InGamePurchaseStoreScreen
+0x1446e6710	ProductRemove	FUN_143539420	sends	PacketInGamePurchaseCommerceProductRemove PacketTunnelPacketFromExternalConnection	InGamePurchaseStoreScreen
+0x1446e6720	ProductUpdate	FUN_1435393a0			InGamePurchaseStoreScreen
+0x1446e6730	ProductSetName	FUN_1435394a0			InGamePurchaseStoreScreen
+0x1446e6740	ProductSetDescription	FUN_143539520			InGamePurchaseStoreScreen
+0x1446e6750	ProductSetPrice	FUN_1435395a0			InGamePurchaseStoreScreen
+0x1446e6760	ProductAddItem	FUN_143539720			InGamePurchaseStoreScreen
+0x1446e6770	ProductAddTag	FUN_1435396a0			InGamePurchaseStoreScreen
+0x1446e6780	ProductSetTags	FUN_143539620			InGamePurchaseStoreScreen
+0x1446e6790	GetCommerceAccountStore	FUN_1435397d0	sends	PacketInGamePurchaseCommerceProductCreateResponse PacketInGamePurchaseCommerceRequestAccountStore PacketTunnelPacketFromExternalConnection	InGamePurchaseStoreScreen
+0x1446e67a0	GetRecommendations	FUN_143539810	sends	PacketInGamePurchaseCommerceProductCreateResponse PacketInGamePurchaseCommerceRecommendations PacketTunnelPacketFromExternalConnection	InGamePurchaseStoreScreen
+0x1446e67b0	SelectStoreBundleDsForAccountStore	FUN_143539850			InGamePurchaseStoreScreen
+0x1446e67c0	SearchRemoteStoreBundles	FUN_143539880	sends	PacketInGamePurchaseCommerceSearch PacketTunnelPacketFromExternalConnection	InGamePurchaseStoreScreen
+0x1446e67d0	FollowCreator	FUN_143539900	sends	PacketInGamePurchaseCommerceFollowCreator PacketInGamePurchaseCommerceProductCreateResponse PacketTunnelPacketFromExternalConnection	InGamePurchaseStoreScreen
+0x1446e67e0	UnFollowCreator	FUN_143539980	sends	PacketInGamePurchaseCommerceUnFollowCreator PacketTunnelPacketFromExternalConnection	InGamePurchaseStoreScreen
+0x1446e67f0	GetProductForReview	FUN_143539a00	sends	PacketInGamePurchaseCommerceGetProductForReviewRequest PacketInGamePurchaseCommerceProductCreateResponse PacketTunnelPacketFromExternalConnection	InGamePurchaseStoreScreen
+0x1446e6800	ItemReviewOptIn	FUN_143539b80	sends	PacketOptInAccount PacketTunnelPacketFromExternalConnection	InGamePurchaseStoreScreen
+0x1446e6810	ReviewProduct	FUN_143539a40	sends	PacketInGamePurchaseCommerceSubmitProductReview PacketTunnelPacketFromExternalConnection	InGamePurchaseStoreScreen
+0x1446e6820	RequestContests	FUN_143539c00	sends	PacketInGamePurchaseCommerceProductCreateResponse PacketInGamePurchaseCommerceRequestAccountStore PacketTunnelPacketFromExternalConnection RatingPacketRequestContestsRequest	InGamePurchaseStoreScreen
+0x1446e7528	IsCodeRedemptionEnabled	FUN_14353aac0			PromotionalScreen
+0x1446e7538	RedeemCode	FUN_14353ab00			PromotionalScreen
+0x1446e7640	OnMarketplacePortalScreenOpened	FUN_14353ac00			MarketplacePortalScreen
+0x1446e7650	OnMarketplacePortalScreenClosed	FUN_14353ac20			MarketplacePortalScreen
+0x1446e7660	OnMarketplaceGamedockOpen	FUN_14353ac40			MarketplacePortalScreen
+0x1446e7670	OnMarketplaceExit	FUN_14353ac60			MarketplacePortalScreen
+0x1446e7680	OnRequisitionScreenOpened	FUN_14353ac80			MarketplacePortalScreen
+0x1446e7690	OnRequisitionScreenClosed	FUN_14353aca0			MarketplacePortalScreen
+0x1446e76a0	OnMembershipScreenOpened	FUN_14353acc0			MarketplacePortalScreen
+0x1446e76b0	OnMembershipScreenClosed	FUN_14353ace0			MarketplacePortalScreen
+0x1446e76c0	OnStoreScreenOpen	FUN_14353ad00			MarketplacePortalScreen
+0x1446e76d0	OnStoreScreenClose	FUN_14353ada0			MarketplacePortalScreen
+0x1446e7a80	SelectRecipe	FUN_14353ae40	sends	PacketInGamePurchasePointOfNeedRequestPacket	Recipe
+0x1446e7a90	StartRecipe	FUN_14353aea0	sends	PacketTunnelPacketFromExternalConnection RecipeSalvagingStartRequestPacket RecipeStartRequestPacket	Recipe
+0x1446e7aa0	CancelRecipe	FUN_14353af70	sends	PacketTunnelPacketFromExternalConnection RecipeCancelRequestPacket	Recipe
+0x1446e7ab0	RecipeWindowEnabled	FUN_14353afb0	sends	RecipeCancelRequestPacket RecipeCraftWindowEnableRequestPacket	Recipe
+0x1446e7ac0	CraftRecipeWindowEnable	FUN_14353b0c0	sends	PacketTunnelPacketFromExternalConnection RecipeCraftWindowEnableRequestPacket	Recipe
+0x1446e7ad0	SetDisplayOnlyCanMake	FUN_14353b120			Recipe
+0x1446e7ae0	GetDisplayOnlyCanMake	FUN_14353b190			Recipe
+0x1446e7af0	AddCatalyst	FUN_14353b1c0			Recipe
+0x1446e7b00	RemoveCatalyst	FUN_14353b250			Recipe
+0x1446e7b10	TrackRecipe	FUN_14353b2c0			Recipe
+0x1446e7b20	SetQuantity	FUN_14353b350			Recipe
+0x1446e7b30	UpgradeStationAddItem	FUN_14353b3a0	sends	InventoryPacketItemInstanceTooltipRequest PacketTunnelPacketFromExternalConnection RecipeUpgradeStatRequestPacket	Recipe
+0x1446e7b40	UpgradeStationAddCatalyst	FUN_14353b410			Recipe
+0x1446e7b50	UpgradeStationRemoveCatalyst	FUN_14353b4c0	sends	PacketTunnelPacketFromExternalConnection RecipeRemoveUpgradeRequestPacket	Recipe
+0x1446e7b60	UpgradeStationRemoveCatalystConfirm	FUN_14353b5c0	sends	RecipeRemoveUpgradeRequestPacket	Recipe
+0x1446e7b70	UpgradeStationUpgrade	FUN_14353b630	sends	PacketTunnelPacketFromExternalConnection RecipeUpgradeRequestPacket	Recipe
+0x1446e7b80	RecipeListSelectStation	FUN_14353b670	sends	PacketTunnelPacketFromExternalConnection RecipePacketPlayerOpenCraftingWindow	Recipe
+0x1446e7b90	RefiningStationAddProcess	FUN_14353b6f0	sends	PacketTunnelPacketFromExternalConnection RecipeStartRequestPacket	Recipe
+0x1446e7ba0	RefiningStationRemoveProcess	FUN_14353b790	sends	PacketTunnelPacketFromExternalConnection RecipeRefiningRemoveProcessRequestPacket	Recipe
+0x1446e7bb0	RefiningStationAddFuelPreview	FUN_14353b800			Recipe
+0x1446e7bc0	RefiningStationRemoveFuelPreview	FUN_14353b8b0			Recipe
+0x1446e7bd0	RefiningStationAddFuel	FUN_14353b8f0	sends	PacketTunnelPacketFromExternalConnection RecipeRefiningAddFuelRequestPacket	Recipe
+0x1446e7be0	RefiningStationRetrieveAllItems	FUN_14353b930	sends	PacketTunnelPacketFromExternalConnection RecipeRefiningCommandPacket	Recipe
+0x1446e7bf0	RefiningStationStart	FUN_14353b970	sends	PacketTunnelPacketFromExternalConnection RecipeRefiningCommandPacket	Recipe
+0x1446e7c00	RefiningStationStop	FUN_14353b9b0	sends	PacketTunnelPacketFromExternalConnection RecipeRefiningCommandPacket	Recipe
+0x1446e7c10	RefiningStationApplyAdditive	FUN_14353b9f0	sends	PacketTunnelPacketFromExternalConnection RecipeRefiningApplyAdditiveRequestPacket	Recipe
+0x1446e7c20	RefiningStationRemoveAdditive	FUN_14353baa0	sends	PacketTunnelPacketFromExternalConnection RecipeRefiningRemoveAdditiveRequestPacket	Recipe
+0x1446e7c30	SalvagingStationAddItem	FUN_14353bb10	sends	PacketTunnelPacketFromExternalConnection	Recipe
+0x1446e7c40	SalvagingStationRemoveItem	FUN_14353bbb0			Recipe
+0x1446e7c50	RepairStationRepairItem	FUN_14353bc20	sends	PacketTunnelPacketFromExternalConnection RecipeRepairItemRequestPacket	Recipe
+0x1446e7c60	RepairStationRepairAll	FUN_14353bc80	sends	PacketTunnelPacketFromExternalConnection RecipeRepairItemRequestPacket	Recipe
+0x1446e7c70	RepairStationSetSelectedItem	FUN_14353bca0			Recipe
+0x1446e7c80	RepairStationGetSelectedItem	FUN_14353bd00			Recipe
+0x1446e7c90	RepairStationSetFilterCanRepair	FUN_14353bd40			Recipe
+0x1446e7ca0	RepairStationGetFilterCanRepair	FUN_14353bd90			Recipe
+0x1446e8160	CanBuyItem	FUN_14353be40			CoinStoreScreen
+0x1446e8170	BuyItem	FUN_14353bf20	sends	BasePacket	CoinStoreScreen
+0x1446e8180	SellItem	FUN_14353c000	sends	CoinStoreBuyFromClientRequestPacket PacketTunnelPacketFromExternalConnection	CoinStoreScreen
+0x1446e8190	BuyBackItem	FUN_14353c0b0	sends	CoinStoreBuyBackRequestPacket PacketTunnelPacketFromExternalConnection	CoinStoreScreen
+0x1446e81a0	SelectItem	FUN_14353c140			CoinStoreScreen
+0x1446e81b0	SelectItemCategory	FUN_14353c1c0			CoinStoreScreen
+0x1446e81c0	GetItemCountInCategory	FUN_14353c240			CoinStoreScreen
+0x1446e81d0	SelectInventoryCategory	FUN_14353c2c0			CoinStoreScreen
+0x1446e81e0	AddSearchFilter	FUN_14353c340			CoinStoreScreen
+0x1446e81f0	RemoveSearchFilter	FUN_14353c3d0			CoinStoreScreen
+0x1446e8200	ClearAllSearchFilters	FUN_14353c460			CoinStoreScreen
+0x1446e8210	ApplySearchFilters	FUN_14353c490	sends	CoinStoreItemDefinitionsRequestPacket PacketTunnelPacketFromExternalConnection	CoinStoreScreen
+0x1446e8220	InitializeSearchEngine	FUN_14353c4c0	sends	CoinStoreItemDefinitionsRequestPacket PacketTunnelPacketFromExternalConnection	CoinStoreScreen
+0x1446e8230	IsSearchEngineInitialized	FUN_14353c4f0			CoinStoreScreen
+0x1446e8240	SearchItems	FUN_14353c530			CoinStoreScreen
+0x1446e8250	SortItems	FUN_14353c650	sends	CoinStoreItemDefinitionsRequestPacket PacketTunnelPacketFromExternalConnection	CoinStoreScreen
+0x1446e8260	SelectItemDsForActiveFilters	FUN_14353c710			CoinStoreScreen
+0x1446e8270	OnCoinStoreOpened	FUN_14353c780	sends	CoinStoreItemDynamicListUpdateRequestPacket PacketTunnelPacketFromExternalConnection	CoinStoreScreen
+0x1446e8280	OnCoinStoreClosed	FUN_14353c810			CoinStoreScreen
+0x1446e8290	OnItemToSellSelectionChanged	FUN_14353c840			CoinStoreScreen
+0x1446e82a0	GiftItem	FUN_14353c8c0	sends	CoinStoreSellToClientAndGiftRequestPacket PacketTunnelPacketFromExternalConnection	CoinStoreScreen
+0x1446e82b0	CreateGiftOrder	FUN_14353ca00			CoinStoreScreen
+0x1446e82c0	AddGiftItemToOrder	FUN_14353ca70			CoinStoreScreen
+0x1446e82d0	PlaceGiftOrder	FUN_14353cb50	sends	CoinStoreSellToClientAndGiftRequestPacket PacketTunnelPacketFromExternalConnection	CoinStoreScreen
+0x1446e82e0	TurnOnAutoResupply	FUN_14353cbb0	sends	InventoryPacketToggleAutoResupply	CoinStoreScreen
+0x1446e82f0	TurnOffAutoResupply	FUN_14353cc30	sends	InventoryPacketToggleAutoResupply	CoinStoreScreen
+0x1446e8540	CanBuyItem	FUN_14353cd70			LuaClaimVendor
+0x1446e8550	BuyItem	FUN_14353cdf0	sends	PacketClaimVendorPurchaseItemRequest PacketTunnelPacketFromExternalConnection	LuaClaimVendor
+0x1446e8560	SelectItem	FUN_14353ce90			LuaClaimVendor
+0x1446e8570	ListItem	FUN_14353ced0	sends	PacketClaimVendorListItemRequest PacketTunnelPacketFromExternalConnection	LuaClaimVendor
+0x1446e8580	SetItemPriceByGuid	FUN_14353d320	sends	PacketClaimVendorSetPriceRequest PacketTunnelPacketFromExternalConnection	LuaClaimVendor
+0x1446e8590	SetItemPriceBySlot	FUN_14353d3b0	sends	PacketClaimVendorSetPriceRequest PacketTunnelPacketFromExternalConnection	LuaClaimVendor
+0x1446e8750	RequestPossibleMatches	FUN_14353d4a0			QuickChat
+0x1446e87c0	Spawn	FUN_14353d550	sends	PacketDismountRequest PacketMountSpawn PacketTunnelPacketFromExternalConnection	Mount
+0x1446e87d0	Despawn	FUN_14353d640	sends	PacketDismountRequest PacketTunnelPacketFromExternalConnection	Mount
+0x1446e87e0	Dismount	FUN_14353d6c0	sends	PacketDismountRequest PacketTunnelPacketFromExternalConnection	Mount
+0x1446e8a10	UpdateReputation	FUN_14353dc10	sends	PacketTunnelPacketFromExternalConnection SocialPacketReputationUpdate	Social
+0x1446e8a20	UpdateLike	FUN_14353dba0	sends	PacketTunnelPacketFromExternalConnection SocialPacketUpdateLike	Social
+0x1446e8a30	SelectPlayerProfile	FUN_14353dab0	sends	PacketTunnelPacketFromExternalConnection SocialPacketRequestProfile	Social
+0x1446e8a40	RequestGameTopScores	FUN_14353db00	sends	PacketTunnelPacketFromExternalConnection SocialPacketRequestGameTopScores	Social
+0x1446e8a50	RequestFriendsGameTopScores	FUN_14353db40	sends	PacketTunnelPacketFromExternalConnection SocialPacketRequestFriendsGameTopScores	Social
+0x1446e8a60	RequestGamesPlayedCount	FUN_14353db80	sends	PacketTunnelPacketFromExternalConnection SocialPacketRequestGamesPlayedCount	Social
+0x1446e8a70	IssueChallenge	FUN_14353dca0	sends	PacketTunnelPacketFromExternalConnection SocialPacketIssueChallenge	Social
+0x1446e8a80	AcceptChallenge	FUN_14353dd10	sends	PacketTunnelPacketFromExternalConnection SocialPacketChallengeResponse	Social
+0x1446e8a90	RejectChallenge	FUN_14353dd60	sends	PacketTunnelPacketFromExternalConnection SocialPacketChallengeResponse	Social
+0x1446e8aa0	TagWall	FUN_14353ddb0	sends	PacketTunnelPacketFromExternalConnection	Social
+0x1446e8ab0	SetWallFilterType	FUN_14353de40			Social
+0x1446e8ac0	DeleteWallEvent	FUN_14353de90	sends	PacketTunnelPacketFromExternalConnection	Social
+0x1446e8ad0	LikeWallEvent	FUN_14353ded0	sends	PacketTunnelPacketFromExternalConnection	Social
+0x1446e8ae0	ProfileIsVisible	FUN_14353df40			Social
+0x1446e8af0	RequestQuiz	FUN_14353e010	sends	PacketTunnelPacketFromExternalConnection QuizRequestPacket	Social
+0x1446e8b00	SendQuizCompletion	FUN_14353e060	sends	PacketTunnelPacketFromExternalConnection QuizResultPacket	Social
+0x1446e8d30	ScaleUp	FUN_14353e140			ClientEffect
+0x1446e8d40	ScaleDown	FUN_14353e230			ClientEffect
+0x1446e8d90	ItemDatasheetDataSourceSelectItem	FUN_14353e380			Datasheets
+0x1446e8df8	RequestTrialItem	FUN_14353e3f0	sends	ItemPacketRequestTrialItemLine PacketTunnelPacketFromExternalConnection	Items
+0x1446e8ee0	GetActiveLoadout	FUN_14353e4b0			Loadouts
+0x1446e8ef0	SetActiveLoadout	FUN_14353e500	sends	LoadoutPacketSelectLoadout PacketTunnelPacketFromExternalConnection	Loadouts
+0x1446e8f00	SetActiveWeaponSet	FUN_14353e560	sends	LoadoutPacketSelectWeaponSet PacketTunnelPacketFromExternalConnection	Loadouts
+0x1446e8f10	SwapWeaponSet	FUN_14353e5d0	sends	LoadoutPacketSelectWeaponSet PacketTunnelPacketFromExternalConnection	Loadouts
+0x1446e8f20	SetName	FUN_14353e680	sends	LoadoutPacketSetCustomName PacketTunnelPacketFromExternalConnection	Loadouts
+0x1446e8f30	CreateLoadout	FUN_14353e6f0	sends	LoadoutPacketCreateLoadout PacketTunnelPacketFromExternalConnection	Loadouts
+0x1446e8f40	DeleteLoadout	FUN_14353e7b0	sends	LoadoutPacketDeleteLoadout PacketTunnelPacketFromExternalConnection	Loadouts
+0x1446e8f50	SetAbility	FUN_14353e800	sends	LoadoutPacketSetAbility PacketTunnelPacketFromExternalConnection	Loadouts
+0x1446e8f60	CopyLoadout	FUN_14353e740	sends	LoadoutPacketCreateLoadout PacketTunnelPacketFromExternalConnection	Loadouts
+0x1446e90e8	SpawnVehicle	FUN_14353e8f0			Vehicle
+0x1446e9230	ProfileSkillSetDataSourceSelectProfile	FUN_14353e9a0			Skills
+0x1446e9240	FactionSkillSetDataSourceSelectFaction	FUN_14353e9f0			Skills
+0x1446e9250	FactionSkillSetDataSourceSelectFactionNone	FUN_14353ea20			Skills
+0x1446e9260	VehicleSkillSetDataSourceSelectVehicle	FUN_14353ea50			Skills
+0x1446e9270	LeadershipSkillSetDataSourceSelectLeadership	FUN_14353eaa0			Skills
+0x1446e9280	SkillSetDataSourceSelectSkillSet	FUN_14353eaf0			Skills
+0x1446e9290	SkillLineDataSourceSelectSkillLine	FUN_14353eb40			Skills
+0x1446e92a0	ProfileSkillProgressDataSourceSelectProfile	FUN_14353eb90			Skills
+0x1446e92b0	FactionSkillProgressDataSourceSelectFaction	FUN_14353ebe0			Skills
+0x1446e92c0	FactionSkillProgressDataSourceSelectFactionNone	FUN_14353ec10			Skills
+0x1446e92d0	VehicleSkillProgressDataSourceSelectVehicle	FUN_14353ec40			Skills
+0x1446e92e0	LeadershipSkillProgressDataSourceSelectLeadership	FUN_14353ec90			Skills
+0x1446e92f0	SelectSkill	FUN_14353ece0	sends	PacketTunnelPacketFromExternalConnection SkillPacketSelectSkill	Skills
+0x1446e9300	SelectNextSkillInSkillLine	FUN_14353ed30	sends	SkillPacketSelectSkill	Skills
+0x1446e9310	SelectSkillSet	FUN_14353ed80	sends	PacketTunnelPacketFromExternalConnection SkillPacketSelectSkillSet	Skills
+0x1446e9320	RequestSkillPointUpdate	FUN_14353edd0	sends	PacketTunnelPacketFromExternalConnection SkillPacketGetSkillPointManager	Skills
+0x1446e96a0	GroupInvite	FUN_14353eef0	sends	GroupPacketInvite PacketTunnelPacketFromExternalConnection	Groups
+0x1446e96b0	GroupJoin	FUN_14353efb0	sends	GroupPacketJoin PacketTunnelPacketFromExternalConnection	Groups
+0x1446e96c0	GroupAutoGroup	FUN_14353f050	sends	BasePacket GroupPacketAutoGroup PacketTunnelPacketFromExternalConnection	Groups
+0x1446e96d0	GroupLeave	FUN_14353f080	sends	GroupPacketLeave PacketTunnelPacketFromExternalConnection	Groups
+0x1446e96e0	GroupKickByName	FUN_14353f0b0	sends	GroupPacketKick PacketTunnelPacketFromExternalConnection	Groups
+0x1446e96f0	GroupKickByGuid	FUN_14353f110	sends	GroupPacketKick PacketTunnelPacketFromExternalConnection	Groups
+0x1446e9700	GroupDisband	FUN_14353f170	sends	GroupPacketDisband PacketTunnelPacketFromExternalConnection	Groups
+0x1446e9710	GroupEnableAutoGroup	FUN_14353f1a0	sends	GroupPacketSetGroupFlags PacketTunnelPacketFromExternalConnection	Groups
+0x1446e9720	GroupInviteByGuid	FUN_14353ef50	sends	GroupPacketInvite PacketTunnelPacketFromExternalConnection	Groups
+0x1446e9730	GroupJoinLookingForMore	FUN_14353f000	sends	GroupPacketJoinLookingForMore PacketTunnelPacketFromExternalConnection	Groups
+0x1446e9740	GroupSetLookingForMore	FUN_14353f1f0	sends	GroupPacketSetGroupFlags PacketTunnelPacketFromExternalConnection	Groups
+0x1446e9750	GroupSetLookingForMoreOptions	FUN_14353f240	sends	GroupPacketSetGroupDescription GroupPacketSetGroupFlags PacketTunnelPacketFromExternalConnection	Groups
+0x1446e9760	GroupFindLookingForMoreGroup	FUN_14353f420	sends	GroupPacketFindLookingForMoreGroup PacketTunnelPacketFromExternalConnection	Groups
+0x1446e9770	GroupGetGroupInfo	FUN_14353f520	sends	GroupPacketGetGroupInfo PacketTunnelPacketFromExternalConnection	Groups
+0x1446e9780	GroupSetGroupOwnerByName	FUN_14353f580	sends	GroupPacketSetGroupOwner	Groups
+0x1446e9790	GroupSetGroupOwnerByGuid	FUN_14353f5e0	sends	GroupPacketSetGroupOwner PacketTunnelPacketFromExternalConnection	Groups
+0x1446e97a0	IsGroupLeaderChannelActive	FUN_14353f640			Groups
+0x1446e97b0	HandleRightClick	FUN_14353f680	sends	PacketRadialMenuRequest PacketTunnelPacketFromExternalConnection	Groups
+0x1446e97c0	GetPartyName	FUN_14353f700			Groups
+0x1446e9aa0	GetToggleCrouch	FUN_143543230			GameSettings
+0x1446e9ab0	SetToggleCrouch	FUN_1435434d0			GameSettings
+0x1446e9ac0	GetZoomToggle	FUN_143543690			GameSettings
+0x1446e9ad0	SetZoomToggle	FUN_143543730			GameSettings
+0x1446e9ae0	GetSprintToggle	FUN_1435438b0			GameSettings
+0x1446e9af0	SetSprintToggle	FUN_143543a30			GameSettings
+0x1446e9b00	GetMouseSensitivity	FUN_143543b90			GameSettings
+0x1446e9b10	SetMouseSensitivity	FUN_143543bc0			GameSettings
+0x1446e9b20	GetVehicleMouseSensitivity	FUN_143543d30			GameSettings
+0x1446e9b30	SetVehicleMouseSensitivity	FUN_143543e20			GameSettings
+0x1446e9b40	GetFlightMouseSensitivity	FUN_143543ea0			GameSettings
+0x1446e9b50	SetFlightMouseSensitivity	FUN_143543f40			GameSettings
+0x1446e9b60	GetScopedMouseSensitivity	FUN_143543f90			GameSettings
+0x1446e9b70	SetScopedMouseSensitivity	FUN_143543ff0			GameSettings
+0x1446e9b80	GetJoystickSensitivity	FUN_143544100			GameSettings
+0x1446e9b90	SetJoystickSensitivity	FUN_143544160			GameSettings
+0x1446e9ba0	GetJoystickDeadzone	FUN_1435441e0			GameSettings
+0x1446e9bb0	SetJoystickDeadzone	FUN_143544210			GameSettings
+0x1446e9bc0	GetInvertVerticalLook	FUN_143544250			GameSettings
+0x1446e9bd0	SetInvertVerticalLook	FUN_1435442f0			GameSettings
+0x1446e9be0	GetInvertVerticalFly	FUN_143544350			GameSettings
+0x1446e9bf0	SetInvertVerticalFly	FUN_1435443f0			GameSettings
+0x1446e9c00	GetDrawHUD	FUN_143544450			GameSettings
+0x1446e9c10	SetDrawHUD	FUN_1435444f0			GameSettings
+0x1446e9c20	SetReduceInputLag	FUN_143544560			GameSettings
+0x1446e9c30	GetReduceInputLag	FUN_1435445a0			GameSettings
+0x1446e9c40	SetFixedMinimap	FUN_143544640			GameSettings
+0x1446e9c50	GetFixedMinimap	FUN_143544680			GameSettings
+0x1446e9c60	GetProfanityFilter	FUN_143543ed0			GameSettings
+0x1446e9c70	SetProfanityFilter	FUN_143543fc0			GameSettings
+0x1446e9c80	GetViewMyClaims	FUN_143544720			GameSettings
+0x1446e9c90	SetViewMyClaims	FUN_1435447c0			GameSettings
+0x1446e9ca0	GetViewFriendlyClaims	FUN_143544800			GameSettings
+0x1446e9cb0	SetViewFriendlyClaims	FUN_143544960			GameSettings
+0x1446e9cc0	GetViewStrangerClaims	FUN_143544fa0			GameSettings
+0x1446e9cd0	SetViewStrangerClaims	FUN_1435450f0			GameSettings
+0x1446e9ce0	GetViewClaimableLand	FUN_143545450			GameSettings
+0x1446e9cf0	SetViewClaimableLand	FUN_1435454f0			GameSettings
+0x1446e9d00	GetViewGameClaims	FUN_143544ad0			GameSettings
+0x1446e9d10	SetViewGameClaims	FUN_143544b70			GameSettings
+0x1446e9d20	GetViewSockets	FUN_143544c20			GameSettings
+0x1446e9d30	SetViewSockets	FUN_143544cf0			GameSettings
+0x1446e9d40	GetViewClaimAdjacentFaces	FUN_143544d70			GameSettings
+0x1446e9d50	SetViewClaimAdjacentFaces	FUN_143544eb0			GameSettings
+0x1446e9d60	GetAutoRefuseTradeRequests	FUN_1435451e0			GameSettings
+0x1446e9d70	SetAutoRefuseTradeRequests	FUN_143545330			GameSettings
+0x1446e9d80	GetAutoRefuseFriendRequests	FUN_143545370			GameSettings
+0x1446e9d90	SetAutoRefuseFriendRequests	FUN_143545410			GameSettings
+0x1446e9da0	GetDemoModeSelf	FUN_143545ad0			GameSettings
+0x1446e9db0	SetDemoModeSelf	FUN_143545b70	sends	WorldEditingClearPacket	GameSettings
+0x1446e9dc0	GetDemoModeOthers	FUN_143545bb0			GameSettings
+0x1446e9dd0	SetDemoModeOthers	FUN_143545c50			GameSettings
+0x1446e9de0	GetDisplayPlayerGuildNames	FUN_143545c90			GameSettings
+0x1446e9df0	SetDisplayPlayerGuildNames	FUN_143545d30			GameSettings
+0x1446e9e00	GetShowGrapplingHookIndicator	FUN_143545d70			GameSettings
+0x1446e9e10	SetShowGrapplingHookIndicator	FUN_143545eb0			GameSettings
+0x1446e9e20	GetShowGrapplingHookIcon	FUN_1435464a0			GameSettings
+0x1446e9e30	SetShowGrapplingHookIcon	FUN_143546540			GameSettings
+0x1446e9e40	GetShowTriggerVolumes	FUN_143546580			GameSettings
+0x1446e9e50	SetShowTriggerVolumes	FUN_143546620			GameSettings
+0x1446e9e60	GetShowEmitterProps	FUN_143546700			GameSettings
+0x1446e9e70	SetShowEmitterProps	FUN_143546890			GameSettings
+0x1446e9e80	SetShowOutgoingFCTAboveTarget	FUN_1435468d0			GameSettings
+0x1446e9e90	GetShowOutgoingFCTAboveTarget	FUN_1435469b0			GameSettings
+0x1446e9ea0	SetShowOutgoingFCTInHUD	FUN_143546ac0			GameSettings
+0x1446e9eb0	GetShowOutgoingFCTInHUD	FUN_143546ba0			GameSettings
+0x1446e9ec0	SetShowIncomingFCTInHUD	FUN_143546cb0			GameSettings
+0x1446e9ed0	GetShowIncomingFCTInHUD	FUN_143546cf0			GameSettings
+0x1446e9ee0	SetShowFCTIcons	FUN_14353f9c0			GameSettings
+0x1446e9ef0	GetShowFCTIcons	FUN_14353fad0			GameSettings
+0x1446e9f00	SetShowFCTCasterNames	FUN_14353fc00			GameSettings
+0x1446e9f10	GetShowFCTCasterNames	FUN_14353fc40			GameSettings
+0x1446e9f20	SetMasterVolume	FUN_14353fdb0			GameSettings
+0x1446e9f30	GetMasterVolume	FUN_143540030			GameSettings
+0x1446e9f40	SetMusicVolume	FUN_1435401d0			GameSettings
+0x1446e9f50	GetMusicVolume	FUN_1435403a0			GameSettings
+0x1446e9f60	SetGameVolume	FUN_1435404f0			GameSettings
+0x1446e9f70	GetGameVolume	FUN_1435406a0			GameSettings
+0x1446e9f80	SetDialogVolume	FUN_143540820			GameSettings
+0x1446e9f90	GetDialogVolume	FUN_1435407f0			GameSettings
+0x1446e9fa0	SetMaxVoices	FUN_143540b60			GameSettings
+0x1446e9fb0	GetMaxVoices	FUN_1435409c0			GameSettings
+0x1446e9fc0	GetAudioDevice	FUN_143540c20			GameSettings
+0x1446e9fd0	SetAudioDevice	FUN_143540e70			GameSettings
+0x1446e9fe0	GetAudioDevices	FUN_143541090			GameSettings
+0x1446e9ff0	DisabledInFullscreenWindowedMode	FUN_143545040			GameSettings
+0x1446ea000	DisabledInWindowed	FUN_143545130			GameSettings
+0x1446ea010	GetScreenResolutions	FUN_143541c90			GameSettings
+0x1446ea020	GetScreenResolution	FUN_1435448a0			GameSettings
+0x1446ea030	SetScreenResolution	FUN_1435449a0			GameSettings
+0x1446ea040	GetDynamicScale	FUN_143544cc0			GameSettings
+0x1446ea050	SetDynamicScale	FUN_143544bb0			GameSettings
+0x1446ea060	SetDisplayMode	FUN_143544d30			GameSettings
+0x1446ea070	GetDisplayMode	FUN_143544e10			GameSettings
+0x1446ea080	GetOverallQuality	FUN_143545e10			GameSettings
+0x1446ea090	SetOverallQuality	FUN_143545530			GameSettings
+0x1446ea0a0	DisabledInLowQuality	FUN_143544ef0			GameSettings
+0x1446ea0b0	GetGraphicsQuality	FUN_143546660			GameSettings
+0x1446ea0c0	SetGraphicsQuality	FUN_143545ef0			GameSettings
+0x1446ea0d0	GetHighQualityLighting	FUN_143546910			GameSettings
+0x1446ea0e0	SetHighQualityLighting	FUN_1435467a0			GameSettings
+0x1446ea0f0	GetTextureQuality	FUN_143546b00			GameSettings
+0x1446ea100	SetTextureQuality	FUN_143546a50			GameSettings
+0x1446ea110	GetGamma	FUN_14353f990			GameSettings
+0x1446ea120	SetGamma	FUN_143546c40			GameSettings
+0x1446ea130	GetFogShadows	FUN_14353fa00			GameSettings
+0x1446ea140	SetFogShadows	FUN_14353fb70			GameSettings
+0x1446ea150	GetMotionBlur	FUN_14353fce0			GameSettings
+0x1446ea160	SetMotionBlur	FUN_14353fe80			GameSettings
+0x1446ea170	GetAmbientOcclusion	FUN_14353ff10			GameSettings
+0x1446ea180	SetAmbientOcclusion	FUN_14353ffe0			GameSettings
+0x1446ea190	GetEffectsQuality	FUN_1435400d0			GameSettings
+0x1446ea1a0	SetEffectsQuality	FUN_143540170			GameSettings
+0x1446ea1b0	GetTerrainQuality	FUN_1435402a0			GameSettings
+0x1446ea1c0	SetTerrainQuality	FUN_143540340			GameSettings
+0x1446ea1d0	GetFloraQuality	FUN_143540920			GameSettings
+0x1446ea1e0	SetFloraQuality	FUN_143540a60			GameSettings
+0x1446ea1f0	GetModelQuality	FUN_143540ac0			GameSettings
+0x1446ea200	SetModelQuality	FUN_143540bc0			GameSettings
+0x1446ea210	GetShadowQuality	FUN_143540d40			GameSettings
+0x1446ea220	SetShadowQuality	FUN_143540de0			GameSettings
+0x1446ea230	GetVSync	FUN_143540fa0			GameSettings
+0x1446ea240	SetVSync	FUN_143541040			GameSettings
+0x1446ea250	GetParticleLOD	FUN_143541480			GameSettings
+0x1446ea260	SetParticleLOD	FUN_143541520			GameSettings
+0x1446ea270	GetGpuPhysics	FUN_143543c60			GameSettings
+0x1446ea280	SetGpuPhysics	FUN_143543d00			GameSettings
+0x1446ea290	GetMTR	FUN_143543d60			GameSettings
+0x1446ea2a0	SetMTR	FUN_143543e70			GameSettings
+0x1446ea2b0	DisabledIfMissingGpuPhysics	FUN_143545290			GameSettings
+0x1446ea2c0	GetCacheMeshes	FUN_143540440			GameSettings
+0x1446ea2d0	SetCacheMeshes	FUN_1435405c0			GameSettings
+0x1446ea2e0	GetUseCachedMeshes	FUN_1435405f0			GameSettings
+0x1446ea2f0	SetUseCachedMeshes	FUN_143540710			GameSettings
+0x1446ea300	SetVoxelSmoothing	FUN_1435408f0			GameSettings
+0x1446ea310	GetVoxelSmoothing	FUN_143540740			GameSettings
+0x1446ea320	GetVoiceEnable	FUN_143541620			GameSettings
+0x1446ea330	SetVoiceEnable	FUN_1435415c0			GameSettings
+0x1446ea340	GetPushToTalk	FUN_143541720			GameSettings
+0x1446ea350	SetPushToTalk	FUN_1435416c0			GameSettings
+0x1446ea360	GetReceiveVolume	FUN_143541830			GameSettings
+0x1446ea370	SetReceiveVolume	FUN_1435417c0			GameSettings
+0x1446ea380	GetMicrophoneVolume	FUN_143541900			GameSettings
+0x1446ea390	SetMicrophoneVolume	FUN_143541890			GameSettings
+0x1446ea3a0	GetDuckingPercent	FUN_143541960			GameSettings
+0x1446ea3b0	SetDuckingPercent	FUN_143541990			GameSettings
+0x1446ea3c0	GetAllowSeperateTabsForWhispers	FUN_143541a20			GameSettings
+0x1446ea3d0	SetAllowSeperateTabsForWhispers	FUN_143541ae0			GameSettings
+0x1446ea3e0	GetChatCombatChannelEnabled	FUN_143541b20			GameSettings
+0x1446ea3f0	SetChatCombatChannelEnabled	FUN_143541be0			GameSettings
+0x1446ea400	GetChatGeneralChannelSeperateTabEnabled	FUN_143542d40			GameSettings
+0x1446ea410	SetChatGeneralChannelSeperateTabEnabled	FUN_143542e00			GameSettings
+0x1446ea420	GetChatTimestampDisplayEnabled	FUN_143542e90			GameSettings
+0x1446ea430	SetChatTimestampDisplayEnabled	FUN_143542f50			GameSettings
+0x1446ea440	GetAutoGroupOnLogin	FUN_143542fd0			GameSettings
+0x1446ea450	SetAutoGroupOnLogin	FUN_1435430a0			GameSettings
+0x1446ea460	GetAutoGroupAsLeader	FUN_143543100			GameSettings
+0x1446ea470	SetAutoGroupAsLeader	FUN_1435431d0			GameSettings
+0x1446ea480	GetAutoGroupWithFriends	FUN_1435432d0			GameSettings
+0x1446ea490	SetAutoGroupWithFriends	FUN_1435433a0			GameSettings
+0x1446ea4a0	GetAutoGroupWithGuild	FUN_143543400			GameSettings
+0x1446ea4b0	SetAutoGroupWithGuild	FUN_143543540			GameSettings
+0x1446ea4c0	SetFriendNotifications	FUN_1435437d0			GameSettings
+0x1446ea4d0	GetFriendNotifications	FUN_1435435a0			GameSettings
+0x1446ea4e0	SetChatFontSize	FUN_143543ac0			GameSettings
+0x1446ea4f0	GetChatFontSize	FUN_143543950			GameSettings
+0x1446ea500	AutoDetectSettings	FUN_143543aa0			GameSettings
+0x1446ea510	GetSmartTargetLocking	FUN_143544090			GameSettings
+0x1446ea520	SetSmartTargetLocking	FUN_1435440c0			GameSettings
+0x1446ea530	GetAutoTargetLocking	FUN_143544130			GameSettings
+0x1446ea540	SetAutoTargetLocking	FUN_1435441a0			GameSettings
+0x1446ec0c0	SetSpeakerVolume	FUN_1435475b0			Voice
+0x1446ec0d0	GetMicrophoneVolume	FUN_143547620			Voice
+0x1446ec0e0	SetMicrophoneVolume	FUN_143547660			Voice
+0x1446ec0f0	GetOSMicrophoneVolume	FUN_1435476d0			Voice
+0x1446ec100	SetOSMicrophoneVolume	FUN_143547720			Voice
+0x1446ec110	IsOSMicVolumeDisabled	FUN_1435477b0			Voice
+0x1446ec120	GetInputDevices	FUN_143547950			Voice
+0x1446ec130	SetInputDevice	FUN_143547a10			Voice
+0x1446ec140	GetCurrentInputDevice	FUN_143547ae0			Voice
+0x1446ec150	GetOutputDevices	FUN_143547b40			Voice
+0x1446ec160	SetOutputDevice	FUN_143547c00			Voice
+0x1446ec170	GetCurrentOutputDevice	FUN_143547cd0			Voice
+0x1446ec180	SetRoomEnabled	FUN_143547d30			Voice
+0x1446ec190	GetRoomEnabled	FUN_143547e10			Voice
+0x1446ec1a0	SetRoomVolume	FUN_143547ed0			Voice
+0x1446ec1b0	GetRoomVolume	FUN_143547fb0			Voice
+0x1446ec1c0	RequestCustomRoom	FUN_143548080		PacketTunnelPacketFromExternalConnection	Voice
+0x1446ec1d0	LeaveCustomRoom	FUN_1435481f0			Voice
+0x1446ec1e0	SetCurrentCustomRoom	FUN_143548270			Voice
+0x1446ec1f0	RunDiagnostics	FUN_1435482f0			Voice
+0x1446ec200	StartEchoTest	FUN_143548620			Voice
+0x1446ec210	StopEchoTest	FUN_143548650			Voice
+0x1446ec220	PlayEchoTest	FUN_143548670			Voice
+0x1446ec230	StartVUMonitor	FUN_1435486a0			Voice
+0x1446ec240	EndVUMonitor	FUN_1435486d0			Voice
+0x1446ec250	SetEchoTestMode	FUN_143548510			Voice
+0x1446ec260	GetEchoTestMode	FUN_143548560			Voice
+0x1446ec270	SetSelectedVivoxRoom	FUN_143548590			Voice
+0x1446ec280	GetSelectedVivoxRoom	FUN_1435485f0			Voice
+0x1446ec290	SetParticipantVolume	FUN_143547810			Voice
+0x1446ec2a0	SetParticipantMute	FUN_143547880			Voice
+0x1446ec2b0	SetParticipantUnmute	FUN_143547910			Voice
+0x1446ec980	ToggleEditMode	FUN_1435487b0			Prop
+0x1446ec990	Select	FUN_1435487c0			Prop
+0x1446ec9a0	StartPlaceObject	FUN_143548820	sends	PacketTunnelPacketFromExternalConnection PropAccessPacket PropProcessorStateNotificationPacket	Prop
+0x1446ec9b0	StartPlaceNewObject	FUN_143548850	sends	PacketTunnelPacketFromExternalConnection PropPacketPlacePropById PropProcessorStateNotificationPacket	Prop
+0x1446ec9c0	FinishPlaceObject	FUN_1435488a0	sends	PropProcessorStateNotificationPacket PropSavePacket	Prop
+0x1446ec9d0	CancelObjectPlacement	FUN_1435488d0	sends	PropProcessorStateNotificationPacket PropSavePacket	Prop
+0x1446ec9e0	DeleteObject	FUN_143548900			Prop
+0x1446ec9f0	DuplicateObject	FUN_143548960	sends	PropDuplicatePacket PropProcessorStateNotificationPacket	Prop
+0x1446eca00	ResetOrientationAndScale	FUN_1435489c0	sends	PropSavePacket	Prop
+0x1446eca10	OutputObjectList	FUN_1435489f0			Prop
+0x1446eca20	TranslateObject	FUN_143548a20	sends	PropAccessPacket ToolPacketActivate	Prop
+0x1446eca30	RotateObject	FUN_143548aa0	sends	PropAccessPacket ToolPacketActivate	Prop
+0x1446eca40	ScaleObject	FUN_143548b20	sends	PropAccessPacket ToolPacketActivate	Prop
+0x1446eca50	AdjustObject	FUN_143548ba0	sends	PropAccessPacket PropProcessorStateNotificationPacket PropSavePacket ToolPacketActivate	Prop
+0x1446eca60	PickUpObject	FUN_143548c60	sends	PropDeletePacket PropPickUpPacket	Prop
+0x1446eca70	DisassembleObject	FUN_143548cc0	sends	PropDeletePacket PropPickUpPacket	Prop
+0x1446eca80	RepositionObject	FUN_143548d20	sends	PropAccessPacket PropProcessorStateNotificationPacket PropSavePacket	Prop
+0x1446eca90	SetupObject	FUN_143548d80	sends	PacketTunnelPacketFromExternalConnection PropPacketEditSettingsRequest ToolPacketActivate	Prop
+0x1446ecaa0	ExitSetupObject	FUN_143548e00	sends	ToolPacketActivate	Prop
+0x1446ecab0	SetupScript	FUN_143548e40	sends	ObjectScriptingPacketSupportedActionsEventsAndDefaultsRequest	Prop
+0x1446ecac0	ConfirmAction	FUN_143548eb0	sends	PacketTunnelPacketFromExternalConnection PropDeletePacket PropPickUpPacket	Prop
+0x1446ecad0	CreatePropItem	FUN_143548f50	sends	KnownPropPacketCreatePropItemRequest PacketTunnelPacketFromExternalConnection	Prop
+0x1446ecae0	TogglePitchPlant	FUN_143549140			Prop
+0x1446ecaf0	ToggleMinuteControl	FUN_143549190			Prop
+0x1446ecb00	ToggleMultiPlace	FUN_1435491e0			Prop
+0x1446ecb10	CheckPitchPlant	FUN_143549260			Prop
+0x1446ecb20	SelectCategory	FUN_143548fa0			Prop
+0x1446ecb30	SelectProp	FUN_143549000			Prop
+0x1446ecb40	SearchPalette	FUN_143549060			Prop
+0x1446ecb50	SelectPaletteSortType	FUN_1435490c0			Prop
+0x1446ecb60	SelectPaletteSortOrder	FUN_143549100			Prop
+0x1446ecb70	GetTooltipForProp	FUN_1435492b0			Prop
+0x1446ecb80	DebugRepopEntries	FUN_143549300			Prop
+0x1446ecb90	FilterPropsByAvailability	FUN_143549330			Prop
+0x1446ecba0	GetPropsFilteredByAvailability	FUN_143549390			Prop
+0x1446ecbb0	SetGlowStrength	FUN_1435493d0	sends	PacketTunnelPacketFromExternalConnection PropPacketEditSettingsRequest ToolPacketActivate	Prop
+0x1446ecbc0	SetTextPropData	FUN_143549450	sends	PacketTunnelPacketFromExternalConnection PropPacketUpdatePropTextRequest	Prop
+0x1446ecbd0	DisplayTextPropDataToScreen	FUN_1435495c0			Prop
+0x1446ecbe0	SelectPropTintEntry	FUN_143549720	sends	ToolPacketActivate	Prop
+0x1446ecbf0	SelectPropTintCategory	FUN_143549780			Prop
+0x1446ecc00	SearchPropTint	FUN_1435497d0			Prop
+0x1446ecc10	SetPropName	FUN_143549830	sends	PacketTunnelPacketFromExternalConnection PropPacketSetPropName	Prop
+0x1446ecc20	RequestEditPropText	FUN_143549a70	sends	PacketTunnelPacketFromExternalConnection PropPacketEditPropTextRequest	Prop
+0x1446ecc30	SetPropEnable	FUN_143549af0	sends	PacketTunnelPacketFromExternalConnection PropPacketSetPropEnable	Prop
+0x1446ed1d0	ButtonClicked	FUN_14354a700			RadialMenu
+0x1446ed1e0	ButtonHighlighted	FUN_14354a750			RadialMenu
+0x1446ed1f0	OpenPalette	FUN_14354a7a0			RadialMenu
+0x1446ed200	AssignPaletteSlot	FUN_14354aca0	sends	PacketTunnelPacketFromExternalConnection PalettePacketAddEntry	RadialMenu
+0x1446ed210	RemovePaletteSlot	FUN_14354ade0	sends	BasePacket PacketTunnelPacketFromExternalConnection PalettePacketDeleteEntry PalettePacketSlotUpdates	RadialMenu
+0x1446ed220	DeletePalette	FUN_14354ac50	sends	PacketTunnelPacketFromExternalConnection PalettePacketDelete	RadialMenu
+0x1446ed230	TogglePaletteMenu	FUN_14354ae70			RadialMenu
+0x1446ed240	CreatePalette	FUN_14354a7c0	sends	PacketTunnelPacketFromExternalConnection PalettePacketCreate	RadialMenu
+0x1446ed250	ExitCurrentScriptingState	FUN_14354aea0			RadialMenu
+0x1446ed260	ExitScriptingState	FUN_14354aed0			RadialMenu
+0x1446ed270	ButtonClickedForRemoval	FUN_14354af00			RadialMenu
+0x1446ed4b0	ActivateTool	FUN_14354afe0	sends	ToolPacketActivate	Voxel
+0x1446ed4c0	CheckMaterialRequirements	FUN_14354b050			Voxel
+0x1446ed4d0	SelectMaterial	FUN_14354b080			Voxel
+0x1446ed4e0	SelectShape	FUN_14354b0b0	sends	PacketTunnelPacketFromExternalConnection PalettePacketAddEntry	Voxel
+0x1446ed4f0	MoveLocalPlayerToGround	FUN_14354b200			Voxel
+0x1446ed500	EvacLocalPlayerToSafepoint	FUN_14354b210	sends	PacketTunnelPacketFromExternalConnection PacketZoneSafeTeleportRequest	Voxel
+0x1446ed510	TweakMode	FUN_14354b540			Voxel
+0x1446ed520	TweakModeConfirm	FUN_14354b500	sends	ToolPacketActivate	Voxel
+0x1446ed530	SetShouldPasteAir	FUN_14354b580			Voxel
+0x1446ed540	GetShouldPasteAir	FUN_14354b5c0			Voxel
+0x1446ed550	SetRemoveVoxels	FUN_14354b600			Voxel
+0x1446ed560	GetRemoveVoxels	FUN_14354b640			Voxel
+0x1446ed570	SetShouldPasteProps	FUN_14354b680			Voxel
+0x1446ed580	GetShouldPasteProps	FUN_14354b6c0			Voxel
+0x1446ed590	SetEditModeRotate	FUN_14354b700			Voxel
+0x1446ed5a0	SetEditModeTranslate	FUN_14354b720			Voxel
+0x1446ed5b0	SetEditModeScale	FUN_14354b750			Voxel
+0x1446ed5c0	SetEditModeMirror	FUN_14354b780			Voxel
+0x1446ed5d0	CycleEditMode	FUN_14354b7b0			Voxel
+0x1446ed5e0	CycleEditAxis	FUN_14354b7d0			Voxel
+0x1446ed5f0	CycleCursorShape	FUN_14354b860			Voxel
+0x1446ed600	ToggleGridCursor	FUN_14354b880			Voxel
+0x1446ed610	GetGridCursor	FUN_14354b8c0			Voxel
+0x1446ed620	IncreaseCursorSize	FUN_14354b8f0			Voxel
+0x1446ed630	DecreaseCursorSize	FUN_14354b910			Voxel
+0x1446ed640	ElementPanelEnable	FUN_14354ba90			Voxel
+0x1446ed650	SelectCategory	FUN_14354bae0			Voxel
+0x1446ed660	SelectPaletteMaterial	FUN_14354bb40			Voxel
+0x1446ed670	SearchPalette	FUN_14354bba0			Voxel
+0x1446ed680	GetTooltipForMaterial	FUN_14354bc00			Voxel
+0x1446ed690	SelectPaletteSortType	FUN_14354bc50			Voxel
+0x1446ed6a0	SelectPaletteSortOrder	FUN_14354bc90			Voxel
+0x1446ed6b0	SwapCursorSize	FUN_14354bcd0			Voxel
+0x1446ed6c0	ToggleAlternativeControl	FUN_14354b930			Voxel
+0x1446ed6d0	GetAlternativeControl	FUN_14354b9a0			Voxel
+0x1446ed6e0	ToggleFillMode	FUN_14354b9e0			Voxel
+0x1446ed6f0	GetFillMode	FUN_14354ba50			Voxel
+0x1446ed700	IsSingleBlockSize	FUN_14354bd00			Voxel
+0x1446ed710	AllowBuildingMode	FUN_14354bd80			Voxel
+0x1446ed720	ToggleBuildingMode	FUN_14354bde0	sends	CommandPacketBuilderMode PacketTunnelPacketFromExternalConnection	Voxel
+0x1446ed730	SetEnableBuildingMode	FUN_14354be20	sends	CommandPacketBuilderMode PacketTunnelPacketFromExternalConnection	Voxel
+0x1446ed740	GetBuildingModeEnabled	FUN_14354be80			Voxel
+0x1446ed750	SelectShapeCategory	FUN_14354bee0			Voxel
+0x1446ed760	SearchShapePalette	FUN_14354bf40			Voxel
+0x1446ed770	SelectPaletteShapeSortType	FUN_14354bfa0			Voxel
+0x1446ed780	SelectPaletteShapeSortOrder	FUN_14354bfe0			Voxel
+0x1446ed790	FilterMaterialsByAvailability	FUN_14354c020			Voxel
+0x1446ed7a0	GetMaterialsFilteredByAvailability	FUN_14354c080			Voxel
+0x1446edcf0	GetProviderStatus	FUN_14354c180			SocialShare_1446500cd_3
+0x1446edd00	RequestProviderEnable	FUN_14354c280			SocialShare_1446500cd_3
+0x1446edd10	OnBrowserClosed	FUN_14354c360			SocialShare_1446500cd_3
+0x1446edd20	TakeSocialScreenshot	FUN_14354c380			SocialShare_1446500cd_3
+0x1446edd30	PublishMessage	FUN_14354c3b0			SocialShare_1446500cd_3
+0x1446edd40	PublishScreenshot	FUN_14354c4f0			SocialShare_1446500cd_3
+0x1446ede90	ActivateVfx	FUN_14354c710			VoxelOwnership
+0x1446edea0	DeactivateVfx	FUN_14354c770			VoxelOwnership
+0x1446edeb0	IsVfxEnabled	FUN_14354c800			VoxelOwnership
+0x1446edec0	ActivateDebugVfx	FUN_14354c920			VoxelOwnership
+0x1446eded0	DeactivateDebugVfx	FUN_14354c950			VoxelOwnership
+0x1446edee0	RequestAllCellsForClaim	FUN_14354c980	sends	TemplatePacketClientGetInstanceDetailsRequest	VoxelOwnership
+0x1446edef0	HighlightAllInstances	FUN_14354cba0			VoxelOwnership
+0x1446edf00	HighlightAllInstancesForTemplate	FUN_14354cbe0			VoxelOwnership
+0x1446edf10	ActivatePurchasedClaimInstance	FUN_14354cb30			VoxelOwnership
+0x1446edf20	SetHoverTemplateGuid	FUN_14354cc50			VoxelOwnership
+0x1446edf30	SetHoverInstanceGuid	FUN_14354cc90			VoxelOwnership
+0x1446edf40	RequestTemplateCells	FUN_14354ccd0			VoxelOwnership
+0x1446edf50	RequestSelectedCells	FUN_14354cde0			VoxelOwnership
+0x1446edf60	ActivateOwner	FUN_14354cf90			VoxelOwnership
+0x1446edf70	ActivateAllOwners	FUN_14354d180			VoxelOwnership
+0x1446edf80	HighlightOwner	FUN_14354d1b0			VoxelOwnership
+0x1446edf90	DeleteOwner	FUN_14354d200			VoxelOwnership
+0x1446edfa0	ForgetLastOwnershipCache	FUN_14354dde0			VoxelOwnership
+0x1446edfb0	ForgetInternalCache	FUN_14354deb0			VoxelOwnership
+0x1446edfc0	IsVoxelVisionGuidActive	FUN_14354def0			VoxelOwnership
+0x1446edfd0	IsTemplateVisionGuidActive	FUN_14354e0f0			VoxelOwnership
+0x1446edfe0	IsTemplateVisionGroupGuidActive	FUN_14354e2e0			VoxelOwnership
+0x1446ee6e0	GetSteamId	FUN_143550f70			Steam
+0x1446ee6f0	IsSteamEnabled	FUN_1435510a0			Steam
+0x1446ee700	IsLastTransactionAuthorized	FUN_1435511c0			Steam
+0x1446ee710	GetAppId	FUN_1435512f0			Steam
+0x1446ee720	ShowOverlay	FUN_143551400			Steam
+0x1446ee730	IsOverlayActive	FUN_143551460			Steam
+0x1446ee920	PlaceProp	FUN_1435515e0	sends	PropAccessPacket PropProcessorStateNotificationPacket PropSavePacket	InstancedGame
+0x1446ee930	AddAdditionalProp	FUN_143551660	sends	InstancedGamePropRequestPacket PacketTunnelPacketFromExternalConnection	InstancedGame
+0x1446ee940	GotoProp	FUN_143551700		PacketTeleportIntraZoneRequest	InstancedGame
+0x1446ee950	RemoveProp	FUN_143551770	sends	InstancedGamePropRemovePacket PacketTunnelPacketFromExternalConnection	InstancedGame
+0x1446ee960	ResetGameSettings	FUN_1435517e0	sends	BasePacket InstancedGameSetConfigurationRequestPacket PacketTunnelPacketFromExternalConnection	InstancedGame
+0x1446ee970	ApplyGameSettings	FUN_143551820	sends	BasePacket InstancedGameSetConfigurationRequestPacket PacketTunnelPacketFromExternalConnection	InstancedGame
+0x1446ee980	RequestPropRecipeList	FUN_143551860	sends	PacketTunnelPacketFromExternalConnection	InstancedGame
+0x1446ee990	EnableGame	FUN_1435518a0	sends	PacketTunnelPacketFromExternalConnection	InstancedGame
+0x1446ee9a0	DisableGame	FUN_1435518e0	sends	PacketTunnelPacketFromExternalConnection	InstancedGame
+0x1446ee9b0	GetClientTimeSinceStart	FUN_143551920			InstancedGame
+0x1446ee9c0	GetLocalTeamColor	FUN_1435519a0			InstancedGame
+0x1446ee9d0	IsInGame	FUN_143551a80			InstancedGame
+0x1446ee9e0	EnterObserverMode	FUN_143551ad0			InstancedGame
+0x1446ee9f0	ExitObserverMode	FUN_143551b20			InstancedGame
+0x1446eeb80	ApplyFilterString	FUN_143551be0			ObjectivesController
+0x1446eeb90	ClearFilterString	FUN_143551c60	sends	RecipecComponentImageSetIdsRequestPacket	ObjectivesController
+0x1446eeba0	ApplyFilterFlag	FUN_143551ca0			ObjectivesController
+0x1446eebb0	ClearFilterFlag	FUN_143551d20			ObjectivesController
+0x1446eebc0	ApplySort	FUN_143551da0			ObjectivesController
+0x1446eebd0	ClearSort	FUN_143551e20			ObjectivesController
+0x1446eebe0	SetActiveTab	FUN_143551e60			ObjectivesController
+0x1446eebf0	GetActiveTab	FUN_143551ee0			ObjectivesController
+0x1446eec00	SetActiveCategory	FUN_143551f30			ObjectivesController
+0x1446eec10	GetLastCategory	FUN_143551fe0			ObjectivesController
+0x1446eec20	GetAchievementDetails	FUN_143552030			ObjectivesController
+0x1446eec30	SetTrackingAchievement	FUN_143552100	sends	AchievementTrackerUpdatePacket BasePacket PacketTunnelPacketFromExternalConnection	ObjectivesController
+0x1446eec40	SetWatchListCollapsed	FUN_1435521a0			ObjectivesController
+0x1446eec50	SetTrackerCollapsed	FUN_143552240			ObjectivesController
+0x1446eec60	GetTrackerCollapsed	FUN_143552290			ObjectivesController
+0x1446eee80	WarpToNode	FUN_143552360	sends	PacketTunnelPacketFromExternalConnection WarpNetworkClientRequestPacket	WarpNetwork
+0x1446eee90	UpdateZoneNetwork	FUN_143552400	sends	PacketTunnelPacketFromExternalConnection WarpNetworkClientRequestPacket	WarpNetwork
+0x1446eef10	GetOSTimeSeconds	FUN_1435524d0			Time
+0x1446eef20	GetOSTimeMilliseconds	FUN_1435525e0			Time
+0x1446eef30	GetGameTimeSeconds	FUN_1435526f0			Time
+0x1446eef40	GetGameTimeMilliseconds	FUN_143552820			Time
+0x1446eef50	GetOSDateTimeString	FUN_143552930			Time
+0x1446eef60	GetOSTimeString	FUN_143552a70			Time
+0x1446ef140	GetStringById	FUN_143552c10			Strings
+0x1446ef150	GetStringByName	FUN_143552cf0			Strings
+0x1446ef160	GetStringForKeybind	FUN_143552de0			Strings
+0x1446ef2f0	ActivateTool	FUN_143553120	sends	ToolPacketActivate	Tool
+0x1446ef300	SetSelectionLocked	FUN_143553190			Tool
+0x1446ef310	GetSelectionLocked	FUN_143553200			Tool
+0x1446ef320	HasMultipleEditModes	FUN_143553250			Tool
+0x1446ef330	ToggleTweakMode	FUN_1435532b0			Tool
+0x1446ef340	IsInTweakMode	FUN_1435532f0			Tool
+0x1446ef350	CreatePredictiveSelection	FUN_143553310			Tool
+0x1446ef360	ClearPredictiveSelection	FUN_143553330			Tool
+0x1446ef4c0	ToggleContentBuilderMode	FUN_1435533e0	sends	ContentPacketCommandSetContentBuilder PacketTunnelPacketFromExternalConnection	Content
+0x1446ef4d0	GetContentBuilderModeEnabled	FUN_143553400			Content
+0x1446ef4e0	CreateSocket	FUN_143553450	sends	ContentPacketCommandSocketCreate PacketTunnelPacketFromExternalConnection	Content
+0x1446ef4f0	SetSocketMetaData	FUN_143553540	sends	BasePacket ContentPacketCommandSocketSetMetaData PacketTunnelPacketFromExternalConnection	Content
+0x1446ef500	LoadSocket	FUN_143553640	sends	ContentPacketCommandSocketActivate PacketTunnelPacketFromExternalConnection	Content
+0x1446ef510	UnloadSocket	FUN_1435536f0	sends	ContentPacketCommandSocketDeactivate PacketTunnelPacketFromExternalConnection	Content
+0x1446ef520	DeleteSocket	FUN_143553770	sends	ContentPacketCommandSocketDelete PacketTunnelPacketFromExternalConnection	Content
+0x1446ef530	GotoSocket	FUN_1435537f0	sends	ContentPacketCommandGoto PacketTunnelPacketFromExternalConnection	Content
+0x1446ef540	CreatePackage	FUN_143553870	sends	BasePacket ContentPacketCommandPackageCreate PacketTunnelPacketFromExternalConnection	Content
+0x1446ef550	SetPackageMetaData	FUN_143553930	sends	ContentPacketCommandPackageSetMetaData PacketTunnelPacketFromExternalConnection	Content
+0x1446ef560	SavePackage	FUN_143553a30	sends	ContentPacketCommandPackageSave PacketTunnelPacketFromExternalConnection	Content
+0x1446ef570	DeletePackage	FUN_143553ab0	sends	ContentPacketCommandPackageDelete PacketTunnelPacketFromExternalConnection	Content
+0x1446ef580	GotoPackage	FUN_143553b30	sends	ContentPacketCommandGoto PacketTunnelPacketFromExternalConnection	Content
+0x1446ef728	SetDynamicOptionValue	FUN_143553c30			Options
+0x1446ef738	GetDynamicOptionValue	FUN_143553d10			Options
+0x1446ef850	CanChangeFov	FUN_1435544d0			Controller
+0x1446ef860	GetMinFov	FUN_143554590			Controller
+0x1446ef870	GetMaxFov	FUN_143554530			Controller
+0x1446ef880	GetCurrentFov	FUN_1435545f0			Controller
+0x1446ef890	SetFov	FUN_143553e80			Controller
+0x1446ef8a0	GetControllerType	FUN_143553fe0			Controller
+0x1446ef8b0	SetCharacterVisible	FUN_143554020			Controller
+0x1446ef8c0	GetCharacterVisible	FUN_1435540a0			Controller
+0x1446ef8d0	SetCameraCollisionEnabled	FUN_143554100			Controller
+0x1446ef8e0	GetOrbitRotatePerSec	FUN_143554180			Controller
+0x1446ef8f0	SetOrbitRotatePerSec	FUN_1435541b0			Controller
+0x1446ef900	GetOrbitZoomPerSec	FUN_143554250			Controller
+0x1446ef910	SetOrbitZoomPerSec	FUN_143554280			Controller
+0x1446ef920	ToggleCharacterFlight	FUN_143554320			Controller
+0x1446efb20	StartCustomization	FUN_143554800			CharacterCustomization
+0x1446efb30	CancelCustomization	FUN_143554850			CharacterCustomization
+0x1446efb40	ConfirmCustomization	FUN_143554870	sends	CharacterCustomizationPacketPlayerSet PacketTunnelPacketFromExternalConnection	CharacterCustomization
+0x1446efb50	SelectOption	FUN_143554890			CharacterCustomization
+0x1446efb60	SelectOptionByIndex	FUN_143554910			CharacterCustomization
+0x1446efb70	ResetCustomizations	FUN_143554990			CharacterCustomization
+0x1446efb80	SetRace	FUN_1435549b0			CharacterCustomization
+0x1446efb90	SetGender	FUN_1435549e0			CharacterCustomization
+0x1446efc80	OnSelectedCategory	FUN_143554a80			BugSubmission
+0x1446efc90	OnSubmitBug	FUN_143554a90			BugSubmission
+0x14476aca0	assert	FUN_14391aea0			
+0x14476acb0	collectgarbage	FUN_14391a9c0			
+0x14476acc0	dofile	FUN_14391ae20			
+0x14476acd0	error	FUN_14391a6e0			
+0x14476ace0	getmetatable	FUN_14391a760			
+0x14476acf0	ipairs	FUN_14391ab80			
+0x14476ad00	loadfile	FUN_14391ac00			
+0x14476ad10	load	FUN_14391ace0			
+0x14476ad20	next	FUN_14391aa90			
+0x14476ad30	pairs	FUN_14391aaf0			
+0x14476ad40	pcall	FUN_14391afd0			
+0x14476ad50	print	FUN_14391a480			
+0x14476ad60	rawequal	FUN_14391a860			
+0x14476ad70	rawlen	FUN_14391a8b0			
+0x14476ad80	rawget	FUN_14391a910			
+0x14476ad90	rawset	FUN_14391a960			
+0x14476ada0	select	FUN_14391af20			
+0x14476adb0	setmetatable	FUN_14391a7c0			
+0x14476adc0	tonumber	FUN_14391a5b0			
+0x14476add0	tostring	FUN_14391b120			
+0x14476ade0	xpcall	FUN_14391b060			
+0x14476b090	create	FUN_14391b700			
+0x14476b0a0	resume	FUN_14391b650			
+0x14476b0b0	running	FUN_14391b940			
+0x14476b0c0	status	FUN_14391b800			
+0x14476b0d0	wrap	FUN_14391b760			
+0x14476b0e0	yield	FUN_14391b7d0			
+0x14476b0f0	isyieldable	FUN_14391b910			
+0x14476b1c0	concat	FUN_14391bf70			
+0x14476b1d0	insert	FUN_14391bbd0			
+0x14476b1e0	pack	FUN_14391c120			
+0x14476b1f0	unpack	FUN_14391c1d0			
+0x14476b200	remove	FUN_14391bce0			
+0x14476b210	move	FUN_14391bde0			
+0x14476b220	sort	FUN_14391c2d0			
+0x14476b380	byte	FUN_14391dd70			
+0x14476b390	char	FUN_14391de90			
+0x14476b3a0	dump	FUN_14391e340			
+0x14476b3b0	find	FUN_14391e400			
+0x14476b3c0	format	FUN_14391cd30			
+0x14476b3d0	gmatch	FUN_14391e420			
+0x14476b3e0	gsub	FUN_14391c9d0			
+0x14476b3f0	len	FUN_14391d6d0			
+0x14476b400	lower	FUN_14391d890			
+0x14476b410	match	FUN_14391e410			
+0x14476b420	rep	FUN_14391dbd0			
+0x14476b430	reverse	FUN_14391d7e0			
+0x14476b440	sub	FUN_14391d700			
+0x14476b450	upper	FUN_14391d960			
+0x14476b460	pack	FUN_14391d100			
+0x14476b470	packsize	FUN_14391da30			
+0x14476b480	unpack	FUN_14391df70			
+0x14476ba70	abs	FUN_143920e20			
+0x14476ba80	acos	FUN_143920f50			
+0x14476ba90	asin	FUN_143920f20			
+0x14476baa0	atan	FUN_143920f80			
+0x14476bab0	ceil	FUN_1439210c0			
+0x14476bac0	cos	FUN_143920ec0			
+0x14476bad0	deg	FUN_143921450			
+0x14476bae0	exp	FUN_143921420			
+0x14476baf0	tointeger	FUN_143920fe0			
+0x14476bb00	floor	FUN_143921040			
+0x14476bb10	fmod	FUN_143921140			
+0x14476bb20	ult	FUN_143921330			
+0x14476bb30	log	FUN_143921380			
+0x14476bb40	max	FUN_143921560			
+0x14476bb50	min	FUN_1439214d0			
+0x14476bb60	modf	FUN_143921220			
+0x14476bb70	rad	FUN_143921490			
+0x14476bb80	random	FUN_1439215f0			
+0x14476bb90	randomseed	FUN_143921710			
+0x14476bba0	sin	FUN_143920e90			
+0x14476bbb0	sqrt	FUN_143921300			
+0x14476bbc0	tan	FUN_143920ef0			
+0x14476bbd0	type	FUN_143921740			
+0x14476bd20	loadlib	FUN_1439218d0			
+0x14476bd30	searchpath	FUN_143921970			
+0x14476bda0	require	FUN_143921dc0			
+0x1447b94f8	NMTOKENS	FUN_14027dd70			
+0x1447bb3a8	addMarker	FUN_1402ccfc0			
+0x1447bb440	concat	FUN_1402e8dd0			
+0x1447bb450	join	FUN_1402cd9c0			
+0x1447bb460	pop	FUN_1402b0ae0			
+0x1447bb470	push	FUN_1402b0bb0			
+0x1447bb480	reverse	FUN_1402b7960			
+0x1447bb490	shift	FUN_1402b0ca0			
+0x1447bb4a0	slice	FUN_1402e8f40			
+0x1447bb4b0	sort	FUN_1402fa8f0			
+0x1447bb4c0	sortOn	FUN_140304720			
+0x1447bb4d0	splice	FUN_1402e9140			
+0x1447bb4e0	toString	FUN_1402cdba0			
+0x1447bb4f0	unshift	FUN_1402b0d70			
+0x1447bb500	valueOf	FUN_1402cdd30			
+0x1447bb520	addListener	FUN_1402ce080			
+0x1447bb530	broadcastMessage	FUN_140334170			
+0x1447bb540	removeListener	FUN_1402ce100			
+0x1447bb560	initialize	FUN_14033c7c0			
+0x1447bb580	getDepth	FUN_1402a8dc0			
+0x1447bb5a0	play	FUN_14028c990			
+0x1447bb5b0	stop	FUN_14028c9e0			
+0x1447bb5c0	gotoAndStop	FUN_1402cfd20			
+0x1447bb5d0	gotoAndPlay	FUN_1402cfbc0			
+0x1447bb5e0	nextFrame	FUN_14028ca30			
+0x1447bb5f0	prevFrame	FUN_14028cac0			
+0x1447bb600	getBytesLoaded	FUN_1402a9300			
+0x1447bb610	getBytesTotal	FUN_1402a9380			
+0x1447bb620	getBounds	FUN_1402f8060			
+0x1447bb630	getRect	FUN_1402f8600			
+0x1447bb640	localToGlobal	FUN_1402d0f60			
+0x1447bb650	globalToLocal	FUN_1402d1200			
+0x1447bb660	hitTest	FUN_14033d940			
+0x1447bb670	attachBitmap	FUN_1402d04d0			
+0x1447bb680	attachMovie	FUN_1402d0060			
+0x1447bb690	duplicateMovieClip	FUN_1402cfe80			
+0x1447bb6a0	removeMovieClip	FUN_140294af0			
+0x1447bb6b0	createEmptyMovieClip	FUN_1402d09d0			
+0x1447bb6c0	createTextField	FUN_1402d0c40			
+0x1447bb6d0	getDepth	FUN_1402a8dc0			
+0x1447bb6e0	swapDepths	FUN_1402d14b0			
+0x1447bb6f0	getNextHighestDepth	FUN_1402a9540			
+0x1447bb700	getInstanceAtDepth	FUN_1402d16b0			
+0x1447bb710	getTextSnapshot	FUN_1403074e0			
+0x1447bb720	getSWFVersion	FUN_1402a95d0			
+0x1447bb730	startDrag	FUN_1402d17a0			
+0x1447bb740	stopDrag	FUN_14028cb30			
+0x1447bb750	setMask	FUN_1402a9410			
+0x1447bb760	loadMovie	FUN_1402e9b20			
+0x1447bb770	unloadMovie	FUN_1402e9ce0			
+0x1447bb780	loadVariables	FUN_1402d1ad0			
+0x1447bb790	clear	FUN_14028d0a0			
+0x1447bb7a0	beginFill	FUN_1402d1c90			
+0x1447bb7b0	beginGradientFill	FUN_1402ea810			
+0x1447bb7c0	beginBitmapFill	FUN_1402ea980			
+0x1447bb7d0	lineGradientStyle	FUN_1402ea8d0			
+0x1447bb7e0	endFill	FUN_14028d120			
+0x1447bb7f0	lineStyle	FUN_1402d1e00			
+0x1447bb800	moveTo	FUN_1402d22d0			
+0x1447bb810	lineTo	FUN_1402d23e0			
+0x1447bb820	curveTo	FUN_1402d24f0			
+0x1447bb840	getDepth	FUN_1402a8dc0			
+0x1447bb850	getTextFormat	FUN_140322af0			
+0x1447bb860	getNewTextFormat	FUN_140322dc0			
+0x1447bb870	setTextFormat	FUN_1402d37b0			
+0x1447bb880	setNewTextFormat	FUN_1402c0ee0			
+0x1447bb890	replaceSel	FUN_1402d3dc0			
+0x1447bb8a0	replaceText	FUN_1402d3a50			
+0x1447bb8b0	removeTextField	FUN_140294f20			
+0x1447bb8d0	appendText	FUN_1402d4030			
+0x1447bb8e0	appendHtml	FUN_1402d4100			
+0x1447bb8f0	copyToClipboard	FUN_1402d4aa0			
+0x1447bb900	cutToClipboard	FUN_1402d4bd0			
+0x1447bb910	getCharBoundaries	FUN_1403075e0			
+0x1447bb920	getCharIndexAtPoint	FUN_1402d4240			
+0x1447bb930	getExactCharBoundaries	FUN_1403077c0			
+0x1447bb940	getFirstCharInParagraph	FUN_1402d48d0			
+0x1447bb950	getIMECompositionStringStyle	FUN_1403241b0			
+0x1447bb960	getLineIndexAtPoint	FUN_1402d43a0			
+0x1447bb970	getLineIndexOfChar	FUN_1402d49c0			
+0x1447bb980	getLineOffset	FUN_1402d44f0			
+0x1447bb990	getLineMetrics	FUN_1402f8ba0			
+0x1447bb9a0	getLineText	FUN_1402d46d0			
+0x1447bb9b0	getLineLength	FUN_1402d45e0			
+0x1447bb9c0	pasteFromClipboard	FUN_1402d4d10			
+0x1447bb9d0	setIMECompositionStringStyle	FUN_140323eb0			
+0x1447bb9e0	setImageSubstitutions	FUN_1402d3160			
+0x1447bb9f0	updateImageSubstitution	FUN_1402d3350			
+0x1447bba10	getFontList	FUN_140307d80			
+0x1447bba30	clone	FUN_1402d56b0			
+0x1447bba50	loadBitmap	FUN_1402a9b90			
+0x1447bba70	loadBitmap	FUN_140325000			
+0x1447bba90	clone	FUN_1402d5d30			
+0x1447bbab0	toString	FUN_1402d5e50			
+0x1447bbac0	valueOf	FUN_1402b1e70			
+0x1447bbae0	setTransform	FUN_1402d69b0			
+0x1447bbaf0	getTransform	FUN_1402f92a0			
+0x1447bbb00	setRGB	FUN_1402d6d00			
+0x1447bbb10	getRGB	FUN_1402a9cd0			
+0x1447bbb30	clone	FUN_1402d7090			
+0x1447bbb50	concat	FUN_1402d73f0			
+0x1447bbb60	toString	FUN_1402d7630			
+0x1447bbbe0	getDate	FUN_1402aa000			
+0x1447bbbf0	getDay	FUN_1402aa260			
+0x1447bbc00	getFullYear	FUN_1402aa6d0			
+0x1447bbc10	getHours	FUN_1402aa3a0			
+0x1447bbc20	getMilliseconds	FUN_1402aa5a0			
+0x1447bbc30	getMinutes	FUN_1402aa440			
+0x1447bbc40	getMonth	FUN_1402a9eb0			
+0x1447bbc50	getSeconds	FUN_1402aa4f0			
+0x1447bbc60	getTime	FUN_1402aa320			
+0x1447bbc70	getTimezoneOffset	FUN_1402a9e10			
+0x1447bbc80	getYear	FUN_1402aa640			
+0x1447bbc90	getUTCDate	FUN_1402aa8a0			
+0x1447bbca0	getUTCDay	FUN_1402aaaf0			
+0x1447bbcb0	getUTCFullYear	FUN_1402aaed0			
+0x1447bbcc0	getUTCHours	FUN_1402aabb0			
+0x1447bbcd0	getUTCMilliseconds	FUN_1402aada0			
+0x1447bbce0	getUTCMinutes	FUN_1402aac40			
+0x1447bbcf0	getUTCMonth	FUN_1402aa750			
+0x1447bbd00	getUTCSeconds	FUN_1402aacf0			
+0x1447bbd10	getUTCYear	FUN_1402aae40			
+0x1447bbd20	setDate	FUN_1402d8270			
+0x1447bbd30	setFullYear	FUN_1402d7f70			
+0x1447bbd40	setHours	FUN_1402d84f0			
+0x1447bbd50	setMilliseconds	FUN_1402d8830			
+0x1447bbd60	setMinutes	FUN_1402d85f0			
+0x1447bbd70	setMonth	FUN_1402d80f0			
+0x1447bbd80	setSeconds	FUN_1402d8710			
+0x1447bbd90	setTime	FUN_1402d8430			
+0x1447bbda0	setYear	FUN_1402d7de0			
+0x1447bbdb0	setUTCDate	FUN_1402d8e60			
+0x1447bbdc0	setUTCFullYear	FUN_1402d8aa0			
+0x1447bbdd0	setUTCHours	FUN_1402d9010			
+0x1447bbde0	setUTCMilliseconds	FUN_1402d9320			
+0x1447bbdf0	setUTCMinutes	FUN_1402d9100			
+0x1447bbe00	setUTCSeconds	FUN_1402d9210			
+0x1447bbe10	setUTCMonth	FUN_1402d8c10			
+0x1447bbe20	setUTCYear	FUN_1402d8930			
+0x1447bbe30	toString	FUN_1402aaf50			
+0x1447bbe40	valueOf	FUN_1402ab930			
+0x1447bbe60	UTC	FUN_1402d9420			
+0x1447bbe80	clone	FUN_1402d9a90			
+0x1447bbeb0	addCallback	FUN_140336ba0			
+0x1447bbec0	call	FUN_1402eaca0			
+0x1447bbee0	apply	FUN_1402c1410			
+0x1447bbef0	call	FUN_1402c1890			
+0x1447bbf00	toString	FUN_1402ac0c0			
+0x1447bbf10	valueOf	FUN_1402b90a0			
+0x1447bbf30	clone	FUN_1402da440			
+0x1447bbf50	addListener	FUN_1402ac340			
+0x1447bbf60	getAscii	FUN_1402ac340			
+0x1447bbf70	getCode	FUN_1402ac340			
+0x1447bbf80	isDown	FUN_1402ac340			
+0x1447bbf90	isToggled	FUN_1402ac340			
+0x1447bbfa0	removeListener	FUN_1402ac340			
+0x1447bbfc0	getAscii	FUN_1402da560			
+0x1447bbfd0	getCode	FUN_1402da610			
+0x1447bbfe0	isDown	FUN_1402da6c0			
+0x1447bbff0	isToggled	FUN_1402da800			
+0x1447bc010	addRequestHeader	FUN_1402a5470			
+0x1447bc020	decode	FUN_1402da940			
+0x1447bc030	getBytesLoaded	FUN_1402ac380			
+0x1447bc040	getBytesTotal	FUN_1402ac420			
+0x1447bc050	load	FUN_1402daaa0			
+0x1447bc060	send	FUN_1402a54f0			
+0x1447bc070	sendAndLoad	FUN_1402a5570			
+0x1447bc080	toString	FUN_1402ac4c0			
+0x1447bc0a0	abs	FUN_1402c9ab0			
+0x1447bc0b0	acos	FUN_1402c9b40			
+0x1447bc0c0	asin	FUN_1402c9be0			
+0x1447bc0d0	atan	FUN_1402c9c80			
+0x1447bc0e0	atan2	FUN_1402ca220			
+0x1447bc0f0	ceil	FUN_1402c9d20			
+0x1447bc100	cos	FUN_1402c9dc0			
+0x1447bc110	exp	FUN_1402c9e60			
+0x1447bc120	floor	FUN_1402c9f00			
+0x1447bc130	log	FUN_1402c9fa0			
+0x1447bc140	max	FUN_1402ca320			
+0x1447bc150	min	FUN_1402ca400			
+0x1447bc160	pow	FUN_1402ca4e0			
+0x1447bc170	random	FUN_1402ac620			
+0x1447bc180	round	FUN_1402dad50			
+0x1447bc190	sin	FUN_1402ca040			
+0x1447bc1a0	sqrt	FUN_1402ca0e0			
+0x1447bc1b0	tan	FUN_1402ca180			
+0x1447bc1d0	toString	FUN_1402ecf10			
+0x1447bc1e0	valueOf	FUN_1402ecf10			
+0x1447bc1f0	clone	FUN_14030bdf0			
+0x1447bc200	concat	FUN_1402db120			
+0x1447bc210	createBox	FUN_1402db280			
+0x1447bc220	createGradientBox	FUN_1402db600			
+0x1447bc230	deltaTransformPoint	FUN_14030c3c0			
+0x1447bc240	identity	FUN_1402b3310			
+0x1447bc250	invert	FUN_1402db9b0			
+0x1447bc260	rotate	FUN_1402dba40			
+0x1447bc270	scale	FUN_1402dbb70			
+0x1447bc280	transformPoint	FUN_14030bf00			
+0x1447bc290	translate	FUN_1402dbd40			
+0x1447bc2b0	addListener	FUN_1402ac6a0			
+0x1447bc2c0	removeListener	FUN_1402ac6a0			
+0x1447bc2d0	show	FUN_1402ac6a0			
+0x1447bc2e0	hide	FUN_1402ac6a0			
+0x1447bc300	show	FUN_1402dbeb0			
+0x1447bc310	hide	FUN_1402dbf90			
+0x1447bc330	getProgress	FUN_1402f98b0			
+0x1447bc340	loadClip	FUN_1402ed370			
+0x1447bc350	unloadClip	FUN_1402ed700			
+0x1447bc370	toString	FUN_1402dcc60			
+0x1447bc380	valueOf	FUN_1402dcdd0			
+0x1447bc3a0	MAX_VALUE	FUN_1400d9220			
+0x1447bc3b0	MIN_VALUE	FUN_1400d9200			
+0x1447bc3c0	NaN	FUN_1400d9160			
+0x1447bc3d0	NEGATIVE_INFINITY	FUN_1400d91a0			
+0x1447bc3e0	POSITIVE_INFINITY	FUN_1400d9180			
+0x1447bc400	addProperty	FUN_1402dd220			
+0x1447bc410	hasOwnProperty	FUN_1402dd700			
+0x1447bc420	watch	FUN_1402dd7b0			
+0x1447bc430	unwatch	FUN_1402dda80			
+0x1447bc440	isPropertyEnumerable	FUN_1402ddb50			
+0x1447bc450	isPrototypeOf	FUN_1402c62f0			
+0x1447bc460	toString	FUN_1402b3d20			
+0x1447bc470	valueOf	FUN_1402b9d20			
+0x1447bc490	registerClass	FUN_1402fb5b0			
+0x1447bc4b0	add	FUN_1402fbcc0			
+0x1447bc4c0	clone	FUN_1402fbec0			
+0x1447bc4d0	equals	FUN_1402dde60			
+0x1447bc4e0	normalize	FUN_1402ddfa0			
+0x1447bc4f0	offset	FUN_1402de1c0			
+0x1447bc500	subtract	FUN_1402fc0a0			
+0x1447bc510	toString	FUN_1402de3a0			
+0x1447bc530	interpolate	FUN_1402fc2c0			
+0x1447bc540	distance	FUN_1402f3670			
+0x1447bc550	polar	FUN_1402fc5a0			
+0x1447bc570	clone	FUN_1402fd1d0			
+0x1447bc580	contains	FUN_1402de920			
+0x1447bc590	containsPoint	FUN_1402deba0			
+0x1447bc5a0	containsRectangle	FUN_1402deea0			
+0x1447bc5b0	equals	FUN_1402df1f0			
+0x1447bc5c0	inflate	FUN_1402df3d0			
+0x1447bc5d0	inflatePoint	FUN_1402df5d0			
+0x1447bc5e0	intersection	FUN_1402fd490			
+0x1447bc5f0	intersects	FUN_1402df800			
+0x1447bc600	isEmpty	FUN_1402dfc40			
+0x1447bc610	offset	FUN_1402dfeb0			
+0x1447bc620	offsetPoint	FUN_1402e0260			
+0x1447bc630	setEmpty	FUN_1402b41a0			
+0x1447bc640	toString	FUN_1402e07e0			
+0x1447bc650	union	FUN_1402fd920			
+0x1447bc670	addListener	FUN_1402acb80			
+0x1447bc680	broadcastMessage	FUN_1402acb80			
+0x1447bc690	getBeginIndex	FUN_1402acb80			
+0x1447bc6a0	getCaretIndex	FUN_1402acb80			
+0x1447bc6b0	getEndIndex	FUN_1402acb80			
+0x1447bc6c0	getFocus	FUN_1402acb80			
+0x1447bc6d0	setFocus	FUN_1402acb80			
+0x1447bc6e0	setSelection	FUN_1402acb80			
+0x1447bc6f0	removeListener	FUN_1402acb80			
+0x1447bc710	getBeginIndex	FUN_1402e1020			
+0x1447bc720	getCaretIndex	FUN_1402e0dc0			
+0x1447bc730	getEndIndex	FUN_1402e1150			
+0x1447bc740	getFocus	FUN_1402e0cb0			
+0x1447bc750	setFocus	FUN_140339a90			
+0x1447bc760	setSelection	FUN_1402e0ee0			
+0x1447bc780	clear	FUN_1402ee950			
+0x1447bc790	flush	FUN_1402c69a0			
+0x1447bc7a0	getSize	FUN_1402c6ad0			
+0x1447bc7c0	getLocal	FUN_1402fe350			
+0x1447bc7e0	addListener	FUN_1402acde0			
+0x1447bc7f0	removeListener	FUN_1402acde0			
+0x1447bc800	broadcastMessage	FUN_1402acde0			
+0x1447bc820	fromCharCode	FUN_1402e4020			
+0x1447bc840	clear	FUN_1402a5780			
+0x1447bc850	getStyle	FUN_1402f3e80			
+0x1447bc860	getStyleNames	FUN_1402eef70			
+0x1447bc870	load	FUN_1402e4350			
+0x1447bc880	parseCSS	FUN_1402e4500			
+0x1447bc890	setStyle	FUN_1402e4820			
+0x1447bc8a0	transform	FUN_1402ef320			
+0x1447bc8c0	getTextExtent	FUN_1402f4e00			
+0x1447bc8e0	findText	FUN_1402e5c40			
+0x1447bc8f0	getCount	FUN_1402ad060			
+0x1447bc900	getSelected	FUN_1402e5e40			
+0x1447bc910	getSelectedText	FUN_1402ad0f0			
+0x1447bc920	getText	FUN_1402e5fa0			
+0x1447bc930	getTextRunInfo	FUN_14030e950			
+0x1447bc940	hitTestTextNearPos	FUN_1402e61d0			
+0x1447bc950	setSelectColor	FUN_1402e63a0			
+0x1447bc960	setSelected	FUN_1402e6470			
+0x1447cc9b0	addListener	FUN_14034e7f0			
+0x1447cc9c0	doConversion	FUN_14034e7f0			
+0x1447cc9d0	getConversionMode	FUN_14034e7f0			
+0x1447cc9e0	getEnabled	FUN_14034e7f0			
+0x1447cc9f0	setCompositionString	FUN_14034e7f0			
+0x1447cca00	getCompositionString	FUN_14034e7f0			
+0x1447cca10	setConversionMode	FUN_14034e7f0			
+0x1447cca20	setEnabled	FUN_14034e7f0			
+0x1447cca30	removeListener	FUN_14034e7f0			
+0x1447ccae0	doConversion	FUN_14034e810			
+0x1447ccaf0	getConversionMode	FUN_14034ea50			
+0x1447ccb00	getEnabled	FUN_14034ee00			
+0x1447ccb10	setCompositionString	FUN_14034eb20			
+0x1447ccb20	getCompositionString	FUN_14034ebf0			
+0x1447ccb30	setConversionMode	FUN_14034ecb0			
+0x1447ccb40	setEnabled	FUN_14034ed60			
+0x1447ccb50	SendLangBarMessage	FUN_14034ee70			
+0x1447cd0d0	addRequestHeader	FUN_140351030			
+0x1447cd0e0	createElement	FUN_140353680			
+0x1447cd0f0	createTextNode	FUN_140353840			
+0x1447cd100	getBytesLoaded	FUN_1403510a0			
+0x1447cd110	getBytesTotal	FUN_140351130			
+0x1447cd120	load	FUN_140353a00			
+0x1447cd130	parseXML	FUN_140353ec0			
+0x1447cd140	send	FUN_1403511d0			
+0x1447cd150	sendAndLoad	FUN_140351240			
+0x1447cda00	appendChild	FUN_140357bb0			
+0x1447cda10	cloneNode	FUN_140357dd0			
+0x1447cda20	getNamespaceForPrefix	FUN_140357fc0			
+0x1447cda30	getPrefixForNamespace	FUN_140358260			
+0x1447cda40	hasChildNodes	FUN_140354d20			
+0x1447cda50	insertBefore	FUN_140355bd0			
+0x1447cda60	removeNode	FUN_140355170			
+0x1447cda70	toString	FUN_140355630			
+0x144816288	OP_0xFF	FUN_1404926c0			
+0x144823690	SMTP	FUN_140581180			
+0x1448239f0	POP3	FUN_140582a30			
+0x144823bc0	IMAP	FUN_140584440			
+0x144823e20	TFTP	FUN_1405857e0			
+0x1448250b0	FTP	FUN_14058b5e0			
+0x1448ad590	import	FUN_143db6e30			
+0x1448ad5a0	new	FUN_143db5210			
+0x1448ad5b0	delegate	FUN_143db4d90			
+0x1448ad5c0	CreateObject	FUN_143db58b0			
+0x1448ad5d0	CreateWindow	FUN_143db53a0			
+0x1448ad5e0	GetDataSource	FUN_143db6c30			
+0x1448ad5f0	GetWindow	FUN_143db6080			
+0x1448ad600	ShowWindow	FUN_143db5bc0			
+0x1448ad610	GetScreenSize	FUN_143db69c0			
+0x1448ad620	BrowseTo	FUN_143db6610			
+0x1448ad630	GetOpenWindows	FUN_143db6790			
+0x14511fd80	InstancedGame	FUN_1437a0000			
+0x145155608	VORBIS	FUN_140a00000			
+0x14515cd20	CallLua	FUN_143052220			
+0x14515cd30	CallLuaWindow	FUN_143052000			
+0x14515cd40	CallLuaWidget	FUN_143052110			
+0x14515cd50	QueryLuaValue	FUN_143052330			
+0x14515cd60	QueryLuaWindowValue	FUN_143052520			
+0x14515cd70	QueryLuaWidgetValue	FUN_143052780			
+0x14515cd80	DSGetRowCount	FUN_1430529b0			
+0x14515cd90	DSGetColumnCount	FUN_143052b20			
+0x14515cda0	DSGetColumnName	FUN_143052ce0			
+0x14515cdb0	DSGetData	FUN_143052ef0			
+0x14515cdc0	DSGetDataByGuid	FUN_143053190			
+0x14515cdd0	DSGetRowByColumn	FUN_14304fd20			
+0x14515cde0	DSAddListener	FUN_143050000			
+0x14515cdf0	DSRemoveListener	FUN_1430500a0			
+0x14515ce00	DSRemoveAllListeners	FUN_143050140			
+0x14515ce10	SOEmoteRegisterInput	FUN_1430501c0			
+0x14515ce20	SOEmoteUnregisterInput	FUN_143050270			
+0x14515ce30	StartDrag	FUN_143050320			
+0x14515ce40	SOEGuiRegisterMovie	FUN_143050be0			
+0x14515ce50	SOEGuiUnregisterMovie	FUN_143050cd0			
+0x14515ce60	DSModifyDataRow	FUN_143050dc0			
+0x14515ce70	SOEGuiRegisterDragHandler	FUN_143051100			
+0x14515ce80	SOEGuiUnregisterDragHandler	FUN_1430511f0			
+0x14515ce90	SOEGuiDeliverDrag	FUN_1430512e0			
+0x14515cea0	SetIsDragable	FUN_1430513d0			
+0x14515ceb0	DSClearData	FUN_143051430			
+0x14515cec0	DSSortData	FUN_1430515c0			
+0x14515ced0	DSGetDataObject	FUN_143051b00			
+0x14515cee0	DSSetDragData	FUN_143051840			
+0x1451c90c8	muzzle1	FUN_142800000			
+0x1451e5fa0	offset	FUN_1439209c0			
+0x1451e5fb0	codepoint	FUN_1439206c0			
+0x1451e5fc0	char	FUN_1439208a0			
+0x1451e5fd0	len	FUN_143920500			
+0x1451e5fe0	codes	FUN_143920b40			
+0x1451fab40	trace	FUN_1402ca7c0			
+0x1451fab50	parseInt	FUN_1402caa50			
+0x1451fab60	parseFloat	FUN_1402cac30			
+0x1451fab70	ifFrameLoaded	FUN_1402cad20			
+0x1451fab80	isNaN	FUN_1402cae00			
+0x1451fab90	isFinite	FUN_1402caed0			
+0x1451faba0	escape	FUN_1402cb070			
+0x1451fabb0	unescape	FUN_1402cb1c0			
+0x1451fabc0	escapeSpecialHTML	FUN_1402cb310			
+0x1451fabd0	unescapeSpecialHTML	FUN_1402cb460			
+0x1451fabe0	updateAfterEvent	FUN_140283500			
+0x1451fabf0	setInterval	FUN_1402f61c0			
+0x1451fac00	clearInterval	FUN_1402e6930			
+0x1451fac10	setTimeout	FUN_1402f61d0			
+0x1451fac20	clearTimeout	FUN_1402e69e0			
+0x1451fac30	imecommand	FUN_1402cb5b0			
+0x1451fac40	setIMECandidateListStyle	FUN_1402cb720			
+0x1451fac50	getInputLanguage	FUN_1402a8910			
+0x1451fac60	getIMECandidateListStyle	FUN_1402f6750			
+0x1451fac70	ASSetPropFlags	FUN_1402f1760			
+0x1451fac80	ASnative	FUN_14031e2f0			
+0x1451fbab0	charAt	FUN_1402e2f90			
+0x1451fbac0	charCodeAt	FUN_1402e3100			
+0x1451fbad0	concat	FUN_1402e3230			
+0x1451fbae0	indexOf	FUN_1402e33c0			
+0x1451fbaf0	lastIndexOf	FUN_1402e3630			
+0x1451fbb00	localeCompare	FUN_1402e3ea0			
+0x1451fbb10	slice	FUN_1402e38a0			
+0x1451fbb20	split	FUN_1402f3ca0			
+0x1451fbb30	substr	FUN_1402e3ac0			
+0x1451fbb40	substring	FUN_1402e3c90			
+0x1451fbb50	toLowerCase	FUN_1402ace20			
+0x1451fbb60	toString	FUN_1402acec0			
+0x1451fbb70	toUpperCase	FUN_1402acf40			
+0x1451fbb80	valueOf	FUN_1402acfe0			
+0x14522bfb0	AreFileApisANSI	FUN_14393a45e			
+0x14522bff8	CloseHandle	FUN_14393a0da			
+0x14522c010	CreateFileA	FUN_14393a0ce			
+0x14522c028	CreateFileW	FUN_14393a272			
+0x14522c040	CreateFileMapping	FUN_1442f5eb0			
+0x14522c058	CreateFileMappingW	FUN_1442f5eb0			
+0x14522c070	CreateMutexW	FUN_14393a2cc			
+0x14522c088	DeleteFileA	FUN_1442f5eaa			
+0x14522c0a0	DeleteFileW	FUN_14393a278			
+0x14522c0e8	FlushFileBuffers	FUN_14393a27e			
+0x14522c100	FormatMessageA	FUN_14393a2f0			
+0x14522c118	FormatMessageW	FUN_14393a224			
+0x14522c130	FreeLibrary	FUN_14393a18e			
+0x14522c148	GetCurrentProcessId	FUN_14393a20c			
+0x14522c160	GetDiskFreeSpaceA	FUN_1442f5ea4			
+0x14522c178	GetDiskFreeSpaceW	FUN_1442f5e9e			
+0x14522c190	GetFileAttributesA	FUN_1442f5df0			
+0x14522c1a8	GetFileAttributesW	FUN_1442f5e98			
+0x14522c1c0	GetFileAttributesExW	FUN_14393a284			
+0x14522c1d8	GetFileSize	FUN_1442f5e02			
+0x14522c1f0	GetFullPathNameA	FUN_14393a4ee			
+0x14522c208	GetFullPathNameW	FUN_14393a1fa			
+0x14522c220	GetLastError	FUN_14393a0e0			
+0x14522c238	GetProcAddressA	FUN_14393a194			
+0x14522c250	GetSystemInfo	FUN_14393a212			
+0x14522c268	GetSystemTime	FUN_1442f5e92			
+0x14522c280	GetSystemTimeAsFileTime	FUN_14393a1ca			
+0x14522c298	GetTempPathA	FUN_14393a1b8			
+0x14522c2b0	GetTempPathW	FUN_1442f5e8c			
+0x14522c2c8	GetTickCount	FUN_14393a25a			
+0x14522c2e0	GetVersionExA	FUN_14393a3a4			
+0x14522c2f8	HeapAlloc	FUN_14393a40a			
+0x14522c310	HeapCreate	FUN_1442f5e86			
+0x14522c328	HeapDestroy	FUN_1442f5e80			
+0x14522c340	HeapFree	FUN_14393a404			
+0x14522c358	HeapReAlloc	FUN_14393a42e			
+0x14522c370	HeapSize	FUN_14393a4f4			
+0x14522c388	HeapValidate	FUN_1442f5e7a			
+0x14522c3a0	LoadLibraryA	FUN_14393a19a			
+0x14522c3b8	LoadLibraryW	FUN_1442f5dea			
+0x14522c3d0	LocalFree	FUN_14393a566			
+0x14522c3e8	LockFile	FUN_1442f5e74			
+0x14522c400	LockFileEx	FUN_1442f5e6e			
+0x14522c418	MapViewOfFile	FUN_14393a302			
+0x14522c430	MultiByteToWideChar	FUN_14393a3aa			
+0x14522c448	QueryPerformanceCounter	FUN_14393a1be			
+0x14522c460	ReadFile	FUN_14393a1b2			
+0x14522c478	SetEndOfFile	FUN_14393a548			
+0x14522c490	SetFilePointer	FUN_1442f5e68			
+0x14522c4a8	Sleep	FUN_14393a206			
+0x14522c4c0	SystemTimeToFileTime	FUN_14393a2a8			
+0x14522c4d8	UnlockFile	FUN_1442f5e62			
+0x14522c4f0	UnlockFileEx	FUN_1442f5e5c			
+0x14522c508	UnmapViewOfFile	FUN_14393a308			
+0x14522c520	WideCharToMultiByte	FUN_14393a3b0			
+0x14522c538	WriteFile	FUN_14393a0d4			

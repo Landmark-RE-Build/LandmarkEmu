@@ -1,0 +1,35 @@
+# class	opcode text	note — hand-resolved (opcode, sub) for classes no decoded switch reaches (re/tools/trace.py reads this)
+Resources::ResourcePacketSetCharacterResources	0xC4, 0x1	ResourcesBase handler FUN_143568b00 (zone value 0xC3 → FUN_142ee70c0); server CharacterResources.cs
+Resources::ResourcePacketSetCharacterResource	0xC4, 0x2	FUN_143569530 / FUN_143568c10; sent by CharacterResources.Set (sequence, sub, guid, record)
+Resources::ResourcePacketUpdateCharacterResource	0xC4, 0x3	FUN_143568e40
+ActivityJoinErrorPacket	0x8F	placed by placeclasses.py (opcode only): FUN_142d9e8d0 <- FUN_142d9e710
+ActivityLaunchRequest	0xA8	placed by placeclasses.py (opcode only): FUN_143be05a0 <- FUN_143659070 <- FUN_14324f4b0 <- FUN_14324fc00
+ActivityManagerBasePacket	0x8F	placed by placeclasses.py (opcode only): FUN_142d9e8d0 <- FUN_142d9e710
+ClientActivityLaunchRequest	0xA8	placed by placeclasses.py (opcode only): FUN_1436596b0 <- FUN_14324f4b0 <- FUN_14324fc00
+Crafting::BaseRecipePacket	0x42	placed by placeclasses.py (opcode only): FUN_142e9acd0
+DebugAnimationPacketCastDetails	0x119	placed by placeclasses.py (opcode only): FUN_142c42470
+DebugAnimationPacketTargeterDetails	0x119	placed by placeclasses.py (opcode only): FUN_142c42470
+DefinitionFilters::BaseDefinitionFilterPacket	0xCC	placed by placeclasses.py (opcode only): FUN_142db30a0
+DefinitionFilters::DefinitionFilterPacketSetDefinitionIntSet	0xCC	placed by placeclasses.py (opcode only): FUN_142db31b0 <- FUN_142db30a0
+DeployableActionResponsePacket	0xD5	placed by placeclasses.py (opcode only): FUN_142e33330 <- FUN_142f2fa50
+Equipment::BaseEquipmentPacket	0xCB	placed by placeclasses.py (opcode only): FUN_142da4a00
+Equipment::EquipmentPacketUnsetCharacterEquipmentSlot	0xCB	placed by placeclasses.py (opcode only): FUN_142da5580 <- FUN_142da4a00
+Grief::GriefPacketSetGriefPoints	0xC0	placed by placeclasses.py (opcode only): FUN_142e42ff0 <- FUN_142e42e60
+HeroicMovementBasePacket	0x105	placed by placeclasses.py (opcode only): FUN_142c42ab0
+HudPackets::PacketRadialDisplayNotification	0xDC	placed by placeclasses.py (opcode only): FUN_143671890 <- FUN_143393ab0
+IgnoreListPacket	0x72	placed by placeclasses.py (opcode only): FUN_143494180 <- FUN_142f2fb30
+IgnoreRemovePacket	0x72	placed by placeclasses.py (opcode only): FUN_143494180 <- FUN_142f2fb30
+KnownPropBasePacket	0x115	placed by placeclasses.py (opcode only): FUN_142e654e0
+PacketChestEnableWindow	0xFF	placed by placeclasses.py (opcode only): FUN_142dad120
+PacketInGamePurchaseStoreBundleContentResponse	0x45	placed by placeclasses.py (opcode only): FUN_1431acc10 <- FUN_1431adf70
+PacketTeleportNextUndergroundOffer	0xFC	placed by placeclasses.py (opcode only): FUN_1430c6da0 <- FUN_1430c74f0
+PalettePacketPaletteUpdate	0xF5	placed by placeclasses.py (opcode only): FUN_142e74800
+PlayerTitleRemovePacket	0x94	placed by placeclasses.py (opcode only): FUN_142e89bd0
+Projectiles::BaseProjectilePacket	0xEE	placed by placeclasses.py (opcode only): FUN_1430e4ae0
+QuickChatSendDataPacket	0x46	placed by placeclasses.py (opcode only): FUN_143298c40
+QuizRecordUpdatePacket	0xAF	placed by placeclasses.py (opcode only): FUN_143122040 <- FUN_143122e20
+Resources::BaseResourcePacket	0xC4	placed by placeclasses.py (opcode only): FUN_143568b00 <- FUN_142ee70c0
+SpeechPackListPacket	0xDD	placed by placeclasses.py (opcode only): FUN_142f30200
+ThrustPadDataPacket	0xCF	placed by placeclasses.py (opcode only): FUN_142f412c0
+ToolBasePacket	0x117	placed by placeclasses.py (opcode only): FUN_1433ba050
+VoiceLeaveChannelPacket	0xB9	placed by placeclasses.py (opcode only): FUN_143029720

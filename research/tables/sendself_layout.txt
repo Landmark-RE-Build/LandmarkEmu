@@ -1,0 +1,247 @@
+str   +0x18
+Stream_ReadUInt2BitLength -> +0x38
+  u8    *(byte *)param_2
+  u8    +0x39
+  u8    +0x39
+  u8    +0x3a
+  u8    +0x39
+  u8    +0x3a
+  u8    +0x3b
+FUN_142b7ef60 -> +0x750f0
+  FUN_142ba59c0 -> +0x750f0
+    i32   iVar4
+      [loop 1: list elements]
+    FUN_142b95d40 -> +0x750f0
+      u32   +0x750f0
+      u32   +0x750f4
+      u32   +0x750f8
+  u32   +0x75108
+  str   +0x75110
+  u32   +0x75170
+  u32   +0x75174
+  [loop 1: list elements]
+  [loop 2: list elements]
+FUN_142b8c3c0 -> +0x40
+  u32   +0xe0
+  u32   +0xe4
+  u32   +0xe8
+  str   +0x40
+  str   +0x70
+FUN_142b9b7a0 -> +0x72a40
+  i32   iVar2
+    [loop 1: list elements]
+  u32   uVar8
+  u32   *puVar5
+  [loop 3: list elements]
+FUN_142b9d1b0 -> +0x7a9d0
+  i32   iVar9
+    [loop 1: list elements]
+  u32   uVar8
+  u32   *(undefined4 *)(lVar5 + 0xc)
+  u32   *(undefined4 *)(lVar5 + 8)
+  [loop 4: list elements]
+  [loop 5: list elements]
+  [loop 6: list elements]
+  [loop 7: list elements]
+FUN_142b9bce0 -> +0x753f8
+  i32   iVar2
+    [loop 1: list elements]
+  u32   uVar8
+FUN_142ba5eb0 -> +0x75638
+  i32   iVar9
+    [loop 1: list elements]
+FUN_142badf80 -> +0x0
+    [loop 1: list elements]
+    [loop 2: list elements]
+    [loop 3: list elements]
+FUN_142b81c10 -> +0x268b0
+  u32   uVar2
+    [loop 1: list elements]
+  u32   +0x28c63
+  u32   +0x28c62
+  bool  +0x38644
+  u32   +0x3864c
+  u32   +0x28c64
+FUN_142b7f660 -> +0x38658
+  u32   uVar2
+    [loop 1: list elements]
+  [loop 8: list elements]
+FUN_142b82050 -> +0x7aa00
+  FUN_142b9ae90 -> +0x7aa08
+    i32   iVar1
+      [loop 1: list elements]
+    i32   iVar8
+      [loop 2: list elements]
+  FUN_142b9c050 -> +0x7aa38
+    i32   iVar7
+      [loop 1: list elements]
+    u32   uVar6
+    u32   *puVar3
+    u64   *(undefined8 *)(puVar3 + 2)
+  FUN_142b9ae90 -> +0x7aa20
+    i32   iVar1
+      [loop 1: list elements]
+    i32   iVar8
+      [loop 2: list elements]
+    [loop 1: list elements]
+FUN_142b9ae90 -> +0x7adf8
+  i32   iVar1
+    [loop 1: list elements]
+  i32   iVar8
+    [loop 2: list elements]
+FUN_142b9ae90 -> +0x7ae30
+  i32   iVar1
+    [loop 1: list elements]
+  i32   iVar8
+    [loop 2: list elements]
+FUN_142b9ae90 -> +0x7ae48
+  i32   iVar1
+    [loop 1: list elements]
+  i32   iVar8
+    [loop 2: list elements]
+  [loop 9: list elements]
+FUN_142b9ae90 -> +0x75090
+  i32   iVar1
+    [loop 1: list elements]
+  i32   iVar8
+    [loop 2: list elements]
+  [loop 10: list elements]
+  [loop 11: list elements]
+FUN_142b81a70 -> +0x595b0
+  u32   uVar3
+    [loop 1: list elements]
+  u32   local_28
+  u32   uStack_24
+  u32   uVar8
+  u32   +0x596d8
+FUN_142b9b410 -> +0x2b0
+  i32   iVar8
+    [loop 1: list elements]
+  u32   uVar5
+  u32   *puVar4
+  [loop 12: list elements]
+FUN_142b7d220 -> +0x75bf0
+  FUN_142ba2380 -> +0x75bf0
+    i32   iVar3
+      [loop 1: list elements]
+    u32   uVar6
+    u32   *(undefined4 *)(puVar9 + 2)
+  FUN_142ba5c70 -> +0x75c98
+    i32   iVar2
+      [loop 1: list elements]
+    i32   iVar7
+    u8    iVar8
+  u8    +0x75d48
+FUN_142b9b8e0 -> +0x75d68
+  i32   iVar2
+    [loop 1: list elements]
+  u32   uVar8
+  u32   *puVar5
+FUN_142ba3b90 -> +0x75dd0
+  u32   +0x75dd0
+  FUN_142b84e40 -> +0x75dd8
+    u32   +0x75dd8
+    u32   +0x75ddc
+    u32   +0x75de0
+  u32   +0x75dd4
+  FUN_142b84e40 -> +0x75dd8
+    u32   +0x75dd8
+    u32   +0x75ddc
+    u32   +0x75de0
+FUN_142ba3f60 -> +0x75e00
+  i32   iVar8
+    [loop 1: list elements]
+  u32   uVar10
+  u32   *(undefined4 *)puVar7
+  u32   *(undefined4 *)((longlong)puVar7 + 4)
+FUN_142ba3d80 -> +0x75e30
+  i32   iVar10
+    [loop 1: list elements]
+  u32   uVar12
+FUN_142b9cf30 -> +0x75e70
+  i32   iVar3
+    [loop 1: list elements]
+  u32   uVar6
+FUN_142b9d820 -> +0x75f18
+  i32   iVar3
+    [loop 1: list elements]
+  u32   uVar9
+FUN_142ba42c0 -> +0x75fc0
+  u32   +0x75fc0
+  FUN_142b861d0 -> +0x75fc8
+    u32   +0x75fc8
+    u32   +0x75fcc
+    u32   +0x75fd0
+  u32   +0x75fc4
+  FUN_142b861d0 -> +0x75fc8
+    u32   +0x75fc8
+    u32   +0x75fcc
+    u32   +0x75fd0
+FUN_142b98950 -> +0x0
+  u32   +0x0
+  u32   +0x4
+  u32   +0x8
+FUN_142b87860 -> +0x76938
+  FUN_142ba20e0 -> +0x76950
+    i32   iVar3
+      [loop 1: list elements]
+    u32   uVar6
+    u32   *(undefined4 *)(puVar9 + 3)
+  FUN_142b8ba10 -> +0x769b8
+    u32   +0x769b8
+    u32   +0x769bc
+    u64   +0x769c0
+  FUN_142ba2250 -> +0x769c8
+    i32   iVar3
+      [loop 1: list elements]
+    u32   uVar7
+  u8    +0x76a38
+FUN_142ba4800 -> +0x76a58
+  i32   iVar3
+    [loop 1: list elements]
+  u32   uVar6
+FUN_142b98880 -> +0x76db8
+  FUN_142ba4c40 -> +0x76dc0
+    i32   iVar2
+      [loop 1: list elements]
+    u32   local_20
+    u32   local_18
+    u32   *puVar5
+  FUN_142ba4db0 -> +0x76e28
+    i32   iVar2
+      [loop 1: list elements]
+    u32   local_20
+    u32   local_18
+    u32   *puVar5
+  FUN_142ba4f20 -> +0x76e90
+    i32   iVar3
+      [loop 1: list elements]
+    u32   local_20
+    u32   local_18
+    u64   *puVar6
+  FUN_142ba5290 -> +0x76ef8
+    i32   iVar2
+      [loop 1: list elements]
+  FUN_142ba51c0 -> +0x77120
+    i32   iVar2
+      [loop 1: list elements]
+FUN_142b95c60 -> +0x771a0
+  u64   +0x771a0
+  u64   +0x771a8
+  u64   +0x771b0
+  u64   +0x771b8
+  u32   +0x771c0
+FUN_142ba2610 -> +0x771d0
+  i32   iVar2
+    [loop 1: list elements]
+  u32   uVar6
+  u32   *puVar5
+FUN_142ba38f0 -> +0x7ae60
+  FUN_142b9ddd0 -> +0x7ae70
+    i32   iVar7
+      [loop 1: list elements]
+    u32   uVar5
+    u32   *(undefined4 *)(lVar4 + 8)
+    str   +0x7ae70
+    str   +0x7ae70
+  u32   +0x7ae68

@@ -1,0 +1,64 @@
+using NLog;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading;
+
+namespace LandmarkEmulator.WorldServer.Network
+{
+    /// <summary>
+    /// Counts zone packets by their first four wire bytes (u16 base opcode, then the sub-opcode and the start of the
+    /// body), received and sent, and merges the counts into opcode_stats.tsv beside the server once a minute. A research
+    /// aid: re/tools/coverage.py reads the file to rank what clients really send in play against what the server answers.
+    /// Movement updates are not zone packets and are not counted.
+    /// </summary>
+    public static class OpcodeStats
+    {
+        private static readonly ILogger log = LogManager.GetCurrentClassLogger();
+        private static readonly ConcurrentDictionary<string, long> counts = new();
+        private static readonly string path = Path.Combine(AppContext.BaseDirectory, "opcode_stats.tsv");
+        private static readonly Timer flush = new(_ => Flush(), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
+
+        public static void Received(ReadOnlySpan<byte> data) => Count("in", data);
+        public static void Sent(ReadOnlySpan<byte> data) => Count("out", data);
+
+        private static void Count(string direction, ReadOnlySpan<byte> data)
+        {
+            if (data.Length == 0)
+                return;
+            string key = direction + "\t" + Convert.ToHexString(data[..Math.Min(4, data.Length)]);
+            counts.AddOrUpdate(key, 1, (_, n) => n + 1);
+        }
+
+        /// <summary>Adds the counts gathered since the last flush to the file (lines: direction, first bytes, count).</summary>
+        public static void Flush()
+        {
+            if (counts.IsEmpty)
+                return;
+            try
+            {
+                lock (counts)
+                {
+                    var merged = new Dictionary<string, long>();
+                    if (File.Exists(path))
+                        foreach (string line in File.ReadAllLines(path))
+                        {
+                            int tab = line.LastIndexOf('\t');
+                            if (tab > 0 && long.TryParse(line[(tab + 1)..], out long n))
+                                merged[line[..tab]] = n;
+                        }
+                    foreach (string key in counts.Keys.ToList())
+                        if (counts.TryRemove(key, out long n))
+                            merged[key] = merged.GetValueOrDefault(key) + n;
+                    File.WriteAllLines(path, merged.OrderBy(p => p.Key).Select(p => $"{p.Key}\t{p.Value}"));
+                }
+            }
+            catch (Exception e)
+            {
+                log.Warn(e, "Could not write opcode stats.");
+            }
+        }
+    }
+}

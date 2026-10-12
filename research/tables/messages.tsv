@@ -1,0 +1,1384 @@
+opcode	sub	class	functions
+0x1	0x0		
+0x1	0x1		FUN_142b6a7c0 FUN_14332b350
+0x1	0x2		FUN_142b6a7c0 FUN_14332b100
+0x1	0x3		FUN_142b6a7c0 FUN_14332b030
+0x1	0x4		
+0x1	0x5		FUN_142e52080 FUN_142b6a7c0 FUN_14332b4f0
+0x1	0x6		FUN_142b6a7c0 FUN_14332bf90
+0x1	0x7		
+0x1	0x8		FUN_142b6a7c0 FUN_14332b830
+0x2	0x0		
+0x2	0x1		
+0x2	0x2		
+0x2	0x3		
+0x2	0x4		
+0x2	0x5		
+0x2	0x6		
+0x2	0x7		
+0x2	0x8		
+0x2	0x9		
+0x2	0xA		
+0x2	0xB		
+0x2	0xC		
+0x2	0xD		
+0x2	0xE		
+0x2	0xF		
+0x3		BasePreferencePacket	FUN_142bb4ef0 FUN_142b6a7c0 FUN_143b2fa90 FUN_142bb4ef0 FUN_142aa6970 FUN_142aa8eb0
+0x3	0x0		
+0x3	0x1		
+0x3	0x2		
+0x3	0x3		
+0x3	0x4		
+0x3	0x5		
+0x3	0x6		
+0x3	0x7		
+0x3	0x8		
+0x3	0x9		
+0x3	0xA		
+0x3	0xB		
+0x3	0xC		
+0x3	0xD		
+0x3	0xE		
+0x3	0xF		
+0x3	0x10		
+0x4	0x0		
+0x4	0x1		
+0x4	0x2		
+0x4	0x3		
+0x4	0x4		
+0x4	0x5		
+0x4	0x6		
+0x4	0x7		
+0x4	0x8		
+0x4	0x9		
+0x4	0xA		
+0x4	0xB		
+0x4	0xC		
+0x4	0xD		
+0x4	0xE		
+0x4	0xF		
+0x5	0x0		
+0x5	0x1		
+0x5	0x2		
+0x5	0x3		
+0x5	0x4		
+0x5	0x5		
+0x5	0x6		
+0x5	0x7		
+0x5	0x8		
+0x5	0x9		
+0x5	0xA		
+0x5	0xB		
+0x5	0xC		
+0x5	0xD		
+0x5	0xE		
+0x5	0xF		
+0x6	0x0		
+0x6	0x1		
+0x6	0x2		
+0x6	0x3		
+0x6	0x4		
+0x6	0x5		
+0x6	0x6		
+0x6	0x7		
+0x6	0x8		
+0x6	0x9		
+0x6	0xA		
+0x6	0xB		
+0x6	0xC		
+0x6	0xD		
+0x6	0xE		
+0x6	0xF		
+0x7	0x0		
+0x7	0x1		
+0x7	0x2		
+0x7	0x3		
+0x7	0x4		
+0x7	0x5		
+0x7	0x6		
+0x7	0x7		
+0x7	0x8		
+0x7	0x9		
+0x7	0xA		
+0x7	0xB		
+0x7	0xC		
+0x7	0xD		
+0x7	0xE		
+0x7	0xF		
+0x8	0x0		
+0x8	0x1		
+0x8	0x2		
+0x8	0x3		
+0x8	0x4		
+0x8	0x5		
+0x8	0x6		
+0x8	0x7		
+0x8	0x8		
+0x8	0x9		
+0x8	0xA		
+0x8	0xB		
+0x8	0xC		
+0x8	0xD		
+0x8	0xE		
+0x8	0xF		
+0x9	0x0		
+0x9	0x1		
+0x9	0x2		
+0x9	0x3		
+0x9	0x4		
+0x9	0x5		
+0x9	0x6		
+0x9	0x7		
+0x9	0x8		
+0x9	0x9		
+0x9	0xA		
+0x9	0xB		
+0x9	0xC		
+0x9	0xD		
+0x9	0xE		
+0x9	0xF		
+0xA	0x0		
+0xA	0x1		
+0xA	0x2		
+0xA	0x3		
+0xA	0x4		
+0xA	0x5		
+0xA	0x6		
+0xA	0x7		
+0xA	0x8		
+0xA	0x9		
+0xA	0xA		
+0xA	0xB		
+0xA	0xC		
+0xA	0xD		
+0xA	0xE		
+0xA	0xF		
+0xB	0x0		
+0xB	0x1		
+0xB	0x2		
+0xB	0x3		
+0xB	0x4		
+0xB	0x5		
+0xB	0x6		
+0xB	0x7		
+0xB	0x8		
+0xB	0x9		
+0xB	0xA		
+0xB	0xB		
+0xB	0xC		
+0xB	0xD		
+0xB	0xE		
+0xB	0xF		
+0xC	0x0		
+0xC	0x1		
+0xC	0x2		
+0xC	0x3		
+0xC	0x4		
+0xC	0x5		
+0xC	0x6		
+0xC	0x7		
+0xC	0x8		
+0xC	0x9		
+0xC	0xA		
+0xC	0xB		
+0xC	0xC		
+0xC	0xD		
+0xC	0xE		
+0xC	0xF		
+0xD	0x0		
+0xD	0x1		
+0xD	0x2		
+0xD	0x3		
+0xD	0x4		
+0xD	0x5		
+0xD	0x6		
+0xD	0x7		
+0xD	0x8		
+0xD	0x9		
+0xD	0xA		
+0xD	0xB		
+0xD	0xC		
+0xD	0xD		
+0xD	0xE		
+0xD	0xF		
+0xE	0x0		
+0xE	0x1		
+0xE	0x2		
+0xE	0x3		
+0xE	0x4		
+0xE	0x5		
+0xE	0x6		
+0xE	0x7		
+0xE	0x8		
+0xE	0x9		
+0xE	0xA		
+0xE	0xB		
+0xE	0xC		
+0xE	0xD		
+0xE	0xE		
+0xE	0xF		
+0xF		PacketSendSelfToClient	FUN_142bb1050 FUN_142ab5fa0 FUN_142c50630 FUN_142b80420 FUN_143272430 FUN_142f33cf0
+0x12		PacketClientZoneCoordinateInfo	FUN_142b8a3b0 FUN_142c4e420 FUN_142d22e90
+0x12	0x0		
+0x12	0x1		
+0x12	0x2		
+0x12	0x3		
+0x12	0x4		
+0x12	0x5		
+0x12	0x6		
+0x12	0x7		
+0x12	0x8		
+0x12	0x9		
+0x12	0xA		
+0x12	0xB		
+0x12	0xC		
+0x12	0xD		
+0x12	0xE		
+0x12	0xF		
+0x12	0x10		
+0x13	0x0	BasePacket	FUN_1432ad0a0 FUN_1432a9b80 FUN_1432bf130 FUN_1432aed20
+0x13	0x1	ChatPacketEnterArea	FUN_1432ab430 FUN_1432bfe60
+0x13	0x2	ChatPacketDebugChat	FUN_1432a9800 FUN_143351d00
+0x13	0x3	ChatPacketFromStringId	FUN_1432a9950 FUN_142ee6730 FUN_142cef700 FUN_142a8a230 FUN_142ee6730 FUN_142cef700
+0x13	0x4	BasePacket	FUN_1432ad950 FUN_1432aa700 FUN_143aaf9e0 FUN_1432c0f90 FUN_1432af650
+0x13	0x6	PlayerPublicChatCreateRoomResponsePacket	FUN_1432a9e90 FUN_14357d890 FUN_143ab0000 FUN_142a873d0 FUN_1432b4460 FUN_142a8fe80
+0x13	0x7	PlayerPublicChatRoomInviteNotificationPacket	FUN_1432ad660 FUN_1432aa3c0 FUN_14357e020 FUN_142a873d0 FUN_1432b4460 FUN_142a8fe80
+0x13	0x8	PlayerPublicChatRoomInfoNotificationPacket	FUN_1432aa2e0 FUN_14357d8d0
+0x13	0x9	PlayerPublicChatRoomInfoNotificationPacket	
+0x13	0xA	PlayerPublicChatJoinRoomResponsePacket	FUN_1432aa140 FUN_14357e070 FUN_143ab0000 FUN_142a873d0 FUN_1432b4460 FUN_142a8fe80
+0x13	0xB	PlayerPublicChatJoinRoomResponsePacket	
+0x13	0xC	PlayerPublicChatLeaveRoomResponsePacket	FUN_1432aa210 FUN_14357e0a0 FUN_143ab0000 FUN_142a873d0 FUN_1432b4460 FUN_142a8fe80
+0x13	0xD	PlayerPublicChatLeaveRoomResponsePacket	
+0x13	0xE	PlayerPublicChatDestroyRoomResponsePacket	FUN_1432a9f60 FUN_14357d8a0 FUN_143ab0000 FUN_142a873d0 FUN_1432b4460 FUN_142a8fe80
+0x13	0xF	PlayerPublicChatDestroyRoomResponsePacket	
+0x13	0x10	PlayerPublicChatTransferOwnershipResponsePacket	FUN_1432ad720 FUN_1432aa4a0 FUN_14357e0d0 FUN_143ab0000 FUN_142a873d0 FUN_1432b4460
+0x13	0x12	PlayerPublicChatInviteUserResponsePacket	FUN_1432ad430 FUN_1432aa030 FUN_14357e100 FUN_143ab0000 FUN_142a873d0 FUN_1432b4460
+0x13	0x13	BasePacket	FUN_1432ad7d0 FUN_1432aa5a0 FUN_142e52da0 FUN_1432af410 FUN_14373ace0
+0x1A		PacketTargetClientNotOnline	FUN_142bb13b0 FUN_142be2f30
+0x1A	0x0		
+0x1A	0x1		
+0x1A	0x2		
+0x1A	0x3		
+0x1A	0x4		
+0x1A	0x5		
+0x1A	0x6		
+0x1A	0x7		
+0x1A	0x8		
+0x1A	0x9		
+0x1A	0xA		
+0x1A	0xB		
+0x1A	0xC		
+0x1A	0xD		
+0x1A	0xE		
+0x1A	0xF		
+0x1A	0x10		
+0x23		PacketClientBeginZoning	FUN_142bcba10 FUN_142b89b40 FUN_1430aed20
+0x26	0x1	PlayerUpdatePacketRemovePlayerGracefully	FUN_142bb3650 FUN_142bce9c0 FUN_142bb36c0 FUN_142be4450
+0x26	0x2	PlayerUpdatePacketKnockback	FUN_142bcdb60 FUN_142bb2920
+0x26	0x3		FUN_142bb4450
+0x26	0x5	PlayerUpdatePacketAddNotifications	FUN_142bcd5b0 FUN_142bb1bf0 FUN_142c125a0 FUN_142c0ab70 FUN_142c31cf0 FUN_142c38320
+0x26	0x6	PlayerUpdatePacketRemoveNotifications	FUN_142bce8d0 FUN_142bb3270 FUN_142c124a0 FUN_142c0aa60 FUN_142a871b0 FUN_14334f2b0
+0x26	0x7	PlayerUpdatePacketNpcRelevance	FUN_142bce710 FUN_142bb2db0 FUN_142c12490 FUN_142c0aa50 FUN_142a871b0 FUN_142c38320
+0x26	0x8		FUN_142bb4770
+0x26	0x9		FUN_142bb4970
+0x26	0xA		FUN_142bb3730
+0x26	0xB	PlayerUpdatePacketPlayCompositeEffect	FUN_142bce750 FUN_142bb2f10 FUN_142be4330
+0x26	0xC	PlayerUpdatePacketStopCompositeEffect	FUN_142bcf030 FUN_142bb4220
+0x26	0xD	PlayerUpdatePacketSetLookAt	FUN_142bcedc0 FUN_142bb3cc0
+0x26	0xE	PlayerUpdatePacketRenamePlayer	FUN_142bcea60 FUN_142bb37f0 FUN_142be3530
+0x26	0xF	PlayerUpdatePacketUpdateCharacterState	FUN_142bcf180 FUN_142bb6320
+0x26	0x11		FUN_142bb25d0
+0x26	0x13	PlayerUpdatePacketThoughtBubble	FUN_142a871b0 FUN_142bcf110 FUN_142bb6240
+0x26	0x14	PlayerUpdatePacketSetDisposition	FUN_142a871b0 FUN_142bced30 FUN_142bb6160
+0x26	0x15	PlayerUpdatePacketLootEvent	FUN_142a871b0 FUN_142bce550 FUN_142bb5ec0 FUN_142be4240
+0x26	0x16		FUN_142bb61d0
+0x26	0x17	PlayerUpdatePacketFreeze	FUN_142bcda60 FUN_142c36620 FUN_142bb5da0 FUN_142c01690
+0x26	0x19	PlayerUpdateTriggerEffectPackagePacket	FUN_142bcf510 FUN_142bb6400 FUN_142c339f0 FUN_142c38980 FUN_142c39030 FUN_142c39c70
+0x26	0x1A	PlayerUpdatePacketPreferredLanguages	FUN_142bce800 FUN_142bb3060 FUN_142a871b0 FUN_142c38320 FUN_142ee6730
+0x26	0x1B	PlayerUpdatePacketCustomizationChange	FUN_142bcd720 FUN_142bb1f10 FUN_142be3b00
+0x26	0x1C		FUN_142bb2ff0
+0x26	0x1D	PlayerUpdatePacketAddEffectTagCompositeEffect	FUN_142bccfc0 FUN_142bb1950 FUN_142a871b0 FUN_142c38320 FUN_142ee6730 FUN_142a871b0
+0x26	0x1E	PlayerUpdatePacketRemoveEffectTagCompositeEffect	FUN_142bce880 FUN_142bb3140 FUN_142a871b0 FUN_142c38320 FUN_142ee6730 FUN_142bc1610
+0x26	0x1F	PlayerUpdatePacketEffectTagCompositeEffectsEnable	FUN_142bcd9b0 FUN_142bb2520 FUN_142c36620 FUN_142cb5aa0
+0x26	0x21	PlayerUpdatePacketCustomizeNpc	FUN_142bcd7c0 FUN_142bb2040 FUN_142a871b0 FUN_142c38320 FUN_142ee6730 FUN_143c3d550
+0x26	0x22		FUN_142bb3e50
+0x26	0x23	PlayerUpdatePacketSetComboState	FUN_142bceca0 FUN_142bb3b00 FUN_142a871b0 FUN_142c38320 FUN_142ee6730 FUN_142cb3a10
+0x26	0x24	PlayerUpdatePacketSetSurpriseState	FUN_142bceea0 FUN_142bb3f30 FUN_142a871b0 FUN_142c38320 FUN_142ee6730 FUN_142e06a80
+0x26	0x25	PlayerUpdatePacketRemoveNpcCustomization	FUN_142bce910 FUN_142bb3440 FUN_142a871b0 FUN_142c38320 FUN_142ee6730 FUN_143c4b040
+0x26	0x26	PlayerUpdatePacketReplaceBaseModel	FUN_142bcead0 FUN_142bb38d0 FUN_142a871b0 FUN_142c38320 FUN_142ee6730 FUN_142bc1600
+0x26	0x27	PlayerUpdatePacketSetCollidable	FUN_142bcec70 FUN_142bb3a90 FUN_142a871b0 FUN_142c38320 FUN_142ee6730 FUN_142e23ef0
+0x26	0x28	PlayerUpdatePacketUpdateOwner	FUN_142bcf2a0 FUN_142bb44c0 FUN_142a871b0 FUN_142c38320 FUN_142ee6730 FUN_142cb7c80
+0x26	0x29	PlayerUpdatePacketUpdateTintAlias	FUN_142bcf480 FUN_142bb49e0 FUN_142a871b0 FUN_142c38320 FUN_142ee6730 FUN_142cb8550
+0x26	0x2A	PlayerUpdatePacketMoveOnRail	FUN_142bce690 FUN_142bb5fa0 FUN_142c31d30 FUN_142c38320 FUN_142ee6730 FUN_142c36f20
+0x26	0x2B	PlayerUpdatePacketClearMovementRail	FUN_142a871b0 FUN_142bcd690 FUN_142bb5b50 FUN_142c31d10 FUN_142c38320 FUN_142ee6730
+0x26	0x2C	PlayerUpdatePacketMoveOnRelativeRail	FUN_142bce6d0 FUN_142bb6010 FUN_142c31d40 FUN_142c38320 FUN_142ee6730 FUN_142c36f30
+0x26	0x2D	PlayerUpdatePacketDestroyed	FUN_142bcd870 FUN_142bb5c10 FUN_142c349d0 FUN_142c38320 FUN_142ee6730 FUN_142c6c1a0
+0x26	0x2E	PlayerUpdatePacketSeekTarget	FUN_142bcebb0 FUN_142bb6080 FUN_142c349e0 FUN_142c38320 FUN_142ee6730 FUN_142c36570
+0x26	0x2F	PlayerUpdatePacketSeekTargetUpdate	FUN_142bcec00 FUN_142bb60f0 FUN_142c349f0 FUN_142c38320 FUN_142ee6730 FUN_142c39c60
+0x26	0x31	PlayerUpdateLaunchProjectilePacket	FUN_142bccdd0 FUN_142bb5ae0 FUN_142c38250 FUN_142bcf6e0 FUN_142b69cd0 FUN_142a871b0
+0x26	0x33	HudMessagePacket	FUN_142bc8770 FUN_142bb5770 FUN_142a883b0 FUN_142a883b0 FUN_142c31370 FUN_142c31370
+0x26	0x34	PlayerUpdatePacketCustomizationData	FUN_142bcd770 FUN_142bb1f80 FUN_143abf5f0
+0x26	0x35	PlayerMemberStatusUpdatePacket	FUN_142bccc90 FUN_142bb5a00 FUN_142c37df0 FUN_142c38320 FUN_142ee6730 FUN_142c6bf10
+0x26	0x36	PlayerUpdatePacketSetCurrentAdventure	FUN_142bcecd0 FUN_142bb3b70 FUN_142be45a0
+0x26	0x37		FUN_142bb4010
+0x26	0x38		FUN_142bb4290
+0x26	0x39	PlayerUpdatePacketKnockedOut	FUN_142bcdba0 FUN_142bb2990 FUN_142be3da0
+0x26	0x3A	PlayerUpdatePacketKnockedOutDamageReport	FUN_142bcdcb0 FUN_142bb2a00 FUN_142be3de0
+0x26	0x3C	PlayerUpdatePacketRespawnReply	FUN_142bceb80 FUN_142bb39b0
+0x26	0x3E	PlayerUpdatePacketActivateProfile	FUN_142bccf10 FUN_142bb18e0 FUN_142be3760
+0x26	0x3F	PlayerUpdatePacketSetSpotted	FUN_142bcee60 FUN_142bb3ec0 FUN_142be46d0
+0x26	0x40	PlayerUpdatePacketJet	FUN_142a871b0 FUN_142bcdb30 FUN_142bb5e50
+0x26	0x41	PlayerUpdatePacketTurbo	FUN_142a871b0 FUN_142bcf150 FUN_142bb62b0
+0x26	0x42	PlayerUpdatePacketStartRevive	FUN_142bcefc0 FUN_142bb40f0
+0x26	0x43	PlayerUpdatePacketStopRevive	FUN_142bcf0d0 FUN_142bb4370
+0x26	0x44	PlayerUpdatePacketReadyToRevive	FUN_142bce830 FUN_142bb30d0
+0x26	0x45	PlayerUpdatePacketSetFactionId	FUN_142bc1230 FUN_142a871b0 FUN_142bced90 FUN_142bb3c50
+0x26	0x46	PlayerUpdatePacketSetBattleRank	FUN_142a871b0 FUN_142bcec40 FUN_142bb3a20
+0x26	0x47	PlayerUpdatePacketStartHeal	FUN_142bcef80 FUN_142bb4080
+0x26	0x48	PlayerUpdatePacketStopHeal	FUN_142bcf090 FUN_142bb4300
+0x26	0x49	PacketPlayerCurrencyChange	FUN_142a871b0 FUN_142bcc170 FUN_142bb0d50 FUN_142be2bf0
+0x26	0x4A	PacketPlayerRewardCurrency	FUN_142a871b0 FUN_142bcc220 FUN_142bb0f60 FUN_142be2c60
+0x26	0x4B		FUN_142bccaf0 FUN_142bb1790
+0x26	0x4D	PlayerUpdatePacketManagedObject	FUN_142c43990
+0x26	0x4E	PlayerUpdatePacketMaterialTypeOverride	FUN_142bce5e0 FUN_142bb5f30 FUN_142c31d20 FUN_142c382e0 FUN_142c36800 FUN_142cb6c10
+0x26	0x4F	PlayerUpdateDebrisLaunchPacket	FUN_142bccd90 FUN_142bb5a70 FUN_142c31d00 FUN_142c349a0 FUN_142be7c20 FUN_142a871b0
+0x26	0x50		FUN_142bb2740
+0x26	0x51	PlayerUpdatePacketUpdateCharacterStateDelta	FUN_142bcf1b0 FUN_142bb6390
+0x26	0x52		FUN_142ab5fa0 FUN_142f34460
+0x26	0x53	PlayerUpdatePacketUpdateStat	FUN_142bcf410 FUN_142bb47e0 FUN_142be4970
+0x26	0x54	PlayerUpdatePacketAnimationRequest	FUN_142bcd5f0 FUN_142bb1d60
+0x26	0x55		FUN_142bccea0 FUN_142bb1800 FUN_142be36e0
+0x26	0x56	PlayerUpdatePacketPlayWorldCompositeEffect	FUN_142bce7a0 FUN_142bb2f80 FUN_142bc1600 FUN_142bd2120 FUN_142cb6b30 FUN_142cb7ed0
+0x26	0x57	PlayerUpdatePacketAFK	FUN_142bccee0 FUN_142bb1870
+0x26	0x58	PlayerUpdatePacketAddLightweightPc	FUN_142bcd2d0 FUN_142b8d680 FUN_142bcfe10 FUN_142a91160 FUN_142a91160 FUN_142a91160
+0x26	0x59	PlayerUpdatePacketAddLightweightNpc	FUN_142bcd080 FUN_142b8cfc0 FUN_142c43fe0
+0x26	0x5A	PlayerUpdatePacketAddLightweightVehicle	FUN_142bcd4d0 FUN_142b8dd20 FUN_142c44df0
+0x26	0x5B		FUN_142b8fb40 FUN_142b88bc0 FUN_142b93270 FUN_142b83ff0 FUN_142bd8e30 FUN_142bd9090
+0x26	0x5C	PlayerUpdatePacketLightweightToFullNpc	FUN_142bcdf40 FUN_142b8f230 FUN_142c45940 FUN_142be3ea0
+0x26	0x5D	PlayerUpdatePacketLightweightToFullVehicle	FUN_142bce2b0 FUN_142b8fc70 FUN_142c45aa0 FUN_142be4110
+0x26	0x5F	PacketPlayerInitiateNameChange	FUN_142a871b0 FUN_142bcc1c0 FUN_142bb0e30
+0x26	0x60	PacketPlayerNameChangeResult	FUN_142a871b0 FUN_142bcc1f0 FUN_142bb0ef0
+0x26	0x62	PlayerUpdatePacketAddLightweightProp	FUN_142bcd3f0 FUN_142b8dc00 FUN_142c44700 FUN_142bd2b80
+0x26	0x63	PlayerUpdatePacketLightweightToFullProp	FUN_142bce240 FUN_142bb2ae0 FUN_142be4080
+0x26	0x64	PlayerUpdatePacketSourceGeometryOffset	FUN_142bcef00 FUN_142bb3fa0
+0x26	0x65		FUN_142bb3940
+0x26	0x66		FUN_142bb0000
+0x26	0x67		FUN_142bb1ea0
+0x26	0x72		FUN_142b90140 FUN_142c45c90
+0x26	0x74	PlayerUpdatePacketAddFeatherweightObject	FUN_142bcd010 FUN_142b8cd60 FUN_142c43c50
+0x26	0x75		FUN_142bb31b0
+0x26	0x76	PlayerUpdatePacketFlashTemplateInformation	FUN_142bcda00 FUN_142bb5d30 FUN_142c45380
+0x26	0x78	PlayerUpdatePacketDoCombatNotification	FUN_142bcd940 FUN_142bb5c80 FUN_142c30fa0 FUN_142c36e30 FUN_142de2650
+0x26	0x79	PlayerUpdatePacketDisplayPropText	FUN_142bcd8f0 FUN_142bb23d0 FUN_142c30fa0 FUN_142c38320 FUN_142ee6ce0 FUN_142be3bd0
+0x26	0x7A	PlayerUpdatePacketSetPropTint	FUN_142bcede0 FUN_142bb3d30 FUN_142c30fa0 FUN_142c38320 FUN_142a871b0 FUN_142ee6730
+0x26	0x7C	PlayerUpdatePacketUpdatePropName	FUN_142bcf390 FUN_142bb4650 FUN_142be4910
+0x26	0x7D	PlayerUpdatePacketUpdateEditProperties	FUN_142bcf1f0 FUN_142bb43e0 FUN_142c38260 FUN_142c33890 FUN_142be7b20 FUN_142a871b0
+0x26	0x7E	PlayerUpdatePacketDebugAILineOfSight	FUN_142bcd820 FUN_142bb2250 FUN_142b1ee30 FUN_142a86720 FUN_142a871b0 FUN_142a871b0
+0x26	0x7F		FUN_142b1ee30 FUN_142c2ab90 FUN_142b69870 FUN_142b69870 FUN_142a86720 FUN_142a871b0
+0x27	0x3	Abilities::AbilityPacketCasterInfoReply	FUN_142d696b0 FUN_142d63690 FUN_142d7a7d0 FUN_142d6c400
+0x27	0x4	Abilities::AbilityPacketAbilityStart	FUN_142d62de0 FUN_142d799b0
+0x27	0x5	Abilities::AbilityPacketAbilityEnd	FUN_142d62d00 FUN_142d798a0
+0x27	0x6	Abilities::AbilityPacketCastFail	FUN_142d63390 FUN_142d79ee0
+0x27	0x7	Abilities::AbilityPacketCastSuccess	FUN_142d63510 FUN_142d7a370
+0x27	0x8	Abilities::AbilityPacketCastContinue	FUN_142d63190 FUN_142d79bc0
+0x27	0x9	Abilities::AbilityPacketTargeterStart	FUN_142d65540 FUN_142d7e470
+0x27	0xA	Abilities::AbilityPacketTargeterUpdate	FUN_142d656d0 FUN_142d7e6d0
+0x27	0xB	Abilities::AbilityPacketTargeterEnd	FUN_142d65440 FUN_142d7e2d0
+0x27	0xC	Abilities::AbilityPacketEffectStart	FUN_142d699d0 FUN_142d64890 FUN_142d7b690
+0x27	0xD	Abilities::AbilityPacketEffectEnd	FUN_142d64420 FUN_142d7aca0
+0x27	0x10	Abilities::AbilityPacketAbilityStartFailed	FUN_142d63050 FUN_142d7e070
+0x27	0x11	Abilities::AbilityPacketAbilityStartCanceled	FUN_142d62f90 FUN_142d7de20
+0x27	0x12	Abilities::AbilityPacketPlayAnim	FUN_142d650a0 FUN_142d7da00
+0x27	0x14	Abilities::AbilityPacketIdDefaultInfoReply	FUN_142d67990
+0x27	0x19	Abilities::AbilityPacketPlayVfx	FUN_142d67b20 FUN_143c98870
+0x27	0x1A	Abilities::AbilityPacketUpdateEffect	FUN_142d65800 FUN_142d7e820
+0x27	0x1B	Abilities::AbilityPacketLowerCurrentCooldown	FUN_142d64fe0 FUN_142f2b5b0
+0x27	0x1C	Abilities::AbilityPacketEffectInitialized	FUN_142d64620 FUN_142d7b4f0
+0x27	0x1F	Abilities::AbilityPacketClearCurrentCooldown	FUN_142d67720 FUN_142f2bd10
+0x27	0x20	Abilities::AbilityPacketClearAllCooldowns	
+0x27	0x21	Abilities::AbilityPacketShapeStart	FUN_142d65310 FUN_142d7dd30
+0x27	0x22	Abilities::AbilityPacketClearAllCooldowns	FUN_142d65210 FUN_142d7dc30
+0x27	0x23	Abilities::AbilityPacketClientTargeterEnd	FUN_142d64340 FUN_14349def0
+0x2A	0xD	MiniGameMessagePacket	FUN_14326a7a0
+0x2A	0xE	MiniGameInfoPacket	FUN_14326a530
+0x2A	0xF		
+0x2A	0x10		
+0x2A	0x11		
+0x2A	0x12	BaseMiniGamePacket	FUN_1432617d0 FUN_142cb5d40
+0x2A	0x13		
+0x2A	0x14		
+0x2A	0x15	MiniGameKnockOutPacket	FUN_14326a690
+0x2A	0x16		
+0x2A	0x17		
+0x2A	0x18		
+0x2A	0x19		
+0x2A	0x1A		
+0x2A	0x1B		
+0x2A	0x1C		
+0x2A	0x25		FUN_142bbec00 FUN_143263b40 FUN_142bbec00 FUN_1431bd910 FUN_14317e740
+0x2A	0x29	MiniGameGroupInfoPacket	FUN_14326a410
+0x2A	0x2A		FUN_14326fdc0
+0x2A	0x33		
+0x2D	0x12	InventoryPacketItemTooltipReply	FUN_142e7be00 FUN_142e784e0 FUN_143463610 FUN_142e7cbb0
+0x2D	0x14	InventoryPacketReplySalvageItem	FUN_142e78740 FUN_142e82120
+0x2D	0x17	InventoryPacketSetSize	FUN_142e788b0
+0x2D	0x18	InventoryPacketGrapplingHookEquipped	
+0x2D	0x19	InventoryPacketTransferItemResponse	FUN_142e78a30 FUN_143b966c0 FUN_142a8a9b0
+0x2D	0x1A	InventoryPacketLootNotification	FUN_142e78620 FUN_142e7f050
+0x2D	0x1B	InventoryPacketCatalystDefinitions	FUN_142e78390 FUN_1430e9a70 FUN_14373ace0
+0x2D	0x1C	InventoryPacketRequestOverflowAbsorb	
+0x2D	0x1D	InventoryPacketSetVoxelStorage	FUN_142e78970 FUN_142cef830 FUN_142cef830 FUN_142cf17b0 FUN_142cf17b0 FUN_142cf2070
+0x2E		PacketSendZoneDetails	FUN_142bcc350 FUN_142b8aee0 FUN_142cb9720 FUN_142a8c1c0
+0x2E	0x0		
+0x2E	0x1		
+0x2E	0x2		
+0x2E	0x3		
+0x2E	0x4		
+0x2E	0x5		
+0x2E	0x6		
+0x2E	0x7		
+0x2E	0x8		
+0x2E	0x9		
+0x2E	0xA		
+0x2E	0xB		
+0x2E	0xC		
+0x2E	0xD		
+0x2E	0xE		
+0x2E	0xF		
+0x2E	0x10		
+0x30	0xFFFFFFFC	ObjectiveActivatePacket	FUN_143261f30 FUN_14326f6d0
+0x30	0xFFFFFFFD	ObjectiveUpdatePacket	FUN_143262520 FUN_14326fd80
+0x30	0xFFFFFFFE	ObjectiveCompletePacket	FUN_143262110 FUN_14326f760
+0x30	0xFFFFFFFF	ObjectiveFailPacket	FUN_143263ef0 FUN_14326fa70
+0x30	0x100000000	ObjectiveUnhidePacket	FUN_142bcb7e0 FUN_143264130 FUN_14326fc80 FUN_143ac7610
+0x30	0x100000001	ObjectiveLookAtPacket	FUN_143262280 FUN_1436643b0
+0x30	0x100000002	ObjectiveLookAtPacket	
+0x30	0x100000003	ObjectiveClientClearPacket	FUN_143263d20 FUN_143664570
+0x30	0x100000004	ObjectiveClientCompleteFailedPacket	FUN_143263dd0 FUN_143664890 FUN_14373ace0
+0x30	0x100000005	ObjectiveUIEventPacket	FUN_143264010 FUN_142a8a230 FUN_1436644b0
+0x30	0x100000006	ObjectiveUIEventPacket	
+0x32	0xFFFFFFFE	TaskAddPacket	FUN_14333c6d0
+0x32	0xFFFFFFFF	TaskUpdatePacket	FUN_14333e900
+0x32	0x100000000	TaskCompletePacket	FUN_14333e7a0
+0x32	0x100000001	TaskFailPacket	FUN_14333e850
+0x32	0x100000002	TaskFailPacket	FUN_14334f680
+0x32	0x100000004	ExecuteScriptPacket	FUN_14333e250 FUN_142e3fdf0 FUN_142e3d110 FUN_1429dea90 FUN_143340390
+0x32	0x100000005	ActivityProfileListPacket	FUN_142a8a230 FUN_142a8a230 FUN_14333e4a0 FUN_142c57d80 FUN_142bc6360 FUN_142cb8940
+0x32	0x100000006	StartTimerPacket	FUN_14333e680 FUN_1433535d0
+0x32	0x100000007	StartTimerPacket	FUN_143347820
+0x32	0x10000000A	ObjectiveTargetUpdatePacket	FUN_14333c490 FUN_143346870
+0x32	0x10000000B	UiMessagePacket	FUN_14333e9d0 FUN_142cbd1b0 FUN_143ad8400 FUN_143ad8500 FUN_142e3d110
+0x32	0x10000000C	CinematicStartLookAtPacket	FUN_14333c060 FUN_142c11380 FUN_142b69630 FUN_142b69630
+0x32	0x10000000D	WeaponHitFeedbackPacket	FUN_14333c990 FUN_143353860
+0x32	0x10000000E	ActivityProfileListPacket	FUN_14333c260 FUN_142c57d80 FUN_142bc6360 FUN_142cb8890 FUN_142c57d80 FUN_142bc6360
+0x32	0x10000000F	HeadShotFeedbackPacket	
+0x32	0x100000010	WaypointCooldownPacket	FUN_143735800 FUN_14333ea90 FUN_143032520 FUN_143340a20
+0x32	0x100000011	ZoneWaypointPacket	FUN_143735800 FUN_14333ebc0 FUN_143031850 FUN_14333fe80
+0x32	0x100000012	InteractStartPacket	FUN_14333c320 FUN_14373ace0
+0x32	0x100000013	InteractStartPacket	
+0x34	0xFFFFFFFC	QuestInfoPacket	FUN_142bd0810 FUN_142e8ac40 FUN_142c320b0 FUN_143ac7610
+0x34	0xFFFFFFFD	QuestInfoPacket	
+0x34	0xFFFFFFFE	QuestAddPacket	FUN_142bcffc0 FUN_142e8a8f0 FUN_142e8d310
+0x34	0xFFFFFFFF	QuestCompletePacket	FUN_142e8bbc0
+0x34	0x100000000	QuestFailedPacket	FUN_142e8bce0
+0x34	0x100000001	QuestAbandonedPacket	FUN_142e8a830
+0x34	0x100000002	QuestObjectiveAddedPacket	FUN_142bcb7e0 FUN_142e8be70 FUN_142e8d390
+0x34	0x100000003	QuestObjectiveActivatedPacket	FUN_142e8ae90 FUN_142e8d110 FUN_14334b090
+0x34	0x100000004	QuestObjectiveUpdatePacket	FUN_142e8b240 FUN_142e8fa00
+0x34	0x100000005	QuestObjectiveCompletePacket	FUN_142e8b040 FUN_142e8d550
+0x34	0x100000006	QuestObjectiveFailedPacket	FUN_142e8b180 FUN_142e8d920
+0x34	0x100000007	CompletedQuestCountUpdatePacket	FUN_142e8ba30
+0x34	0x100000008	QuestEndPacket	FUN_142bd0810 FUN_142e8aa40 FUN_143353120 FUN_143ac7610
+0x34	0x100000009	QuestEndPacket	
+0x34	0x10000000A	QuestSelectedPacket	FUN_142e8c0a0 FUN_142e8f290 FUN_14373ace0
+0x34	0x10000000B	QuestSelectedPacket	
+0x35	0x0		
+0x35	0x1		
+0x35	0x2		
+0x35	0x3		
+0x35	0x4		
+0x35	0x5		
+0x35	0x6		
+0x35	0x7		
+0x35	0x8		
+0x35	0x9		
+0x35	0xA		
+0x35	0xB		
+0x35	0xC		
+0x35	0xD		
+0x35	0xE		
+0x35	0xF		
+0x35	0x10		
+0x38		PacketDelayWrappedPacket	FUN_142b8a550 FUN_142c1df60 FUN_142d1f470
+0x3E	0x2	TradeInvitePacket	FUN_14358ccb0 FUN_142be7910 FUN_14332ed20
+0x3E	0x4	TradeStartSessionPacket	FUN_14358ce80 FUN_14358ec70 FUN_142ebef60 FUN_142be7910 FUN_142ccaae0 FUN_142cc88a0
+0x3E	0x5	TradeEndSessionPacket	FUN_14358df00 FUN_142d4b4b0 FUN_14358ec70 FUN_142e3d110
+0x3E	0xA	TradeUpdateCoinCountPacket	FUN_14358d170 FUN_142ccaae0 FUN_142cc88a0 FUN_142ccae00 FUN_142ccc4c0 FUN_14358ffe0
+0x3E	0xB	TradeUpdateAddItemPacket	FUN_143abc750 FUN_14358d030
+0x3E	0xC	TradeUpdateItemCountPacket	FUN_14358d280
+0x3E	0xD	TradeUpdateAcceptPacket	FUN_14358cf70 FUN_142ccaae0 FUN_142cc88a0 FUN_142ccae00 FUN_142ccc4c0 FUN_142cccb70
+0x3E	0xE	TradeMessagePacket	FUN_14358e020
+0x3E	0xF	TradeRejectedPacket	FUN_14358e0e0 FUN_143353000 FUN_142be3530 FUN_14373ace0
+0x42	0x2	Crafting::RecipeStartResponsePacket	
+0x42	0x4	Crafting::RecipeCancelResponsePacket	
+0x42	0x5	Crafting::RecipeCompleteResponsePacket	
+0x42	0x7	Crafting::RecipeCraftWindowEnableResponsePacket	FUN_142e91340 FUN_143ad83d0 FUN_143ad8540 FUN_142ab2460
+0x42	0x8	Crafting::RecipeAddRecipeResponsePacket	FUN_142e91100
+0x42	0x9	Crafting::RecipeRemoveRecipeResponsePacket	
+0x42	0xB	Crafting::RecipeUpgradeResponsePacket	FUN_142e964b0 FUN_142e91ce0 FUN_142ea0100 FUN_142e8fe80 FUN_142c35cc0 FUN_142e94850
+0x42	0xD	Crafting::RecipeRemoveUpgradeResponsePacket	FUN_142e91950
+0x42	0xF	Crafting::RecipeUpgradeStatResponsePacket	
+0x42	0x10	Crafting::RecipeRefiningProcessResponsePacket	FUN_142e91680 FUN_142e977c0 FUN_14355a490 FUN_142e97210
+0x42	0x13	Crafting::RecipeRefiningStateResponsePacket	FUN_142e91780 FUN_14355a4a0
+0x42	0x15	Crafting::RecipeRefiningOutputResponsePacket	
+0x42	0x1A		FUN_142e91a90 FUN_142ea1660 FUN_14355a700
+0x42	0x1B		FUN_142e91430 FUN_142e979b0 FUN_142aad2c0
+0x42	0x1D	Crafting::RecipecComponentImageSetIdsResponsePacket	FUN_142e91e20 FUN_142d6d0a0 FUN_142c31440 FUN_142d95d20 FUN_142e97540
+0x42	0x1E	Crafting::PlayerRecipeDataUpdatePacket	FUN_142e91040 FUN_143b96810 FUN_142e9a760 FUN_142e98c90 FUN_142e9a690 FUN_143560330
+0x42	0x1F	Crafting::RecipeHideRecipeResponsePacket	FUN_142e914b0
+0x42	0x20	Crafting::RecipeUnhideRecipeResponsePacket	FUN_142e91c50 FUN_142e99cc0 FUN_142e9fe60 FUN_143559910
+0x42	0x22	Crafting::RecipeRepairItemResponsePacket	FUN_142e91a00
+0x42	0x24	Crafting::RecipeCraftWindowEnableRequestPacket	FUN_142e91540 FUN_142e99610
+0x45	0x2	PacketInGamePurchasePreviewOrderResponse	FUN_1431a9d60
+0x45	0x3		
+0x45	0x4	PacketInGamePurchasePlaceOrderResponse	FUN_1431aa220
+0x45	0x5	PacketInGamePurchaseStoreBundleBase	FUN_1431ace90
+0x45	0x6	PacketInGamePurchaseStoreBundleCategoryGroups	FUN_1431ac880
+0x45	0x7	PacketInGamePurchaseStoreBundleCategories	FUN_1431ac780
+0x45	0x8	PacketInGamePurchaseStoreBundleTags	FUN_1431acb10
+0x45	0x9		FUN_1431a97f0
+0x45	0xA	PacketInGamePurchaseStoreBundleGroups	FUN_1431ac990
+0x45	0xB		
+0x45	0xC	PacketInGamePurchaseWalletInfoResponse	FUN_1431adaf0
+0x45	0xD		
+0x45	0xE	PacketInGamePurchaseServerStatusResponse	FUN_1431ab880
+0x45	0xF		
+0x45	0x10	PacketInGamePurchaseStationCashProductsResponse	FUN_1431abee0
+0x45	0x11		
+0x45	0x12		
+0x45	0x13		
+0x45	0x14	PacketInGamePurchaseStateCodesResponse	FUN_1431abd10
+0x45	0x15		
+0x45	0x16	PacketInGamePurchaseCountryCodesResponse	FUN_1431a8910
+0x45	0x17		
+0x45	0x18	PacketInGamePurchaseSubscriptionProductsResponse	FUN_1431ad260
+0x45	0x19	PacketInGamePurchaseEnableMarketplace	FUN_1431a9710
+0x45	0x1A		
+0x45	0x1B	PacketInGamePurchaseAccountInfoResponse	FUN_1431a67b0
+0x45	0x1C		
+0x45	0x1D	PacketInGamePurchaseStoreBundleBase	FUN_1431acc10
+0x45	0x1E		
+0x45	0x20	PacketInGamePurchaseDisplayMannequinStoreBundles	FUN_1431a94e0
+0x45	0x21		
+0x45	0x22	PacketInGamePurchaseStoreEnablePaymentSources	FUN_1431ad1b0
+0x45	0x26	PacketInGamePurchaseGiftNotification	FUN_1431ab650
+0x45	0x27		FUN_1431a69c0
+0x45	0x29	PacketInGamePurchaseNudgeOfferNotification	FUN_1431a9cb0
+0x45	0x2B	PacketInGamePurchaseSpiceWebAuthUrlResponse	FUN_1431abaf0
+0x45	0x2C	PacketInGamePurchaseBundlePriceUpdate	FUN_1431ab420
+0x45	0x2D	PacketInGamePurchaseWalletBalanceUpdate	FUN_1431ada10
+0x45	0x2E	PacketInGamePurchaseCommerceConfiguration	FUN_1431a7380
+0x45	0x30	PacketInGamePurchaseCommerceProductCreateResponse	FUN_1431a7430
+0x45	0x38	PacketInGamePurchaseCommerceAccountStore	FUN_1431a6b70
+0x45	0x39	PacketInGamePurchaseCommerceAddFollowing	FUN_1431a6d90
+0x45	0x3A	PacketInGamePurchaseCommerceRemoveFollowing	FUN_1431a7c70
+0x45	0x3C	PacketInGamePurchaseCommerceProductUpdated	FUN_1431a74e0
+0x45	0x3E		FUN_1431a8470
+0x45	0x40	PacketInGamePurchaseCommerceReviewProductResponse	FUN_1431a7fc0
+0x45	0x41	AdminCommandPacketInGamePurchaseGetAdminReviewsReply	FUN_1431a71c0
+0x45	0x43	PacketInGamePurchaseCommerceSubmitProductReviewResponse	FUN_1431a8620
+0x45	0x44	PacketInGamePurchaseCommerceReviewProductFailed	FUN_1431a8180
+0x45	0x45	PacketInGamePurchaseModifyScreenshotsResponse	FUN_1431a9a70
+0x45	0x47	PacketInGamePurchasePointOfNeedPromptRequestPacket	FUN_1431aa720
+0x45	0x4B	PacketInGamePurchasePointOfNeedInfoResponse	FUN_1431aa490
+0x45	0x4D	PacketInGamePurchaseCommerceIsTemplateValidResponse	FUN_1431ad850
+0x46	0x0		
+0x46	0x1		
+0x46	0x2		
+0x46	0x3		
+0x46	0x4		
+0x46	0x5		
+0x46	0x6		
+0x46	0x7		
+0x46	0x8		
+0x46	0x9		
+0x46	0xA		
+0x46	0xB		
+0x46	0xC		
+0x46	0xD		
+0x46	0xE		
+0x46	0xF		
+0x46	0x10		
+0x48	0x0		FUN_142c3ace0 FUN_1439176f0
+0x48	0x1		FUN_142c3ac60 FUN_1439176f0
+0x48	0x2		FUN_142c3ad10 FUN_143917710
+0x48	0x3		FUN_142c3ad10 FUN_143917710
+0x48	0x4		FUN_142c3add0 FUN_143db8820
+0x48	0x5		
+0x48	0x6		FUN_143d929a0
+0x48	0x7		FUN_143916600 FUN_142c2acf0 FUN_143d929a0 FUN_143d929a0 FUN_1439183f0
+0x48	0x8		FUN_142c3acb0 FUN_142ab6c80 FUN_1439169b0 FUN_142c3acb0 FUN_142ab6c80 FUN_143918d80
+0x48	0x9		FUN_143917a90
+0x4D	0x1	FriendListPacket	FUN_14348d770 FUN_1434928e0 FUN_143497b40
+0x4D	0x2	FriendOnlinePacket	FUN_14348c520 FUN_143493150
+0x4D	0x3	FriendOfflinePacket	FUN_14348d8a0 FUN_143490ae0
+0x4D	0x4	FriendUpdateProfileInfoPacket	FUN_14348ebd0 FUN_14348c990 FUN_143493f00
+0x4D	0x5	FriendUpdatePositionsPacket	FUN_14348db70 FUN_143493a70 FUN_1434982c0 FUN_1429dea90
+0x4D	0x6	FriendAddPacket	FUN_14348e5d0 FUN_14348d6b0 FUN_143492830 FUN_142be3530
+0x4D	0x7	FriendRemovePacket	FUN_14348d9d0 FUN_143493b70
+0x4D	0x8	FriendMessagePacket	FUN_14348e720 FUN_14348c3a0 FUN_143492e90 FUN_142be3530 FUN_142be3530 FUN_14373ace0
+0x4D	0x9	FriendStatusPacket	FUN_14348c850 FUN_143493e80
+0x4D	0xA	FriendRenamePacket	FUN_14348c6a0 FUN_143493db0
+0x4D	0xB	FriendRenamePacket	
+0x53		PacketClientKickedFromServer	FUN_142bb0360 FUN_142cef830 FUN_142cf1680 FUN_142cf2070 FUN_142a91160 FUN_142cbd1b0
+0x53	0x0		
+0x53	0x1		
+0x53	0x2		
+0x53	0x3		
+0x53	0x4		
+0x53	0x5		
+0x53	0x6		
+0x53	0x7		
+0x53	0x8		
+0x53	0x9		
+0x53	0xA		
+0x53	0xB		
+0x53	0xC		
+0x53	0xD		
+0x53	0xE		
+0x53	0xF		
+0x53	0x10		
+0x54		PacketUpdateClientSessionData	FUN_142bcc670 FUN_142b8b520 FUN_142a91160 FUN_142a91160
+0x54	0x0		
+0x54	0x1		
+0x54	0x2		
+0x54	0x3		
+0x54	0x4		
+0x54	0x5		
+0x54	0x6		
+0x54	0x7		
+0x54	0x8		
+0x54	0x9		
+0x54	0xA		
+0x54	0xB		
+0x54	0xC		
+0x54	0xD		
+0x54	0xE		
+0x54	0xF		
+0x54	0x10		
+0x59		PacketWorldDisplayInfo	FUN_142bb1520
+0x5A		PacketMOTD	FUN_142bcc010 FUN_142bb0af0 FUN_142a8a9b0 FUN_143ad8730 FUN_143ad8460 FUN_142cbd1b0
+0x5A	0x0		
+0x5A	0x1		
+0x5A	0x2		
+0x5A	0x3		
+0x5A	0x4		
+0x5A	0x5		
+0x5A	0x6		
+0x5A	0x7		
+0x5A	0x8		
+0x5A	0x9		
+0x5A	0xA		
+0x5A	0xB		
+0x5A	0xC		
+0x5A	0xD		
+0x5A	0xE		
+0x5A	0xF		
+0x5A	0x10		
+0x5C		PacketSetClientArea	FUN_142b8b160 FUN_143caba80 FUN_143c09d10
+0x64		PacketClientExitLaunchUrl	FUN_142bb0150 FUN_142a8a230 FUN_142be26a0
+0x64	0x0		
+0x64	0x1		
+0x64	0x2		
+0x64	0x3		
+0x64	0x4		
+0x64	0x5		
+0x64	0x6		
+0x64	0x7		
+0x64	0x8		
+0x64	0x9		
+0x64	0xA		
+0x64	0xB		
+0x64	0xC		
+0x64	0xD		
+0x64	0xE		
+0x64	0xF		
+0x64	0x10		
+0x65		PacketClientPendingKickFromServer	FUN_142bb0560 FUN_142cef700 FUN_142a8a230 FUN_142a8a9b0 FUN_142cef830 FUN_142cf1680
+0x65	0x0		
+0x65	0x1		
+0x65	0x2		
+0x65	0x3		
+0x65	0x4		
+0x65	0x5		
+0x65	0x6		
+0x65	0x7		
+0x65	0x8		
+0x65	0x9		
+0x65	0xA		
+0x65	0xB		
+0x65	0xC		
+0x65	0xD		
+0x65	0xE		
+0x65	0xF		
+0x65	0x10		
+0x66		PacketMembershipActivation	FUN_142bb0c50 FUN_142f34480 FUN_142e242c0 FUN_142be7d60 FUN_142cb8890 FUN_142e3d110
+0x66	0x0		FUN_142c3ace0 FUN_1439176f0
+0x66	0x1		FUN_142c3ac60 FUN_1439176f0
+0x66	0x2		FUN_142c3ad10 FUN_143917710
+0x66	0x3		FUN_142c3ad10 FUN_143917710
+0x66	0x4		FUN_142c3add0 FUN_143db8820
+0x66	0x5		
+0x66	0x6		FUN_143d929a0
+0x66	0x7		FUN_143916600 FUN_142c2acf0 FUN_143d929a0 FUN_143d929a0 FUN_1439183f0
+0x66	0x8		FUN_142c3acb0 FUN_142ab6c80 FUN_1439169b0 FUN_142c3acb0 FUN_142ab6c80 FUN_143918d80
+0x66	0x9		FUN_143917a90
+0x69		PacketShowSystemMessage	FUN_142b8b220
+0x6A		PacketPOIChangeMessage	FUN_142b8a940 FUN_142f343e0
+0x78		PacketCommerceSessionResponse	FUN_142bb58f0 FUN_142bc1100 FUN_143972530 FUN_142bd8450 FUN_142be29b0
+0x7F		PlayerUpdatePacketUpdatePositionZoneToClient	FUN_142bcf2e0 FUN_142bb4530
+0x83	0x1	GuildDisbandPacket	FUN_142e499b0 FUN_142e53120
+0x83	0x2	GuildRenamePacket	FUN_142e46990 FUN_142e55e50 FUN_142e4ce50
+0x83	0x9	GuildChangeMemberRankPacket	FUN_142e457c0 FUN_142e52850 FUN_142e4c370
+0x83	0xA	GuildMotdUpdatePacket	FUN_142e46610 FUN_142e555a0 FUN_142e4cd00
+0x83	0xD	GuildUpdateRankPacket	FUN_1439953d0 FUN_142e46c20 FUN_142e54d50 FUN_1439955d0
+0x83	0xE	GuildDescriptionUpdatePacket	FUN_142e45c60 FUN_142e53030 FUN_142e4c5e0
+0x83	0x11	GuildDataFullPacket	FUN_143735800 FUN_142e45a90 FUN_142e52e50 FUN_142e594e0
+0x83	0x12	GuildDataPacket	FUN_143997290 FUN_143735800 FUN_142e49860 FUN_142e52fb0 FUN_142e594e0 FUN_142e4c410
+0x83	0x13	GuildInvitationsPacket	FUN_143735800 FUN_142e462b0 FUN_142e53860 FUN_142e594e0
+0x83	0x14	GuildAddMemberPacket	FUN_142e4a900 FUN_142e49570 FUN_142e52500 FUN_142e4c0b0
+0x83	0x15	GuildRemoveMemberPacket	FUN_142e468c0 FUN_142e559d0
+0x83	0x16	GuildUpdateInvitationPacket	FUN_142e4a430 FUN_142e46b40 FUN_142e56100 FUN_142e4bfe0
+0x83	0x17	GuildMemberOnlineStatusPacket	FUN_142e46520 FUN_142e54e00
+0x83	0x18	GuildNotificationPacket	FUN_142e46710 FUN_142e54ae0 FUN_142be3530
+0x83	0x19	GuildAddLogUpdatePacket	FUN_1439976c0 FUN_142e454f0
+0x83	0x1A	GuildRemoveLogUpdatePacket	FUN_142e467f0 FUN_142e54cc0
+0x83	0x1B	GuildUpdateAppDataPacket	FUN_142e46a50 FUN_142e53290 FUN_142e4cf50
+0x84	0x2	GuildDisbandPacket	FUN_142e499b0 FUN_142e53120
+0x84	0x3	GuildRenamePacket	FUN_142e46990 FUN_142e55e50 FUN_142e4ce50
+0x84	0xA	GuildChangeMemberRankPacket	FUN_142e457c0 FUN_142e52850 FUN_142e4c370
+0x84	0xB	GuildMotdUpdatePacket	FUN_142e46610 FUN_142e555a0 FUN_142e4cd00
+0x84	0xE	GuildUpdateRankPacket	FUN_1439953d0 FUN_142e46c20 FUN_142e54d50 FUN_1439955d0
+0x84	0xF	GuildDescriptionUpdatePacket	FUN_142e45c60 FUN_142e53030 FUN_142e4c5e0
+0x84	0x12	GuildDataFullPacket	FUN_143735800 FUN_142e45a90 FUN_142e52e50 FUN_142e594e0
+0x84	0x13	GuildDataPacket	FUN_143997290 FUN_143735800 FUN_142e49860 FUN_142e52fb0 FUN_142e594e0 FUN_142e4c410
+0x84	0x14	GuildInvitationsPacket	FUN_143735800 FUN_142e462b0 FUN_142e53860 FUN_142e594e0
+0x84	0x15	GuildAddMemberPacket	FUN_142e4a900 FUN_142e49570 FUN_142e52500 FUN_142e4c0b0
+0x84	0x16	GuildRemoveMemberPacket	FUN_142e468c0 FUN_142e559d0
+0x84	0x17	GuildUpdateInvitationPacket	FUN_142e4a430 FUN_142e46b40 FUN_142e56100 FUN_142e4bfe0
+0x84	0x18	GuildMemberOnlineStatusPacket	FUN_142e46520 FUN_142e54e00
+0x84	0x19	GuildNotificationPacket	FUN_142e46710 FUN_142e54ae0 FUN_142be3530
+0x84	0x1A	GuildAddLogUpdatePacket	FUN_1439976c0 FUN_142e454f0
+0x84	0x1B	GuildRemoveLogUpdatePacket	FUN_142e467f0 FUN_142e54cc0
+0x84	0x1C	GuildUpdateAppDataPacket	FUN_142e46a50 FUN_142e53290 FUN_142e4cf50
+0x8D	0x0		
+0x8D	0x1		
+0x8D	0x2		
+0x8D	0x3		
+0x8D	0x4		
+0x8D	0x5		
+0x8D	0x6		
+0x8D	0x7		
+0x8D	0x8		
+0x8D	0x9		
+0x8D	0xA		
+0x8D	0xB		
+0x8D	0xC		
+0x8D	0xD		
+0x8D	0xE		
+0x8D	0xF		
+0x8D	0x10		
+0x8E		PacketClientGameSettings	FUN_142b89ef0 FUN_142cb5d40 FUN_143ad4d90 FUN_143ad8740
+0x8F	0x0		
+0x8F	0x1		
+0x8F	0x2		
+0x8F	0x3		
+0x8F	0x4		
+0x8F	0x5		
+0x8F	0x6		
+0x8F	0x7		
+0x8F	0x8		
+0x8F	0x9		
+0x8F	0xA		
+0x8F	0xB		
+0x8F	0xC		
+0x8F	0xD		
+0x8F	0xE		
+0x8F	0xF		
+0x91		BaseInspectPacket	FUN_142bb4e60 FUN_142b95dd0 FUN_142ee6730 FUN_142b6a7c0 FUN_142fea630 FUN_142ebef60
+0x91	0x0		
+0x91	0x1		
+0x91	0x2		
+0x91	0x3		
+0x91	0x4		
+0x91	0x5		
+0x91	0x6		
+0x91	0x7		
+0x91	0x8		
+0x91	0x9		
+0x91	0xA		
+0x91	0xB		
+0x91	0xC		
+0x91	0xD		
+0x91	0xE		
+0x91	0xF		
+0x91	0x10		
+0x92	0x2	AchievementAddPacket	FUN_142bc1f60 FUN_142d8c370 FUN_142d8f4a0 FUN_142bdcb50
+0x92	0x3	BasePacket	FUN_142d8d150 FUN_142d8c550 FUN_142d8f2a0 FUN_142d8e4e0
+0x92	0x4	AchievementCompletePacket	FUN_142d8c430
+0x92	0x5	AchievementObjectiveAddedPacket	FUN_142bcb7e0 FUN_142d8c680 FUN_142d8fe70 FUN_143ac7610
+0x92	0x6	AchievementObjectiveActivatedPacket	FUN_142d8a950 FUN_142d8f3e0 FUN_142d95c60
+0x92	0x7	AchievementObjectiveUpdatePacket	FUN_142d8ac90 FUN_142d95c60
+0x92	0x8	AchievementObjectiveCompletePacket	FUN_142d8ab50 FUN_142d905c0 FUN_142c338a0 FUN_142e19520
+0x92	0xB	AchievementTrackerInitializePacket	
+0x92	0xC	AchievementTrackerUpdatePacket	FUN_142d8da40 FUN_142d8ae90 FUN_142d95d30 FUN_142d8e640
+0x92	0xE	AchievementSecretCompletePacket	FUN_142bc1f60 FUN_142d8c840 FUN_142d8f4a0 FUN_1434a3540 FUN_142d903c0 FUN_142bdcb50
+0x92	0xF	AchievementGlobalAnnouncePacket	
+0x97	0x0		
+0x97	0x1		
+0x97	0x2		
+0x97	0x3		
+0x97	0x4		
+0x97	0x5		
+0x97	0x6		
+0x97	0x7		
+0x97	0x8		
+0x97	0x9		
+0x97	0xA		
+0x97	0xB		
+0x97	0xC		
+0x97	0xD		
+0x97	0xE		
+0x97	0xF		
+0x9B	0x0	SocialPacketProfileInfo	FUN_142ec9830
+0x9B	0x1		
+0x9B	0x2		
+0x9B	0x3		
+0x9B	0x4		
+0x9B	0x5	SocialPacketHighScoreUpdate	FUN_142ec8730
+0x9B	0x6		
+0x9B	0x7		
+0x9B	0x8		
+0x9B	0x9	SocialPacketGameTopScores	FUN_142ec8580
+0x9B	0xA	SocialPacketFriendsGameTopScores	FUN_142ec84a0
+0x9B	0xB	SocialPacketGamesPlayedCount	FUN_142ec8660
+0x9B	0xC	SocialPacketNotification	FUN_142ec88b0
+0x9B	0xD		
+0x9B	0xE		
+0x9B	0xF		
+0x9B	0x10		
+0x9B	0x11		
+0x9B	0x18	SocialPacketReputationStatsUpdated	FUN_142ec9a20
+0x9B	0x19	SocialPacketChallengeUpdated	FUN_142ec8280
+0x9C	0xFFFFFFFFFFFFFFFE	SocialPacketProfileInfo	FUN_142ec9830
+0x9C	0xFFFFFFFFFFFFFFFF		
+0x9C	0x10000000000000000		
+0x9C	0x10000000000000001		
+0x9C	0x10000000000000002		
+0x9C	0x10000000000000003	SocialPacketHighScoreUpdate	FUN_142ec8730
+0x9C	0x10000000000000004		
+0x9C	0x10000000000000005		
+0x9C	0x10000000000000006		
+0x9C	0x10000000000000007	SocialPacketGameTopScores	FUN_142ec8580
+0x9C	0x10000000000000008	SocialPacketFriendsGameTopScores	FUN_142ec84a0
+0x9C	0x10000000000000009	SocialPacketGamesPlayedCount	FUN_142ec8660
+0x9C	0x1000000000000000A	SocialPacketNotification	FUN_142ec88b0
+0x9C	0x1000000000000000B		
+0x9C	0x1000000000000000C		
+0x9C	0x1000000000000000D		
+0x9C	0x1000000000000000E		
+0x9C	0x1000000000000000F		
+0x9C	0x10000000000000016	SocialPacketReputationStatsUpdated	FUN_142ec9a20
+0x9C	0x10000000000000017	SocialPacketChallengeUpdated	FUN_142ec8280
+0x9E	0x0		FUN_1434b88e0
+0x9E	0x1		
+0x9E	0x2	CoinStoreItemDefinitionsResponsePacket	FUN_1434b83c0
+0x9E	0x3		
+0x9E	0x4		
+0x9E	0x5	CoinStoreTransactionCompletePacket	FUN_1434b8b50
+0x9E	0x6		FUN_1434b7fa0
+0x9E	0x7		
+0x9E	0x8		FUN_1434b8610
+0x9E	0x9	CoinStoreMerchantListPacket	FUN_1434b7d60
+0x9E	0xA	CoinStoreClearTransactionHistoryPacket	FUN_1434b7420
+0x9E	0xB		
+0x9E	0xC	CoinStoreBuyBackResponsePacket	FUN_1434b7110
+0x9E	0xD		
+0x9E	0xE		
+0x9E	0xF		
+0x9E	0x10	CoinStoreReceiveGiftItemPacket	FUN_1434b8250
+0x9E	0x11	CoinStoreGiftTransactionCompletePacket	FUN_1434b7500
+0xA0	0x0		
+0xA0	0x1		
+0xA0	0x2		
+0xA0	0x3		
+0xA0	0x4		
+0xA0	0x5		
+0xA0	0x6		
+0xA0	0x7		
+0xA0	0x8		
+0xA0	0x9		
+0xA0	0xA		
+0xA0	0xB		
+0xA0	0xC		
+0xA0	0xD		
+0xA0	0xE		
+0xA0	0xF		
+0xA1	0x2	PacketMountResponse	FUN_142e6f120 FUN_142ee6730 FUN_142ee6730 FUN_142b61970
+0xA1	0x4	PacketDismountResponse	FUN_142e6ef90 FUN_142ee6730 FUN_142b61970
+0xA1	0x5	PacketMountList	FUN_142e6f960 FUN_142c9bdd0 FUN_142c9bdd0
+0xA1	0x9	PacketMountList	FUN_142e6f960 FUN_142e3d110 FUN_142c9bdd0 FUN_142c9bdd0 FUN_14373ace0
+0xA1	0xB	PacketSeatChangeResponse	FUN_142e6f2b0 FUN_142ee6730 FUN_142df5870 FUN_142be3530
+0xA1	0xC	PacketSeatSwapRequest	FUN_142e6f430 FUN_14332e7a0 FUN_142be3530
+0xA4		PacketClientNotifyCoinSpinAvailable	FUN_142bb04b0 FUN_142be7d60 FUN_142cb8890 FUN_142c88a10 FUN_142c875d0 FUN_142bd2f20
+0xA5	0x0		
+0xA5	0x1		
+0xA5	0x2		
+0xA5	0x3		
+0xA5	0x4		
+0xA5	0x5		
+0xA5	0x6		
+0xA5	0x7		
+0xA5	0x8		
+0xA5	0x9		
+0xA5	0xA		
+0xA5	0xB		
+0xA5	0xC		
+0xA5	0xD		
+0xA5	0xE		
+0xA5	0xF		
+0xA5	0x10		
+0xA8	0x0		FUN_14365a620
+0xA8	0x1	ClientActivityLaunchPacketInviteMemberReply	FUN_14365a690
+0xA8	0x2	ClientActivityLaunchPacketInviteMemberResult	FUN_14365a8e0
+0xA8	0x3	ClientActivityLaunchPacketPlayerHasBeenAccepted	FUN_14365af50
+0xA8	0x4	ClientActivityLaunchPacketActivityLaunched	FUN_14365a430
+0xA8	0x5		
+0xA8	0x6	ClientActivityLaunchPacketAddMember	FUN_14365a2a0
+0xA8	0x7	ClientActivityLaunchPacketRemoveMember	FUN_14365b010
+0xA8	0x8	ClientActivityLaunchPacketUpdateMemberState	FUN_14365b150
+0xA8	0x9		
+0xA8	0xA		
+0xA8	0xB		
+0xA8	0xC	ClientActivityLaunchPacketKickMemberEvent	FUN_14365ab20
+0xA8	0xD	ClientActivityLaunchPacketOnMatchmakingStart	FUN_14365ae70
+0xA8	0xE	ClientActivityLaunchPacketOnMatchmakingLaunch	FUN_14365ad90
+0xA8	0xF	ClientActivityLaunchPacketOnMatchmakingCancel	FUN_14365acb0
+0xAA		PacketClientFlashTimer	FUN_142bb0230
+0xAD		PacketInviteAndStartMiniGamePacket	FUN_142b8a660
+0xB3		PacketClientMembershipVipInfo	FUN_142bb0440 FUN_142ee6730 FUN_142e28090 FUN_142e2dbd0 FUN_142be7d60 FUN_142cb8890
+0xB3	0x0		
+0xB3	0x1		
+0xB3	0x2		
+0xB3	0x3		
+0xB3	0x4		
+0xB3	0x5		
+0xB3	0x6		
+0xB3	0x7		
+0xB3	0x8		
+0xB3	0x9		
+0xB3	0xA		
+0xB3	0xB		
+0xB3	0xC		
+0xB3	0xD		
+0xB3	0xE		
+0xB3	0xF		
+0xB3	0x10		
+0xBC	0x0		
+0xBC	0x1	Skills::SkillPacketSelectSkillSet	FUN_142eb7f00
+0xBC	0x2	Skills::SkillPacketSelectSkill	FUN_142eb7df0
+0xBC	0x3		
+0xBC	0x4	Skills::SkillPacketLoadSkillDefinitionManager	FUN_143b38430
+0xBC	0x5	Skills::SkillPacketSetSkillPointManager	FUN_142eb8010
+0xBC	0x6	Skills::SkillPacketAddSkill	FUN_142eb73f0
+0xBC	0x7	Skills::SkillPacketReportSkillGrant	FUN_142eb7820
+0xBC	0x8		
+0xBC	0x9		FUN_142eaed50 FUN_142eb80e0
+0xBC	0xA	Skills::SkillPacketUpdateClassPoints	
+0xBD	0xFFFFFFFFFFFFFFF9	Loadouts::LoadoutPacketCreateLoadout	FUN_142e68900
+0xBD	0xFFFFFFFFFFFFFFFA	Loadouts::LoadoutPacketDeleteLoadout	FUN_142e68ae0
+0xBD	0xFFFFFFFFFFFFFFFB	Loadouts::LoadoutPacketSelectLoadout	FUN_142e68be0
+0xBD	0xFFFFFFFFFFFFFFFC	Loadouts::LoadoutPacketSetAbility	FUN_142e68e00
+0xBD	0xFFFFFFFFFFFFFFFD	Loadouts::LoadoutPacketSetCustomName	FUN_142e68f60
+0xBD	0xFFFFFFFFFFFFFFFE	Loadouts::LoadoutPacketUpdateLoadout	FUN_142e690b0
+0xBD	0xFFFFFFFFFFFFFFFF	Loadouts::LoadoutPacketSelectWeaponSet	FUN_142e68cc0
+0xBE	0x0		
+0xBE	0x1		
+0xBE	0x2		
+0xBE	0x3		
+0xBE	0x4		
+0xBE	0x5		
+0xBE	0x6		
+0xBE	0x7		
+0xBE	0x8		
+0xBE	0x9		
+0xBE	0xA		
+0xBE	0xB		
+0xBE	0xC		
+0xBE	0xD		
+0xBE	0xE		
+0xBE	0xF		
+0xBF	0x1	VehicleOwnerPacket	FUN_142bbe570 FUN_142ecfcd0 FUN_142ed9790 FUN_142bd8c90
+0xBF	0x2	VehicleOccupyPacket	FUN_142ed32a0 FUN_142ecfaa0 FUN_142ed9280 FUN_142ed3bc0
+0xBF	0x3	BasePacket	FUN_142ed3590 FUN_142ed0410 FUN_142eda2c0 FUN_142ed3d40
+0xBF	0x4	VehicleStateDamagePacket	FUN_142ed02f0 FUN_142eda250
+0xBF	0x5	VehicleStateDamagePacket	
+0xBF	0x7	VehicleTintPacket	FUN_142ed2620 FUN_142b44540 FUN_1429dea90
+0xBF	0x8	VehicleTintPacket	
+0xBF	0x9		
+0xBF	0xA	VehicleActiveWeaponPacket	FUN_142ed0110 FUN_142ed9ed0
+0xBF	0xB	VehicleDamageInfoPacket	FUN_142ecf2d0 FUN_142ed8120
+0xBF	0xC	VehicleStatUpdatePacket	FUN_142ed0200 FUN_142eda1e0
+0xBF	0xD	VehiclePacketUpdateWeapon	FUN_142ecfeb0 FUN_142ed9b90
+0xBF	0xE	VehicleRemovedFromQueuePacket	FUN_142ed1970 FUN_142ed7820
+0xBF	0xF	VehicleUpdateQueuePositionPacket	FUN_142ed1b30 FUN_142ed7ae0
+0xBF	0x10	VehiclePadDestroyNotifyPacket	FUN_142ed18e0 FUN_142ed75c0
+0xBF	0x11	VehicleSetAutoDrivePacket	FUN_142ed1a00 FUN_142ed9cc0
+0xBF	0x12	VehicleLockOnStatePacket	FUN_142ecf980 FUN_142ee6730 FUN_142fa1b20 FUN_142fa4650
+0xBF	0x13	VehicleTrackingStatePacket	FUN_142ed05b0 FUN_142ee6730 FUN_142fa1e00 FUN_142fa4650
+0xBF	0x14	VehicleCounterMeasureStatePacket	FUN_142ecf210 FUN_142ed71d0
+0xBF	0x15	VehicleCounterMeasureStatePacket	
+0xBF	0x16	VehicleAcquireStatePacket	FUN_142ecef40 FUN_142ee6730 FUN_142fa1000 FUN_142fa4650
+0xBF	0x17	VehicleAcquireStatePacket	
+0xBF	0x18	VehicleAutoMountPacket	FUN_142ed1c50
+0xBF	0x19	VehicleAutoMountPacket	FUN_142ed36f0 FUN_142ed0700 FUN_142eda440 FUN_142c96bd0 FUN_142c96bd0
+0xBF	0x1A	VehicleDeployPacket	FUN_142ecf460 FUN_142ee6730 FUN_142fa1100
+0xBF	0x1B	VehicleHeadLightPacket	FUN_142ecf740 FUN_142ee6730 FUN_142fa2fb0
+0xBF	0x1C	VehicleAccessTypePacket	FUN_142ecee80 FUN_142ed7dc0
+0xBF	0x1D	VehicleAccessTypePacket	
+0xBF	0x1E		FUN_142ecf830
+0xBF	0x1F		FUN_142bbe570 FUN_142ed22a0 FUN_142bd8c90
+0xBF	0x20		
+0xBF	0x21	VehicleKickPacket	FUN_142ed2210 FUN_142ed9020
+0xBF	0x22	VehicleNoAccessPacket	FUN_142ab5e00
+0xBF	0x23	VehicleGroupPacket	FUN_142ecf640 FUN_142ed8bf0 FUN_142ed3b10
+0xBF	0x24	BasePacket	FUN_142ed1eb0 FUN_142ed7360 FUN_14373ace0
+0xBF	0x25	VehicleDeployResponsePacket	
+0xBF	0x26	VehicleControllerLogOutPacket	FUN_142ed1d10 FUN_142ed7ef0
+0xBF	0x27	VehicleControllerLogOutPacket	
+0xCB	0x0		
+0xCB	0x1		
+0xCB	0x2		
+0xCB	0x3		
+0xCB	0x4		
+0xCB	0x5		
+0xCB	0x6		
+0xCB	0x7		
+0xCB	0x8		
+0xCB	0x9		
+0xCB	0xA		
+0xCB	0xB		
+0xCB	0xC		
+0xCB	0xD		
+0xCB	0xE		
+0xCB	0xF		
+0xCF	0x0		
+0xCF	0x1		
+0xCF	0x2		
+0xCF	0x3		
+0xCF	0x4		
+0xCF	0x5		
+0xCF	0x6		
+0xCF	0x7		
+0xCF	0x8		
+0xCF	0x9		
+0xCF	0xA		
+0xCF	0xB		
+0xCF	0xC		
+0xCF	0xD		
+0xCF	0xE		
+0xCF	0xF		
+0xD1	0x0	Missions::MissionPacketListMissions	FUN_142e6c610
+0xD1	0x1		
+0xD1	0x2		
+0xD1	0x3		
+0xD1	0x4	Missions::MissionPacketSetMissionInstanceManager	FUN_142e6ca40
+0xD1	0x5		
+0xD1	0x6		
+0xD1	0x7		
+0xD1	0x8	Missions::MissionPacketAddAvailableMission	FUN_142e6c520
+0xD1	0x9	Missions::MissionPacketRemoveGlobalAvailableMission	FUN_142e6c7c0
+0xD1	0xA	Missions::MissionPacketAddActiveMission	FUN_142e6c430
+0xD1	0xB	Missions::MissionPacketRemoveActiveMission	FUN_142e6c740
+0xD1	0xC	Missions::MissionPacketReportCompletedMission	FUN_142e6c840
+0xDC	0x0		
+0xDC	0x1		
+0xDC	0x2		
+0xDC	0x3		
+0xDC	0x4		
+0xDC	0x5		
+0xDC	0x6		
+0xDC	0x7		
+0xDC	0x8		
+0xDC	0x9		
+0xDC	0xA		
+0xDC	0xB		
+0xDC	0xC		
+0xDC	0xD		
+0xDC	0xE		
+0xDC	0xF		
+0xDC	0x10		
+0xDD		BaseClientPcDataPacket	FUN_142f30200
+0xE1		PacketServerPopulationInfo	FUN_143af7e50 FUN_142bb1190 FUN_143af8100
+0xE4		PlayerUpdatePacketStop	FUN_142bb4160 FUN_142c43b00
+0xE5		Currency::CurrencyPacketSetCurrencyRateTier	FUN_142db1fb0
+0xE6	0x0	Items::ItemPacketSetItemTimerManager	FUN_142e634e0
+0xE6	0x1		FUN_142e633b0
+0xE6	0x2	Items::ItemPacketSetItemLineTimers	FUN_142e631b0
+0xE6	0x3	Items::ItemPacketSetItemTrialLockTimer	FUN_142e63560
+0xE6	0x4	Items::ItemPacketSetItemLineTrialTimers	FUN_142e632b0
+0xE6	0x5	Items::ItemPacketAddItemLineTimer	FUN_142e62fe0
+0xE6	0x6	Items::ItemPacketRequestTrialItemLine	FUN_142e630f0
+0xE7		PlayerUpdatePacketAttachObject	FUN_142bb1dd0 FUN_142c43790
+0xE8		PlayerUpdatePacketDetachObject	FUN_142bb2330 FUN_142ee5100
+0xE9		PacketClientSettings	FUN_142bb06d0 FUN_1433e4c60 FUN_142cb80e0 FUN_1433e4c60 FUN_142bdf490
+0xE9	0x0		
+0xE9	0x1		
+0xE9	0x2		
+0xE9	0x3		
+0xE9	0x4		
+0xE9	0x5		
+0xE9	0x6		
+0xE9	0x7		
+0xE9	0x8		
+0xE9	0x9		
+0xE9	0xA		
+0xE9	0xB		
+0xE9	0xC		
+0xE9	0xD		
+0xE9	0xE		
+0xE9	0xF		
+0xE9	0x10		
+0xF0	0x2	TemplatePacketEnvironmentListResponse	
+0xF0	0x3	TemplatePacketSaveTemplateResponse	
+0xF0	0x4		
+0xF0	0x5		FUN_14305c100 FUN_14305a870 FUN_143062ce0 FUN_14305d310
+0xF0	0x7	BasePacket	FUN_14305c700 FUN_143058b60 FUN_143063080 FUN_14305d7d0
+0xF0	0x9	TemplatePacketEnvironmentDeleteTemplateResponse	FUN_1430588b0 FUN_1430620a0
+0xF0	0xB	TemplatePacketClientResponseRenameTemplate	
+0xF0	0xC	TemplatePacketUpdateTemplateResponse	
+0xF0	0xD	TemplatePacketClientResponseRenameTemplate	FUN_1430586c0 FUN_143062ab0
+0xF0	0xE		FUN_14305c100 FUN_14305a910 FUN_14305f820 FUN_1430669c0 FUN_14305d310
+0xF0	0x11	TemplatePacketEnvironmentAddOwnershipResponse	
+0xF0	0x13	TemplatePacketEnvironmentAddOwnershipResponse	FUN_143058780 FUN_143061f90
+0xF0	0x15	TemplatePacketEnvironmentInstanceDetailsResponse	FUN_14305c5f0
+0xF2		PacketZoneProximityFacialAnim	FUN_142bb1620 FUN_1433fe790 FUN_142be31a0
+0xF2	0x0		
+0xF2	0x1		
+0xF2	0x2		
+0xF2	0x3		
+0xF2	0x4		
+0xF2	0x5		
+0xF2	0x6		
+0xF2	0x7		
+0xF2	0x8		
+0xF2	0x9		
+0xF2	0xA		
+0xF2	0xB		
+0xF2	0xC		
+0xF2	0xD		
+0xF2	0xE		
+0xF2	0xF		
+0xF2	0x10		
+0xF4	0x0	BasePacket	FUN_1430b3b20 FUN_1430b0d80 FUN_1430b7b10 FUN_1430b4350
+0xF4	0x1		
+0xF4	0x2		FUN_1430b3240 FUN_1430b87a0 FUN_1430ba130 FUN_1429dea90
+0xF4	0x3		FUN_1430b31a0 FUN_1430b8590 FUN_1429dea90 FUN_1429dea90
+0xF4	0x4	VoxelConstructionPacketResponseObserved	FUN_1430b11e0 FUN_1430bbd60 FUN_1430bc0d0
+0xF4	0x5		
+0xF4	0x7	VoxelConstructionPacketResponse	
+0xF4	0x8	VoxelConstructionPacketZoneUnknownPropList	
+0xF4	0x9	VoxelConstructionPacketZoneMissingPropList	
+0xF4	0xA	VoxelConstructionPacketResponseObserved	
+0xF4	0xB	VoxelConstructionPacketAdminForceInstancesSetting	
+0xF4	0x10		FUN_1430b3060 FUN_1430839b0 FUN_1429dea90
+0xF4	0x11	VoxelConstructionPacketEnvOwnershipDataResponse	FUN_1430b0ed0 FUN_1430836f0 FUN_1430b4400
+0xF4	0x15	VoxelConstructionPacketZoneDisplayNotification	FUN_1430b1310 FUN_1430b6880
+0xF4	0x16	VoxelConstructionPacketEnvOwnershipUpToDateResponse	
+0xF4	0x17	VoxelConstructionPacketEnvOwnershipDataResponse	
+0xF4	0x1B	VoxelConstructionPacketZoneDisplayNotification	
+0xF5	0x0		
+0xF5	0x1		
+0xF5	0x2		
+0xF5	0x3		
+0xF5	0x4		
+0xF5	0x5		
+0xF5	0x6		
+0xF5	0x7		
+0xF5	0x8		
+0xF5	0x9		
+0xF5	0xA		
+0xF5	0xB		
+0xF5	0xC		
+0xF5	0xD		
+0xF5	0xE		
+0xF5	0xF		
+0xF5	0x10		
+0xF7		PacketCharacterSelectSessionResponse	FUN_142bb57e0 FUN_142a91160 FUN_143020530
+0xF7	0x0		
+0xF7	0x1		
+0xF7	0x2		
+0xF7	0x3		
+0xF7	0x4		
+0xF7	0x5		
+0xF7	0x6		
+0xF7	0x7		
+0xF7	0x8		
+0xF7	0x9		
+0xF7	0xA		
+0xF7	0xB		
+0xF7	0xC		
+0xF7	0xD		
+0xF7	0xE		
+0xF7	0xF		
+0xF7	0x10		
+0xF8	0xFFFFFFF5	PacketMailComposeResponse	FUN_1432c8190 FUN_14358ad00 FUN_142a873d0 FUN_1432c9670
+0xF8	0xFFFFFFF8	BasePacket	FUN_1432c75d0 FUN_14358a7d0 FUN_1432c8f90
+0xF8	0xFFFFFFFA	BasePacket	FUN_1432c8ba0 FUN_1432c77e0 FUN_14358a8f0 FUN_1432c9010
+0xF8	0xFFFFFFFC	PacketMailDeleteMessageResponse	FUN_1432c7480 FUN_14358a460 FUN_143bc34d0 FUN_1432c9670
+0xF8	0xFFFFFFFE	PacketMailClearInboxResponse	FUN_1432c80e0 FUN_143bc34d0 FUN_1432c9670
+0xF8	0xFFFFFFFF	PacketMailInboxListRequest	FUN_1432c8490 FUN_14358a840 FUN_142a873d0 FUN_1432c9670
+0xF8	0x100000001	PacketMailConsumeAttachmentResponse	FUN_1432c73a0 FUN_14358abb0 FUN_143bc34d0 FUN_142a873d0 FUN_1432c9670 FUN_143bc34d0
+0xF8	0x100000004	PacketMailEnableWindow	FUN_1432c8360 FUN_14358a220
+0xF8	0x100000006	PacketMailAttachItemToComposeResponse	FUN_1432c70e0 FUN_14358a410 FUN_14373ace0
+0xF9	0x1	ClaimsPacketsIdSendAllClaimBasicInfo	FUN_142d08ce0 FUN_142d34900 FUN_142d0fd00
+0xF9	0x2	ClaimsPacketsIdUpdateClaimBasicInfo	FUN_142d0c340 FUN_142d08e20 FUN_142d34b70 FUN_142d0fd80
+0xF9	0x3	ClaimsPacketsIdUpdateClaimBasicInfoAndAOI	FUN_142d0c3c0 FUN_142d08ef0 FUN_142d0c670 FUN_142d16cf0 FUN_142d0fe80 FUN_142d0fe80
+0xF9	0x4	ClaimsPacketAOIUpdate	FUN_143735800 FUN_142d00720 FUN_142d2bc50 FUN_142d18090 FUN_142d1b4a0 FUN_142d16cf0
+0xF9	0x5		FUN_142d0d6c0
+0xF9	0x6	ClaimsPacketPlaceClaimResponse	FUN_142d01130 FUN_142d199b0 FUN_142b61970 FUN_142e3d110
+0xF9	0x7	ClaimsPacketPlaceClaimComplete	FUN_142d0ca60 FUN_142d08a50 FUN_142d16cf0
+0xF9	0x8	ClaimsPacketClaimManagmentData	FUN_142d00990 FUN_142d1a610 FUN_142d0f6b0
+0xF9	0x9	ClaimsPacketEditClaimItemData	FUN_142d0bb40 FUN_142d00c30 FUN_142d19b90 FUN_142d0fe80
+0xF9	0xA	ClaimsPacketUpkeepManagmentData	FUN_142d014e0 FUN_142d1b1a0 FUN_142e3d110
+0xF9	0xC	ClaimsPacketAddUpkeepFundsResponse	FUN_142d007e0 FUN_142cef830 FUN_142cf17b0 FUN_142cef830 FUN_142cf17b0 FUN_142cf2070
+0xF9	0xD	ClaimsPacketIdSendInventoryDetails	FUN_142d0bcd0 FUN_142d00f60 FUN_142a873d0 FUN_142a87320 FUN_142a873d0 FUN_142a87320
+0xF9	0xF	ClaimsPacketIdSendClaimsByOwner	FUN_142d0bc80 FUN_142d08870 FUN_142d1b4f0 FUN_143ecba90 FUN_143ecba90 FUN_142b6a7c0
+0xF9	0x10	ClaimsPacketResultResponse	FUN_142d012c0 FUN_142a8a9b0
+0xF9	0x11	ClaimsPacketIdRecievePropExclusionArea	FUN_142d0bbc0 FUN_142d00df0 FUN_142d35150 FUN_142d0f840
+0xF9	0x12	ClaimsPacketLostClaimServerConnection	FUN_142d089c0 FUN_142d18a50
+0xF9	0x13	ClaimPacketIdSnapshotSaveConfirmRequest	FUN_142d08350 FUN_142d1ab80 FUN_142b61970 FUN_142e3d110
+0xF9	0x14	ClaimPacketIdSnapshotSaveResponse	FUN_142d0b330 FUN_142d083c0 FUN_142d1b4f0 FUN_143485b80 FUN_142d1ad70
+0xF9	0x15	ClaimPacketIdSnapshotRestoreConfirmRequest	FUN_142d08270 FUN_142d1ab80 FUN_142b61970 FUN_142e3d110
+0xF9	0x16	ClaimPacketIdSnapshotRestoreResponse	FUN_142d082e0 FUN_142d29270
+0xF9	0x18	ClaimsPacketContestEntryResults	FUN_142d08640 FUN_142cef830 FUN_142cf1680 FUN_142cef830 FUN_142cf1680 FUN_142cf2070
+0xF9	0x30	ClaimsPacketDeleteClaimItemReply	FUN_142d00b70 FUN_142d29200
+0xF9	0x37	ClaimsPacketIdInventoryListDebugResponse	FUN_142d00d00 FUN_142a8a9b0 FUN_142a88d10
+0xF9	0x5F	ClaimsPacketUpdatePropCategoryCount	FUN_142d08c00 FUN_142d1b4a0 FUN_143486920 FUN_142d1b4f0 FUN_143486920 FUN_142d1f070
+0xFB	0x0		
+0xFB	0x1		
+0xFB	0x2		
+0xFB	0x3		
+0xFB	0x4		
+0xFB	0x5		
+0xFB	0x6		
+0xFB	0x7		
+0xFB	0x8		
+0xFB	0x9		
+0xFB	0xA		
+0xFB	0xB		
+0xFB	0xC		
+0xFB	0xD		
+0xFB	0xE		
+0xFB	0xF		
+0xFB	0x10		
+0xFC	0x0		FUN_142c3ace0 FUN_142cb8890
+0xFC	0x1		FUN_142c3ac60 FUN_142cb88f0
+0xFC	0x2		FUN_142c3ad10 FUN_142cb8940
+0xFC	0x3		FUN_142cb6810
+0xFC	0x4		FUN_142c3add0 FUN_142cb89e0
+0xFC	0x5		FUN_142cb8a40
+0xFC	0x6		FUN_142c3abd0 FUN_142cb86c0
+0xFC	0x7		FUN_142c3ad40 FUN_142cb8800
+0xFC	0x8		FUN_142c3acb0 FUN_142cb8940
+0xFC	0x9		FUN_143d930f0
+0xFD		PropUpdateInteractionStatePacket	FUN_143ad5670 FUN_142b94680 FUN_142ee6730 FUN_1430065e0 FUN_142be4d90
+0xFE		PacketPlayerStudioRegistered	FUN_142bb0fd0 FUN_142f344a0 FUN_142be7d60 FUN_142cb8a40 FUN_142e3d110 FUN_1431c5670
+0xFE	0x0		FUN_142c3ace0 FUN_1439176f0
+0xFE	0x1		FUN_142c3ac60 FUN_1439176f0
+0xFE	0x2		FUN_142c3ad10 FUN_143917710
+0xFE	0x3		FUN_142c3ad10 FUN_143917710
+0xFE	0x4		FUN_142c3add0 FUN_143db8820
+0xFE	0x5		
+0xFE	0x6		FUN_143d929a0
+0xFE	0x7		FUN_143916600 FUN_142c2acf0 FUN_143d929a0 FUN_143d929a0 FUN_1439183f0
+0xFE	0x8		FUN_142c3acb0 FUN_142ab6c80 FUN_1439169b0 FUN_142c3acb0 FUN_142ab6c80 FUN_143918d80
+0xFE	0x9		FUN_143917a90
+0xFF	0x0		
+0xFF	0x1		
+0xFF	0x2		
+0xFF	0x3		
+0xFF	0x4		
+0xFF	0x5		
+0xFF	0x6		
+0xFF	0x7		
+0xFF	0x8		
+0xFF	0x9		
+0xFF	0xA		
+0xFF	0xB		
+0xFF	0xC		
+0xFF	0xD		
+0xFF	0xE		
+0xFF	0xF		
+0xFF	0x10		
+0x100		BaseDebugDrawPacket	FUN_1432c6570
+0x103		FogOfWarZoneDataReplyPacket	FUN_142bc8020 FUN_142bafc00 FUN_14341d280 FUN_142be0260
+0x104		SocialShare::BaseSocialSharePacket	FUN_142bae6f0 FUN_1430d8270
+0x10A		ProceduralDataMonitorPacketUpdateResponse	FUN_142bcf5d0 FUN_142bb4ba0 FUN_14317ae30 FUN_14373f3f8 FUN_14316d0d0 FUN_142be4ab0
+0x10C	0x0	WorldEditingClearPacket	
+0x10C	0x1	WorldEditingBoxUpdatePacket	
+0x10C	0x2	BasePacket	FUN_142fdc1c0 FUN_142fe2fa0 FUN_142fe2cb0 FUN_142fe11b0 FUN_142fe30d0 FUN_142fe2c00
+0x10C	0x3	BasePacket	FUN_142fde7a0 FUN_142fdc110 FUN_142fe2e20 FUN_142fe2cb0 FUN_142fe2cb0 FUN_142fe11b0
+0x10C	0x4		FUN_142fdc040 FUN_142fe2d30 FUN_142fe30d0 FUN_142fe2c00 FUN_14373a290
+0x10C	0x5	BasePacket	FUN_142fde560 FUN_142fdbdd0 FUN_142fe2cb0 FUN_142fe11b0 FUN_142b6a7c0 FUN_1435cfea0
+0x10C	0x6	BasePacket	FUN_142fde5e0 FUN_142fdbf40 FUN_142fe2cb0 FUN_142fe11b0 FUN_142b6a7c0 FUN_1435cfea0
+0x10C	0x7	WorldEditingFillUpdatePacket	
+0x10D	0x2	InstancedGameAdminMonitorPacket	
+0x10D	0x4	InstancedGameAdminMonitorPacket	FUN_143427160 FUN_14317ae30 FUN_14373f3f8 FUN_143172020 FUN_143170820 FUN_1429dea90
+0x10D	0x5	BasePacket	FUN_14342d090 FUN_143427ea0 FUN_143434580 FUN_14342ea60
+0x10D	0x6	InstancedGamePropRecipePacket	FUN_143427a10 FUN_143438b30 FUN_14343dd90 FUN_1429dea90
+0x10D	0x7	InstancedGameEventPacket	
+0x10D	0x8	InstancedGameStatePacket	FUN_143427fe0 FUN_143438fe0
+0x10D	0x9	InstancedGameEventPacket	FUN_143427430 FUN_143437440
+0x10D	0xA	InstancedGameRequestPacket	FUN_143b59f90 FUN_143427cf0 FUN_143438d00
+0x10D	0xB	InstancedGameHUDPacket	FUN_14342cba0 FUN_14342ba40 FUN_143432bd0 FUN_14342e6c0
+0x10D	0xF	BasePacket	FUN_14342cab0 FUN_14342b760 FUN_14342f2b0 FUN_1434411d0 FUN_14342e600
+0x10D	0x11	InstancedGamePropStatePacket	
+0x10D	0x12	InstancedGamePropInteractionPacket	
+0x10D	0x13	InstancedGamePropStatePacket	FUN_14342bd10 FUN_143438840 FUN_14343dce0 FUN_1429dea90
+0x10D	0x14	InstancedGamePropInteractionPacket	FUN_143427900 FUN_143438710
+0x10D	0x15	InstancedGamePlayerRemovalPacket	FUN_14342bb70 FUN_143438670
+0x10D	0x16	InstancedGameTeamMembersPacket	FUN_14342bf40 FUN_1434390e0 FUN_14343dc30 FUN_1429dea90
+0x10D	0x17	InstancedGameObserverRegistrationPacket	FUN_143427790 FUN_1434391f0
+0x10D	0x18	InstancedGameUpdatePlayerFlagsPacket	FUN_143428230 FUN_142b5d130 FUN_14373ace0
+0x111	0x1	ObjectScriptingPacketSupportedObjectsResponse	FUN_142ea6b60 FUN_142ea76d0 FUN_142daf050 FUN_1429dea90
+0x111	0x2	ObjectScriptingPacketSupportedEventsResponse	FUN_142ea4580
+0x111	0x3	ObjectScriptingPacketSupportedActionsResponse	FUN_142ea4420
+0x111	0x4	ObjectScriptingPacketSupportedActionsEventsAndDefaultsResponse	FUN_142ea42a0
+0x111	0x5	ObjectScriptingPacketAddBindingResponse	FUN_142ea3b90
+0x111	0x6	ObjectScriptingPacketListBindingsResponse	FUN_142ea3cd0
+0x111	0x7	ObjectScriptingPacketRemoveBindingResponse	FUN_142ea4120 FUN_142f4fe30
+0x111	0x8	ObjectScriptingPacketRemoveAllBindingsResponse	FUN_142ea4060 FUN_142f4fdd0
+0x111	0x9	ObjectScriptingPacketRestoreDefaultsResponse	FUN_142ea41e0 FUN_142f50020
+0x111	0xA	ObjectScriptingPacketPotentialLinkResponse	FUN_142ea3e30 FUN_142f4ef10
+0x111	0xB	ObjectScriptingPacketRemoveAddBindingResponse	FUN_142ea3ef0 FUN_142f4fb80
+0x115		KnownPropPacketAddPropResponse	FUN_142e654e0
+0x116		ArtDataPacketTintDefinitionManagerData	FUN_142bc3130 FUN_142bae270 FUN_142c6ec20 FUN_142bdd500
+0x116	0x0		
+0x116	0x1		
+0x116	0x2		
+0x116	0x3		
+0x116	0x4		
+0x116	0x5		
+0x116	0x6		
+0x116	0x7		
+0x116	0x8		
+0x116	0x9		
+0x116	0xA		
+0x116	0xB		
+0x116	0xC		
+0x116	0xD		
+0x116	0xE		
+0x116	0xF		
+0x119		DebugAnimationPacketBase	FUN_142c42470

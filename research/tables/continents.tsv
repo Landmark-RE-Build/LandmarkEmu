@@ -1,0 +1,43 @@
+continent	width	height	land%	main biomes
+391	1250	1250	49	TropicalSurface 50%, DesertSurface 49%
+393	1250	1250	53	TundraSurface 50%, TropicalSurface 49%
+394	1250	1250	41	OldGrowthForestSurface 64%, TropicalSurface 35%
+395	1250	1250	48	TropicalSurface 56%, DeciduousForestSurface 43%
+396	1250	1250	44	TropicalSurface 57%, VolcanicSurface 42%
+397	1250	1250	47	DesertSurface 61%, TundraSurface 38%
+398	1250	1250	53	DesertSurface 47%, OldGrowthForestSurface 47%, TundraSurface 5%
+399	1250	1250	38	DesertSurface 50%, DeciduousForestSurface 46%, TropicalSurface 3%
+400	1250	1250	48	VolcanicSurface 63%, DesertSurface 36%
+401	1250	1250	45	TundraSurface 54%, OldGrowthForestSurface 45%
+402	1250	1250	31	DeciduousForestSurface 60%, TundraSurface 39%
+403	1250	1250	41	TundraSurface 59%, VolcanicSurface 40%
+404	1250	1250	41	DeciduousForestSurface 71%, VolcanicSurface 28%
+405	1250	1250	49	DeciduousForestSurface 55%, OldGrowthForestSurface 44%
+406	1250	1250	45	OldGrowthForestSurface 81%, VolcanicSurface 18%
+407	1250	1250	46	TropicalSurface 52%, DesertSurface 47%
+408	1250	1250	40	TundraSurface 55%, TropicalSurface 44%
+409	1250	1250	61	OldGrowthForestSurface 54%, TropicalSurface 45%
+410	1250	1250	47	DeciduousForestSurface 54%, TropicalSurface 45%
+411	1250	1250	51	VolcanicSurface 60%, TropicalSurface 39%
+412	1250	1250	46	TundraSurface 56%, DesertSurface 43%
+413	1250	1250	34	OldGrowthForestSurface 49%, DesertSurface 46%, TundraSurface 4%
+414	1250	1250	42	DeciduousForestSurface 61%, DesertSurface 36%, TropicalSurface 2%
+415	1250	1250	46	VolcanicSurface 52%, DesertSurface 47%
+416	1250	1250	43	OldGrowthForestSurface 65%, TundraSurface 34%
+417	2000	2000	100	TropicalSurface 100%
+418	1250	1250	100	DesertSurface 100%
+419	1250	1250	100	TundraSurface 100%
+420	1250	1250	100	OldGrowthForestSurface 100%
+421	1250	1250	100	DeciduousForestSurface 100%
+422	1250	1250	100	VolcanicSurface 100%
+423	1250	1250	0	
+424	1250	1250	50	OldGrowthForestSurface 95%, OldGrowthForestSurface Plain 3%, OldGrowthForestSurface Path 0%
+425	1250	1250	50	TropicalSurface 95%, TropicalSurface Plain 3%, TropicalSurface Path 0%
+426	1250	1250	50	TropicalSurface 95%, TropicalSurface Plain 3%, TropicalSurface Path 0%
+427	1250	1250	50	DeciduousForestSurface 95%, DeciduousForestSurface Plain 3%, DeciduousForestSurface Path 0%
+428	1250	1250	100	Research 100%
+429	1250	1250	50	DeciduousForestSurface 95%, DeciduousForestSurface Plain 3%, DeciduousForestSurface Path 0%
+430	4000	4000	55	DesertSurface 69%, TundraSurface 14%, TropicalSurface 7%
+432	1250	1250	100	AIStressTest 100%
+433	1250	1250	100	OldGrowthForestSurface 100%
+440	1250	1250	57	TropicalSurface 83%, TropicalSurface Plain 16%, TropicalSurface Path 0%
