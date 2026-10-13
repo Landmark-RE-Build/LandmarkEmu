@@ -326,3 +326,32 @@ Measured with the test clients (VoxelDataErrors.log, one client session each):
 | client restarted, no terrain edits since | 0 |
 
 Vein ManifestUpdates per session dropped from ~320 to 0.
+
+## Slow loading screen: allocator slots
+
+After WaitForWorldReady the loading screen waits for the VoxelFarm scene (ClientSceneProcessing.log "Begin SCENE …
+Process Pending: N" → "Finish SCENE: Total Process Time"), meshed by five `ContourThread::contourLoop` threads
+(FUN_143ed5a30).
+
+- The client's allocator gives each thread one of **64** per-thread cache slots (FUN_142b6b7f0; table at
+  0x145347ed0, 0x258 bytes per slot, owner thread id first; count at 0x145347858).
+- A thread that finds the table full walks all 64 slots under a global critical section on **every allocation**,
+  checking each owner with FUN_142b6e490 (OpenThread, GetExitCodeThread, GetProcessIdOfThread, CloseHandle).
+- The game runs ~176 threads. About 55 slots go during start-up; at world entry the contour threads race the
+  embedded browser (the UI's `InGameMarketplaceBrowser:PreLoad` → `Browser.Create`, ~14 CEF threads) and other new
+  game threads for the rest. A contour thread that loses meshes at a crawl: scenes took 150-300 s instead of ~1 s.
+- The shipped ClientConfig.ini has `[AssetDelivery] DirectThreadCount=10` (the code's default is 4), all started
+  early. The launcher sets 2: 58 slots used, scene 0.8 s (2026-10-14).
+- The `[Terrain] UseCachedMeshes` / `CacheMeshes` lines are overridden by UserOptions.ini (which the game rewrites),
+  so they cannot switch the mesh cache off from ClientConfig.ini.
+
+**History (Daybreak forums, archived):** the live game had this bug. The thread "[Feedback] Excessively long load
+times? Let us know your system specs." (Domino, 23 May 2016) collected reports of loads stuck at 50%, mostly on 6- and
+8-core CPUs with hyper-threading (i7-5820K, 3930K, 5960X), fast or slow at random. On 13 June 2016 the developers
+reported "it is indeed related to number of cores" and a 100% repro case; client patches on 13/14 June, 16 June
+("issues owners of hex core machines were experiencing") and 30 June ("client loading issues for 8-core processors",
+as quoted by players) only partly fixed it, and 8-core owners still reported it in November 2016. Players worked around
+it by booting Windows with fewer processors (msconfig → Boot → Advanced → Number of processors). Our client
+(0.589, built 4 June 2016) predates all of these patches. Players also saw it on later zone changes in the same
+session, not only on the first load: slot use grows while playing (58 → 61 in one session here), so re-zones
+(teleports, caves) may hit it after a while.

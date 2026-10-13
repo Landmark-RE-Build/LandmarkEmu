@@ -1,4 +1,4 @@
-using LandmarkEmulator.WorldServer.Network.Message;
+﻿using LandmarkEmulator.WorldServer.Network.Message;
 ﻿using LandmarkEmulator.Database.Character.Model;
 using LandmarkEmulator.WorldServer.Game.Inventory;
 using LandmarkEmulator.WorldServer.Network;
@@ -740,7 +740,7 @@ namespace LandmarkEmulator.WorldServer.Game
             // The resource chunks that pop out of the hole and fly into the player (one per few items, at most 3).
             uint chunks = Math.Clamp(yield / 5, 1, 3);
             for (int i = 0; i < chunks; i++)
-                LootPinatas.SpawnChunk(session, target + new System.Numerics.Vector3(0, 0.5f, 0), item);
+                LootPinatas.SpawnChunk(session, target + new System.Numerics.Vector3(0, 0.5f, 0), item, Math.Max(1, yield / chunks));
             log.Debug($"{session.CharacterName} dug {voxels} voxels in {cells.Count} cell(s) "
                 + $"({Terrain.TerrainMaterials.BiomeName(Terrain.TerrainMaterials.BiomeAt(target, zone))}) for {yield} × item {expected}"
                 + (oreVoxels > 0 ? $" and ore {string.Join(", ", oreMined.Select(o => $"{o.Value} voxels of {o.Key} (item {Terrain.OreVeins.ItemFor(o.Key)})"))}." : "."));

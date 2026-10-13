@@ -388,6 +388,9 @@ namespace LandmarkEmulator.WorldServer.Network
         public override void OnCharacterLogin(CharacterModel model)
         {
             base.OnCharacterLogin(model);
+            // A login during a shutdown (Play pressed just before the login server heard) loads as usual and is sent
+            // back once in the world (Game.Shutdown.SendPlayersToCharacterSelect): a relogin session before the client
+            // has the world crashes it as it starts the relogin (2026-10-14).
             currentCharacter = model;
             Game.Unlocks.Load(model.Id);
             Inventory = new Game.Inventory.Inventory(model);
@@ -406,8 +409,7 @@ namespace LandmarkEmulator.WorldServer.Network
             EnqueueMessage(ZoneMessageOpcode.ReferenceDataItemCategoryDefinitions, File.ReadAllBytes(catPath).AsSpan().Slice(4).ToArray());
             EnqueueMessage(ZoneMessageOpcode.ReferenceDataProfileDefinitions, File.ReadAllBytes(profPath).AsSpan().Slice(4).ToArray());
             EnqueueMessage(ZoneMessageOpcode.SkillBase, Convert.FromHexString("05-02-00-00-00-00-00-00-00-04-00-00-00-01-00-00-00-01-00-00-00-44-82-08-00-44-82-08-00-00-00-00-00-01-00-00-00-00-00-00-00-01-00-00-00-00-00-00-00-01-00-00-00-00-00-00-00-05-00-00-00-05-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-03-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-02-00-00-00-02-00-00-00-44-82-08-00-44-82-08-00-00-00-00-00-01-00-00-00-00-00-00-00-01-00-00-00-00-00-00-00-01-00-00-00-01-00-00-00-05-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-04-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-03-00-00-00-03-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-01-00-00-00-00-00-00-00-01-00-00-00-00-00-00-00-01-00-00-00-02-00-00-00-0F-00-00-00-0A-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-05-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-04-00-00-00-04-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-01-00-00-00-00-00-00-00-01-00-00-00-00-00-00-00-01-00-00-00-03-00-00-00-1E-00-00-00-0F-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-06-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-01-00-00-00-01-00-00-00-01-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-01-00-00-00-00-00-00-00-01-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-01-00-00-00-01-00-00-00-01-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-01-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-01-00-00-00-01-00-00-00-01-00-00-00-44-82-08-00-44-82-08-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-08-00-00-00-13-00-00-00-13-00-00-00-01-00-00-00-00-00-00-00-14-00-00-00-14-00-00-00-01-00-00-00-00-00-00-00-1C-00-00-00-1C-00-00-00-01-00-00-00-00-00-00-00-1D-00-00-00-1D-00-00-00-01-00-00-00-00-00-00-00-1E-00-00-00-1E-00-00-00-01-00-00-00-00-00-00-00-1F-00-00-00-1F-00-00-00-01-00-00-00-00-00-00-00-20-00-00-00-20-00-00-00-01-00-00-00-00-00-00-00-21-00-00-00-21-00-00-00-01-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00".Replace("-", "")));
-            var cmdPath = GetResourcePath("PacketDumps", "44-CommandBase");
-            EnqueueMessage(ZoneMessageOpcode.CommandBase, File.ReadAllBytes(cmdPath).AsSpan().Slice(2).ToArray());
+            Game.Inventory.ItemDefinitionManager.SendLoginList(this);
             //EnqueueMessage(ZoneMessageOpcode.SendSelfToClient, sendSelfPacket.AsSpan().Slice(2).ToArray());
 
             //var msgData = new Span<byte>(sendSelfPacket, 2, sendSelfPacket.Length - 2).ToArray();

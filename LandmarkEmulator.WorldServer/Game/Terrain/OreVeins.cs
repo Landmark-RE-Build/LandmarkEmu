@@ -1,4 +1,4 @@
-using LandmarkEmulator.WorldServer.Network;
+﻿using LandmarkEmulator.WorldServer.Network;
 using NLog;
 using System;
 using System.Collections.Generic;
@@ -266,10 +266,65 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                     Cave = cave,
                     Points = VeinGenerator.Walk(info.Definition, position, direction, (uint)(random.Next() * 4294967296.0))
                 };
+                if (TouchesSite(z.Id, VeinGenerator.CellsOf(info.Definition, vein.Points)))
+                    continue;
                 Place(z, vein, changed);
                 return true;
             }
             return false;
+        }
+
+        /// <summary>
+        /// Build sites hold no veins: gathering works only on unclaimed land ("Gathering can only be done on unclaimed
+        /// land, not on Build Sites", design/wiki Gathering), and the client's spawner (FUN_143f187b0) has no site test
+        /// of its own, so the live server kept them out. A spot whose cells touch a site is refused like any other
+        /// failed attempt.
+        /// </summary>
+        private static bool TouchesSite(uint zone, IEnumerable<(long X, long Y, long Z)> cells)
+        {
+            double size = VeinGenerator.CellSize;
+            foreach (var c in cells)
+            {
+                var min = (c.X * size, c.Y * size, c.Z * size);
+                var max = (min.Item1 + size, min.Item2 + size, min.Item3 + size);
+                if (Claims.BoxesIn(zone, min, max).Count > 0 || (zone == TerrainStore.HomeContinent && Claims.BoxesIn(0, min, max).Count > 0))
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// A build site was placed (box in global dm): the veins touching it are taken out (their cells go back to plain
+        /// ground for everyone) and spawn again elsewhere in their region, so the region keeps its share of ore.
+        /// </summary>
+        public static void ClearSite(uint zone, (double X, double Y, double Z) min, (double X, double Y, double Z) max)
+        {
+            uint zoneId = zone == 0 ? TerrainStore.HomeContinent : zone;
+            if (definitions == null || ZoneOf(zoneId) is not Zone z)
+                return;
+            var changed = new List<ulong>();
+            int moved = 0;
+            double size = VeinGenerator.CellSize;
+            lock (sync)
+                foreach (Vein vein in z.Veins.Values.ToList())
+                {
+                    bool inside = vein.Cells.Any(id =>
+                    {
+                        (double x, double y, double cz) = TerrainStore.CellOrigin(id);
+                        return x <= max.X && x + size >= min.X && y <= max.Y && y + size >= min.Y && cz <= max.Z && cz + size >= min.Z;
+                    });
+                    if (!inside)
+                        continue;
+                    Remove(z, vein, changed);
+                    if (z.RegionRandom.TryGetValue(vein.Region, out var random))
+                        Spawn(z, vein.Info, vein.Region, vein.Cave, random, changed);
+                    moved++;
+                }
+            if (moved > 0)
+            {
+                log.Info($"Veins: {moved} vein(s) moved out of a new build site on landscape {zoneId}.");
+                TerrainEdits.Announce(changed.Distinct().ToList(), zoneId);
+            }
         }
 
         /// <summary>Surface vein start: ground height at a random spot of the cell, pointing into the ground.</summary>

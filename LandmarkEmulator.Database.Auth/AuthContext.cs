@@ -117,6 +117,15 @@ namespace LandmarkEmulator.Database.Auth
                     .HasColumnType("int(10) unsigned")
                     .HasDefaultValue(0);
 
+                entity.Property(e => e.Heartbeat)
+                    .HasColumnName("heartbeat")
+                    .HasColumnType("datetime");
+
+                entity.Property(e => e.PlayersOnline)
+                    .HasColumnName("playersOnline")
+                    .HasColumnType("int(10) unsigned")
+                    .HasDefaultValue(0u);
+
                 entity.HasData(new ZoneServerModel
                 {
                     Id     = 1,

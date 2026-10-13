@@ -60,6 +60,11 @@ namespace LandmarkEmulator.WorldServer
             {
                 log.Fatal(e);
             }
+            // Hosting has stopped and HostedService.StopAsync has saved and closed everything; worker threads that are
+            // still running (not background threads) would otherwise keep the process and its window open after
+            // "Service Ended!", holding the build output locked (seen with the "shutdown" dev command, 2026-10-14).
+            NLog.LogManager.Shutdown();
+            Environment.Exit(0);
         }
 
         public static double GetServerTime()

@@ -47,6 +47,37 @@ function Set-ClientConfig([string]$game, [string]$address) {
         else { $lines += $line }
         $changed = $true
     }
+    # Fewer asset threads ([AssetDelivery] DirectThreadCount; the shipped file says 10, the code's default is 4).
+    # The game's allocator gives each thread one of 64 cache slots (FUN_142b6b7f0); with ~176 threads they run out
+    # just as the five terrain contour threads start at world entry, and a contour thread left without a slot takes a
+    # global lock and checks all 64 owners on every allocation: the loading screen crawled from 50 to 100% for
+    # 2-5 minutes. With 2 asset threads 58 slots are used and the terrain scene took 0.8 s (2026-10-14).
+    $assetLine = 'DirectThreadCount=2'
+    if (-not ($lines -contains $assetLine)) {
+        if ($lines -match '^DirectThreadCount=') {
+            $lines = $lines | ForEach-Object { if ($_ -match '^DirectThreadCount=') { $assetLine } else { $_ } }
+        } elseif ($lines -contains '[AssetDelivery]') {
+            $list = [System.Collections.Generic.List[string]]::new([string[]]$lines)
+            $list.Insert($list.IndexOf('[AssetDelivery]') + 1, $assetLine)
+            $lines = $list.ToArray()
+        } else {
+            $lines += ''; $lines += '[AssetDelivery]'; $lines += $assetLine
+        }
+        $changed = $true
+    }
+    # Earlier launchers wrote [Terrain] UseCachedMeshes/CacheMeshes=off; UserOptions.ini overrides them, so they never
+    # took effect. Removed again.
+    $stale = @('UseCachedMeshes=off', 'CacheMeshes=off')
+    if ($lines | Where-Object { $stale -contains $_ }) {
+        $list = [System.Collections.Generic.List[string]]::new([string[]]@($lines | Where-Object { $stale -notcontains $_ }))
+        $i = $list.IndexOf('[Terrain]')
+        if ($i -ge 0 -and ($i -eq $list.Count - 1 -or $list[$i + 1] -match '^\s*(\[|$)')) {
+            $list.RemoveAt($i)                                          # the section is empty now
+            if ($i -gt 0 -and $i -eq $list.Count -and $list[$i - 1] -eq '') { $list.RemoveAt($i - 1) }
+        }
+        $lines = $list.ToArray()
+        $changed = $true
+    }
     if ($changed) {
         if (-not (Test-Path "$config.orig")) { Copy-Item $config "$config.orig" }
         Set-Content $config $lines -Encoding ASCII

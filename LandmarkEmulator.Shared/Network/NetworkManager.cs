@@ -72,6 +72,13 @@ namespace LandmarkEmulator.Shared.Network
                 return sessions.Values.SingleOrDefault(func);
         }
 
+        /// <summary>A snapshot of the connected sessions.</summary>
+        public List<T> Sessions()
+        {
+            lock (sync)
+                return sessions.Values.ToList();
+        }
+
         /// <summary>Returns the session for a backend <see cref="NetworkSession.BackendSessionId"/>, if connected.</summary>
         public T GetSessionById(Guid sessionId)
         {

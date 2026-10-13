@@ -103,6 +103,9 @@ namespace LandmarkEmulator.AuthServer.Network.Handlers
             session.EnqueueMessage(serverListReply);
         }
 
+        /// <summary>The equipped items' container (WorldServer Game.Inventory.Inventory.EquippedContainer).</summary>
+        private const uint EquippedContainer = 2;
+
         [AuthMessageHandler(AuthMessageOpcode.CharacterSelectInfoRequest, ProtocolVersion.LoginUdp_10)]
         public static void HandleCharacterSelectInfoRequest(AuthSession session, CharacterSelectInfoRequest request)
         {
@@ -152,27 +155,19 @@ namespace LandmarkEmulator.AuthServer.Network.Handlers
                             characterPayload.Model.Customisations.Add(new(customisation.Slot, customisation.Option, customisation.Tint));
                         }
 
-                        // TODO: Remove the random chest piece. This is just to keep character select slightly more interesting :P
-                        List<string> randomName = new List<string>
-                        {
-                            "Colony_000",
-                            "Trailblazer_000",
-                            "Founder_000",
-                            "Townsperson_000",
-                            "Dapper_000",
-                            "Adventurer_000",
-                            "Victorian_000",
-                            "Wanderer_000",
-                            "Qeynos_000_Heavy",
-                            "Colony_000_Heavy"
-                        };
-                        
-                        // Add Attachments; Should only ever be a chest item in character select.
-                        characterPayload.CharacterAttachments.Add(new CharacterSelectInfoReply.Character.CharacterPayload.CharacterAttachment
-                        {
-                            ModelName = $"Char_Biped_[RACE][GENDER]_Entities_{randomName[new Random().Next(randomName.Count)]}_Chest.adr",
-                            Slot = AttachmentSlot.Head,
-                        });
+                        // What the character wears: its equipped items with a body model (clothing and armour;
+                        // tools and weapons aren't shown here), each in its equipment slot. The client builds the body
+                        // (undergarment, head, hair, eyes: slots 13-17) from the customisations and lays these on top,
+                        // as the AttachmentProcessor log shows ("Slot=8" for a heavy chest). The tint travels with the
+                        // attachment: there is no item here for the client to look it up from.
+                        foreach (CharacterItemModel item in model.Items.Where(i => i.Container == EquippedContainer).OrderBy(i => i.Slot))
+                            if (ItemAppearances.Get(item.ItemDefinitionId) is { } look && look.Model.StartsWith("Char_", StringComparison.Ordinal))
+                                characterPayload.CharacterAttachments.Add(new CharacterSelectInfoReply.Character.CharacterPayload.CharacterAttachment
+                                {
+                                    ModelName = look.Model,
+                                    SemanticTint = look.TintAlias,
+                                    Slot = (AttachmentSlot)look.EquipSlot,
+                                });
 
                         // Add character to payload
                         characterSelect.Characters.Add(new CharacterSelectInfoReply.Character
@@ -495,19 +490,28 @@ namespace LandmarkEmulator.AuthServer.Network.Handlers
         [AuthMessageHandler(AuthMessageOpcode.CharacterLoginRequest)]
         public static void HandleCharacterLoginRequest(AuthSession session, CharacterLoginRequest request)
         {
-            CharacterLoginResult result = CharacterLoginResult.Success;
             ZoneServer server = ZoneServerManager.Instance.ZoneServers.SingleOrDefault(x => x.Id == request.ServerId);
-            if (server == null)
-                result = CharacterLoginResult.ServerNotFound;
-
-            // TODO: Confirm server is online and accepting players
-
             CharacterModel character = session.Characters.SingleOrDefault(x => x.Id == request.CharacterId);
-            if (character == null)
-                result = CharacterLoginResult.NotAllowed;
-
-            if (result == CharacterLoginResult.Success)
+            if (server == null || character == null)
             {
+                Refuse(session, request, server == null ? CharacterLoginResult.ServerNotFound : CharacterLoginResult.NotAllowed);
+                return;
+            }
+
+            // The world must be running right now: its row is read fresh at Play (not the list's 3-second view), and
+            // a world clears its heartbeat the moment a shutdown starts (WorldServer Game.Shutdown / ServerHeartbeat).
+            // Otherwise result 3, which character select shows as "Game Server not found." and stays put - the player
+            // never connects to a world that is closing (a client that connects and is dropped quits).
+            session.EnqueueEvent(new TaskGenericEvent<ZoneServerModel>(DatabaseManager.Instance.AuthDatabase.GetZoneServerAsync(server.Id),
+                row =>
+            {
+                if (!ZoneServerManager.IsRunning(row))
+                {
+                    log.Info($"Account {session.Account.Id}: Play refused, world {server.Id} is down or shutting down.");
+                    Refuse(session, request, CharacterLoginResult.ServerNotFound);
+                    return;
+                }
+
                 string serverTicket = RandomProvider.GetBytes(16u).ToHexString();
                 session.EnqueueEvent(new TaskEvent(DatabaseManager.Instance.AuthDatabase.UpdateServerTicket(session.Account, serverTicket),
                     () =>
@@ -527,18 +531,19 @@ namespace LandmarkEmulator.AuthServer.Network.Handlers
                     {
                         CharacterId = request.CharacterId,
                         ServerId    = request.ServerId,
-                        Result      = result,
+                        Result      = CharacterLoginResult.Success,
                         Server      = serverInfo
                     });
                 }));
-            }
-            else
-                session.EnqueueMessage(new CharacterLoginReply
-                {
-                    CharacterId = request.CharacterId,
-                    ServerId    = request.ServerId,
-                    Result      = result
-                });
+            }));
         }
+
+        private static void Refuse(AuthSession session, CharacterLoginRequest request, CharacterLoginResult result) =>
+            session.EnqueueMessage(new CharacterLoginReply
+            {
+                CharacterId = request.CharacterId,
+                ServerId    = request.ServerId,
+                Result      = result
+            });
     }
 }

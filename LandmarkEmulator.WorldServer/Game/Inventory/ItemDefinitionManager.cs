@@ -1,5 +1,7 @@
 ﻿using System.Linq;
 using LandmarkEmulator.Shared.Network;
+using LandmarkEmulator.WorldServer.Network;
+using LandmarkEmulator.WorldServer.Network.Message;
 using NLog;
 using System;
 using System.Collections.Generic;
@@ -66,6 +68,17 @@ namespace LandmarkEmulator.WorldServer.Game.Inventory
         private static Dictionary<uint, ItemDefinition> definitions = new();
         private static Dictionary<uint, (ItemDefinition, ItemAbility)> abilityIndex = new();
 
+        private static byte[] loginPacket;
+
+        /// <summary>
+        /// Accounts logging out to character select, with the login session key the server handed their client
+        /// (<see cref="Network.Handlers.CharacterSelectHandler"/>). The client keeps its item definition cache across
+        /// a logout (logging in again, it logs "Overwriting existing item definition in cache" for every one), so when
+        /// that same client comes back - the account's session key is still the one issued here; starting a new client
+        /// through the login service replaces it - the login list is not sent again.
+        /// </summary>
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<ulong, string> reloginKeys = new();
+
         public static ItemDefinition Get(uint id) => definitions.TryGetValue(id, out ItemDefinition d) ? d : null;
         public static int Count => definitions.Count;
         public static IEnumerable<ItemDefinition> All => definitions.Values;
@@ -95,12 +108,85 @@ namespace LandmarkEmulator.WorldServer.Game.Inventory
                 result[definition.Id] = definition;
             }
             definitions = result;
+            loginPacket = data.AsSpan(2).ToArray();   // the CommandBase body as sent (u16 sub 0x4B onwards)
             var index = new Dictionary<uint, (ItemDefinition, ItemAbility)>();
             foreach (ItemDefinition definition in result.Values)
                 foreach (ItemAbility ability in definition.Abilities)
                     index.TryAdd(ability.AbilityId, (definition, ability));
             abilityIndex = index;
             log.Info($"Loaded {definitions.Count} item definitions.");
+        }
+
+        /// <summary>
+        /// At world entry: the whole item definition list, CommandBase 0x4B ItemDefinitions {u16 sub, u32 size, u32 count,
+        /// per item u16 compressed size, u16 size, LZ4 block}, as the live server sent it (the packet dump is that login
+        /// packet). The client handles it in FUN_143358210, logging two lines to ItemDefinitions.log per item and
+        /// opening that file for each line, which is most of the "Loading into world" wait (about 15 s for 2,885 items
+        /// on a PC with real-time file scanning). Skipped when the same client logs back in (see <see cref="reloginKeys"/>).
+        /// </summary>
+        public static void SendLoginList(WorldSession session)
+        {
+            // A relogin session this server issued with this item list (RelogTag) means the client still holds it,
+            // even across a restart of this server; another server, or changed items, send the list again.
+            if (session.Account?.SessionKey?.StartsWith(RelogTag, StringComparison.Ordinal) == true)
+            {
+                reloginKeys.TryRemove(session.Account.Id, out _);
+                log.Info($"Account {session.Account.Id} is back from character select with this server's item list: not resent.");
+                return;
+            }
+            if (session.Account != null && reloginKeys.TryRemove(session.Account.Id, out string key) && key == session.Account.SessionKey)
+            {
+                log.Info($"Account {session.Account.Id} is back from character select on the same client: its item definitions are cached, not resent.");
+                return;
+            }
+            session.EnqueueMessage(ZoneMessageOpcode.CommandBase, loginPacket);
+        }
+
+        /// <summary>The account is going to character select with this login session key (its client stays running).</summary>
+        public static void NoteRelogin(ulong accountId, string sessionKey) => reloginKeys[accountId] = sessionKey;
+
+        /// <summary>
+        /// Start of every relogin session key this server issues (logout to character select, shutdown): "R", this
+        /// world's zone_server id and a fingerprint of its item list, 12 hex digits in all. A client that comes back
+        /// with it was given this list here; resending made it overwrite all 2,885 cached definitions, and after a
+        /// world restart that relog then rebuilt its terrain for 1-2 minutes (2026-10-14).
+        /// </summary>
+        public static string RelogTag => relogTag ??= "R" + (ConfigurationTag() & 0xFFF).ToString("X3")
+            + (Fingerprint() & 0xFFFFFFFF).ToString("X8");
+        private static string relogTag;
+
+        /// <summary>A fresh relogin session key (32 hex-ish characters) starting with <see cref="RelogTag"/>.</summary>
+        public static string NewRelogKey() => (RelogTag + Convert.ToHexString(Shared.Network.Cryptography.RandomProvider.GetBytes(16u)))[..32];
+
+        private static ulong ConfigurationTag() =>
+            LandmarkEmulator.Shared.Configuration.ConfigurationManager<WorldServerConfiguration>.Instance.Config?.ZoneServerId ?? 0;
+
+        private static ulong Fingerprint()
+        {
+            ulong hash = 14695981039346656037UL;   // FNV-1a over the login list as sent
+            foreach (byte b in loginPacket ?? Array.Empty<byte>())
+                hash = (hash ^ b) * 1099511628211UL;
+            return hash;
+        }
+
+        /// <summary>
+        /// CommandBase 0x49 ItemDefinitionRequest {u32 id}: the client asks for a definition it lacks (FUN_14335a2e0,
+        /// from its icon / tooltip wait lists). Answer: 0x4A ItemDefinitionReply {u16 sub, u32 size, one entry as in the
+        /// login list}; the client adds it (FUN_143356cf0 with the refresh flag) and drops its pending request.
+        /// </summary>
+        public static void SendDefinition(WorldSession session, uint id)
+        {
+            ItemDefinition definition = Get(id);
+            if (definition == null)
+            {
+                log.Debug($"Client asked for unknown item definition {id}.");
+                return;
+            }
+            var output = new List<byte>(6 + definition.RawData.Length);
+            output.AddRange(BitConverter.GetBytes((ushort)0x4A));
+            output.AddRange(BitConverter.GetBytes(definition.RawData.Length));
+            output.AddRange(definition.RawData);
+            session.EnqueueMessage(ZoneMessageOpcode.CommandBase, output.ToArray());
         }
 
         /// <summary>
@@ -168,50 +254,5 @@ namespace LandmarkEmulator.WorldServer.Game.Inventory
         /// </summary>
         public static (ItemDefinition Item, ItemAbility Ability)? FindAbility(uint abilityId)
             => abilityIndex.TryGetValue(abilityId, out var found) ? found : null;
-
-        /// <summary>
-        /// Minimal LZ4 block decoder (the format each item definition is compressed with).
-        /// </summary>
-        private static class Lz4Block
-        {
-            /// <summary>
-            /// Decodes one LZ4 block into a buffer of the known decompressed size.
-            /// </summary>
-            public static byte[] Decode(ReadOnlySpan<byte> src, int outputSize)
-            {
-                var dst = new byte[outputSize];
-                int s = 0, d = 0;
-                while (s < src.Length)
-                {
-                    int token = src[s++];
-                    int literals = token >> 4;
-                    if (literals == 15)
-                    {
-                        int b;
-                        do { b = src[s++]; literals += b; } while (b == 255);
-                    }
-                    src.Slice(s, literals).CopyTo(dst.AsSpan(d));
-                    s += literals;
-                    d += literals;
-                    if (s >= src.Length)
-                        break;
-
-                    int matchOffset = src[s] | (src[s + 1] << 8);
-                    s += 2;
-                    int matchLength = token & 15;
-                    if (matchLength == 15)
-                    {
-                        int b;
-                        do { b = src[s++]; matchLength += b; } while (b == 255);
-                    }
-                    matchLength += 4;
-                    for (int k = 0; k < matchLength; k++, d++)
-                        dst[d] = dst[d - matchOffset];
-                }
-                if (d != outputSize)
-                    throw new InvalidDataException($"LZ4 block decoded to {d} bytes, expected {outputSize}.");
-                return dst;
-            }
-        }
     }
 }

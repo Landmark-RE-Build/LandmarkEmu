@@ -178,6 +178,24 @@ namespace LandmarkEmulator.Database.Auth
         }
 
         /// <summary>
+        /// The world server is running (heartbeat = now, or null when it stops) with this many players.
+        /// </summary>
+        public async Task UpdateZoneServerHeartbeat(ulong zoneServerId, bool running, uint players)
+        {
+            using var context = new AuthContext(config);
+            DateTime? now = running ? DateTime.UtcNow : null;
+            await context.ZoneServer.Where(s => s.Id == zoneServerId)
+                .ExecuteUpdateAsync(s => s.SetProperty(z => z.Heartbeat, now).SetProperty(z => z.PlayersOnline, players));
+        }
+
+        /// <summary>One zone server's row as it is now (its heartbeat), or null.</summary>
+        public async Task<ZoneServerModel> GetZoneServerAsync(ulong zoneServerId)
+        {
+            using var context = new AuthContext(config);
+            return await context.ZoneServer.AsNoTracking().SingleOrDefaultAsync(s => s.Id == zoneServerId);
+        }
+
+        /// <summary>
         /// Selects all Zone Servers and returns a list containing all <see cref="ZoneServerModel"/>.
         /// </summary>
         public ImmutableList<ZoneServerModel> GetZoneServers()

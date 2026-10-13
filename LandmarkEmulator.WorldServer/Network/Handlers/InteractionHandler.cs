@@ -109,6 +109,11 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                 case CommandRequest.ClientCommand:
                     Game.Emotes.HandleCommand(session, request.Body);
                     break;
+                case CommandRequest.ItemDefinitionRequest:
+                    // The client lacks a definition (FUN_14335a2e0: "Item definition not found or pending, will issue
+                    // new request"): answer with that one definition (0x4A), which drops it from its pending list.
+                    Game.Inventory.ItemDefinitionManager.SendDefinition(session, new GamePacketReader(request.Body).ReadUInt());
+                    break;
                 case CommandRequest.InteractionItem:
                     UseItem(session, new GamePacketReader(request.Body).ReadULong());
                     break;

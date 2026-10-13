@@ -100,12 +100,22 @@ namespace LandmarkEmulator.Database.Auth.Migrations
                         .HasDefaultValue(0u)
                         .HasColumnName("flags");
 
+                    b.Property<DateTime?>("Heartbeat")
+                        .HasColumnType("datetime")
+                        .HasColumnName("heartbeat");
+
                     b.Property<string>("Host")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("varchar(64)")
                         .HasDefaultValue("127.0.0.1")
                         .HasColumnName("host");
+
+                    b.Property<uint>("PlayersOnline")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int(10) unsigned")
+                        .HasDefaultValue(0u)
+                        .HasColumnName("playersOnline");
 
                     b.Property<uint>("NameId")
                         .ValueGeneratedOnAdd()

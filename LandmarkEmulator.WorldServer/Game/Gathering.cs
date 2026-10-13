@@ -1,4 +1,4 @@
-using LandmarkEmulator.WorldServer.Game.Terrain;
+﻿using LandmarkEmulator.WorldServer.Game.Terrain;
 using LandmarkEmulator.WorldServer.Network;
 using LandmarkEmulator.WorldServer.Network.Message.Model;
 using NLog;
@@ -244,7 +244,7 @@ namespace LandmarkEmulator.WorldServer.Game
             uint wood = (uint)(random.Next(2, 5) * (tool == 3261 ? 1.5 : 1.0) * ToolYieldBonus(tool));
             GiveHarvest(session, tree.Yield, wood);
             Achievements.Harvested(session, tree.Yield, wood);
-            LootPinatas.SpawnChunk(session, target + new Vector3(0f, 1f, 0f), tree.Yield);
+            LootPinatas.SpawnChunk(session, target + new Vector3(0f, 1f, 0f), tree.Yield, wood);
             if (random.NextDouble() < 0.3)
                 GiveHarvest(session, TreeFiber, (uint)random.Next(1, 3));
             if (!felled)

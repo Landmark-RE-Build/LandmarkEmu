@@ -139,14 +139,14 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
     /// <summary>
     /// A Command request from the client: CommandBase 0x1E, a u16 sub-opcode, then its body (handled per
     /// sub-opcode). Sub ids per FUN_14340fc20: 9 InteractRequest (u64 guid), 0x10 AddFriendRequest (string name, u64),
-    /// 0x12 RemoveFriendRequest, 0x16 SelectPlayer, 0x4C InteractionItem
+    /// 0x12 RemoveFriendRequest, 0x16 SelectPlayer, 0x49 ItemDefinitionRequest (u32 item definition id), 0x4C InteractionItem
     /// (u64 item guid: an item was used, e.g. right-clicked in the inventory).
     /// </summary>
     [ZoneMessage(ZoneMessageOpcode.CommandBase)]
     public class CommandRequest : IReadable
     {
         public const ushort InteractRequest = 0x09, AddFriendRequest = 0x10, RemoveFriendRequest = 0x12, SelectPlayer = 0x16,
-            InteractionItem = 0x4C, ClientCommand = 0x43, BuilderMode = 0x5A, FreeInteractionNpc = 0x17, IgnoreRequest = 0x20;
+            ItemDefinitionRequest = 0x49, InteractionItem = 0x4C, ClientCommand = 0x43, BuilderMode = 0x5A, FreeInteractionNpc = 0x17, IgnoreRequest = 0x20;
 
         public ushort SubOpcode { get; private set; }
         public byte[] Body { get; private set; }

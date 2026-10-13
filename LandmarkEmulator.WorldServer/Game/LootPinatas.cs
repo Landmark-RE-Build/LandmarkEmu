@@ -1,4 +1,4 @@
-using LandmarkEmulator.Shared.GameTable.Text;
+﻿using LandmarkEmulator.Shared.GameTable.Text;
 using LandmarkEmulator.Shared.Network;
 using LandmarkEmulator.WorldServer.Network;
 using LandmarkEmulator.WorldServer.Network.Message;
@@ -20,7 +20,7 @@ namespace LandmarkEmulator.WorldServer.Game
     ///
     /// LootPinataBase 0xFB, u8 sub:
     /// - 1 SpawnLoot (S→C, reader FUN_1430775a0, handler FUN_14307a310): u32 loot id, u32 definition (LootPinata.txt:
-    ///   model; 5 = loot bag, 21 stone, 79 plain wood, 85 cotton…), vec3, then the vec3 the pinata is created at, f32,
+    ///   model; 5 = loot bag, 21 stone, 79 plain wood, 85 cotton…), vec3 position, u32 item, u32, u32 count, f32,
     ///   u64 owner, string, u32 kind (0 keeps the position; 3 = harvest, tells the action manager), u32 ×3.
     /// - 5 PickupLoot (C→S {u32 id, u64 player}) when one reaches its owner (FUN_14307d0f0: auto-scoop in range);
     ///   answered by 3 PickupLootResponse {u32 id, u64 player, bool} which removes it.
@@ -150,8 +150,8 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>A harvest chunk (looks only): a resource's chunk that flies into the player.</summary>
-        public static void SpawnChunk(WorldSession owner, Vector3 position, uint item)
-            => Spawn(owner, position, PinataFor(item));
+        public static void SpawnChunk(WorldSession owner, Vector3 position, uint item, uint count = 1)
+            => Spawn(owner, position, PinataFor(item), item: item, count: Math.Max(1u, count));
 
         /// <summary>A loot bag holding items, given to the owner when they collect it.</summary>
         public static void SpawnBag(WorldSession owner, Vector3 position, IReadOnlyList<(uint Item, uint Count)> contents)
@@ -166,7 +166,7 @@ namespace LandmarkEmulator.WorldServer.Game
         /// makes the client zero it).
         /// </summary>
         public static void Spawn(WorldSession owner, Vector3 position, uint pinata, uint kind = 0, uint a = 0, uint b = 0, uint c = 0,
-            IReadOnlyList<(uint Item, uint Count)> contents = null)
+            IReadOnlyList<(uint Item, uint Count)> contents = null, uint item = 0, uint count = 0)
         {
             uint id = (uint)Interlocked.Increment(ref nextId);
             pending[id] = new Pending(owner, contents ?? Array.Empty<(uint, uint)>());
@@ -180,10 +180,15 @@ namespace LandmarkEmulator.WorldServer.Game
             w.Write(position.X);
             w.Write(position.Y);
             w.Write(position.Z);
-            // The pinata is created at these (the first vec3 isn't copied into the create call; verified with a hook).
-            w.Write(position.X);
-            w.Write(position.Y);
-            w.Write(position.Z);
+            // Then the pickup's item: u32 item definition, u32 (a looked-up id, 0 = default), u32 count, u32
+            // (pinata ctor FUN_143078130: [5] -> +0x1c4 item (looked up in the item definitions), [0xb] -> +0x1c8,
+            // [0xc] -> +0x1cc count, [0xd] -> +0x1d0; the position is [2..4], the vec3 above). The client checks these
+            // before scooping it up (FUN_143079860: can the bag or the resource/Collections container take item,
+            // count?) - a copy of the position here was read as a nonsense item, so with a full bag even resources
+            // that go to Collections were refused ("Your inventory is full!", 2026-10-14).
+            w.Write(item);
+            w.Write(0u);
+            w.Write(count);
             w.Write(1f);
             w.Write(owner.PlayerGuid);
             w.Write("");

@@ -36,10 +36,13 @@ namespace LandmarkEmulator.AuthServer
             TunnelDataManager.Instance.Initialise();
 
             AuthAssetManager.Instance.Initialise();
+            // Equipped items' looks for the character list (the world server's item definitions file).
+            Shared.Game.ItemAppearances.Load(System.IO.Path.Combine(System.AppContext.BaseDirectory, "Resources", "PacketDumps", "44-CommandBase"));
 
             ThreadManager.Instance.Initialise(lastTick =>
             {
                 NetworkManager<AuthSession>.Instance.Update(lastTick);
+                ZoneServerManager.Instance.Update();
             });
 
             ZoneServerManager.Instance.Initialise();

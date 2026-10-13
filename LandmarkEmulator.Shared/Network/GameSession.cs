@@ -192,8 +192,18 @@ namespace LandmarkEmulator.Shared.Network
             // inside the client 6s SCENE timer (1-pkt + Sleep(10)/50 was taking 13–16s).
             while (true)
             {
-                if (outgoingPriorityPackets.IsEmpty && outOfOrderPackets.Count == 0 && outgoingDataPackets.IsEmpty)
+                // The thread ends with its session. Before this, a disconnected session with packets still queued
+                // (CanProcessPackets false, so nothing dequeues) looped on Sleep(0) at a full core forever - one
+                // more spinning thread per relog / logout, starving the client's terrain contouring on the same PC.
+                if (Disconnected)
+                    return;
+
+                if (!CanProcessPackets
+                    || (outgoingPriorityPackets.IsEmpty && outOfOrderPackets.Count == 0 && outgoingDataPackets.IsEmpty))
+                {
                     Thread.Sleep(10);
+                    continue;
+                }
 
                 if (CanProcessPackets && outgoingPriorityPackets.TryDequeue(out ProtocolPacket priorityPacket))
                 {

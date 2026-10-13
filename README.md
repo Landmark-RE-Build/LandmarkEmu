@@ -25,7 +25,9 @@ The first run asks a few questions and sets everything up:
 - **MariaDB root password** — only used once, to create a database user for the emulator with a random password.
 - It builds the servers, copies the game's data tables into `gameData\`, and writes the server configs.
 - **Point the game at this server?** — sets `Server=127.0.0.1:20042` in the game's `ClientConfig.ini` (the original is
-  kept as `ClientConfig.ini.orig`; copy it back to undo).
+  kept as `ClientConfig.ini.orig`; copy it back to undo). It also lowers `[AssetDelivery] DirectThreadCount` from the
+  shipped 10 to 2: with that many threads the game's memory allocator runs out of per-thread slots just as the terrain
+  threads start, and the loading screen could crawl from 50% to 100% for minutes (see `docs/terrain.md`).
 - **Account name / password** — your login on this server.
 
 **Terrain heights (recommended):** download `LandmarkEmu-terrain-heights.zip` from this project's

@@ -467,6 +467,7 @@ namespace LandmarkEmulator.WorldServer.Game
             };
             lock (sync)
                 claims.Add(claim);
+            Terrain.OreVeins.ClearSite(claim.ZoneId, (claim.MinX, claim.MinY, claim.MinZ), (claim.MaxX, claim.MaxY, claim.MaxZ));
             DatabaseManager.Instance.CharacterDatabase.Save(c => c.Claim.Add(claim))
                 .ContinueWith(t => log.Error(t.Exception, $"Failed to save claim {claim.Id}."),
                     System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
@@ -1341,6 +1342,7 @@ namespace LandmarkEmulator.WorldServer.Game
             };
             lock (sync)
                 claims.Add(claim);
+            Terrain.OreVeins.ClearSite(claim.ZoneId, (claim.MinX, claim.MinY, claim.MinZ), (claim.MaxX, claim.MaxY, claim.MaxZ));
             DatabaseManager.Instance.CharacterDatabase.Save(c => c.Claim.Add(claim))
                 .ContinueWith(t => log.Error(t.Exception, $"Failed to save claim {claim.Id}."),
                     System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);

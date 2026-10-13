@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -24,6 +24,12 @@
 	  <None Update="Resources/ArtTints.json">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	  </None>
+	  <!-- Item definitions (Shared/Game/ItemAppearances.cs): the world server's file, so the character list shows the
+	       equipped clothing. -->
+	  <ContentWithTargetPath Include="..\LandmarkEmulator.WorldServer\Resources\PacketDumps\44-CommandBase">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		  <TargetPath>Resources\PacketDumps\44-CommandBase</TargetPath>
+	  </ContentWithTargetPath>
   </ItemGroup>
 
 </Project>

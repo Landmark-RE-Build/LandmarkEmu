@@ -33,6 +33,9 @@ namespace LandmarkEmulator.WorldServer
         /// </summary>
         public string GameDirectory { get; set; } = "";
 
+        /// <summary>This world's row in the login database's zone_server table (its heartbeat for character select).</summary>
+        public ulong ZoneServerId { get; set; } = 1;
+
         /// <summary>Continent of the starting zone (sent in SendZoneDetails).</summary>
         public uint Continent { get; set; } = 406;
 

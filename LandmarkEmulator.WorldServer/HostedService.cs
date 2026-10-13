@@ -123,6 +123,7 @@ namespace LandmarkEmulator.WorldServer
                 Run("encounters", Game.Encounters.Update);
                 Run("shutdown", Game.Shutdown.Update);
                 Run("players", Game.PlayerManager.Update);
+                Run("heartbeat", Game.ServerHeartbeat.Update);
                 Run("terrain regeneration", () => Game.Terrain.TerrainEdits.Regenerate(Game.Claims.BoxesIn));
                 Run("ore veins", Game.Terrain.OreVeins.Update);
                 Run("terrain", Game.Terrain.TerrainEdits.Flush);
@@ -141,11 +142,21 @@ namespace LandmarkEmulator.WorldServer
         public Task StopAsync(CancellationToken cancellationToken)
         {
             log.Info($"Ending Service...");
+            // The login server hears first, so nobody is sent in while the world closes (it re-reads within 3 s).
+            Game.Shutdown.BeginStopping();
+            Game.ServerHeartbeat.Stopped();
             // Players see the shutdown notice before the connection drops.
             Game.Shutdown.NotifyStopping();
             System.Threading.Thread.Sleep(1000);
+            // Up to a minute: a client still loading (the item definitions alone take ~15 s) only reads its relogin
+            // session when it is done, and must still be connected then - if the server closes first, the client sees
+            // the drop while starting its relogin and quits (2026-10-14). Ends as soon as everyone has left.
+            // At least 5 s even with nobody connected: a client given the world's address just before the login server
+            // heard of the shutdown (it re-reads every 3 s) is still on its way.
+            Game.Shutdown.SendPlayersToCharacterSelect(TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(5));
 
             NetworkManager<WorldSession>.Instance.Shutdown();
+            Game.ServerHeartbeat.Stopped();
 
             ThreadManager.Instance.Shutdown();
 

@@ -1,4 +1,4 @@
-using LandmarkEmulator.Shared.Database;
+﻿using LandmarkEmulator.Shared.Database;
 using LandmarkEmulator.Shared.Game;
 using LandmarkEmulator.Shared.Game.Events;
 using LandmarkEmulator.Shared.Network.Cryptography;
@@ -42,11 +42,12 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                 return;
             }
 
-            string sessionKey = RandomProvider.GetBytes(16u).ToHexString();
+            string sessionKey = Game.Inventory.ItemDefinitionManager.NewRelogKey();
             session.EnqueueEvent(new TaskEvent(DatabaseManager.Instance.AuthDatabase.UpdateAccountSessionKey(session.Account, sessionKey),
                 () =>
                 {
                     log.Info($"Account {session.Account.Id} returning to character select.");
+                    Game.Inventory.ItemDefinitionManager.NoteRelogin(session.Account.Id, sessionKey);
                     session.EnqueueMessage(new CharacterSelectSessionResponse
                     {
                         Success = true,

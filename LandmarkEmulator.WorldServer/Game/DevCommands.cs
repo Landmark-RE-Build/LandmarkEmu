@@ -624,6 +624,12 @@ namespace LandmarkEmulator.WorldServer.Game
                             Terrain.BlockData.KeepVertexOnly = parts.Length > 1 && parts[1].Trim() == "on";
                             log.Info($"Vertex-only voxels from build diffs: {(Terrain.BlockData.KeepVertexOnly ? "kept" : "dropped")}.");
                             break;
+                        case "veinsweep":
+                            // veinsweep: moves every vein that touches a build site out of it (sites placed before
+                            // OreVeins.ClearSite existed, or veins generated before the site rule).
+                            foreach (var claim in Claims.All())
+                                Terrain.OreVeins.ClearSite(claim.ZoneId, (claim.MinX, claim.MinY, claim.MinZ), (claim.MaxX, claim.MaxY, claim.MaxZ));
+                            break;
                         case "observed":
                             // observed <operation> [size m]: sends the player a ResponseObserved (another player's edit
                             // effect, Building.SendObserved) for a box of that size 3 m in front of their feet.

@@ -1770,3 +1770,72 @@ ActorFailures.log, ClientMountLog.txt, NetInfo.log, Landmark PlayClient (Test) (
 - 2026-10-13: INVENTORY: NO_TRADE items can't be traded or mailed (client reasons 0xA / 0x12 / 0xF in mail).
 - 2026-10-13: Regression subset run (two runners overlapped by mistake → one-off flaky failures; each scenario passed in a clean run). Trade window icons verified in-client (tradeimg screenshots).
 - 2026-10-13: PROPS: signs / books / scrolls with text can be read by using them (text window); saving sign text no longer re-opens the editor.
+- 2026-10-14: LOGIN SPEED: the "Loading into world" wait was the item definition list (CommandBase 0x4B, 2,885 items,
+  283 KB, as live sent it): the client opens ItemDefinitions.log for every log line (~5 ms each with real-time file
+  scanning) = 15 s fresh, 30 s on a relog (it also logs "Overwriting existing ... in cache"). Measured with Frida
+  (re/test/loadtime.py, adhoc/loadtime.js, logcost.js). FileLogLevel in ClientConfig.ini does not turn it off.
+  Fix: a client coming back from character select (account session key still the one issued in 0xF7) keeps its
+  cache, so the list is not resent (user verified: 30 s -> 2 s). Fresh logins still get the full list (most client
+  lookups never ask for a missing definition). New: CommandBase 0x49 ItemDefinitionRequest answered with 0x4A
+  ItemDefinitionReply. dlogin.sh clears the session key (a new process must get the list). The remaining relog stall
+  (27 s once) was the client's first terrain build landing in the relog loading screen when logging out right after
+  entering; a later relog took 14 s in total. re/tools/sample.py: read-only thread stack sampler.
+- 2026-10-14: CHARACTER SELECT shows the equipped clothing/armour (login server: attachments from equipped items with
+  a Char_ model, equip slot as the attachment slot, item tint alias; verified in the test copy's AttachmentProcessor
+  log + screenshot re/test/shots/charselect_outfit.png). Was a random chest piece.
+- 2026-10-14: ORE VEINS stay out of build sites (spawn spots touching a site refused; placing a site moves the veins
+  inside it; dev command veinsweep). 24 veins were moved out of existing sites on 416.
+- 2026-10-14: WORLD STATUS: world heartbeat (zone_server.heartbeat/playersOnline, every 5 s); the login server pushes
+  ServerUpdate on change. The world stays listed as active (status bit 1 would make CharacterSelection.lua quit with
+  "No Servers!"); Play while it is down → "Game Server not found." and the player stays at character select.
+  World shutdown now runs the client's Ui.Logout for every player first (proper logout path; a dropped connection
+  left the client freezing mid item-definitions on the next join). Restart the world with dev "shutdown 10".
+- 2026-10-14: LOAD / LAG investigation (user's client):
+  - Relogin keys now carry R + zone_server id + item-list fingerprint, so a relog to the same server after a restart
+    skips the 2,885 item definitions (0->50% 30 s -> 3 s). Different server / changed items still get the list.
+  - Shutdown runs the client's own Ui.Logout first (proper teardown), 0xF7 push only as a fallback after 8 s.
+  - In-game lag + 1-2 min loads were the CLIENT's terrain mesh cache: Cache\2\Mesh\416\VoxMeshW_*.pack had grown to
+    ~430 MB (two 200 MB packs) from repeated full re-meshes; each contour took seconds ("Avg contour" 2000-6000 vs 3-5).
+    Moving the Cache folder aside fixed it (backup: backups/landmark-cache-2026-10-14). Fresh load 30 s, relog after
+    restart 50 s with the cache staying ~108 MB. Proposed: launcher clears a landscape's mesh cache over ~250 MB.
+  - Auth server had two threads spinning at 100% (5,480 CPU-s in an hour) until restarted; cause not found yet
+    (re/test/runs/authcpu.log watches it).
+  - Open: relog after a world restart still re-meshes for ~45 s (manifest is the same across restarts).
+  - Loot pinata SpawnLoot fields after the position are item/count (was a position copy): full-bag pickups of
+    Collections resources work.
+  - Follow-up: with the cache rebuilt and the relog tag in place, a relog after a world restart takes 9 s in total
+    (3 s + 6 s, scene processing 1.1 s). The 47 s relog was the first one after the cache had been rebuilt from empty.
+    So the rebuild-over-and-over came from the item-list overwrite (fixed) plus the bloated cache, not the restart.
+  - ROOT CAUSE of the fresh-start slowness/lag: real-time antivirus re-scans (~5 ms per open of a file the game just
+    wrote; measured on a copy of the pack) on every cached-mesh read. ClientConfig [Terrain] UseCachedMeshes=off +
+    CacheMeshes=off: fresh start 24 s (17 s item list + 7 s terrain), relog 8 s, smooth. The launcher now sets it
+    (launcher-common.ps1 Set-ClientConfig). The user's own ClientConfig.ini has it (backup:
+    backups/ClientConfig.ini.before-terrain-cache).
+
+## 2026-10-14 Slow world loads (50-100%) — cause traced in the client
+- **What the loading bar waits for after WaitForWorldReady completes:** the VoxelFarm scene. ClientSceneProcessing.log
+  "Begin SCENE ... Process Pending: N" → "Finish SCENE: Total Process Time" (1.3 s fast, 150-300 s slow); the work is
+  ContourThread::contourLoop (FUN_143ed5a30, 5 threads; "Avg contour" logs once per 5 s of contour time).
+- **Cause:** the client allocator's per-thread cache table holds **64** slots (FUN_142b6b7f0, table 0x145347ed0, stride
+  0x258, thread id first; used count 0x145347858). When full, a thread with no slot walks all 64 under a global
+  critical section on every allocation, checking each owner with FUN_142b6e490 (OpenThread / GetExitCodeThread /
+  GetProcessIdOfThread / CloseHandle). The client runs ~176 threads; ~55 slots are taken during startup, and at
+  world-ready the contour threads race the embedded browser (UI Browser.Create → CEF, 14 libcef threads) and other
+  new game threads for the last ~9. Verified 2026-10-14 07:15 by a read of the table: the two busy contour threads
+  had no slot; read-only stack samples showed them in NtWaitForAlertByThreadId / NtOpenThread /
+  NtQueryInformationThread / NtClose under malloc. Fast loads = the contour threads won the race.
+- **Not the cause (ruled out with evidence):** area definitions (WaitForWorldReady completed at once every run; the
+  `bAreaDefinitionsLoaded=0` lines were from another day), ore veins (none generated, still slow), server CPU spin
+  (fixed separately, still slow), the mesh cache (on all along: UserOptions.ini `[Terrain] CacheMeshes=On`
+  overrides the ClientConfig lines, which never took effect).
+- Pool sizes are fixed in code; the only thread-count setting found is `[AssetDelivery] DirectThreadCount` (default 4).
+- **Test 2026-10-14 07:29:** ClientConfig `[AssetDelivery] DirectThreadCount=10` (shipped) → 2: 171 threads, 58/64
+  slots used (no thread without one), terrain scene 794 ms, Play → loading screen gone in 17 s. Launcher now writes
+  it (commit 9ab20d6) and removes the dead [Terrain] lines. Backup: backups/ClientConfig.ini.before-directthreadcount.
+  Confirmed at the old slow spot (-626, 302), fresh starts: 07:32 scene 1206 ms (58 slots, game start → screen
+  hidden 14 s), 07:33 scene 854 ms (59 slots, 15 s). Same 6585 cells took 150-295 s before. Slot use climbs to
+  ~61 while playing (late threads); only the world-entry race matters. Check a load: bash re/tools/loadcheck.sh.
+- **Live history:** Daybreak forum thread 57166 (archive.org): devs confirmed the 50% hang was "related to number
+  of cores" (13 Jun 2016), patched 13/14 Jun, 16 Jun (hex-core), 30 Jun (8-core), never fully fixed. Player
+  workaround: msconfig fewer processors. Our 0.589 build (4 Jun 2016) predates all fixes. Also hit on later re-zones
+  in a session (slot use grows while playing): watch teleport/cave loads.

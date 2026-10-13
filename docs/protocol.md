@@ -244,7 +244,13 @@ still (e.g. 0x441); it is followed by one more byte block (empty: `00`).
 ## 5. Inventory and items
 
 - **Item definitions:** Command 0x1E/0x4B. `u32 size, u32 count`, then per item `u16 compressed size, u16 raw
-  size, LZ4 block`.
+  size, LZ4 block`. Sent at world entry (the client logs two ItemDefinitions.log lines per item, opening the file
+  each time: ~15 s for 2,885 items on a PC with real-time file scanning). The cache survives a logout to character
+  select, so the server skips the list for the same client coming back (its account session key is still the one
+  from CharacterSelectSessionResponse).
+  - 0x49 ItemDefinitionRequest (client → server) `u32 id`: sent for a missing definition from a few icon / tooltip
+    wait lists (FUN_14335a2e0); most lookups never ask.
+  - 0x4A ItemDefinitionReply `u32 size`, one entry as above; the client adds it and drops the pending request.
 - **InventoryBase 0x2D (u16 sub):**
 
 | Sub | Dir | Layout / notes |
@@ -630,8 +636,10 @@ Client dispatcher FUN_142dad120; all readers re-read the u16 opcode and u32 sub 
 - **Informational client packets** (no reply): ClientMetrics, FotomatBase, SetLocale, RatingBase, PlayerUpdate
   Loading, ClientPcDataBase, ClientInitializationDetails.
 - **LootPinataBase 0xFB (u8 sub):**
-  - 1 SpawnLoot: `u32 id, u32 definition (LootPinata.txt: 14 dirt, 19 sand, 21 stone…), vec3, …, u64 owner, …,
-    u32 kind`. Kind 0 keeps the position; kind 3 zeroes it.
+  - 1 SpawnLoot: `u32 id, u32 definition (LootPinata.txt: 14 dirt, 19 sand, 21 stone…), vec3 position, u32 item,
+    u32, u32 count, f32, u64 owner, string, u32 kind, u32 ×3`. Kind 0 keeps the position; kind 3 zeroes it. Before
+    scooping a pinata up, the client checks that the bag or the resource (Collections) container can take item × count
+    (FUN_143079860), and otherwise shows "Your inventory is full!".
   - 5 PickupLoot (C→S) → 3 PickupLootResponse `{u32 id, u64 player, u8}`. Chunks fly to their owner.
 - **HudManagerBase 0xDC (u8 sub), right-click menus:** the client asks the server which buttons to show.
   - 1 RadialMenuRequest (C→S) `{u64 target guid, u32 request type}`. Types: 1 prop, 2 friend (Friends window),
