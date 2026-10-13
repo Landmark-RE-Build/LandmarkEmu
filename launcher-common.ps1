@@ -1,4 +1,5 @@
-﻿# Shared by start.ps1 (host: servers + game) and play.ps1 (player: game only). Dot-sourced; not run on its own.
+﻿# Shared by start.ps1 (host: servers + game) and "Play LandmarkEmu.bat" (player: game only; start.bat embeds this file
+# in it with player-template.ps1). Dot-sourced or embedded; not run on its own.
 
 function Say([string]$text, [string]$color = 'Gray') { Write-Host $text -ForegroundColor $color }
 
@@ -139,7 +140,7 @@ function Invoke-SrpLogin([string]$address, [string]$user, [string]$keyHex, [stri
     if ($start.Status -ne 200) { throw "Login failed (HTTP $($start.Status)): $($start.Body)" }
     $hello = $start.Body | ConvertFrom-Json
     if (-not $keyHex -or $keySalt -ne $hello.salt) {
-        if (-not $password) { throw 'No saved key for this server; run the setup again (play.bat -Setup / start.bat -Setup).' }
+        if (-not $password) { throw 'No saved key for this server; run the setup again (-Setup).' }
         $keyHex = Get-SrpKey $password $hello.salt
     }
     $x = ConvertTo-Big (ConvertTo-HexBytes $keyHex)
@@ -176,7 +177,7 @@ function Save-Settings($settings, [string]$settingsFile) {
 }
 
 # Creates the account the first time, logs in (SRP) and starts the game. $redo is the command that starts over
-# (start.bat -Setup / play.bat -Setup).
+# (start.bat -Setup / "Play LandmarkEmu.bat" -Setup).
 function Connect-AndPlay($settings, [string]$settingsFile, [string]$address, [string]$redo, [switch]$NoGame) {
     $password = $settings.Password
     if (-not $settings.Key -and -not $password) { $null, $password = Read-Account $settings.Account '' }

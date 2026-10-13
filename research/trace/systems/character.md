@@ -45,3 +45,14 @@ RenamePlayer 0xE ✗.
   small red = cave openings), orange flags = no access, blue = friendlier; Spire icon.
 - Keys: Shift sprint, Q grapple / Space release, . walk, O screenshot, U Site Management, L designs, J Journal,
   B Showcase, N guild, I inventory + character, Alt tool tips, Alt+F performance, Alt+S script window.
+
+## Customization knowledge (traced 2026-10-13)
+- CharacterCustomization 0x11C sub 2 AddKnowledgeResponse {Array<int> ids, u32 type} (reader FUN_1435d77f0, handler
+  FUN_1435d7a50 on player +0x7ae28): type 3 adds ids to set +8, type 4 to set +0x20. SendSelfToClient carries the
+  same two int arrays (+0x7ae30 / +0x7ae48, SendSelfToClient_Read).
+- The barbershop offers an option when its record's innate flag (+0x30) is set or the knowledge set holds it
+  (FUN_142fffxxx near part_0083:5956). So non-innate hairstyles / faces / tints need knowledge — live unlocked them
+  (store bundles). Open: which options are non-innate and which items grant them; the server sends both arrays empty.
+- Locked options (CharacterCreateOptions.txt DEFAULT_UNLOCKED 0): 8 rows, all slot 4 Facial Hair — the "_06" variant
+  of facial hairs 00-03 for HumanMale (88-91) and HumanLargeMale (147, 154, 161, 168), children of the base beards.
+  No item in 0.589 data unlocks them (no beard / customization items); left locked, as a new 0.589 character had them.

@@ -69,6 +69,9 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                     else if (Game.WarpNetwork.NodeOf(guid) is ulong node and not 0)
                         // An underground portal crystal: straight to the Local Travel map from there.
                         Game.WarpNetwork.ActivateTerminal(session, node, true);
+                    else if (Game.Props.IsReadable(guid))
+                        // A sign / book / scroll with text: its text window for the reader.
+                        Game.Props.Read(session, guid);
                     else if (Game.StoryTools.Click(session, guid))
                     {
                         // A story-tool switch (flips in Play Mode).

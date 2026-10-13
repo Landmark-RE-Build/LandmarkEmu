@@ -869,6 +869,11 @@ namespace LandmarkEmulator.WorldServer.Game
                                 Props.SetName(session, Convert.ToUInt64(a[0], 16), a.Length > 1 ? a[1] : "");
                             break;
                         }
+                        case "propread":
+                            // propread <prop hex>: as using a sign / book / scroll with text (Props.Read).
+                            foreach (WorldSession session in targets)
+                                Props.Read(session, Convert.ToUInt64(parts[1], 16));
+                            break;
                         case "propshowtext":
                         {
                             // propshowtext <prop hex> <mode> [seconds]: shows a prop's text as Links would (Props.DisplayText).

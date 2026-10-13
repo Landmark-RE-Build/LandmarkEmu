@@ -96,6 +96,34 @@ namespace LandmarkEmulator.WorldServer.Game
                     session.EnqueueMessage(ZoneMessageOpcode.PlayerUpdateDisplayPropText, body);
         }
 
+        /// <summary>The props whose text can be shown (Links "display the text"): Rustic Sign, Fjorden Books, Gold Scroll.</summary>
+        private static readonly HashSet<uint> textProps = new()
+        {
+            StoryTools.RusticSignProp, StoryTools.FjordenBookOpenProp, StoryTools.FjordenBookClosedProp, StoryTools.GoldScrollProp
+        };
+
+        /// <summary>A placed text prop that has text: using it opens the text for the reader.</summary>
+        public static bool IsReadable(ulong guid) => Find(guid) is PlacedProp p && p.Placed && textProps.Contains(p.PropId) && !string.IsNullOrEmpty(p.Text);
+
+        /// <summary>
+        /// Using a sign / book / scroll with text: DisplayPropText mode 1, the client's text window
+        /// (HudStateManager:OnOpenTextDisplay, TextDisplayWidget) for the reader only. The editor's "Window (Char 4000)"
+        /// is the same window; mode 1 has no other source in the client.
+        /// </summary>
+        public static void Read(WorldSession reader, ulong guid)
+        {
+            PlacedProp prop = Find(guid);
+            if (prop == null || string.IsNullOrEmpty(prop.Text))
+                return;
+            var output = new List<byte>();
+            var writer = new GamePacketWriter(output);
+            writer.Write(guid);
+            writer.Write(prop.Text);
+            writer.Write(1u);
+            writer.Write(0u);
+            reader.EnqueueMessage(ZoneMessageOpcode.PlayerUpdateDisplayPropText, output.ToArray());
+        }
+
         /// <summary>A prop definition's name text (for the skipped-props list).</summary>
         public static uint NameIdOf(uint propId) => GameTableManager.Instance.PropDefs.GetEntry(propId)?.NameStringId ?? 0;
 
@@ -971,7 +999,16 @@ namespace LandmarkEmulator.WorldServer.Game
                 text = text[..1024];
             prop.Text = text;
             Persist(prop);
-            SendText(session, guid);
+            // No reply: EditPropTextReply (0x15) always opens the editor (HudStateManager:OnOpenTextEdit), which the
+            // player just closed with Save.
+            // A sign that now has text can be read: flag it so nearby clients ask for its interaction info.
+            if (IsReadable(guid))
+                foreach (WorldSession viewer in PlayerManager.InZone(prop.Zone))
+                {
+                    var flagging = new DynamicInteractionFlagging();
+                    flagging.Guids.Add(guid);
+                    viewer.EnqueueMessage(flagging);
+                }
         }
 
         /// <summary>
@@ -1292,6 +1329,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 // menu, tint, edit tools) entities the server flagged and answered as interactable (editable ones
                 // only while in build mode, see SendInteractionInfo).
                 if (CraftingStations.StationForProp(prop.PropId) != 0 || Chests.Slots(prop.PropId) > 0 || StoryTools.IsClickable(prop.PropId)
+                    || IsReadable(prop.Spawn.Guid)
                     || prop.PropId == 489 || Vaults.IsVaultProp(prop.PropId) || MayRearrange(session, prop))
                     flagging.Guids.Add(prop.Spawn.Guid);
             }
@@ -1325,7 +1363,7 @@ namespace LandmarkEmulator.WorldServer.Game
             foreach (ulong guid in guids)
             {
                 bool usable = StationAt(guid) != 0 || Chests.IsChest(guid) || Vendors.IsVendor(guid) || Spire.Usable(guid)
-                    || IsMailbox(guid) || Vaults.IsVault(guid)
+                    || IsMailbox(guid) || Vaults.IsVault(guid) || IsReadable(guid)
                     || WarpNetwork.IsCrystal(guid) || Outposts.Usable(guid) || LootChests.IsChest(guid)
                     || (Find(guid) is PlacedProp switchProp && StoryTools.IsClickable(switchProp.PropId))
                     || Creatures.IsStory(guid);

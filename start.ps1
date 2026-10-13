@@ -1,4 +1,5 @@
-﻿# LandmarkEmu launcher for the PC that runs the servers: run start.bat. (Players on other PCs use play.bat.)
+﻿# LandmarkEmu launcher for the PC that runs the servers: run start.bat. Players on other PCs need only the one file
+# it makes when hosting, "Play LandmarkEmu.bat" (the server address is built in) - share that file with them.
 #
 # First run: asks where Landmark (the 0.589 client) is installed and for an account name / password, then sets
 # everything up once — builds the servers, creates the database user, fills gameData from the game's own data tables,
@@ -69,7 +70,8 @@ function Read-ServerIni {
             '#',
             '# ServerAddress: the address players on OTHER PCs use to reach this PC, e.g. its network address',
             '# (192.168.1.20; "ipconfig" shows it as IPv4 Address), a VPN address (Tailscale / ZeroTier) or a host name.',
-            '# Leave it empty to play on this PC only. Players then run play.bat and enter the same address.',
+            '# Leave it empty to play on this PC only. When it is set, start.bat writes "Play LandmarkEmu.bat" next to',
+            '# itself: send players that one file (it needs only their Landmark install; the address is built in).',
             '# Logins never send the password (SRP); the game traffic itself is not encrypted, so over the internet a VPN is safer.',
             'ServerAddress=',
             '#',
@@ -114,7 +116,33 @@ function Set-ServerNetwork([string]$address) {
             Start-Process powershell -Verb RunAs -Wait -ArgumentList "-NoProfile -Command $rules"
         }
     }
-    Say "Hosting for other PCs at ${address}: players run play.bat and enter ${address}." 'Cyan'
+    Say "Hosting for other PCs at ${address}." 'Cyan'
+    Write-PlayerFile $address
+}
+
+# "Play LandmarkEmu.bat": one file for players to download - a batch header that runs the PowerShell after it, the
+# shared launcher functions and player-template.ps1 with this server's address filled in. Nothing else is needed on
+# their PC but Landmark; their settings go to %LOCALAPPDATA%\LandmarkEmu. Written again on every start.bat run, so
+# it always has the current address.
+function Write-PlayerFile([string]$address) {
+    $common = Get-Content (Join-Path $root 'launcher-common.ps1') -Raw
+    $player = (Get-Content (Join-Path $root 'player-template.ps1') -Raw).Replace('__SERVER_ADDRESS__', $address)
+    $header = @(
+        '@echo off',
+        "rem LandmarkEmu: play Landmark on the server at $address. Needs only Landmark (0.589) and Windows.",
+        'rem First run asks for your Landmark folder and an account. Run it with -Setup to change them.',
+        'set "LMEMU_BAT=%~f0"',
+        'set "LMEMU_ARGS=%*"',
+        'powershell -NoProfile -ExecutionPolicy Bypass -Command "$s=[IO.File]::ReadAllText($env:LMEMU_BAT); iex $s.Substring($s.IndexOf(''#LMEMU''+''-SCRIPT''))"',
+        'if errorlevel 1 pause',
+        'exit /b',
+        '#LMEMU-SCRIPT'
+    ) -join "`r`n"
+    # cmd reads the file as ANSI: keep it plain ASCII (the scripts' dashes and arrows are only in comments).
+    $text = ($header + "`r`n" + $common.TrimStart([char]0xFEFF) + "`r`n" + $player.TrimStart([char]0xFEFF)) -replace '[^\x00-\x7F]', '-'
+    $file = Join-Path $root 'Play LandmarkEmu.bat'
+    [IO.File]::WriteAllText($file, $text, (New-Object Text.ASCIIEncoding))
+    Say "Players: send them `"$file`" (one file; the address $address is built in)." 'Cyan'
 }
 
 # The in-game admin menu (WorldServer.json Admins): this PC's own account plus the names in server.ini.

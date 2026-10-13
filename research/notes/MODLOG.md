@@ -1769,3 +1769,4 @@ ActorFailures.log, ClientMountLog.txt, NetInfo.log, Landmark PlayClient (Test) (
 - 2026-10-13: INVENTORY module started (inventory-v1; trace/systems/inventory.md): TransferItemResponse results now the client's reasons (1 = success, chest permission / NO_TRADE / chest-in-chest messages); NO_TRADE flag decoded.
 - 2026-10-13: INVENTORY: NO_TRADE items can't be traded or mailed (client reasons 0xA / 0x12 / 0xF in mail).
 - 2026-10-13: Regression subset run (two runners overlapped by mistake → one-off flaky failures; each scenario passed in a clean run). Trade window icons verified in-client (tradeimg screenshots).
+- 2026-10-13: PROPS: signs / books / scrolls with text can be read by using them (text window); saving sign text no longer re-opens the editor.

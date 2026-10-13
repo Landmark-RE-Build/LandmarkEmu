@@ -486,3 +486,4 @@ Please try:
 - Try to attach Lumens or a Build Site Flag to a mail: "can't send NO_TRADE item". Try to trade one: it doesn't go in.
 - Put a NO_TRADE item into a chest on someone else's site: the client's "can't place no-trade" message; without
   permission on a chest: "access denied". Moving items in your own bag / equipping still works.
+- Write text on a Rustic Sign or Fjorden Book (Save closes the editor and it stays closed). Another player (or you outside build mode) uses it: a text window with the text opens.

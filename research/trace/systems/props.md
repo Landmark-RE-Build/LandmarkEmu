@@ -95,3 +95,10 @@ Not checked: turned pastes (the client's quaternion handedness), the design-save
   settings already update through 0xFD — not built.
 - PlayerUpdate_Dispatch reads a ONE-BYTE sub for every message; enum values 0x26xx00 put an extra 00 on the wire.
   All PlayerUpdate sends now use 3-byte values (checked 2026-10-13).
+
+## Reading text props (built 2026-10-13)
+- A placed Rustic Sign / Fjorden Book / Gold Scroll with text is usable: InteractRequest → DisplayPropText mode 1
+  (TextDisplayWidget, read-only) for the reader. Flagged at spawn and when its text is set. Verified with dev
+  propread + Frida + screenshot (re/test/scenarios/adhoc/textread.*).
+- Fix: UpdatePropText (0x13) no longer answers EditPropTextReply — that reply always re-opens the editor, so Save
+  used to bring the editor straight back.

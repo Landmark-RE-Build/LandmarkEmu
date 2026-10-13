@@ -52,14 +52,17 @@ Unattended setup: `start.bat -GamePath "D:\Games\Landmark" -Account me -Password
 shows it as "IPv4 Address"), or a VPN address (Tailscale, ZeroTier). Close the two server windows and run `start.bat`
 again. It makes the servers listen on the network, tells players' games to load the world from that address (without
 it they stop on the loading screen) and offers to open the ports in Windows Firewall (UDP 20042 and 19000, TCP 5000
-and 19001). Empty `ServerAddress=` means this PC only.
+and 19001), and writes **`Play LandmarkEmu.bat`** next to `start.bat` with that address built in. Empty
+`ServerAddress=` means this PC only (no player file).
 
-**Players on other PCs:** give them this folder (or the GitHub download) and have them run **`play.bat`**. It needs
-only the game — no .NET, MariaDB or build. The first run asks for their Landmark folder, the host's address and an
-account name / password; then it points their `ClientConfig.ini` at the host, creates the account there, logs in and
-starts Landmark. Later runs just play; `play.bat -Setup` changes the answers.
+**Players on other PCs:** send them the one file **`Play LandmarkEmu.bat`** (Discord, e-mail, a USB stick) — they
+don't need this project, .NET, MariaDB or a build, only Landmark. They double-click it: the first run asks for their
+Landmark folder and an account name / password, then it points their `ClientConfig.ini` at your server, creates the
+account there, logs in and starts Landmark. Later runs just play. Their settings stay on their PC
+(`%LOCALAPPDATA%\LandmarkEmu`); running the file with `-Setup` changes the folder or account. If your address changes,
+run `start.bat` again and send the new file.
 
-**Passwords never cross the network.** `start.bat` and `play.bat` log in with SRP-6a (the same idea as Blizzard's and
+**Passwords never cross the network.** `start.bat` and `Play LandmarkEmu.bat` log in with SRP-6a (the same idea as Blizzard's and
 Apple's password logins): the launcher proves it knows the password without sending it, the server keeps only a
 verifier it cannot turn back into the password, and the session key comes back encrypted. The launchers save a derived
 key in their settings file, never the password itself. The old plain-text login only answers on the server PC.
@@ -80,7 +83,7 @@ server shutdown countdown, and a box for any developer command — for themselve
 - *Nothing is listening on UDP 20042 / 19000*: look at the server window for the error (usually the database).
 - *Another PC gets stuck on the loading screen*: the host's `server.ini` has no `ServerAddress` (or the servers were
   not restarted after setting it), or UDP 19000 is blocked by a firewall on the host.
-- *play.bat: "No answer from the server"*: the host's servers are not running, the address is wrong, or TCP 5000 is
+- *Play LandmarkEmu.bat: "No answer from the server"*: the host's servers are not running, the address is wrong, or TCP 5000 is
   blocked on the host.
 - The server windows show everything that happens; `console.log` next to each server keeps it.
 
