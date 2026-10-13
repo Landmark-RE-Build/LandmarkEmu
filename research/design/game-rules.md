@@ -112,3 +112,8 @@ building alternate mode F, prop tweak F, duplicate prop X, reset prop Ctrl+R, pi
   unconfirmed). Logging out in a deep hole: the land reappears and the player ends up on the surface. Gathering
   only on unclaimed land, not on build sites. Source: Landmark fan wiki, "Gathering"
   (https://landmark.fandom.com/wiki/Gathering).
+
+## Build material costs
+- A voxel material costs its VoxelMaterials ITEM_ID item (4 voxels per item); ITEM_ID 0 = free-to-use, shown with
+  the infinity symbol in the Materials tray (the client's own rule, read 2026-10-13; wiki "Free-to-Use Building
+  Materials": most Terrain textures are unlimited).

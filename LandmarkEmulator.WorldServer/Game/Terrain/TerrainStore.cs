@@ -1,4 +1,4 @@
-using LandmarkEmulator.Shared.Network;
+﻿using LandmarkEmulator.Shared.Network;
 using LandmarkEmulator.WorldServer.Network;
 using LandmarkEmulator.WorldServer.Network.Message;
 using NLog;
@@ -91,6 +91,30 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         public static byte[] BuildBlocksUpdate(ulong cellId, uint layer, uint layerVersion, byte[] blob)
             => BuildBlocksUpdate(cellId, layerVersion, new[] { (layer, blob) });
 
+        /// <summary>CellsUpdate with several block layers of one cell, each with its own version.</summary>
+        public static byte[] BuildBlocksUpdate(ulong cellId, IReadOnlyList<(uint Layer, uint Version, byte[] Blob)> layers)
+        {
+            var output = new List<byte>();
+            var writer = new GamePacketWriter(output);
+            writer.WriteBytes(new byte[2]);
+            writer.Write(1u);
+            writer.Write(cellId);
+            writer.Write(0u);
+            writer.Write((uint)layers.Count);
+            foreach ((uint layer, uint version, byte[] blob) in layers)
+            {
+                writer.Write(layer);
+                writer.Write(version);
+                writer.Write((byte)0);
+                writer.Write((uint)blob.Length);
+                writer.WriteBytes(blob);
+            }
+            writer.Write(0u);
+            writer.Write(false);
+            writer.Write(false);
+            return output.ToArray();
+        }
+
         /// <summary>CellsUpdate with several block layers of one cell (all at the same layer version).</summary>
         public static byte[] BuildBlocksUpdate(ulong cellId, uint layerVersion, IReadOnlyList<(uint Layer, byte[] Blob)> layers)
         {
@@ -157,8 +181,8 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                     var entries = home ? cells.Where(c => c.Value.Layers.ContainsKey(layer)).ToList()
                         : new List<KeyValuePair<ulong, Cell>>();
                     // Player voxel edits (TerrainEdits) are listed under their layer too, so clients request them.
-                    var edits = layer == TerrainEdits.Layer
-                        ? TerrainEdits.ManifestEntries(zone).Where(e => !home || !cells.ContainsKey(e.Cell)).ToList()
+                    var edits = layer < TerrainEdits.LayerCount
+                        ? TerrainEdits.ManifestEntries(zone, layer).Where(e => !home || !cells.ContainsKey(e.Cell)).ToList()
                         : new List<(ulong Cell, uint Version)>();
                     writer.Write((uint)(entries.Count + edits.Count));
                     foreach ((ulong id, Cell cell) in entries)

@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using LandmarkEmulator.Shared.Network;
 using LandmarkEmulator.WorldServer.Network.Message;
 using LandmarkEmulator.WorldServer.Network.Message.Model;
@@ -73,7 +73,10 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
         public static void HandleUi(WorldSession session, UiRequest request)
         {
             if (request.SubOpcode != UiRequest.EventTriggered)
+            {
+                Network.OpcodeStats.Unanswered("UI", request.SubOpcode);
                 log.Debug($"Unhandled UI request 0x{request.SubOpcode:X2}: {BitConverter.ToString(request.Body)}");
+            }
             else if (request.Body.Length >= 4)
             {
                 uint uiEvent = BitConverter.ToUInt32(request.Body, 0);
@@ -209,9 +212,9 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
             }
 
             session.ReadySent = true;
-            // Tint definitions: the client builds its tint pickers and the character-create / barbershop option lists
-            // when this arrives (FUN_142c6ec20); the lists come from its own files, so eight empty lists will do.
-            session.EnqueueMessage(ZoneMessageOpcode.ArtDataTintDefinitionManagerData, new byte[8 * 4]);
+            // Tint definitions: the client replaces its tint table with these lists (FUN_142c6ec20 → FUN_143c113c0) and
+            // builds the character-create / barbershop option lists. Empty lists left every tint blank (Game/ArtTints).
+            session.EnqueueMessage(ZoneMessageOpcode.ArtDataTintDefinitionManagerData, Game.ArtTints.Body);
             Game.Palettes.Send(session);
             // T-KIRMMIN-WIRE-TIMING (logging only)
             session.MarkClientIsReadyWireTiming();

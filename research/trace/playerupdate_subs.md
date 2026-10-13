@@ -67,7 +67,7 @@
 | 0x48 | PlayerUpdatePacketStopHeal | FUN_142bcf090 FUN_142bb4300 |
 | 0x49 | PacketPlayerCurrencyChange | FUN_142a871b0 FUN_142bcc170 FUN_142bb0d50 |
 | 0x4A | PacketPlayerRewardCurrency | FUN_142a871b0 FUN_142bcc220 FUN_142bb0f60 |
-| 0x4B | ? | FUN_142bccaf0 FUN_142bb1790 |
+| 0x4B | PlayerInGamePurchaseResult (named by REA, 2026-10-13) | FUN_142bccaf0 FUN_142bb1790 |
 | 0x4D | PlayerUpdatePacketManagedObject | FUN_142c43990 |
 | 0x4E | PlayerUpdatePacketMaterialTypeOverride | FUN_142bce5e0 FUN_142bb5f30 FUN_142c31d20 |
 | 0x4F | PlayerUpdateDebrisLaunchPacket | FUN_142bccd90 FUN_142bb5a70 FUN_142c31d00 |
@@ -76,7 +76,7 @@
 | 0x52 | ? | FUN_142ab5fa0 FUN_142f34460 |
 | 0x53 | PlayerUpdatePacketUpdateStat | FUN_142bcf410 FUN_142bb47e0 FUN_142be4970 |
 | 0x54 | PlayerUpdatePacketAnimationRequest | FUN_142bcd5f0 FUN_142bb1d60 |
-| 0x55 | BasePacket | FUN_142bccea0 FUN_142bb1800 FUN_142be36e0 |
+| 0x55 | PlayerUpdateNonPriorityTargetCharacters (named by REA, 2026-10-13) | FUN_142bccea0 FUN_142bb1800 FUN_142be36e0 |
 | 0x56 | PlayerUpdatePacketPlayWorldCompositeEffect | FUN_142bce7a0 FUN_142bb2f80 FUN_142bc1600 |
 | 0x57 | PlayerUpdatePacketAFK | FUN_142bccee0 FUN_142bb1870 |
 | 0x58 | PlayerUpdatePacketAddLightweightPc | FUN_142bcd2d0 FUN_142b8d680 FUN_142bcfe10 |

@@ -48,3 +48,10 @@ only "not allowed" applies, sent today as chat); loot chests (common in surface 
 everyone-gets-loot) and Lost Crystals — with the Chaos Caverns content; drops while gathering (essences, recipes,
 Lumens) — check Abilities yield code for recipe / Lumen drops; extractor variants' bonuses (Harvestron yield,
 Velocitizer speed buff) and pick / axe bonuses (Charmed luck, Hotfoot speed, Goliath size, Whirlwind speed).
+
+## Module 6 pass (2026-10-13, archive gathering-v1)
+- Corrections: harvest refusals already use EffectEnd reasons (Gathering.HarvestFail: 8 in a build site, 3 wrong
+  tool); drops while gathering (Lumens / essence / recipes, Gathering.RollDrops) and per-tool size / speed
+  (Abilities tool table) are built.
+- Tool numbers can't come from the client: AbilityEx.txt holds only a "Test" row (abilities were server data), so
+  the wiki-based sizes / speeds stay.

@@ -129,7 +129,9 @@ namespace LandmarkEmulator.WorldServer.Game
                 if (!Active(session, id, out trade, out me))
                     return;
                 CharacterItemModel item = session.Inventory.Get(itemGuid);
-                if (item == null || item.Container != Inventory.Inventory.BagContainer || Chests.HasItems(itemGuid))
+                // NO_TRADE items (Lumens, site flags, store expansions, titles...) stay with their owner.
+                if (item == null || item.Container != Inventory.Inventory.BagContainer || Chests.HasItems(itemGuid)
+                    || Inventory.ItemDefinitionManager.Get(item.ItemDefinitionId) is { NoTrade: true })
                     return;
                 quantity = Math.Min(quantity, item.Count);
                 bool known = me.Items.ContainsKey(itemGuid);

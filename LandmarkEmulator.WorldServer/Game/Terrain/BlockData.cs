@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 
@@ -120,6 +120,11 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         /// Reads SerializeBlockData format 2 (the inverse of <see cref="Serialize"/>) starting at <paramref name="offset"/>.
         /// Voxels not in the occupancy mask are left unset (flag 0).
         /// </summary>
+        /// <summary>Keep vertex-only voxels from client diffs (see <see cref="Deserialize"/>).</summary>
+        public static bool KeepVertexOnly;
+        /// <summary>Vertex-only voxels seen in decoded block data (for the build log).</summary>
+        public static long VertexOnlySeen;
+
         public static BlockData Deserialize(byte[] data, int offset = 0)
         {
             var blocks = new BlockData();
@@ -152,8 +157,17 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 if ((mask[i >> 3] & (1 << (7 - (i & 7)))) == 0)
                     continue;
                 byte flag = flags[f++];
-                // A vertex without a material is never kept (the client's mesher hangs on them).
-                blocks.Flags[i] = (flag & 1) != 0 ? (byte)(flag & 3) : (byte)0;
+                // Vertex-only voxels (flag 2, no material bit): the client's own edits carry them on the generated side
+                // of a surface, which is what keeps a sphere round; without them the server's copy of the cell comes
+                // back blocky (2026-10-13). Server-written ones once hung the client mesher (2026-10-09), so they are
+                // kept only when KeepVertexOnly is on (WorldServer.json KeepVertexOnlyVoxels, dev "vertexonly").
+                if ((flag & 1) == 0 && (flag & 2) != 0)
+                {
+                    System.Threading.Interlocked.Increment(ref VertexOnlySeen);
+                    blocks.Flags[i] = KeepVertexOnly ? (byte)2 : (byte)0;
+                }
+                else
+                    blocks.Flags[i] = (flag & 1) != 0 ? (byte)(flag & 3) : (byte)0;
                 if ((flag & 1) != 0)
                 {
                     if ((flag & 0x40) != 0)

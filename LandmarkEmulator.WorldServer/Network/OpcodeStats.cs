@@ -22,6 +22,13 @@ namespace LandmarkEmulator.WorldServer.Network
         private static readonly Timer flush = new(_ => Flush(), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
 
         public static void Received(ReadOnlySpan<byte> data) => Count("in", data);
+
+        /// <summary>
+        /// A client request that reached a handler's default branch (no case for its sub-opcode): counted as
+        /// "unanswered, family, sub" so re/tools/coverage.py can list what the client really sent that nothing handles.
+        /// </summary>
+        public static void Unanswered(string family, long sub)
+            => counts.AddOrUpdate($"unanswered\t{family}\t0x{sub:X2}", 1, (_, n) => n + 1);
         public static void Sent(ReadOnlySpan<byte> data) => Count("out", data);
 
         private static void Count(string direction, ReadOnlySpan<byte> data)

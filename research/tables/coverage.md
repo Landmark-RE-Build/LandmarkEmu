@@ -4,41 +4,67 @@ Client packet classes from the 0.589 decompile, matched against LandmarkEmulator
 Heuristic (direction from the send call, opcode from adjacent constants): verify live before relying on a row.
 ## Summary
 
-- C2S: 553 classes: 186 handled (sub in handler), 175 NOT HANDLED, 153 sub NOT handled, 34 handled, 5 unknown opcode
-- S2C: 817 classes: 496 never sent, 166 unknown opcode, 81 sent by server, 74 sent by server (sub in payload)
-- Client requests seen in play with no server answer: 15
+- C2S: 553 classes: 188 handled (sub in handler), 175 NOT HANDLED, 151 sub NOT handled, 34 handled, 5 unknown opcode
+- S2C: 817 classes: 489 never sent, 166 unknown opcode, 81 sent by server, 81 sent by server (sub in payload)
+- Client requests seen in play with no server answer: 26
+- Requests that reached a server default branch in play: 0
 
 ## Seen in play, not handled (fix first)
 
 | Times | Class | Opcode |
 |---|---|---|
-| 162 | RatingPacketRequestContestsRequest | 0xA7, 0x1D |
-| 122 | RatingPacketCanVoteRequest | 0xA7, 0x18 |
-| 120 | PacketPortraitDataRequest | 0x98, 0x2 |
-| 106 | HeroicMovementPacketSwimmingUpdate | 0x105, 0x3 |
-| 102 | PacketInGamePurchaseCountryCodesRequest | 0x45, 0x15 |
-| 98 | PacketInGamePurchaseStationCashProductsRequest | 0x45, 0xF |
-| 47 | HeroicMovementPacketSetHeroicMovement | 0x105, 0x2 |
-| 26 | ToolPacketActivate | 0x117, 0x1 |
-| 20 | LootPinataPacketPickupLoot | 0xFB, 0x5 |
+| 17188 | WorldEditingClearPacket | 0x10C |
+| 7402 | WorldEditingSphereUpdatePacket | 0x10C, 0x2 |
+| 7375 | WorldEditingBoxUpdatePacket | 0x10C, 0x1 |
+| 1937 | WorldEditingShapeUpdatePacket | 0x10C, 0x3 |
+| 1194 | HeroicMovementPacketSwimmingUpdate | 0x105, 0x3 |
+| 454 | WorldEditingFillUpdatePacket | 0x10C, 0x7 |
+| 226 | RatingPacketRequestContestsRequest | 0xA7, 0x1D |
+| 209 | RatingPacketCanVoteRequest | 0xA7, 0x18 |
+| 170 | PacketPortraitDataRequest | 0x98, 0x2 |
+| 132 | PacketInGamePurchaseCountryCodesRequest | 0x45, 0x15 |
+| 128 | PacketInGamePurchaseStationCashProductsRequest | 0x45, 0xF |
+| 89 | ToolPacketActivate | 0x117, 0x1 |
+| 73 | HeroicMovementPacketSetHeroicMovement | 0x105, 0x2 |
+| 64 | HudPackets::PacketRadialMenuRequest | 0xDC, 0x1 |
+| 43 | LootPinataPacketPickupLoot | 0xFB, 0x5 |
+| 8 | RatingPacketAddVote | 0xA7, 0x8 |
+| 7 | HeroicMovementPacketTerminateGrappleHookEffects | 0x105, 0x4 |
+| 7 | HeroicMovementPacketFireGrapplingHook | 0x105, 0x1 |
+| 6 | Skills::SkillAdminPacketEcho | 0x1, 0x1 |
+| 6 | Notifications::ListNotificationsPacket | 0x1, 0x1 |
+| 5 | HeroicMovementPacketHeroicMovement | 0x105, 0x5 |
+| 2 | WorldEditingSelectionUpdate | 0x10C, 0x4 |
 | 2 | PacketDismountRequest | 0xA1, 0x3 |
 | 2 | ActivityPacketJoinActivityRequest | 0xA0, 0x1 |
 | 2 | ActivityPacketActivityListRefreshRequest | 0xA0, 0x1 |
-| 1 | Skills::SkillAdminPacketEcho | 0x1, 0x1 |
 | 1 | PlayerTitleRequestSelectPacket | 0x94, 0x4 |
-| 1 | Notifications::ListNotificationsPacket | 0x1, 0x1 |
+
+## Reached a server default branch in play (OpcodeStats.Unanswered; runtime truth)
+
+| Times | Family | Sub |
+|---|---|---|
 
 
 ## Client -> server (requests the server should answer)
 
 | Class | Opcode (base, sub) | Server | Seen in play |
 |---|---|---|---|
-| HeroicMovementPacketSwimmingUpdate | 0x105, 0x3 | NOT HANDLED | 106 |
-| HeroicMovementPacketSetHeroicMovement | 0x105, 0x2 | NOT HANDLED | 47 |
-| ToolPacketActivate | 0x117, 0x1 | NOT HANDLED | 26 |
+| WorldEditingClearPacket | 0x10C | NOT HANDLED | 17188 |
+| WorldEditingSphereUpdatePacket | 0x10C, 0x2 | NOT HANDLED | 7402 |
+| WorldEditingBoxUpdatePacket | 0x10C, 0x1 | NOT HANDLED | 7375 |
+| WorldEditingShapeUpdatePacket | 0x10C, 0x3 | NOT HANDLED | 1937 |
+| HeroicMovementPacketSwimmingUpdate | 0x105, 0x3 | NOT HANDLED | 1194 |
+| WorldEditingFillUpdatePacket | 0x10C, 0x7 | NOT HANDLED | 454 |
+| ToolPacketActivate | 0x117, 0x1 | NOT HANDLED | 89 |
+| HeroicMovementPacketSetHeroicMovement | 0x105, 0x2 | NOT HANDLED | 73 |
+| HeroicMovementPacketFireGrapplingHook | 0x105, 0x1 | NOT HANDLED | 7 |
+| HeroicMovementPacketTerminateGrappleHookEffects | 0x105, 0x4 | NOT HANDLED | 7 |
+| HeroicMovementPacketHeroicMovement | 0x105, 0x5 | NOT HANDLED | 5 |
 | ActivityPacketActivityListRefreshRequest | 0xA0, 0x1 | NOT HANDLED | 2 |
 | ActivityPacketJoinActivityRequest | 0xA0, 0x1 | NOT HANDLED | 2 |
 | PacketDismountRequest | 0xA1, 0x3 | NOT HANDLED | 2 |
+| WorldEditingSelectionUpdate | 0x10C, 0x4 | NOT HANDLED | 2 |
 | AreaDefinitionBasePacket | 0xEA, 0x4 | NOT HANDLED |  |
 | AreaDefinitionCreateTriggerAreaRequestPacket | 0xEA, 0x7 | NOT HANDLED |  |
 | AreaDefinitionRemoveDefinitionPacket | 0xEA, 0x4 | NOT HANDLED |  |
@@ -76,9 +102,6 @@ Heuristic (direction from the send call, opcode from adjacent constants): verify
 | Grief::GriefAdminPacketResetGrief | 0x4DA, 0x1 | NOT HANDLED |  |
 | Grief::GriefAdminPacketSetDamageLevel | 0x4DA, 0x1 | NOT HANDLED |  |
 | Grief::GriefAdminPacketSetGriefLevel | 0x4DA, 0x1 | NOT HANDLED |  |
-| HeroicMovementPacketFireGrapplingHook | 0x105, 0x1 | NOT HANDLED |  |
-| HeroicMovementPacketHeroicMovement | 0x105, 0x5 | NOT HANDLED |  |
-| HeroicMovementPacketTerminateGrappleHookEffects | 0x105, 0x4 | NOT HANDLED |  |
 | InventoryPacketEquippedRemove | 0x2 | NOT HANDLED |  |
 | ItemReview::PacketOptInAccount | 0x10B, 0x10 | NOT HANDLED |  |
 | Items::ItemAdminPacketExpireItemLineTrialTimers | 0x4E7, 0x2 | NOT HANDLED |  |
@@ -200,39 +223,33 @@ Heuristic (direction from the send call, opcode from adjacent constants): verify
 | WeaponReloadInterruptPacket | 0xBA, 0x7 | NOT HANDLED |  |
 | WeaponSwitchFireModeRequest | 0xBA, 0xB | NOT HANDLED |  |
 | WeaponToggleEffectsPacket | 0xBA, 0x1D | NOT HANDLED |  |
-| WorldEditingBoxUpdatePacket | 0x10C, 0x1 | NOT HANDLED |  |
-| WorldEditingClearPacket | 0x10C | NOT HANDLED |  |
-| WorldEditingFillUpdatePacket | 0x10C, 0x7 | NOT HANDLED |  |
 | WorldEditingPreviewSetupPacket | 0x10C, 0x5 | NOT HANDLED |  |
 | WorldEditingPreviewUpdatePacket | 0x10C, 0x6 | NOT HANDLED |  |
-| WorldEditingSelectionUpdate | 0x10C, 0x4 | NOT HANDLED |  |
-| WorldEditingShapeUpdatePacket | 0x10C, 0x3 | NOT HANDLED |  |
-| WorldEditingSphereUpdatePacket | 0x10C, 0x2 | NOT HANDLED |  |
-| PacketKeepAlive | 0x63 | handled | 24616 |
-| PacketSynchronization | 0xC3 | handled | 9998 |
-| PlayerUpdatePacketFullCharacterDataRequest | 0x26, 0x5E | handled | 7640 |
-| Abilities::AbilityPacketDelayedTargetInfo | 0x27, 0x17 | handled | 2793 |
-| PacketGameTimeSync | 0x37 | handled | 2338 |
-| PlayerUpdatePacketInteractionInfoRequest | 0x26, 0x69 | handled | 1559 |
-| PacketClientMetrics | 0x6B | handled | 1528 |
-| Abilities::AbilityPacketCasterInfoRequest | 0x27, 0x2 | handled | 1123 |
-| PlayerUpdatePacketClientLoading | 0x26, 0x6C | handled | 222 |
-| PacketClientFinishedLoading | 0xD | handled | 162 |
-| Abilities::AbilityPacketDefaultInfoRequest | 0x27, 0x13 | handled | 102 |
-| PacketClientInitializationDetails | 0xA2 | handled | 102 |
-| PlayerUpdatePacketBindingCustomization | 0x26, 0x71 | handled | 102 |
-| TerrainCellPacketClientCellRequest | 0xEC, 0x1 | handled | 81 |
-| Abilities::AbilityPacketEffectUpdatesRequest | 0x27, 0x16 | handled | 60 |
-| PreferencePacketClientXml | 0x1 | handled | 9 |
-| Abilities::AbilityPacketFinishChargedCast | 0x27, 0xE | handled | 6 |
-| VoxelConstructionPacketAddTemporaryBlockRequest | 0xF4 | handled | 1 |
-| Abilities::AbilityPacketCancelCast | 0x27, 0xF | handled |  |
-| Abilities::AbilityPacketCollisionReport | 0x27, 0x18 | handled |  |
+| PacketKeepAlive | 0x63 | handled | 44366 |
+| PacketSynchronization | 0xC3 | handled | 18080 |
+| PlayerUpdatePacketFullCharacterDataRequest | 0x26, 0x5E | handled | 10037 |
+| Abilities::AbilityPacketDelayedTargetInfo | 0x27, 0x17 | handled | 6760 |
+| PacketGameTimeSync | 0x37 | handled | 4216 |
+| PacketClientMetrics | 0x6B | handled | 2834 |
+| PlayerUpdatePacketInteractionInfoRequest | 0x26, 0x69 | handled | 1709 |
+| Abilities::AbilityPacketCasterInfoRequest | 0x27, 0x2 | handled | 1477 |
+| PlayerUpdatePacketClientLoading | 0x26, 0x6C | handled | 320 |
+| PacketClientFinishedLoading | 0xD | handled | 226 |
+| VoxelConstructionPacketAddTemporaryBlockRequest | 0xF4 | handled | 216 |
+| TerrainCellPacketClientCellRequest | 0xEC, 0x1 | handled | 169 |
+| Abilities::AbilityPacketDefaultInfoRequest | 0x27, 0x13 | handled | 132 |
+| PacketClientInitializationDetails | 0xA2 | handled | 132 |
+| PlayerUpdatePacketBindingCustomization | 0x26, 0x71 | handled | 132 |
+| Abilities::AbilityPacketEffectUpdatesRequest | 0x27, 0x16 | handled | 94 |
+| PreferencePacketClientXml | 0x1 | handled | 39 |
+| Abilities::AbilityPacketFinishChargedCast | 0x27, 0xE | handled | 16 |
+| Abilities::AbilityPacketCollisionReport | 0x27, 0x18 | handled | 10 |
+| Abilities::AbilityPacketCancelCast | 0x27, 0xF | handled | 7 |
+| PlayerUpdatePacketEmoteStringById | 0x26, 0x77 | handled | 2 |
 | Abilities::AbilityPacketRequestCancelEffect | 0x27, 0x1E | handled |  |
 | PacketAddClientPortraitCrc | 0x75 | handled |  |
 | PacketCharacterSelectSessionRequest | 0xF6 | handled |  |
 | PacketZoneSafeTeleportRequest | 0x7C | handled |  |
-| PlayerUpdatePacketEmoteStringById | 0x26, 0x77 | handled |  |
 | PlayerUpdatePacketPreferredLanguages | 0x26, 0x1A | handled |  |
 | PlayerUpdatePacketReadyToReviveResponse | 0x26, 0x3D | handled |  |
 | PlayerUpdatePacketRemoveTemporaryAppearance | 0x26, 0xA | handled |  |
@@ -242,108 +259,124 @@ Heuristic (direction from the send call, opcode from adjacent constants): verify
 | QuickChatSendChatToChannelPacket | 0xFF | handled |  |
 | QuickChatSendTellPacket | 0xFF | handled |  |
 | TerrainCellPacketClientPendingRequestTimeout | 0xEC, 0x2 | handled |  |
-| PacketInGamePurchaseWalletInfoRequest | 0x45, 0xB | handled (sub in handler) | 457 |
-| ClaimsPacketClaimManagmentRequest | 0xF9, 0x1C | handled (sub in handler) | 190 |
-| PacketInGamePurchaseCommerceRequestAccountStore | 0x45, 0x36 | handled (sub in handler) | 170 |
-| ClaimsPacketIdRequestClaimsByOwner | 0xF9, 0x27 | handled (sub in handler) | 162 |
-| ClaimsPacketIdRequestPropExclusionArea | 0xF9, 0x35 | handled (sub in handler) | 162 |
-| ClaimsPacketsIdRequestAllClaimBasicInfo | 0xF9, 0x19 | handled (sub in handler) | 162 |
-| WarpNetwork::WarpNetworkClientRequestPacket | 0x113, 0x4 | handled (sub in handler) | 114 |
-| PacketInGamePurchaseCommerceGetProductForReviewRequest | 0x45, 0x3F | handled (sub in handler) | 104 |
-| Crafting::RecipecComponentImageSetIdsRequestPacket | 0x42, 0x1C | handled (sub in handler) | 102 |
-| PacketInGamePurchaseAccountInfoRequest | 0x45, 0x1A | handled (sub in handler) | 102 |
-| PropProcessorStateNotificationPacket | 0xED, 0xC | handled (sub in handler) | 101 |
-| InventoryPacketRequestTransferItem | 0x2D, 0x16 | handled (sub in handler) | 28 |
-| ObjectScriptingPacketAddBindingRequest | 0x111, 0x10 | handled (sub in handler) | 18 |
-| ObjectScriptingPacketListBindingsRequest | 0x111, 0x11 | handled (sub in handler) | 18 |
-| ClaimsPacketPlaceClaimRequest | 0xF9, 0x1A | handled (sub in handler) | 16 |
-| FriendUpdateExtraInfos | 0x4D, 0xB | handled (sub in handler) | 15 |
-| InventoryPacketItemInstanceTooltipRequest | 0x2D, 0xF | handled (sub in handler) | 14 |
-| GuildUpdateRankPacket | 0x83, 0xE | handled (sub in handler) | 13 |
-| UIEventTriggeredPacket | 0x32, 0x17 | handled (sub in handler) | 9 |
-| InventoryPacketActivateItem | 0x2D, 0x15 | handled (sub in handler) | 8 |
+| PacketInGamePurchaseWalletInfoRequest | 0x45, 0xB | handled (sub in handler) | 799 |
+| PropProcessorStateNotificationPacket | 0xED, 0xC | handled (sub in handler) | 303 |
+| ClaimsPacketClaimManagmentRequest | 0xF9, 0x1C | handled (sub in handler) | 275 |
+| PropSavePacket | 0xED, 0x3 | handled (sub in handler) | 248 |
+| PacketInGamePurchaseCommerceRequestAccountStore | 0x45, 0x36 | handled (sub in handler) | 234 |
+| ClaimsPacketIdRequestClaimsByOwner | 0xF9, 0x27 | handled (sub in handler) | 226 |
+| ClaimsPacketIdRequestPropExclusionArea | 0xF9, 0x35 | handled (sub in handler) | 226 |
+| ClaimsPacketsIdRequestAllClaimBasicInfo | 0xF9, 0x19 | handled (sub in handler) | 226 |
+| InventoryPacketItemInstanceTooltipRequest | 0x2D, 0xF | handled (sub in handler) | 226 |
+| UIEventTriggeredPacket | 0x32, 0x17 | handled (sub in handler) | 166 |
+| WarpNetwork::WarpNetworkClientRequestPacket | 0x113, 0x4 | handled (sub in handler) | 144 |
+| PacketInGamePurchaseCommerceGetProductForReviewRequest | 0x45, 0x3F | handled (sub in handler) | 134 |
+| Crafting::RecipecComponentImageSetIdsRequestPacket | 0x42, 0x1C | handled (sub in handler) | 132 |
+| PacketInGamePurchaseAccountInfoRequest | 0x45, 0x1A | handled (sub in handler) | 132 |
+| InventoryPacketRequestTransferItem | 0x2D, 0x16 | handled (sub in handler) | 84 |
+| CommandPacketBuilderMode | 0x1E, 0x5A | handled (sub in handler) | 55 |
+| CommandPacketSelectPlayer | 0x1E, 0x16 | handled (sub in handler) | 50 |
+| TargetPacketRequestSetTarget | 0xB5, 0x2 | handled (sub in handler) | 50 |
+| VoxelConstructionPacketClientUndoRedoRequest | 0xF4, 0x3 | handled (sub in handler) | 35 |
+| CommandPacketInteractRequest | 0x1E, 0x9 | handled (sub in handler) | 33 |
+| FriendUpdateExtraInfos | 0x4D, 0xB | handled (sub in handler) | 31 |
+| PropPacketPlacePropById | 0xED, 0x12 | handled (sub in handler) | 31 |
+| ObjectScriptingPacketListBindingsRequest | 0x111, 0x11 | handled (sub in handler) | 30 |
+| ObjectScriptingPacketAddBindingRequest | 0x111, 0x10 | handled (sub in handler) | 28 |
+| Groups::GroupPacketAcceptTeleport | 0x2B, 0x1 | handled (sub in handler) | 25 |
+| Groups::GroupPacketAutoGroup | 0x2B, 0x1 | handled (sub in handler) | 25 |
+| Groups::GroupPacketDisband | 0x2B, 0x1 | handled (sub in handler) | 25 |
+| Groups::GroupPacketFindLookingForMoreGroup | 0x2B, 0x1 | handled (sub in handler) | 25 |
+| Groups::GroupPacketGetGroupInfo | 0x2B, 0x1 | handled (sub in handler) | 25 |
+| Groups::GroupPacketInvite | 0x2B, 0x1 | handled (sub in handler) | 25 |
+| Groups::GroupPacketJoin | 0x2B, 0x1 | handled (sub in handler) | 25 |
+| Groups::GroupPacketJoinLookingForMore | 0x2B, 0x1 | handled (sub in handler) | 25 |
+| Groups::GroupPacketKick | 0x2B, 0x1 | handled (sub in handler) | 25 |
+| Groups::GroupPacketLeave | 0x2B, 0x1 | handled (sub in handler) | 25 |
+| Groups::GroupPacketSetGroupDescription | 0x2B, 0x1 | handled (sub in handler) | 25 |
+| Groups::GroupPacketSetGroupFlags | 0x2B, 0x1 | handled (sub in handler) | 25 |
+| Groups::GroupPacketSetGroupOwner | 0x2B, 0x1 | handled (sub in handler) | 25 |
+| InventoryPacketActivateItem | 0x2D, 0x15 | handled (sub in handler) | 23 |
+| PacketInGamePurchasePointOfNeedRequestPacket | 0x45, 0x46 | handled (sub in handler) | 21 |
+| TargetPacketRequestRemoveTarget | 0xB5, 0x3 | handled (sub in handler) | 21 |
+| Notifications::AddNotificationPacket | 0x1, 0x2 | handled (sub in handler) | 19 |
+| Skills::SkillAdminPacketListSkills | 0x1, 0x2 | handled (sub in handler) | 19 |
+| ClaimsPacketPlaceClaimRequest | 0xF9, 0x1A | handled (sub in handler) | 18 |
+| CommandPacketAddFriendRequest | 0x1E, 0x10 | handled (sub in handler) | 17 |
+| GuildUpdateRankPacket | 0x83, 0xE | handled (sub in handler) | 17 |
+| PacketMailConsumeAttachmentRequest | 0xF8, 0xF | handled (sub in handler) | 16 |
+| Groups::GroupPacketChangingJob | 0x2B, 0x2 | handled (sub in handler) | 15 |
+| Groups::GroupPacketMapPing | 0x2B, 0x2 | handled (sub in handler) | 15 |
+| InventoryPacketItemDefinitionTooltipRequest | 0x2D, 0x11 | handled (sub in handler) | 15 |
+| Notifications::UpdateNotificationPacket | 0x1, 0x3 | handled (sub in handler) | 14 |
+| PacketInGamePurchaseModifyScreenshots | 0x45, 0x49 | handled (sub in handler) | 14 |
+| Skills::SkillAdminPacketListSkillPoints | 0x1, 0x3 | handled (sub in handler) | 14 |
+| CommandPacketRemoveFriendRequest | 0x1E, 0x12 | handled (sub in handler) | 13 |
+| InstancedGameObserverRegistrationPacket | 0x10D, 0x15 | handled (sub in handler) | 13 |
+| PacketMailReadMessageRequest | 0xF8, 0x8 | handled (sub in handler) | 12 |
+| GuildCreatePacket | 0x83, 0x1 | handled (sub in handler) | 9 |
+| GuildInvitePacket | 0x83, 0x4 | handled (sub in handler) | 8 |
+| GuildQuitPacket | 0x83, 0xD | handled (sub in handler) | 8 |
 | PacketTeleportRequestLocations | 0xFC, 0x2 | handled (sub in handler) | 8 |
-| GuildCreatePacket | 0x83, 0x1 | handled (sub in handler) | 5 |
-| GuildDescriptionUpdatePacket | 0x83, 0xF | handled (sub in handler) | 5 |
-| Notifications::AddNotificationPacket | 0x1, 0x2 | handled (sub in handler) | 5 |
+| TradeAcceptPacket | 0x3E, 0x6 | handled (sub in handler) | 8 |
+| ClaimsPacketRequestEditClaimItemData | 0xF9, 0x1E | handled (sub in handler) | 7 |
+| ClaimsPacketSetAdventureStatus | 0xF9, 0x43 | handled (sub in handler) | 7 |
+| PropPickUpPacket | 0xED, 0x5 | handled (sub in handler) | 7 |
+| GuildDescriptionUpdatePacket | 0x83, 0xF | handled (sub in handler) | 6 |
+| PropPacketAvailableTintsPacketRequest | 0xED, 0x18 | handled (sub in handler) | 6 |
+| PropPacketSetTintRequest | 0xED, 0x16 | handled (sub in handler) | 6 |
 | PacketInGamePurchaseCommerceProductCreate | 0x45, 0x2F | handled (sub in handler) | 5 |
-| Skills::SkillAdminPacketListSkills | 0x1, 0x2 | handled (sub in handler) | 5 |
-| ClaimsPacketRequestEditClaimItemData | 0xF9, 0x1E | handled (sub in handler) | 4 |
-| PacketInGamePurchaseModifyScreenshots | 0x45, 0x49 | handled (sub in handler) | 4 |
-| PacketMailConsumeAttachmentRequest | 0xF8, 0xF | handled (sub in handler) | 4 |
-| PacketMailReadMessageRequest | 0xF8, 0x8 | handled (sub in handler) | 4 |
-| PlayerPublicChatLeaveRoomRequestPacket | 0x13, 0xC | handled (sub in handler) | 4 |
-| TradeAcceptPacket | 0x3E, 0x6 | handled (sub in handler) | 4 |
+| PlayerPublicChatLeaveRoomRequestPacket | 0x13, 0xC | handled (sub in handler) | 5 |
+| ClaimsPacketDeleteClaimItem | 0xF9, 0x2F | handled (sub in handler) | 4 |
+| ClaimsPacketOnClientRateClaim | 0xF9, 0x44 | handled (sub in handler) | 4 |
+| ClaimsPacketSetTagString | 0xF9, 0x2C | handled (sub in handler) | 4 |
+| Crafting::RecipeCraftWindowEnableRequestPacket | 0x42, 0x6 | handled (sub in handler) | 4 |
+| GuildInviteReplyPacket | 0x83, 0x5 | handled (sub in handler) | 4 |
+| GuildUpdateAppDataFieldPacket | 0x83, 0x11 | handled (sub in handler) | 4 |
+| PlayerPublicChatJoinRoomRequestPacket | 0x13, 0xA | handled (sub in handler) | 4 |
+| TradeInitiatePacket | 0x3E, 0x1 | handled (sub in handler) | 4 |
+| TradeInviteReplyPacket | 0x3E, 0x3 | handled (sub in handler) | 4 |
+| TradeOfferItemPacket | 0x3E, 0x8 | handled (sub in handler) | 4 |
+| ClaimsPacketSetItemBasicPermissions | 0xF9, 0x2D | handled (sub in handler) | 3 |
 | ClientCommandPacket | 0x1E, 0x43 | handled (sub in handler) | 3 |
-| Groups::GroupPacketAcceptTeleport | 0x2B, 0x1 | handled (sub in handler) | 3 |
-| Groups::GroupPacketAutoGroup | 0x2B, 0x1 | handled (sub in handler) | 3 |
-| Groups::GroupPacketChangingJob | 0x2B, 0x2 | handled (sub in handler) | 3 |
-| Groups::GroupPacketDisband | 0x2B, 0x1 | handled (sub in handler) | 3 |
-| Groups::GroupPacketFindLookingForMoreGroup | 0x2B, 0x1 | handled (sub in handler) | 3 |
-| Groups::GroupPacketGetGroupInfo | 0x2B, 0x1 | handled (sub in handler) | 3 |
-| Groups::GroupPacketInvite | 0x2B, 0x1 | handled (sub in handler) | 3 |
-| Groups::GroupPacketJoin | 0x2B, 0x1 | handled (sub in handler) | 3 |
-| Groups::GroupPacketJoinLookingForMore | 0x2B, 0x1 | handled (sub in handler) | 3 |
-| Groups::GroupPacketKick | 0x2B, 0x1 | handled (sub in handler) | 3 |
-| Groups::GroupPacketLeave | 0x2B, 0x1 | handled (sub in handler) | 3 |
-| Groups::GroupPacketMapPing | 0x2B, 0x2 | handled (sub in handler) | 3 |
-| Groups::GroupPacketSetGroupDescription | 0x2B, 0x1 | handled (sub in handler) | 3 |
-| Groups::GroupPacketSetGroupFlags | 0x2B, 0x1 | handled (sub in handler) | 3 |
-| Groups::GroupPacketSetGroupOwner | 0x2B, 0x1 | handled (sub in handler) | 3 |
-| GuildUpdateAppDataFieldPacket | 0x83, 0x11 | handled (sub in handler) | 3 |
-| InstancedGameObserverRegistrationPacket | 0x10D, 0x15 | handled (sub in handler) | 3 |
-| Notifications::UpdateNotificationPacket | 0x1, 0x3 | handled (sub in handler) | 3 |
-| PlayerPublicChatJoinRoomRequestPacket | 0x13, 0xA | handled (sub in handler) | 3 |
-| Skills::SkillAdminPacketListSkillPoints | 0x1, 0x3 | handled (sub in handler) | 3 |
-| ClaimsPacketDeleteClaimItem | 0xF9, 0x2F | handled (sub in handler) | 2 |
-| CommandPacketBuilderMode | 0x1E, 0x5A | handled (sub in handler) | 2 |
+| CommandPacketInteractionItem | 0x1E, 0x4C | handled (sub in handler) | 3 |
+| ObjectScriptingPacketSupportedObjectsRequest | 0x111, 0xC | handled (sub in handler) | 3 |
+| PropAccessPacket | 0xED, 0x1 | handled (sub in handler) | 3 |
+| PropDeletePacket | 0xED, 0x7 | handled (sub in handler) | 3 |
+| TemplatePacketClientVoxelDataRequest | 0xF0, 0x4 | handled (sub in handler) | 3 |
+| ActionManagerPacketRequestSetSlot | 0x9A, 0x2 | handled (sub in handler) | 2 |
+| ClaimsPacketPlaceClaimConfirm | 0xF9, 0x1B | handled (sub in handler) | 2 |
 | EncounterParticipantRequestEntrancePacket | 0x2C, 0x6C | handled (sub in handler) | 2 |
-| GuildQuitPacket | 0x83, 0xD | handled (sub in handler) | 2 |
+| ObjectScriptingPacketSupportedActionsEventsAndDefaultsRequest | 0x111, 0xF | handled (sub in handler) | 2 |
 | PacketInGamePurchaseCommerceSearch | 0x45, 0x3D | handled (sub in handler) | 2 |
 | PacketInGamePurchaseCommerceSubmitProductReview | 0x45, 0x42 | handled (sub in handler) | 2 |
-| TradeInitiatePacket | 0x3E, 0x1 | handled (sub in handler) | 2 |
-| TradeInviteReplyPacket | 0x3E, 0x3 | handled (sub in handler) | 2 |
-| TradeOfferItemPacket | 0x3E, 0x8 | handled (sub in handler) | 2 |
 | AchievementTrackerUpdatePacket | 0x92, 0xC | handled (sub in handler) | 1 |
-| ClaimsPacketSetTagString | 0xF9, 0x2C | handled (sub in handler) | 1 |
-| CommandPacketInteractionItem | 0x1E, 0x4C | handled (sub in handler) | 1 |
+| ClaimsPacketSetItemIndividualPermission | 0xF9, 0x2E | handled (sub in handler) | 1 |
 | EncounterParticipantRequestExitPacket | 0x2C, 0x6D | handled (sub in handler) | 1 |
-| GuildInvitePacket | 0x83, 0x4 | handled (sub in handler) | 1 |
-| GuildInviteReplyPacket | 0x83, 0x5 | handled (sub in handler) | 1 |
 | PacketClaimVendorPurchaseItemRequest | 0x112, 0x7 | handled (sub in handler) | 1 |
+| PropPacketEditSettingsRequest | 0xED, 0x1B | handled (sub in handler) | 1 |
 | ActionManagerPacketDefaultAllSlots | 0x9A, 0x4 | handled (sub in handler) |  |
 | ActionManagerPacketDefaultSlot | 0x9A, 0x3 | handled (sub in handler) |  |
 | ActionManagerPacketRequestClearSlot | 0x9A, 0x1 | handled (sub in handler) |  |
-| ActionManagerPacketRequestSetSlot | 0x9A, 0x2 | handled (sub in handler) |  |
 | CharacterCustomizationPacketPlayerSet | 0x11C, 0x1 | handled (sub in handler) |  |
-| ClaimsPacketOnClientRateClaim | 0xF9, 0x44 | handled (sub in handler) |  |
-| ClaimsPacketPlaceClaimConfirm | 0xF9, 0x1B | handled (sub in handler) |  |
-| ClaimsPacketSetAdventureStatus | 0xF9, 0x43 | handled (sub in handler) |  |
 | ClaimsPacketSetClaimTime | 0xF9, 0x40 | handled (sub in handler) |  |
-| ClaimsPacketSetItemBasicPermissions | 0xF9, 0x2D | handled (sub in handler) |  |
 | ClaimsPacketSetItemDescription | 0xF9, 0x2B | handled (sub in handler) |  |
-| ClaimsPacketSetItemIndividualPermission | 0xF9, 0x2E | handled (sub in handler) |  |
 | ClaimsPacketSetItemName | 0xF9, 0x2A | handled (sub in handler) |  |
 | ClaimsPacketSetMusicOverrideId | 0xF9, 0x42 | handled (sub in handler) |  |
 | ClaimsPacketSubmitContestEntry | 0xF9, 0x41 | handled (sub in handler) |  |
 | CommandPacketActivateProfileFailed | 0x1E, 0x1C | handled (sub in handler) |  |
-| CommandPacketAddFriendRequest | 0x1E, 0x10 | handled (sub in handler) |  |
 | CommandPacketDebrisLaunchPacket | 0x1E, 0x35 | handled (sub in handler) |  |
 | CommandPacketGoHome | 0x1E, 0x42 | handled (sub in handler) |  |
 | CommandPacketIgnoreRequest | 0x1E, 0x20 | handled (sub in handler) |  |
-| CommandPacketInteractRequest | 0x1E, 0x9 | handled (sub in handler) |  |
 | CommandPacketInteractionString | 0x1E, 0x2E | handled (sub in handler) |  |
 | CommandPacketNameChangeRequest | 0x1E, 0x40 | handled (sub in handler) |  |
 | CommandPacketNameValidationRequest | 0x1E, 0x41 | handled (sub in handler) |  |
 | CommandPacketQuestAbandon | 0x1E, 0x1A | handled (sub in handler) |  |
-| CommandPacketRemoveFriendRequest | 0x1E, 0x12 | handled (sub in handler) |  |
 | CommandPacketRequestPlayIntroEncounter | 0x1E, 0x2A | handled (sub in handler) |  |
 | CommandPacketRequestRewardPreviewUpdate | 0x1E, 0x27 | handled (sub in handler) |  |
-| CommandPacketSelectPlayer | 0x1E, 0x16 | handled (sub in handler) |  |
 | CommandPacketSpotPlayer | 0x1E, 0x2B | handled (sub in handler) |  |
 | CommandPacketSpotPrimaryTarget | 0x1E, 0x2D | handled (sub in handler) |  |
 | Crafting::RecipeCancelRequestPacket | 0x42, 0x3 | handled (sub in handler) |  |
-| Crafting::RecipeCraftWindowEnableRequestPacket | 0x42, 0x6 | handled (sub in handler) |  |
 | Crafting::RecipePacketPlayerOpenCraftingWindow | 0x42, 0x23 | handled (sub in handler) |  |
 | Crafting::RecipeRepairItemRequestPacket | 0x42, 0x21 | handled (sub in handler) |  |
 | Crafting::RecipeSalvagingAddItemRequest | 0x42, 0x19 | handled (sub in handler) |  |
@@ -367,7 +400,6 @@ Heuristic (direction from the send call, opcode from adjacent constants): verify
 | InstancedGameRequestLeavePacket | 0x10D, 0x8 | handled (sub in handler) |  |
 | InstancedGameRequestPacket | 0x10D, 0x8 | handled (sub in handler) |  |
 | InventoryPacketEquipByGuid | 0x2D, 0x3 | handled (sub in handler) |  |
-| InventoryPacketItemDefinitionTooltipRequest | 0x2D, 0x11 | handled (sub in handler) |  |
 | InventoryPacketItemInstanceFullTooltipRequest | 0x2D, 0x10 | handled (sub in handler) |  |
 | InventoryPacketRearrangeItemSlots | 0x2D, 0xE | handled (sub in handler) |  |
 | InventoryPacketRequestDeleteItem | 0x2D, 0xB | handled (sub in handler) |  |
@@ -377,10 +409,8 @@ Heuristic (direction from the send call, opcode from adjacent constants): verify
 | ObjectScriptingPacketRemoveAllBindingsRequest | 0x111, 0x13 | handled (sub in handler) |  |
 | ObjectScriptingPacketRemoveBindingRequest | 0x111, 0x12 | handled (sub in handler) |  |
 | ObjectScriptingPacketRestoreDefaultsRequest | 0x111, 0x14 | handled (sub in handler) |  |
-| ObjectScriptingPacketSupportedActionsEventsAndDefaultsRequest | 0x111, 0xF | handled (sub in handler) |  |
 | ObjectScriptingPacketSupportedActionsRequest | 0x111, 0xE | handled (sub in handler) |  |
 | ObjectScriptingPacketSupportedEventsRequest | 0x111, 0xD | handled (sub in handler) |  |
-| ObjectScriptingPacketSupportedObjectsRequest | 0x111, 0xC | handled (sub in handler) |  |
 | PacketChestInventoryListRequest | 0xFF, 0x3 | handled (sub in handler) |  |
 | PacketChestStopObservingChest | 0xFF, 0x2 | handled (sub in handler) |  |
 | PacketClaimVendorListItemRequest | 0x112, 0x4 | handled (sub in handler) |  |
@@ -389,7 +419,6 @@ Heuristic (direction from the send call, opcode from adjacent constants): verify
 | PacketInGamePurchaseCommerceIsTemplateValidRequest | 0x45, 0x4C | handled (sub in handler) |  |
 | PacketInGamePurchaseCommerceProductRemove | 0x45, 0x31 | handled (sub in handler) |  |
 | PacketInGamePurchaseCommerceProductUpdate | 0x45, 0x33 | handled (sub in handler) |  |
-| PacketInGamePurchasePointOfNeedRequestPacket | 0x45, 0x46 | handled (sub in handler) |  |
 | PacketInGamePurchasePreviewOrder<GameCommerce::ClientInGamePurchaseOrder> | 0x45, 0x1 | handled (sub in handler) |  |
 | PacketInGamePurchaseSubscriptionProductsRequest | 0x45, 0x17 | handled (sub in handler) |  |
 | PacketMailAttachItemToComposeRequest | 0xF8, 0x14 | handled (sub in handler) |  |
@@ -403,40 +432,32 @@ Heuristic (direction from the send call, opcode from adjacent constants): verify
 | PalettePacketDeleteEntry | 0xF5, 0x4 | handled (sub in handler) |  |
 | PalettePacketSlotUpdates | 0xF5, 0x7 | handled (sub in handler) |  |
 | PlayerUpdatePacketSafeEject | 0x26, 0x4C | handled (sub in handler) |  |
-| PropDeletePacket | 0xED, 0x7 | handled (sub in handler) |  |
 | PropDuplicatePacket | 0xED, 0xF | handled (sub in handler) |  |
-| PropPacketAvailableTintsPacketRequest | 0xED, 0x18 | handled (sub in handler) |  |
 | PropPacketEditPropTextRequest | 0xED, 0x14 | handled (sub in handler) |  |
-| PropPacketEditSettingsRequest | 0xED, 0x1B | handled (sub in handler) |  |
-| PropPacketPlacePropById | 0xED, 0x12 | handled (sub in handler) |  |
 | PropPacketSetPropEnable | 0xED, 0x1A | handled (sub in handler) |  |
 | PropPacketSetPropName | 0xED, 0x19 | handled (sub in handler) |  |
-| PropPacketSetTintRequest | 0xED, 0x16 | handled (sub in handler) |  |
 | PropPacketUpdatePropTextRequest | 0xED, 0x13 | handled (sub in handler) |  |
-| PropPickUpPacket | 0xED, 0x5 | handled (sub in handler) |  |
-| PropSavePacket | 0xED, 0x3 | handled (sub in handler) |  |
 | SetSpeechPackPacket | 0xDD, 0x1 | handled (sub in handler) |  |
 | Skills::SkillAdminPacketGrantSkillLine | 0x1, 0x9 | handled (sub in handler) |  |
 | Skills::SkillAdminPacketGrantSkillSet | 0x1, 0xB | handled (sub in handler) |  |
-| TargetPacketRequestRemoveTarget | 0xB5, 0x3 | handled (sub in handler) |  |
-| TargetPacketRequestSetTarget | 0xB5, 0x2 | handled (sub in handler) |  |
 | TemplatePacketClientDeleteTemplateRequest | 0xF0, 0x6 | handled (sub in handler) |  |
 | TemplatePacketClientGetInstanceDetailsRequest | 0xF0, 0x12 | handled (sub in handler) |  |
+| TemplatePacketClientListRequest | 0xF0, 0x1 | handled (sub in handler) |  |
 | TemplatePacketClientRequestRenameTemplate | 0xF0, 0xA | handled (sub in handler) |  |
-| TemplatePacketClientVoxelDataRequest | 0xF0, 0x4 | handled (sub in handler) |  |
 | TemplatePacketExportToItemRequest | 0xF0, 0x1B | handled (sub in handler) |  |
 | TradeCancelPacket | 0x3E, 0x7 | handled (sub in handler) |  |
 | TradeCoinCountPacket | 0x3E, 0x9 | handled (sub in handler) |  |
-| VoxelConstructionPacketClientUndoRedoRequest | 0xF4, 0x3 | handled (sub in handler) |  |
-| RatingPacketRequestContestsRequest | 0xA7, 0x1D | sub NOT handled | 162 |
-| RatingPacketCanVoteRequest | 0xA7, 0x18 | sub NOT handled | 122 |
-| PacketPortraitDataRequest | 0x98, 0x2 | sub NOT handled | 120 |
-| PacketInGamePurchaseCountryCodesRequest | 0x45, 0x15 | sub NOT handled | 102 |
-| PacketInGamePurchaseStationCashProductsRequest | 0x45, 0xF | sub NOT handled | 98 |
-| LootPinataPacketPickupLoot | 0xFB, 0x5 | sub NOT handled | 20 |
-| Notifications::ListNotificationsPacket | 0x1, 0x1 | sub NOT handled | 1 |
+| RatingPacketRequestContestsRequest | 0xA7, 0x1D | sub NOT handled | 226 |
+| RatingPacketCanVoteRequest | 0xA7, 0x18 | sub NOT handled | 209 |
+| PacketPortraitDataRequest | 0x98, 0x2 | sub NOT handled | 170 |
+| PacketInGamePurchaseCountryCodesRequest | 0x45, 0x15 | sub NOT handled | 132 |
+| PacketInGamePurchaseStationCashProductsRequest | 0x45, 0xF | sub NOT handled | 128 |
+| HudPackets::PacketRadialMenuRequest | 0xDC, 0x1 | sub NOT handled | 64 |
+| LootPinataPacketPickupLoot | 0xFB, 0x5 | sub NOT handled | 43 |
+| RatingPacketAddVote | 0xA7, 0x8 | sub NOT handled | 8 |
+| Notifications::ListNotificationsPacket | 0x1, 0x1 | sub NOT handled | 6 |
+| Skills::SkillAdminPacketEcho | 0x1, 0x1 | sub NOT handled | 6 |
 | PlayerTitleRequestSelectPacket | 0x94, 0x4 | sub NOT handled | 1 |
-| Skills::SkillAdminPacketEcho | 0x1, 0x1 | sub NOT handled | 1 |
 | Abilities::AbilityPacketClientTargeterEnd | 0x27, 0x23 | sub NOT handled |  |
 | Abilities::AbilityPacketClientTargeterFindTarget | 0x27, 0x24 | sub NOT handled |  |
 | AcquireTimers::AcquireTimerAdminPacketClearAcquireTimers | 0x1E, 0x4DE | sub NOT handled |  |
@@ -517,7 +538,6 @@ Heuristic (direction from the send call, opcode from adjacent constants): verify
 | GuildPetitionReplyPacket | 0x83, 0x8 | sub NOT handled |  |
 | HelpOfferPacket | 0x1E, 0x38 | sub NOT handled |  |
 | HelpRequestPacket | 0x1E, 0x37 | sub NOT handled |  |
-| HudPackets::PacketRadialMenuRequest | 0xDC, 0x1 | sub NOT handled |  |
 | InstancedGameEndRequest | 0x10D, 0x10 | sub NOT handled |  |
 | InstancedGamePropRecipeRequest | 0x10D, 0x5 | sub NOT handled |  |
 | InstancedGamePropRemovePacket | 0x10D, 0xB | sub NOT handled |  |
@@ -561,9 +581,7 @@ Heuristic (direction from the send call, opcode from adjacent constants): verify
 | PacketVaultItemById | 0x1E, 0x4F2 | sub NOT handled |  |
 | PalettePacketCreate | 0xF5, 0x1 | sub NOT handled |  |
 | PalettePacketDelete | 0xF5, 0x2 | sub NOT handled |  |
-| PropAccessPacket | 0xED, 0x1 | sub NOT handled |  |
 | PropPacketRequestList | 0xED, 0x9 | sub NOT handled |  |
-| RatingPacketAddVote | 0xA7, 0x8 | sub NOT handled |  |
 | SelectQuestPacket | 0x32, 0xB | sub NOT handled |  |
 | SelectTaskRequest | 0x32, 0x6 | sub NOT handled |  |
 | SelectedQuestLockedPacket | 0x32, 0xC | sub NOT handled |  |
@@ -579,7 +597,6 @@ Heuristic (direction from the send call, opcode from adjacent constants): verify
 | Skills::SkillAdminPacketSetSkillPointRateTierValue | 0x1, 0x7 | sub NOT handled |  |
 | TargetPacketRequestAddTarget | 0xB5, 0x1 | sub NOT handled |  |
 | TargetPacketRequestRemoveAllTargets | 0xB5, 0x4 | sub NOT handled |  |
-| TemplatePacketClientListRequest | 0xF0, 0x1 | sub NOT handled |  |
 | TerrainCellPacketResetAllCells | 0xEC, 0x8 | sub NOT handled |  |
 | ClientServerCore::BasePacket |  | unknown opcode |  |
 | Gateway::InternalPackets::BasePacket |  | unknown opcode |  |
@@ -591,64 +608,69 @@ Heuristic (direction from the send call, opcode from adjacent constants): verify
 
 | Class | Opcode (base, sub) | Server | Seen in play |
 |---|---|---|---|
-| Abilities::AbilityPacketAbilityEnd | 0x27 | never sent | 14616 |
-| Abilities::AbilityPacketAbilityStart | 0x27 | never sent | 14616 |
-| Abilities::AbilityPacketAbilityStartCanceled | 0x27 | never sent | 14616 |
-| Abilities::AbilityPacketAbilityStartFailed | 0x27 | never sent | 14616 |
-| Abilities::AbilityPacketCastContinue | 0x27 | never sent | 14616 |
-| Abilities::AbilityPacketCastFail | 0x27 | never sent | 14616 |
-| Abilities::AbilityPacketCastSuccess | 0x27 | never sent | 14616 |
-| Abilities::AbilityPacketClearCurrentCooldown | 0x27 | never sent | 14616 |
-| Abilities::AbilityPacketEffectEnd | 0x27 | never sent | 14616 |
-| Abilities::AbilityPacketEffectInitialized | 0x27 | never sent | 14616 |
-| Abilities::AbilityPacketIdDefaultInfoReply | 0x27 | never sent | 14616 |
-| Abilities::AbilityPacketLowerCurrentCooldown | 0x27 | never sent | 14616 |
-| Abilities::AbilityPacketPlayAnim | 0x27 | never sent | 14616 |
-| Abilities::AbilityPacketPlayVfx | 0x27 | never sent | 14616 |
-| Abilities::AbilityPacketShapeEnd | 0x27 | never sent | 14616 |
-| Abilities::AbilityPacketTargeterEnd | 0x27 | never sent | 14616 |
-| Abilities::AbilityPacketTargeterUpdate | 0x27 | never sent | 14616 |
-| Abilities::AbilityPacketUpdateEffect | 0x27 | never sent | 14616 |
-| Abilities::BacktimedAbilityPacket | 0x27 | never sent | 14616 |
-| Abilities::BaseAbilityPacket | 0x27 | never sent | 14616 |
-| Equipment::EquipmentPacketSetCharacterEquipment | 0xCB | never sent | 352 |
-| Equipment::EquipmentPacketSetCharacterEquipmentSlot | 0xCB | never sent | 352 |
-| Equipment::EquipmentPacketSetCharacterEquipmentSlots | 0xCB | never sent | 352 |
-| ClaimsPacketIdSendClaimsByOwner | 0xF9, 0xF | never sent | 171 |
-| ClaimsPacketIdRecievePropExclusionArea | 0xF9, 0x11 | never sent | 162 |
-| PacketInGamePurchaseCommerceAccountStore | 0x45, 0x38 | never sent | 142 |
-| ActivityProfileListPacket | 0x8F, 0x1 | never sent | 102 |
-| ClientUpdatePacketZonePopulation | 0x29, 0x1F | never sent | 102 |
-| CommandPacketItemDefinitions | 0x1E, 0x4B | never sent | 102 |
-| Crafting::RecipecComponentImageSetIdsResponsePacket | 0x42, 0x1D | never sent | 102 |
-| Experience::ExperiencePacketSetExperienceRanks | 0xBE, 0x2 | never sent | 102 |
-| PacketInGamePurchaseAccountInfoResponse | 0x45, 0x1B | never sent | 98 |
-| PacketInGamePurchaseCommerceReviewProductResponse | 0x45, 0x40 | never sent | 92 |
-| Abilities::AbilityPacketEffectStart | 0x27, 0xC | never sent | 74 |
-| PacketClientBeginZoning | 0x23 | never sent | 60 |
-| InventoryPacketTransferItemResponse | 0x2D, 0x19 | never sent | 28 |
-| GuildDataPacket | 0x83, 0x13 | never sent | 27 |
-| ObjectScriptingPacketAddBindingResponse | 0x111, 0x5 | never sent | 18 |
-| ObjectScriptingPacketListBindingsResponse | 0x111, 0x6 | never sent | 18 |
-| InventoryPacketItemTooltipReply | 0x2D, 0x12 | never sent | 12 |
-| TradeUpdateAcceptPacket | 0x3E, 0xD | never sent | 8 |
-| PacketMailNewMailInboxNotification | 0xF8, 0xE | never sent | 7 |
-| ClaimsPacketEditClaimItemData | 0xF9, 0x9 | never sent | 6 |
-| InstancedGameHUDPacket | 0x10D, 0x9 | never sent | 4 |
-| PacketMailConsumeAttachmentResponse | 0xF8, 0x10 | never sent | 4 |
-| PacketMailReadMessageResponse | 0xF8, 0x9 | never sent | 4 |
-| TradeEndSessionPacket | 0x3E, 0x5 | never sent | 4 |
-| TradeMessagePacket | 0x3E, 0xE | never sent | 4 |
-| TradeUpdateAddItemPacket | 0x3E, 0xB | never sent | 4 |
-| PlayerPublicChatLeaveRoomResponsePacket | 0x13, 0xD | never sent | 3 |
-| InstancedGameTeamMembersPacket | 0x10D, 0x14 | never sent | 2 |
+| Abilities::AbilityPacketAbilityEnd | 0x27 | never sent | 18992 |
+| Abilities::AbilityPacketAbilityStart | 0x27 | never sent | 18992 |
+| Abilities::AbilityPacketAbilityStartCanceled | 0x27 | never sent | 18992 |
+| Abilities::AbilityPacketAbilityStartFailed | 0x27 | never sent | 18992 |
+| Abilities::AbilityPacketCastContinue | 0x27 | never sent | 18992 |
+| Abilities::AbilityPacketCastFail | 0x27 | never sent | 18992 |
+| Abilities::AbilityPacketCastSuccess | 0x27 | never sent | 18992 |
+| Abilities::AbilityPacketClearCurrentCooldown | 0x27 | never sent | 18992 |
+| Abilities::AbilityPacketEffectEnd | 0x27 | never sent | 18992 |
+| Abilities::AbilityPacketEffectInitialized | 0x27 | never sent | 18992 |
+| Abilities::AbilityPacketIdDefaultInfoReply | 0x27 | never sent | 18992 |
+| Abilities::AbilityPacketLowerCurrentCooldown | 0x27 | never sent | 18992 |
+| Abilities::AbilityPacketPlayAnim | 0x27 | never sent | 18992 |
+| Abilities::AbilityPacketPlayVfx | 0x27 | never sent | 18992 |
+| Abilities::AbilityPacketShapeEnd | 0x27 | never sent | 18992 |
+| Abilities::AbilityPacketTargeterEnd | 0x27 | never sent | 18992 |
+| Abilities::AbilityPacketTargeterUpdate | 0x27 | never sent | 18992 |
+| Abilities::AbilityPacketUpdateEffect | 0x27 | never sent | 18992 |
+| Abilities::BacktimedAbilityPacket | 0x27 | never sent | 18992 |
+| Abilities::BaseAbilityPacket | 0x27 | never sent | 18992 |
+| Equipment::EquipmentPacketSetCharacterEquipment | 0xCB | never sent | 495 |
+| Equipment::EquipmentPacketSetCharacterEquipmentSlot | 0xCB | never sent | 495 |
+| Equipment::EquipmentPacketSetCharacterEquipmentSlots | 0xCB | never sent | 495 |
+| TerrainCellPacketClientCellUpdateResponse | 0xEC, 0x3 | never sent | 385 |
+| InstancedGameHUDPacket | 0x10D, 0x9 | never sent | 333 |
+| ClaimsPacketIdSendClaimsByOwner | 0xF9, 0xF | never sent | 251 |
+| InventoryPacketItemTooltipReply | 0x2D, 0x12 | never sent | 227 |
+| ClaimsPacketIdRecievePropExclusionArea | 0xF9, 0x11 | never sent | 226 |
+| PacketInGamePurchaseCommerceAccountStore | 0x45, 0x38 | never sent | 206 |
+| ActivityProfileListPacket | 0x8F, 0x1 | never sent | 132 |
+| ClientUpdatePacketZonePopulation | 0x29, 0x1F | never sent | 132 |
+| CommandPacketItemDefinitions | 0x1E, 0x4B | never sent | 132 |
+| Crafting::RecipecComponentImageSetIdsResponsePacket | 0x42, 0x1D | never sent | 132 |
+| Experience::ExperiencePacketSetExperienceRanks | 0xBE, 0x2 | never sent | 132 |
+| PacketInGamePurchaseAccountInfoResponse | 0x45, 0x1B | never sent | 128 |
+| PacketInGamePurchaseCommerceReviewProductResponse | 0x45, 0x40 | never sent | 122 |
+| PacketClientBeginZoning | 0x23 | never sent | 94 |
+| ToolPacketUndoStackChange | 0x117 | never sent | 86 |
+| InventoryPacketTransferItemResponse | 0x2D, 0x19 | never sent | 84 |
+| Abilities::AbilityPacketEffectStart | 0x27, 0xC | never sent | 79 |
+| GuildDataPacket | 0x83, 0x13 | never sent | 49 |
+| ObjectScriptingPacketListBindingsResponse | 0x111, 0x6 | never sent | 30 |
+| ObjectScriptingPacketAddBindingResponse | 0x111, 0x5 | never sent | 28 |
+| PacketMailConsumeAttachmentResponse | 0xF8, 0x10 | never sent | 16 |
+| TradeUpdateAcceptPacket | 0x3E, 0xD | never sent | 16 |
+| PacketMailNewMailInboxNotification | 0xF8, 0xE | never sent | 14 |
+| PacketMailReadMessageResponse | 0xF8, 0x9 | never sent | 12 |
+| ClaimsPacketEditClaimItemData | 0xF9, 0x9 | never sent | 10 |
+| GuildNotificationPacket | 0x83, 0x19 | never sent | 9 |
+| TradeEndSessionPacket | 0x3E, 0x5 | never sent | 8 |
+| TradeMessagePacket | 0x3E, 0xE | never sent | 8 |
+| TradeUpdateAddItemPacket | 0x3E, 0xB | never sent | 8 |
+| GuildRemoveMemberPacket | 0x83, 0x16 | never sent | 7 |
+| Crafting::RecipeCraftWindowEnableResponsePacket | 0x42, 0x7 | never sent | 5 |
+| InstancedGameTeamMembersPacket | 0x10D, 0x14 | never sent | 5 |
+| GuildAddMemberPacket | 0x83, 0x15 | never sent | 4 |
+| GuildUpdateInvitationPacket | 0x83, 0x17 | never sent | 4 |
+| PlayerPublicChatLeaveRoomResponsePacket | 0x13, 0xD | never sent | 4 |
+| PlayerPublicChatJoinRoomResponsePacket | 0x13, 0xB | never sent | 3 |
+| ActionManagerPacketUpdateSlot | 0x9A | never sent | 2 |
+| InstancedGameEventPacket | 0x10D, 0x7 | never sent | 2 |
+| ObjectScriptingPacketSupportedActionsEventsAndDefaultsResponse | 0x111, 0x4 | never sent | 2 |
 | PacketInGamePurchaseStoreBundleSearchResults | 0x45, 0x3E | never sent | 2 |
-| PlayerPublicChatJoinRoomResponsePacket | 0x13, 0xB | never sent | 2 |
-| ToolPacketUndoStackChange | 0x117 | never sent | 2 |
-| GuildAddMemberPacket | 0x83, 0x15 | never sent | 1 |
-| GuildRemoveMemberPacket | 0x83, 0x16 | never sent | 1 |
-| GuildUpdateInvitationPacket | 0x83, 0x17 | never sent | 1 |
-| InstancedGameEventPacket | 0x10D, 0x7 | never sent | 1 |
 | PacketClaimVendorPurchaseItemResponse | 0x112, 0x8 | never sent | 1 |
 | Abilities::AbilityPacketCastAttempt | 0x27, 0x1 | never sent |  |
 | Abilities::AbilityPacketShapeStart | 0x27, 0x21 | never sent |  |
@@ -659,7 +681,6 @@ Heuristic (direction from the send call, opcode from adjacent constants): verify
 | AchievementSecretCompletePacket | 0x92, 0xE | never sent |  |
 | AcquaintanceOnlinePacket | 0x4B, 0x3 | never sent |  |
 | AcquireTimers::AcquireTimerPacketSetAcquireTimerManager | 0xDE | never sent |  |
-| ActionManagerPacketUpdateSlot | 0x9A | never sent |  |
 | AddAcquaintancePacket | 0x4B, 0x1 | never sent |  |
 | AdminCommandPacketAddCurrency | 0x1E, 0x41F | never sent |  |
 | AdminCommandPacketClearCurrency | 0x1E, 0x421 | never sent |  |
@@ -680,7 +701,6 @@ Heuristic (direction from the send call, opcode from adjacent constants): verify
 | CharacterCustomizationPacketAddKnowledgeResponse | 0x11C, 0x2 | never sent |  |
 | ChatPacketDebugChat | 0x13, 0x3 | never sent |  |
 | ChatPacketEnterArea | 0x13, 0x2 | never sent |  |
-| ChatPacketFromStringId | 0x13, 0x4 | never sent |  |
 | CinematicStartLookAtPacket | 0x32, 0xF | never sent |  |
 | ClaimPacketIdSnapshotRestoreConfirmRequest | 0xF9, 0x15 | never sent |  |
 | ClaimPacketIdSnapshotRestoreResponse | 0xF9, 0x16 | never sent |  |
@@ -692,7 +712,6 @@ Heuristic (direction from the send call, opcode from adjacent constants): verify
 | ClaimsPacketIdSendInventoryDetails | 0xF9, 0xD | never sent |  |
 | ClaimsPacketLostClaimServerConnection | 0xF9, 0x12 | never sent |  |
 | ClaimsPacketResultResponse | 0xF9, 0x10 | never sent |  |
-| ClaimsPacketUpdatePropCategoryCount | 0xF9, 0x5F | never sent |  |
 | ClaimsPacketsIdUpdateClaimBasicInfoAndAOI | 0xF9, 0x3 | never sent |  |
 | ClientActivityLaunchPacketInviteMemberRequest | 0xA8, 0x14 | never sent |  |
 | ClientActivityLaunchPacketInviteResponse | 0xA8, 0x11 | never sent |  |
@@ -761,7 +780,6 @@ Heuristic (direction from the send call, opcode from adjacent constants): verify
 | ContentManagement::ContentPacketSocketStateUpdate | 0x118, 0x1E | never sent |  |
 | Crafting::PlayerRecipeDataUpdatePacket | 0x42, 0x1E | never sent |  |
 | Crafting::RecipeAddRecipeResponsePacket | 0x42, 0x8 | never sent |  |
-| Crafting::RecipeCraftWindowEnableResponsePacket | 0x42, 0x7 | never sent |  |
 | Crafting::RecipeHideRecipeResponsePacket | 0x42, 0x1F | never sent |  |
 | Crafting::RecipePacketZoneCraftingWindow | 0x42, 0x24 | never sent |  |
 | Crafting::RecipeRefiningProcessResponsePacket | 0x42, 0x10 | never sent |  |
@@ -787,15 +805,11 @@ Heuristic (direction from the send call, opcode from adjacent constants): verify
 | FriendUpdateProfileInfoPacket | 0x4D, 0x4 | never sent |  |
 | Gateway::InternalPackets::PacketTunnelPacketToExternalConnectionList | 0x16, 0x8 | never sent |  |
 | GetAllAvailableRequisitionItemsResponsePacket | 0x6E, 0x2 | never sent |  |
-| Groups::GroupPacketAddMember | 0x2B, 0x2 | never sent |  |
-| Groups::GroupPacketInviteToGroupContent | 0x2B, 0x2 | never sent |  |
-| Groups::GroupPacketRemoveInvitation | 0x2B, 0x2 | never sent |  |
 | GuideStonePacketAddInfo | 0xB7, 0x2 | never sent |  |
 | GuildAddLogUpdatePacket | 0x83, 0x1A | never sent |  |
 | GuildDataFullPacket | 0x83, 0x12 | never sent |  |
 | GuildInvitationsPacket | 0x83, 0x14 | never sent |  |
 | GuildMemberOnlineStatusPacket | 0x83, 0x18 | never sent |  |
-| GuildNotificationPacket | 0x83, 0x19 | never sent |  |
 | GuildRemoveLogUpdatePacket | 0x83, 0x1B | never sent |  |
 | GuildUpdateAppDataPacket | 0x83, 0x1C | never sent |  |
 | HeadShotFeedbackPacket | 0x32, 0x11 | never sent |  |
@@ -858,7 +872,6 @@ Heuristic (direction from the send call, opcode from adjacent constants): verify
 | ObjectScriptingPacketRemoveAllBindingsResponse | 0x111, 0x8 | never sent |  |
 | ObjectScriptingPacketRemoveBindingResponse | 0x111, 0x7 | never sent |  |
 | ObjectScriptingPacketRestoreDefaultsResponse | 0x111, 0x9 | never sent |  |
-| ObjectScriptingPacketSupportedActionsEventsAndDefaultsResponse | 0x111, 0x4 | never sent |  |
 | ObjectScriptingPacketSupportedEventsResponse | 0x111, 0x2 | never sent |  |
 | ObjectiveActivatePacket | 0x30, 0x1 | never sent |  |
 | ObjectiveClientClearPacket | 0x30, 0x8 | never sent |  |
@@ -1037,10 +1050,7 @@ Heuristic (direction from the send call, opcode from adjacent constants): verify
 | TaskCompletePacket | 0x32, 0x3 | never sent |  |
 | TaskFailPacket | 0x32, 0x4 | never sent |  |
 | TaskUpdatePacket | 0x32, 0x2 | never sent |  |
-| TellEchoPacket | 0x13, 0x5 | never sent |  |
-| TemplatePacketEnvironmentAddOwnershipResponse | 0xF0, 0x11 | never sent |  |
 | TemplatePacketEnvironmentInstanceDetailsResponse | 0xF0, 0x13 | never sent |  |
-| TerrainCellPacketClientCellUpdateResponse | 0xEC, 0x3 | never sent |  |
 | TerrainCellPacketMaterialChangeInfo | 0xEC, 0x6 | never sent |  |
 | TradeRejectedPacket | 0x3E, 0xF | never sent |  |
 | UiMessagePacket | 0x32, 0xE | never sent |  |
@@ -1087,78 +1097,78 @@ Heuristic (direction from the send call, opcode from adjacent constants): verify
 | WeaponSetAmmoPacket | 0xBA, 0xA | never sent |  |
 | WeaponStatUpdatePacket | 0xBA, 0x11 | never sent |  |
 | ZoneWaypointPacket | 0x32, 0x14 | never sent |  |
-| PlayerUpdatePacketUpdatePositionZoneToClient | 0x7F | sent by server | 197428 |
-| Abilities::AbilityPacketCasterInfoReply | 0x27, 0x3 | sent by server | 13526 |
-| TerrainCellPacketCellsUpdate | 0xEC, 0x5 | sent by server | 3185 |
-| PlayerUpdatePacketInteractionInfoReply | 0x26, 0x6A | sent by server | 1559 |
-| PlayerUpdatePacketRemovePlayer | 0x26, 0x1 | sent by server | 1542 |
-| PlayerUpdatePacketRemovePlayerGracefully | 0x26, 0x1 | sent by server | 1542 |
-| TerrainCellPacketModifiedCellManifestUpdate | 0xEC, 0xB | sent by server | 1158 |
-| PlayerUpdatePacketAddLightweightNpc | 0x26, 0x59 | sent by server | 833 |
-| PacketInGamePurchaseNudgeOfferNotification | 0x45 | sent by server | 801 |
-| PacketInGamePurchaseStoreBundles<AppStoreBundleDefinition> | 0x45 | sent by server | 801 |
-| FirstTimeEventScriptPacket | 0x6D | sent by server | 564 |
-| FirstTimeEventStatePacket | 0x6D | sent by server | 564 |
+| PlayerUpdatePacketUpdatePositionZoneToClient | 0x7F | sent by server | 198020 |
+| Abilities::AbilityPacketCasterInfoReply | 0x27, 0x3 | sent by server | 14810 |
+| TerrainCellPacketCellsUpdate | 0xEC, 0x5 | sent by server | 5257 |
+| TerrainCellPacketModifiedCellManifestUpdate | 0xEC, 0xB | sent by server | 3069 |
+| PlayerUpdatePacketRemovePlayer | 0x26, 0x1 | sent by server | 2204 |
+| PlayerUpdatePacketRemovePlayerGracefully | 0x26, 0x1 | sent by server | 2204 |
+| PlayerUpdatePacketInteractionInfoReply | 0x26, 0x6A | sent by server | 1709 |
+| PacketInGamePurchaseNudgeOfferNotification | 0x45 | sent by server | 1277 |
+| PacketInGamePurchaseStoreBundles<AppStoreBundleDefinition> | 0x45 | sent by server | 1277 |
+| PlayerUpdatePacketAddLightweightNpc | 0x26, 0x59 | sent by server | 853 |
+| FirstTimeEventScriptPacket | 0x6D | sent by server | 703 |
+| FirstTimeEventStatePacket | 0x6D | sent by server | 703 |
+| ClientUpdatePacketItemUpdate | 0x29, 0x3 | sent by server | 532 |
 | PlayerUpdatePacketCombatResourceEvent | 0x26, 0x67 | sent by server | 486 |
+| ClientUpdatePacketHitpoints | 0x29, 0x1 | sent by server | 469 |
+| RatingPacketDeleteContestReply | 0xA7 | sent by server | 443 |
+| PropBasePacket | 0xED | sent by server | 425 |
 | PlayerUpdatePacketUpdateHitpoints | 0x26, 0x3 | sent by server | 369 |
-| ClientUpdatePacketHitpoints | 0x29, 0x1 | sent by server | 354 |
-| ClientUpdatePacketItemUpdate | 0x29, 0x3 | sent by server | 343 |
-| PlayerUpdatePacketDynamicInteractionFlagging | 0x26, 0x6B | sent by server | 321 |
-| RatingPacketDeleteContestReply | 0xA7 | sent by server | 284 |
-| PacketSendZoneDetails | 0x2E | sent by server | 264 |
-| TerrainCellPacketModifiedCellManifest | 0xEC, 0xA | sent by server | 222 |
-| AchievementCompletePacket | 0x92 | sent by server | 216 |
-| AchievementObjectiveActivatedPacket | 0x92 | sent by server | 216 |
-| AchievementObjectiveCompletePacket | 0x92 | sent by server | 216 |
-| AchievementObjectiveUpdatePacket | 0x92 | sent by server | 216 |
-| ClientUpdatePacketUpdateCalculatedStats | 0x29, 0x2C | sent by server | 184 |
-| ClientUpdatePacketDoneSendingPreloadCharacters | 0x29, 0x1B | sent by server | 162 |
-| Login::ExternalPackets::PacketTunnelAppPacketServerToClient | 0x11 | sent by server | 162 |
-| PacketPlayerCurrencyChange | 0x26, 0x49 | sent by server | 127 |
-| FriendMessagePacket | 0x4D | sent by server | 108 |
-| PropBasePacket | 0xED | sent by server | 104 |
-| ClientUpdatePacketMovementVersion | 0x29, 0x26 | sent by server | 102 |
-| Experience::ExperiencePacketSetExperienceRateTier | 0xBE | sent by server | 102 |
-| Login::ExternalPackets::PacketCharacterTransferServerRequest | 0x12 | sent by server | 102 |
-| Login::ExternalPackets::PacketServerUpdate | 0xF | sent by server | 102 |
-| PacketClientSettings | 0xE9 | sent by server | 102 |
-| PacketClientZoneCoordinateInfo | 0x12 | sent by server | 102 |
-| PacketInitializationParameters | 0x9F | sent by server | 102 |
-| PacketSendSelfToClient | 0xF | sent by server | 102 |
-| ReferenceDataPacketClientProfileData | 0x2F, 0x3 | sent by server | 102 |
-| ReferenceDataPacketItemCategoryDefinitions | 0x2F, 0x2 | sent by server | 102 |
-| ReferenceDataPacketItemClassDefinitions | 0x2F, 0x1 | sent by server | 102 |
-| PacketPlayerStudioRegistered | 0xFE | sent by server | 100 |
-| Login::ExternalPackets::PacketCharacterTransferServerReply | 0x13 | sent by server | 87 |
-| TerrainCellPacketDetectVeins | 0xEC, 0x10 | sent by server | 80 |
-| ClientUpdatePacketItemAdd | 0x29, 0x2 | sent by server | 70 |
-| PlayerUpdatePacketLightweightToFullPc | 0x26, 0x5B | sent by server | 54 |
-| ClientUpdatePacketItemDelete | 0x29, 0x4 | sent by server | 41 |
-| EncounterDetailsResponsePacket | 0x2C | sent by server | 37 |
-| EncounterPacketEncounterComplete | 0x2C | sent by server | 37 |
-| PlayerUpdatePacketPlayerTitle | 0x26, 0x1C | sent by server | 22 |
-| PlayerUpdatePacketKnockedOut | 0x26, 0x39 | sent by server | 20 |
-| ClientUpdatePacketRespawnLocations | 0x29, 0x20 | sent by server | 16 |
-| ClientUpdatePacketCoinCount | 0x29, 0x13 | sent by server | 6 |
+| AchievementCompletePacket | 0x92 | sent by server | 360 |
+| AchievementObjectiveActivatedPacket | 0x92 | sent by server | 360 |
+| AchievementObjectiveCompletePacket | 0x92 | sent by server | 360 |
+| AchievementObjectiveUpdatePacket | 0x92 | sent by server | 360 |
+| PacketSendZoneDetails | 0x2E | sent by server | 358 |
+| PlayerUpdatePacketDynamicInteractionFlagging | 0x26, 0x6B | sent by server | 342 |
+| TerrainCellPacketModifiedCellManifest | 0xEC, 0xA | sent by server | 320 |
+| ClientUpdatePacketUpdateCalculatedStats | 0x29, 0x2C | sent by server | 252 |
+| ClientUpdatePacketDoneSendingPreloadCharacters | 0x29, 0x1B | sent by server | 226 |
+| Login::ExternalPackets::PacketTunnelAppPacketServerToClient | 0x11 | sent by server | 226 |
+| TerrainCellPacketDetectVeins | 0xEC, 0x10 | sent by server | 201 |
+| FriendMessagePacket | 0x4D | sent by server | 172 |
+| PacketPlayerCurrencyChange | 0x26, 0x49 | sent by server | 164 |
+| Login::ExternalPackets::PacketCharacterTransferServerReply | 0x13 | sent by server | 155 |
+| ClientUpdatePacketMovementVersion | 0x29, 0x26 | sent by server | 132 |
+| Experience::ExperiencePacketSetExperienceRateTier | 0xBE | sent by server | 132 |
+| Login::ExternalPackets::PacketCharacterTransferServerRequest | 0x12 | sent by server | 132 |
+| Login::ExternalPackets::PacketServerUpdate | 0xF | sent by server | 132 |
+| PacketClientSettings | 0xE9 | sent by server | 132 |
+| PacketClientZoneCoordinateInfo | 0x12 | sent by server | 132 |
+| PacketInitializationParameters | 0x9F | sent by server | 132 |
+| PacketSendSelfToClient | 0xF | sent by server | 132 |
+| ReferenceDataPacketClientProfileData | 0x2F, 0x3 | sent by server | 132 |
+| ReferenceDataPacketItemCategoryDefinitions | 0x2F, 0x2 | sent by server | 132 |
+| ReferenceDataPacketItemClassDefinitions | 0x2F, 0x1 | sent by server | 132 |
+| PacketPlayerStudioRegistered | 0xFE | sent by server | 130 |
+| PlayerUpdatePacketLightweightToFullPc | 0x26, 0x5B | sent by server | 110 |
+| ClientUpdatePacketItemAdd | 0x29, 0x2 | sent by server | 108 |
+| ClientUpdatePacketItemDelete | 0x29, 0x4 | sent by server | 92 |
+| PlayerUpdatePacketPlayerTitle | 0x26, 0x1C | sent by server | 44 |
+| EncounterDetailsResponsePacket | 0x2C | sent by server | 39 |
+| EncounterPacketEncounterComplete | 0x2C | sent by server | 39 |
+| PlayerUpdatePacketKnockedOut | 0x26, 0x39 | sent by server | 22 |
+| ClientUpdatePacketRespawnLocations | 0x29, 0x20 | sent by server | 17 |
+| ClientUpdatePacketCoinCount | 0x29, 0x13 | sent by server | 14 |
+| Gateway::ExternalPackets::PacketLoginRequest | 0x1 | sent by server | 4 |
+| KnownPropPacketAddPropResponse | 0x115, 0x1 | sent by server | 4 |
+| Login::ExternalPackets::PacketLoginRequest | 0x1 | sent by server | 4 |
 | PacketWorldShutdownNotice | 0x5F | sent by server | 4 |
-| Gateway::ExternalPackets::PacketLoginRequest | 0x1 | sent by server | 1 |
-| Login::ExternalPackets::PacketLoginRequest | 0x1 | sent by server | 1 |
+| PropPacketListReply | 0x1 | sent by server | 4 |
+| PropPacketVolumeReply | 0x1 | sent by server | 4 |
+| RemoteAssetDelivery::AssetRequestPacket | 0x1 | sent by server | 4 |
+| RemoveLobbyGamePacket | 0x1 | sent by server | 4 |
+| RewardBundlePacket | 0x1 | sent by server | 4 |
+| Scaleform::GFx::AMP::Message | 0x1 | sent by server | 4 |
+| SendLeaveLobbyToClientPacket | 0x1 | sent by server | 4 |
+| UdpLibrary::LogicalPacket | 0x1 | sent by server | 4 |
+| UdpLibrary::PooledLogicalPacket | 0x1 | sent by server | 4 |
+| UdpLibrary::SimpleLogicalPacket | 0x1 | sent by server | 4 |
+| UpdateLobbyGamePacket | 0x1 | sent by server | 4 |
 | PlayerTitleAddPacket | 0x94 | sent by server | 1 |
-| PropPacketListReply | 0x1 | sent by server | 1 |
-| PropPacketVolumeReply | 0x1 | sent by server | 1 |
-| RemoteAssetDelivery::AssetRequestPacket | 0x1 | sent by server | 1 |
-| RemoveLobbyGamePacket | 0x1 | sent by server | 1 |
-| RewardBundlePacket | 0x1 | sent by server | 1 |
-| Scaleform::GFx::AMP::Message | 0x1 | sent by server | 1 |
-| SendLeaveLobbyToClientPacket | 0x1 | sent by server | 1 |
-| UdpLibrary::LogicalPacket | 0x1 | sent by server | 1 |
-| UdpLibrary::PooledLogicalPacket | 0x1 | sent by server | 1 |
-| UdpLibrary::SimpleLogicalPacket | 0x1 | sent by server | 1 |
-| UpdateLobbyGamePacket | 0x1 | sent by server | 1 |
 | ClientUpdatePacketTeleportToLocation | 0x29, 0xC | sent by server |  |
 | ClientUpdatePacketUpdateStat | 0x29, 0x6 | sent by server |  |
 | Gateway::ExternalPackets::PacketLogout | 0x3 | sent by server |  |
-| KnownPropPacketAddPropResponse | 0x115, 0x1 | sent by server |  |
 | Login::ExternalPackets::PacketLogout | 0x3 | sent by server |  |
 | PacketCharacterSelectSessionResponse | 0xF7 | sent by server |  |
 | PacketChestAddItem | 0xFF | sent by server |  |
@@ -1169,71 +1179,78 @@ Heuristic (direction from the send call, opcode from adjacent constants): verify
 | TerrainCellPacketCellBlockDamage | 0xEC, 0x7 | sent by server |  |
 | TerrainCellPacketUpToDateCells | 0xEC, 0x4 | sent by server |  |
 | VoxelConstructionPacketEnvOwnershipDataResponse | 0xF4, 0x17 | sent by server (sub in payload) | 2548 |
-| ClaimsPacketClaimInfoUpdate | 0xF9, 0x5 | sent by server (sub in payload) | 221 |
-| ClaimsPacketAOIUpdate | 0xF9, 0x4 | sent by server (sub in payload) | 192 |
-| ClaimsPacketClaimManagmentData | 0xF9, 0x8 | sent by server (sub in payload) | 192 |
-| ClaimsPacketUpkeepManagmentData | 0xF9, 0xA | sent by server (sub in payload) | 192 |
-| RatingPacketRequestContestsReply | 0xA7, 0x1E | sent by server (sub in payload) | 162 |
-| ClaimsPacketsIdSendAllClaimBasicInfo | 0xF9, 0x1 | sent by server (sub in payload) | 135 |
-| RatingPacketCanVoteReply | 0xA7, 0x19 | sent by server (sub in payload) | 122 |
-| WarpNetwork::WarpNetworkZoneNetworkPacket | 0x113, 0x2 | sent by server (sub in payload) | 105 |
-| AchievementInitializePacket | 0x92, 0x3 | sent by server (sub in payload) | 102 |
-| ActivityPacketListOfActivities | 0xA0, 0x1 | sent by server (sub in payload) | 102 |
-| ActivityPacketUpdateActivityFeaturedStatus | 0xA0, 0x1 | sent by server (sub in payload) | 102 |
-| CommandListPacket | 0x1E, 0x44 | sent by server (sub in payload) | 102 |
-| FriendListPacket | 0x4D, 0x1 | sent by server (sub in payload) | 102 |
-| PacketChat | 0x13, 0x1 | sent by server (sub in payload) | 79 |
-| LootPinataPacketSpawnLoot | 0xFB, 0x1 | sent by server (sub in payload) | 28 |
-| ClaimsPacketPlaceClaimResponse | 0xF9, 0x6 | sent by server (sub in payload) | 26 |
+| ClaimsPacketClaimInfoUpdate | 0xF9, 0x5 | sent by server (sub in payload) | 353 |
+| ClaimsPacketAOIUpdate | 0xF9, 0x4 | sent by server (sub in payload) | 310 |
+| ClaimsPacketClaimManagmentData | 0xF9, 0x8 | sent by server (sub in payload) | 279 |
+| ClaimsPacketUpkeepManagmentData | 0xF9, 0xA | sent by server (sub in payload) | 279 |
+| RatingPacketRequestContestsReply | 0xA7, 0x1E | sent by server (sub in payload) | 226 |
+| RatingPacketCanVoteReply | 0xA7, 0x19 | sent by server (sub in payload) | 209 |
+| ClaimsPacketsIdSendAllClaimBasicInfo | 0xF9, 0x1 | sent by server (sub in payload) | 199 |
+| WarpNetwork::WarpNetworkZoneNetworkPacket | 0x113, 0x2 | sent by server (sub in payload) | 169 |
+| AchievementInitializePacket | 0x92, 0x3 | sent by server (sub in payload) | 132 |
+| ActivityPacketListOfActivities | 0xA0, 0x1 | sent by server (sub in payload) | 132 |
+| ActivityPacketUpdateActivityFeaturedStatus | 0xA0, 0x1 | sent by server (sub in payload) | 132 |
+| CommandListPacket | 0x1E, 0x44 | sent by server (sub in payload) | 132 |
+| FriendListPacket | 0x4D, 0x1 | sent by server (sub in payload) | 132 |
+| PacketChat | 0x13, 0x1 | sent by server (sub in payload) | 132 |
+| HudPackets::PacketRadialMenuResponse | 0xDC, 0x2 | sent by server (sub in payload) | 64 |
+| ClaimsPacketUpdatePropCategoryCount | 0xF9, 0x5F | sent by server (sub in payload) | 51 |
+| LootPinataPacketSpawnLoot | 0xFB, 0x1 | sent by server (sub in payload) | 51 |
+| TargetPacketSetTarget | 0xB5, 0x6 | sent by server (sub in payload) | 50 |
+| ClaimsPacketPlaceClaimResponse | 0xF9, 0x6 | sent by server (sub in payload) | 44 |
+| Groups::GroupPacketFindLookingForMoreGroupReply | 0x2B, 0x1 | sent by server (sub in payload) | 42 |
+| Groups::GroupPacketGetGroupInfoReply | 0x2B, 0x1 | sent by server (sub in payload) | 42 |
+| InventoryPacketLootNotification | 0x2D, 0x1A | sent by server (sub in payload) | 36 |
+| PropAccessReplyPacket | 0xED, 0x2 | sent by server (sub in payload) | 25 |
+| PropPacketFromZoneToClient | 0xED, 0x2 | sent by server (sub in payload) | 25 |
+| ClaimsPacketPlaceClaimComplete | 0xF9, 0x7 | sent by server (sub in payload) | 21 |
+| TargetPacketRemoveTarget | 0xB5, 0x7 | sent by server (sub in payload) | 21 |
 | CombatPacketEnableBossDisplay | 0x24, 0xA | sent by server (sub in payload) | 17 |
-| InventoryPacketLootNotification | 0x2D, 0x1A | sent by server (sub in payload) | 8 |
+| InstancedGameStatePacket | 0x10D, 0x6 | sent by server (sub in payload) | 16 |
+| PacketInGamePurchaseModifyScreenshotsResponse | 0x45, 0x45 | sent by server (sub in payload) | 14 |
+| FriendOnlinePacket | 0x4D, 0x2 | sent by server (sub in payload) | 12 |
+| InstancedGameScoreboardPacket | 0x10D, 0x3 | sent by server (sub in payload) | 12 |
+| TellEchoPacket | 0x13, 0x5 | sent by server (sub in payload) | 10 |
+| TemplatePacketSaveTemplateResponse | 0xF0, 0x3 | sent by server (sub in payload) | 10 |
+| FriendAddPacket | 0x4D, 0x6 | sent by server (sub in payload) | 8 |
+| FriendRemovePacket | 0x4D, 0x7 | sent by server (sub in payload) | 8 |
 | LootPinataPacketRemoveLoot | 0xFB, 0x2 | sent by server (sub in payload) | 8 |
 | PacketTeleportLocations | 0xFC, 0x3 | sent by server (sub in payload) | 8 |
-| ClaimsPacketPlaceClaimComplete | 0xF9, 0x7 | sent by server (sub in payload) | 7 |
-| FriendOnlinePacket | 0x4D, 0x2 | sent by server (sub in payload) | 5 |
-| InstancedGameStatePacket | 0x10D, 0x6 | sent by server (sub in payload) | 5 |
-| InstancedGameScoreboardPacket | 0x10D, 0x3 | sent by server (sub in payload) | 4 |
-| PacketInGamePurchaseModifyScreenshotsResponse | 0x45, 0x45 | sent by server (sub in payload) | 4 |
-| TemplatePacketSaveTemplateResponse | 0xF0, 0x3 | sent by server (sub in payload) | 4 |
-| TradeStartSessionPacket | 0x3E, 0x4 | sent by server (sub in payload) | 4 |
-| Groups::GroupPacketFindLookingForMoreGroupReply | 0x2B, 0x1 | sent by server (sub in payload) | 3 |
-| Groups::GroupPacketGetGroupInfoReply | 0x2B, 0x1 | sent by server (sub in payload) | 3 |
+| RatingPacketVoteReply | 0xA7, 0x12 | sent by server (sub in payload) | 8 |
+| TradeStartSessionPacket | 0x3E, 0x4 | sent by server (sub in payload) | 8 |
+| ClaimsPacketDeleteClaimItemReply | 0xF9, 0x30 | sent by server (sub in payload) | 4 |
+| CommandPacketInteractionRunClientLua | 0x1E, 0x53 | sent by server (sub in payload) | 4 |
+| PlayerPublicChatRoomInfoNotificationPacket | 0x13, 0x9 | sent by server (sub in payload) | 4 |
+| TemplatePacketEnvironmentAddOwnershipResponse | 0xF0, 0x11 | sent by server (sub in payload) | 4 |
+| TradeInvitePacket | 0x3E, 0x2 | sent by server (sub in payload) | 4 |
+| FriendOfflinePacket | 0x4D, 0x3 | sent by server (sub in payload) | 3 |
+| ObjectScriptingPacketSupportedObjectsResponse | 0x111, 0x1 | sent by server (sub in payload) | 3 |
 | PacketClaimVendorUpdateInventory | 0x112, 0x1 | sent by server (sub in payload) | 3 |
-| PlayerPublicChatRoomInfoNotificationPacket | 0x13, 0x9 | sent by server (sub in payload) | 3 |
-| ClaimsPacketDeleteClaimItemReply | 0xF9, 0x30 | sent by server (sub in payload) | 2 |
-| PropAccessReplyPacket | 0xED, 0x2 | sent by server (sub in payload) | 2 |
-| PropPacketFromZoneToClient | 0xED, 0x2 | sent by server (sub in payload) | 2 |
-| TradeInvitePacket | 0x3E, 0x2 | sent by server (sub in payload) | 2 |
-| FriendOfflinePacket | 0x4D, 0x3 | sent by server (sub in payload) | 1 |
+| TemplatePacketEnvironmentVoxelDataResponse | 0xF0, 0x5 | sent by server (sub in payload) | 3 |
+| ChatPacketFromStringId | 0x13, 0x4 | sent by server (sub in payload) | 2 |
+| ClaimsPacketContestEntryResults | 0xF9, 0x18 | sent by server (sub in payload) | 2 |
+| Groups::GroupPacketAddMember | 0x2B, 0x2 | sent by server (sub in payload) | 2 |
+| Groups::GroupPacketInviteToGroupContent | 0x2B, 0x2 | sent by server (sub in payload) | 2 |
+| Groups::GroupPacketRemoveInvitation | 0x2B, 0x2 | sent by server (sub in payload) | 2 |
 | InventoryPacketSetSize | 0x2D, 0x17 | sent by server (sub in payload) | 1 |
 | InventoryPacketSetVoxelStorage | 0x2D, 0x1D | sent by server (sub in payload) | 1 |
-| ClaimsPacketContestEntryResults | 0xF9, 0x18 | sent by server (sub in payload) |  |
+| PropPacketEditSettingsReply | 0xED, 0x1C | sent by server (sub in payload) | 1 |
 | ClaimsPacketsIdUpdateClaimBasicInfo | 0xF9, 0x2 | sent by server (sub in payload) |  |
 | CommandPacketFindReply | 0x1E, 0x30 | sent by server (sub in payload) |  |
-| CommandPacketInteractionRunClientLua | 0x1E, 0x53 | sent by server (sub in payload) |  |
 | CommandPacketPlaySoundAtLocation | 0x1E, 0x8 | sent by server (sub in payload) |  |
 | CommandPacketShowDialog | 0x1E, 0x3 | sent by server (sub in payload) |  |
 | CommandPacketWhoReply | 0x1E, 0x2 | sent by server (sub in payload) |  |
 | Crafting::RecipeRepairItemResponsePacket | 0x42, 0x22 | sent by server (sub in payload) |  |
 | Crafting::RecipeSalvagingAddItemResponse | 0x42, 0x1A | sent by server (sub in payload) |  |
-| FriendAddPacket | 0x4D, 0x6 | sent by server (sub in payload) |  |
-| FriendRemovePacket | 0x4D, 0x7 | sent by server (sub in payload) |  |
-| HudPackets::PacketRadialMenuResponse | 0xDC, 0x2 | sent by server (sub in payload) |  |
 | IgnoreAddPacket | 0x72, 0x2 | sent by server (sub in payload) |  |
 | ObjectScriptingPacketSupportedActionsResponse | 0x111, 0x3 | sent by server (sub in payload) |  |
-| ObjectScriptingPacketSupportedObjectsResponse | 0x111, 0x1 | sent by server (sub in payload) |  |
 | PacketClaimVendorSetPriceResponse | 0x112, 0x3 | sent by server (sub in payload) |  |
 | PacketPlayerImageData | 0x98, 0x3 | sent by server (sub in payload) |  |
 | PlayerTitleUpdateAllPacket | 0x94, 0x3 | sent by server (sub in payload) |  |
 | PropPacketEditPropTextReply | 0xED, 0x15 | sent by server (sub in payload) |  |
-| PropPacketEditSettingsReply | 0xED, 0x1C | sent by server (sub in payload) |  |
-| RatingPacketVoteReply | 0xA7, 0x12 | sent by server (sub in payload) |  |
 | Skills::SkillPacketUpdateClassPoints | 0xBC, 0x1 | sent by server (sub in payload) |  |
-| TargetPacketRemoveTarget | 0xB5, 0x7 | sent by server (sub in payload) |  |
-| TargetPacketSetTarget | 0xB5, 0x6 | sent by server (sub in payload) |  |
 | TemplatePacketClientResponseRenameTemplate | 0xF0, 0xB | sent by server (sub in payload) |  |
 | TemplatePacketEnvironmentDeleteTemplateResponse | 0xF0, 0x7 | sent by server (sub in payload) |  |
-| TemplatePacketEnvironmentVoxelDataResponse | 0xF0, 0x5 | sent by server (sub in payload) |  |
 | TemplatePacketUpdateTemplateResponse | 0xF0, 0xC | sent by server (sub in payload) |  |
 | TradeUpdateCoinCountPacket | 0x3E, 0xA | sent by server (sub in payload) |  |
 | TradeUpdateItemCountPacket | 0x3E, 0xC | sent by server (sub in payload) |  |

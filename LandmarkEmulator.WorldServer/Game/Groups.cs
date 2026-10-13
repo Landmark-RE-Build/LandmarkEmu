@@ -50,6 +50,13 @@ namespace LandmarkEmulator.WorldServer.Game
         /// invite — matched by its key — is dropped).
         /// </summary>
         private const uint RemoveExpiredTo = 3, RemoveExpiredFrom = 4;
+        /// <summary>
+        /// Join results to the joiner (Join sub 2 {u8 sub, u32 type, u32 code, u32 response, u32, invite}, reader
+        /// FUN_142d45bf0, handler FUN_142d4df30, which always prints the code's text from FUN_143b5f4d0's table with the
+        /// inviter as [*source*]): 0 "You have joined the party.", 2 "Party invitation is no longer valid.", 13 "Could not
+        /// join because the party is full.".
+        /// </summary>
+        private const uint JoinSuccess = 0, JoinBadInvitation = 2, JoinGroupFull = 13;
         public const int MaxMembers = 6;
         private static readonly TimeSpan InviteLifetime = TimeSpan.FromMinutes(2);
 
@@ -109,6 +116,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     Disband(session);
                     break;
                 default:
+                    Network.OpcodeStats.Unanswered("Groups", sub);
                     log.Debug($"Group packet 0x{sub:X2} from {session.CharacterName}: {BitConverter.ToString(body)}");
                     break;
             }
@@ -197,9 +205,14 @@ namespace LandmarkEmulator.WorldServer.Game
             WorldSession inviter;
             lock (sync)
             {
-                if (!invites.Remove(session, out var invite) || DateTime.UtcNow - invite.At > InviteLifetime)
-                    return;
+                bool valid = invites.Remove(session, out var invite) && DateTime.UtcNow - invite.At <= InviteLifetime;
                 inviter = invite.Inviter;
+                if (!valid)
+                {
+                    if (choice == AcceptChoice)
+                        JoinResult(session, JoinBadInvitation, inviter);
+                    return;
+                }
             }
             if (choice != AcceptChoice)
             {
@@ -225,7 +238,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 }
                 if (group.Members.Count >= MaxMembers)
                 {
-                    Chat.System(session, "That group is full.");
+                    JoinResult(session, JoinGroupFull, inviter);
                     return;
                 }
                 existing = group.Members.ToList();
@@ -239,6 +252,7 @@ namespace LandmarkEmulator.WorldServer.Game
             byte[] added = BuildAddMember(group, session);
             foreach (WorldSession member in existing)
                 member.EnqueueMessage(ZoneMessageOpcode.GroupsBase, existing.Count == 1 ? BuildAddGroup(group) : added);
+            JoinResult(session, JoinSuccess, inviter);
             Achievements.GroupJoined(session);
             if (existing.Count == 1)
                 Achievements.GroupJoined(existing[0]);
@@ -359,6 +373,26 @@ namespace LandmarkEmulator.WorldServer.Game
         /// key (not the client's "no group" constant), both guids set, each player block's last byte 1-3, raid flag 0.
         /// The key is the inviter's guid (unique per inviter; the Join echoes it).
         /// </summary>
+        /// <summary>A Join result for the joiner (see <see cref="JoinSuccess"/>); the inviter's name is [*source*].</summary>
+        private static void JoinResult(WorldSession joiner, uint code, WorldSession inviter)
+        {
+            joiner.EnqueueMessage(ZoneMessageOpcode.GroupsBase, Build(w =>
+            {
+                w.Write(JoinSub);
+                w.Write(InviteTypeResult);
+                w.Write(code);
+                w.Write(code == JoinSuccess ? 1u : 0u);   // response: accepted
+                w.Write(0u);
+                w.Write(0u);
+                w.Write(inviter?.PlayerGuid ?? 0ul);
+                w.Write(0u);
+                WritePlayer(w, inviter?.PlayerGuid ?? 0, inviter?.CharacterName ?? "", 1);
+                WritePlayer(w, joiner.PlayerGuid, joiner.CharacterName, 1);
+                w.Write(0u);
+            }));
+            log.Debug($"{joiner.CharacterName}: join result {code}.");
+        }
+
         /// <summary>
         /// A result line for an inviter (Invite type 2, the code at +0x18): the client shows its own text for the code
         /// with the invitee's name as [*target*].

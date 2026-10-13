@@ -196,6 +196,7 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <summary>Server tick: once a second, wounded living players regenerate (one small packet each).</summary>
         public static void Update()
         {
+            UpdateRevivals();
             DateTime now = DateTime.UtcNow;
             if (now < nextRegen)
                 return;
@@ -245,14 +246,41 @@ namespace LandmarkEmulator.WorldServer.Game
                 CharacterResources.SendFor(viewer, subject.PlayerGuid, RevivePointsId, RevivePointsType, RevivePoints);
         }
 
-        /// <summary>Who is reviving whom: the dead player and the reviver, until the dead client answers ReadyToRevive.</summary>
-        private static readonly Dictionary<WorldSession, WorldSession> reviving = new();
+        /// <summary>A revive in progress: who revives, when the channel ends, and whether ReadyToRevive went out.</summary>
+        private sealed class Revival
+        {
+            public WorldSession Reviver;
+            public DateTime ReadyAt;
+            public bool Asked;
+        }
+
+        /// <summary>Revives in progress, by the dead player.</summary>
+        private static readonly Dictionary<WorldSession, Revival> reviving = new();
 
         /// <summary>
-        /// The revive cast (246) from <paramref name="reviver"/> at a dead player nearby. As the live server: the dead
-        /// player's client gets ReadyToRevive (PlayerUpdate 0x44 {u64 dead, u64 reviver, u64, bool, u32}; client case
-        /// sub 0x44 in FUN_142c45fa0 checks the entity is down, records the reviver, and for the local player answers
-        /// ReadyToReviveResponse(1) by itself, so 0.589 shows no prompt), and the answer revives them.
+        /// How long a revive channels before the dead player is asked (StartRevive's duration). Ability 246 is server-only
+        /// data (not in AbilityEx.txt), so the length is ours.
+        /// </summary>
+        private const uint ReviveMilliseconds = 3000;
+        /// <summary>Players this close to the dead body are told about the revive (their clients record the reviver).</summary>
+        private const float ReviveViewRange = 100f;
+        /// <summary>CombatSpam.txt row 8 "Revive": 564592 "YOU have been revived.", 564593 "YOU have revived [*TargetPlayer*].".</summary>
+        private const uint RevivedText = 564592, YouRevivedText = 564593;
+
+        /// <summary>
+        /// The revive cast (246) from <paramref name="reviver"/> at a dead player nearby. As the live server's packets
+        /// read in the client's PlayerUpdate dispatcher (FUN_142c45fa0):
+        /// 1. StartRevive (0x42 {u64 dead, u64 reviver, u32 duration ms}, reader FUN_142bb40f0) to the players near the
+        ///    body: every client records the reviver, start time and duration on its copy of the dead player
+        ///    (FUN_142e2abe0: +0x1560 / +0x1550 / +0x1558), and the reviver's own client shows the HUD revive bar for the
+        ///    dead player's name (FUN_142ea2cc0 mode 2).
+        /// 2. After the duration, ReadyToRevive (0x44 {u64 dead, u64 reviver, u64, bool, u32}) to the dead player, whose
+        ///    client records the reviver and answers ReadyToReviveResponse(1) by itself (0.589 shows no prompt); the answer
+        ///    revives them. When an entity comes back to life the client can print CombatSpam "Revive" with the recorded
+        ///    reviver (entity vtable +0x488 → FUN_142e20a10 → FUN_142f43730).
+        /// 3. StopRevive (0x43 {u64 dead, u64 reviver, bool}, reader FUN_142bb4370) if the revive breaks off (the reviver
+        ///    dies, leaves or walks away, the dead player respawns): hides the reviver's bar (FUN_142ea23c0) and clears the
+        ///    dead player's record (FUN_142e2b210).
         /// </summary>
         public static void ReviveBy(WorldSession reviver, WorldSession target)
         {
@@ -263,25 +291,92 @@ namespace LandmarkEmulator.WorldServer.Game
                 return;
             }
             lock (sync)
-                reviving[target] = reviver;
+            {
+                if (reviving.ContainsKey(target))
+                    return;
+                reviving[target] = new Revival { Reviver = reviver, ReadyAt = DateTime.UtcNow.AddMilliseconds(ReviveMilliseconds) };
+            }
             var output = new List<byte>();
             var w = new GamePacketWriter(output);
             w.Write(target.PlayerGuid);
             w.Write(reviver.PlayerGuid);
-            w.Write(0ul);
-            w.Write(false);
-            w.Write(0u);
-            target.EnqueueMessage(ZoneMessageOpcode.PlayerUpdateReadyToReviveWire, output.ToArray());
+            w.Write(ReviveMilliseconds);
+            byte[] start = output.ToArray();
+            foreach (WorldSession viewer in NearBody(target, reviver))
+                viewer.EnqueueMessage(ZoneMessageOpcode.PlayerUpdateStartReviveWire, start);
             log.Info($"{reviver.CharacterName} is reviving {target.CharacterName}.");
+        }
+
+        /// <summary>The players near a dead body, plus the reviver and the dead player themselves.</summary>
+        private static IEnumerable<WorldSession> NearBody(WorldSession target, WorldSession reviver)
+            => PlayerManager.InZone(target.ZoneId)
+                .Where(p => p == target || p == reviver
+                    || System.Numerics.Vector3.Distance(p.Position, target.Position) <= ReviveViewRange);
+
+        /// <summary>Revives whose channel ended ask the dead player; broken-off ones are stopped.</summary>
+        private static void UpdateRevivals()
+        {
+            DateTime now = DateTime.UtcNow;
+            var ask = new List<(WorldSession Target, WorldSession Reviver)>();
+            var stop = new List<(WorldSession Target, WorldSession Reviver)>();
+            lock (sync)
+            {
+                if (reviving.Count == 0)
+                    return;
+                foreach (var (target, revival) in reviving.ToList())
+                {
+                    WorldSession reviver = revival.Reviver;
+                    bool broken = !dead.Contains(target) || target.Disconnected || reviver.Disconnected || dead.Contains(reviver)
+                        || reviver.ZoneId != target.ZoneId
+                        || System.Numerics.Vector3.Distance(target.Position, reviver.Position) > ReviveRange * 2;
+                    if (broken)
+                    {
+                        reviving.Remove(target);
+                        stop.Add((target, reviver));
+                    }
+                    else if (!revival.Asked && now >= revival.ReadyAt)
+                    {
+                        revival.Asked = true;
+                        ask.Add((target, reviver));
+                    }
+                }
+            }
+            foreach (var (target, reviver) in stop)
+            {
+                var output = new List<byte>();
+                var w = new GamePacketWriter(output);
+                w.Write(target.PlayerGuid);
+                w.Write(reviver.PlayerGuid);
+                w.Write(false);
+                byte[] packet = output.ToArray();
+                foreach (WorldSession viewer in NearBody(target, reviver))
+                    viewer.EnqueueMessage(ZoneMessageOpcode.PlayerUpdateStopReviveWire, packet);
+                log.Info($"{reviver.CharacterName} stopped reviving {target.CharacterName}.");
+            }
+            foreach (var (target, reviver) in ask)
+            {
+                var output = new List<byte>();
+                var w = new GamePacketWriter(output);
+                w.Write(target.PlayerGuid);
+                w.Write(reviver.PlayerGuid);
+                w.Write(0ul);
+                w.Write(false);
+                w.Write(0u);
+                target.EnqueueMessage(ZoneMessageOpcode.PlayerUpdateReadyToReviveWire, output.ToArray());
+            }
         }
 
         /// <summary>ReadyToReviveResponse (0x3D {u8 accept, u64 own guid}): accepted, the player is revived in place.</summary>
         public static void HandleReadyToReviveResponse(WorldSession session, byte[] body)
         {
             bool accept = body.Length > 0 && body[0] != 0;
-            WorldSession reviver;
+            WorldSession reviver = null;
             lock (sync)
-                reviving.Remove(session, out reviver);
+                if (reviving.TryGetValue(session, out Revival revival) && revival.Asked)
+                {
+                    reviving.Remove(session);
+                    reviver = revival.Reviver;
+                }
             log.Info($"{session.CharacterName} answered the revive: {(accept ? "accept" : "decline")} ({BitConverter.ToString(body)}).");
             if (reviver == null || !IsDead(session))
                 return;
@@ -294,8 +389,8 @@ namespace LandmarkEmulator.WorldServer.Game
             Encounters.SendDeathWindow(session, false);
             // The other clients still hold the knocked-out entity: they meet the player again, alive.
             PlayerManager.Reshow(session);
-            Chat.System(session, $"{reviver.CharacterName} revived you.");
-            Chat.System(reviver, $"You revived {session.CharacterName}.");
+            SystemMessages.Show(session, RevivedText, ("SourcePlayer", reviver.CharacterName));
+            SystemMessages.Show(reviver, YouRevivedText, ("TargetPlayer", session.CharacterName));
             log.Info($"{reviver.CharacterName} revived {session.CharacterName}.");
         }
 

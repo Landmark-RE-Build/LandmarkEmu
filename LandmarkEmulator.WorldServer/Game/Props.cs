@@ -1,4 +1,4 @@
-using LandmarkEmulator.Database.Character.Model;
+﻿using LandmarkEmulator.Database.Character.Model;
 using LandmarkEmulator.Shared.Database;
 using LandmarkEmulator.Shared.GameTable;
 using LandmarkEmulator.Shared.Network;
@@ -48,6 +48,140 @@ namespace LandmarkEmulator.WorldServer.Game
             public string Text { get; set; } = "";
             /// <summary>Switched off with PropBase 0x1A SetPropEnable: its light or effect is dark.</summary>
             public bool Disabled { get; set; }
+        }
+
+        /// <summary>
+        /// A prop as a copy or a saved design keeps it (TemplateCommon::PropData on the wire): its definition, where it
+        /// stands from the box's minimum corner (metres), its turn (quaternion) and size, tint, name and sign text.
+        /// </summary>
+        public sealed record DesignProp(uint PropId, Vector3 Offset, Vector4 Rotation, Vector4 Scale, string Tint, string Name, string Text);
+
+        /// <summary>The placed props (anyone's) standing inside a box (local metres), as design props from its corner.</summary>
+        public static List<DesignProp> InBox(uint zone, Vector3 min, Vector3 max)
+        {
+            lock (sync)
+                return props.Where(p => p.Placed && p.Zone == zone && !p.Free
+                        && p.Spawn.Position.X >= min.X && p.Spawn.Position.X <= max.X
+                        && p.Spawn.Position.Y >= min.Y && p.Spawn.Position.Y <= max.Y
+                        && p.Spawn.Position.Z >= min.Z && p.Spawn.Position.Z <= max.Z)
+                    .Select(p => new DesignProp(p.PropId, new Vector3(p.Spawn.Position.X, p.Spawn.Position.Y, p.Spawn.Position.Z) - min,
+                        p.Spawn.Rotation, p.Spawn.Scale, p.Spawn.TintAlias ?? "", p.CustomName ?? "", p.Text ?? ""))
+                    .ToList();
+        }
+
+        /// <summary>Players this close (metres) to a prop see the text it displays.</summary>
+        private const float TextDisplayRange = 60f;
+
+        /// <summary>
+        /// Shows a prop's text (Links "...Have this sign display the text."): PlayerUpdate 0x79 DisplayPropText (reader
+        /// FUN_142b8e6c0, handler FUN_142ee6ce0) {u64 prop, string text, u32 mode, u32 seconds} to the players near it.
+        /// Modes: 1 the text window (HudStateManager:OnOpenTextDisplay), 2 on screen (FFF6AA), 3 chat
+        /// "[prop name] says: text", 4 a bubble over the prop, 5 bubble and chat. Seconds ≤ 0 use the client's default.
+        /// </summary>
+        public static void DisplayText(ulong guid, uint mode, uint seconds)
+        {
+            PlacedProp prop = Find(guid);
+            if (prop == null || string.IsNullOrEmpty(prop.Text))
+                return;
+            var output = new List<byte>();
+            var writer = new GamePacketWriter(output);
+            writer.Write(guid);
+            writer.Write(prop.Text);
+            writer.Write(mode);
+            writer.Write(seconds);
+            byte[] body = output.ToArray();
+            var at = new Vector3(prop.Spawn.Position.X, prop.Spawn.Position.Y, prop.Spawn.Position.Z);
+            foreach (WorldSession session in PlayerManager.InZone(prop.Zone))
+                if (Vector3.Distance(session.Position, at) <= TextDisplayRange)
+                    session.EnqueueMessage(ZoneMessageOpcode.PlayerUpdateDisplayPropText, body);
+        }
+
+        /// <summary>A prop definition's name text (for the skipped-props list).</summary>
+        public static uint NameIdOf(uint propId) => GameTableManager.Instance.PropDefs.GetEntry(propId)?.NameStringId ?? 0;
+
+        /// <summary>
+        /// Places one prop of a pasted copy or design, paid with an item of it from the player's bag (a design gives the
+        /// layout, not the props). Returns its guid, or 0 when the player has none of it, it has no model, or the spot
+        /// is not theirs to build on.
+        /// </summary>
+        public static ulong PlaceDesignProp(WorldSession owner, DesignProp design, Vector3 position, Vector4 rotation, out bool missing)
+        {
+            missing = false;
+            if (!propModels.TryGetValue(design.PropId, out uint modelId) || !MayPlaceAt(owner, position, owner.ZoneId))
+                return 0;
+            var item = Inventory.ItemDefinitionManager.ItemsForProp(design.PropId)
+                .SelectMany(d => owner.Inventory.Items.Where(i => i.ItemDefinitionId == d.Id && i.Count > 0))
+                .FirstOrDefault();
+            if (item == null || !owner.TakeItem(item.ItemDefinitionId, 1))
+            {
+                missing = true;
+                return 0;
+            }
+            PlacedProp prop = Create(owner, design.PropId, modelId, NameIdOf(design.PropId), position);
+            prop.Spawn.Rotation = rotation;
+            prop.Spawn.Scale = design.Scale;
+            prop.Spawn.TintAlias = design.Tint ?? "";
+            prop.CustomName = design.Name ?? "";
+            prop.Text = design.Text ?? "";
+            prop.PaidByItem = item.ItemDefinitionId;
+            prop.Placed = true;
+            Persist(prop);
+            Broadcast(prop);
+            Achievements.PropPlaced(owner, prop.PropId);
+            if (Chests.Slots(prop.PropId) > 0)
+                PropLimits.Changed(prop.Zone, position);
+            return prop.Spawn.Guid;
+        }
+
+        /// <summary>A placed prop's position, rotation and scale (PropBase Save vectors 0-2).</summary>
+        public readonly record struct Transform(Vector4 Position, Vector4 Rotation, Vector4 Scale);
+
+        /// <summary>
+        /// Each player's open edit session of a placed prop (granted PropAccess): the prop and where it stood when the
+        /// session opened, for the undo step its moves make (Building.RememberPropMove).
+        /// </summary>
+        private sealed class EditSession
+        {
+            public ulong Guid { get; init; }
+            public Transform Start { get; init; }
+        }
+
+        private static readonly Dictionary<ulong, EditSession> editSessions = new();
+
+        /// <summary>
+        /// Undo / redo of a prop move: back to <paramref name="to"/> when the player may still rearrange it there.
+        /// The player's client is told with PropBase 0x10 UndoRedoNotification (reader FUN_142f09990, handler
+        /// FUN_142f1c880): u8 sub, u64 player, u64 prop, vec4 position, vec4 rotation, vec4 scale, u32 (passed to the
+        /// prop tool's observers, FUN_142f1aaa0); it moves its copy and any open gizmo. Others get the move like any
+        /// other once it settles (Update).
+        /// </summary>
+        public static bool UndoMove(WorldSession player, ulong guid, Transform to)
+        {
+            PlacedProp prop = Find(guid);
+            var target = new Vector3(to.Position.X, to.Position.Y, to.Position.Z);
+            if (prop == null || !prop.Placed || prop.Zone != player.ZoneId || !MayRearrange(player, prop)
+                || (prop.OwnerGuid == player.PlayerGuid ? !MayPlaceAt(player, target, prop.Zone) : !MayDecorateAt(player, target, prop.Zone)))
+                return false;
+            prop.Spawn.Position = to.Position;
+            prop.Spawn.Rotation = to.Rotation;
+            prop.Spawn.Scale = to.Scale;
+            prop.MovedAt = DateTime.UtcNow;
+            Persist(prop);
+            var output = new List<byte>();
+            var writer = new GamePacketWriter(output);
+            writer.Write((byte)0x10);
+            writer.Write(player.PlayerGuid);
+            writer.Write(guid);
+            foreach (Vector4 v in new[] { to.Position, to.Rotation, to.Scale })
+            {
+                writer.Write(v.X);
+                writer.Write(v.Y);
+                writer.Write(v.Z);
+                writer.Write(v.W);
+            }
+            writer.Write(0u);
+            player.EnqueueMessage(ZoneMessageOpcode.PropBase, output.ToArray());
+            return true;
         }
 
         /// <summary>How long a moved prop must stay put before other players are sent its new place.</summary>
@@ -378,7 +512,7 @@ namespace LandmarkEmulator.WorldServer.Game
         /// u32 prop id, string, 5 u32, bool editing-existing, rotation quaternion, u32, u32 name id, u8, two lists,
         /// string, two u32.
         /// </summary>
-        private static byte[] BuildPropData(ulong playerGuid, PlacedProp prop)
+        private static byte[] BuildPropData(ulong playerGuid, PlacedProp prop, bool newPlacement = true)
         {
             var output = new List<byte>();
             var writer = new GamePacketWriter(output);
@@ -390,9 +524,12 @@ namespace LandmarkEmulator.WorldServer.Game
             writer.Write(prop.CustomName);
             for (int i = 0; i < 5; i++)
                 writer.Write(0u);
-            // +0x6c: the session only starts while the client is waiting for its own request (+0x159) or with this
-            // set; the 0.589 client clears the wait before our reply arrives, so it must be set.
-            writer.Write(true);
+            // +0x6c "new placement": the session only starts while the client is waiting for its own request (+0x159)
+            // or with this set; for a palette placement the 0.589 client clears the wait before our reply arrives, so
+            // it must be set. For a placed prop (PropAccess: move / fine-tune) the client is waiting, and the flag must
+            // be clear: with it set FUN_142f1ab30 takes the new-placement path and never starts the fine-tune handles
+            // (tool state 7 → FUN_142f21d20).
+            writer.Write(newPlacement);
             writer.Write(prop.Spawn.Rotation);
             writer.Write(0u);
             writer.Write(prop.Spawn.NameId);
@@ -561,12 +698,17 @@ namespace LandmarkEmulator.WorldServer.Game
 
             PlacedProp prop;
             lock (sync)
-                prop = props.FirstOrDefault(p => p.Spawn.Guid == guid && p.OwnerGuid == owner.PlayerGuid);
-            if (prop == null)
+                prop = props.FirstOrDefault(p => p.Spawn.Guid == guid);
+            // The owner, or (for a placed prop) a visitor with "Let's Decorate" on its site, who may only move it
+            // within decorate access.
+            bool isOwner = prop != null && prop.OwnerGuid == owner.PlayerGuid;
+            if (prop == null || (!isOwner && !(prop.Placed && MayRearrange(owner, prop))))
                 return;
 
             var position = new Vector4(vectors[0].X, vectors[0].Y, vectors[0].Z, 1f);
-            if (!MayPlaceAt(owner, new Vector3(position.X, position.Y, position.Z), prop.Zone))
+            var target = new Vector3(position.X, position.Y, position.Z);
+            if (isOwner ? !MayPlaceAt(owner, target, prop.Zone)
+                : Claims.ClaimAt(prop.Zone, target) == null || !MayDecorateAt(owner, target, prop.Zone))
             {
                 // SaveReply failure (FUN_142f1c7b0): "That object can not be placed there."; the gizmo stays open so
                 // the player can move it back onto their site or cancel.
@@ -586,6 +728,14 @@ namespace LandmarkEmulator.WorldServer.Game
             // The client repeats Save while the placement gizmo is open; an unchanged one only needs its reply.
             bool changed = !wasPlaced || prop.Spawn.Position != position || prop.Spawn.Rotation != vectors[1]
                 || prop.Spawn.Scale != vectors[2];
+            if (wasPlaced && changed)
+            {
+                EditSession editing;
+                lock (sync)
+                    editSessions.TryGetValue(owner.PlayerGuid, out editing);
+                if (editing != null && editing.Guid == guid)
+                    Building.RememberPropMove(owner, editing, guid, editing.Start, new Transform(position, vectors[1], vectors[2]));
+            }
             prop.Spawn.Position = position;
             prop.Spawn.Rotation = vectors[1];
             prop.Spawn.Scale = vectors[2];
@@ -662,6 +812,34 @@ namespace LandmarkEmulator.WorldServer.Game
             BitConverter.GetBytes(session.PlayerGuid).CopyTo(body, 1);
             session.EnqueueMessage(ZoneMessageOpcode.PropBase, body);
         }
+
+        /// <summary>The art tint id of a palette tint alias (PropData +0x80, looked up in the client's tint manager).</summary>
+        private static readonly Lazy<Dictionary<string, uint>> tintIdByAlias = new(() =>
+        {
+            var r = new GamePacketReader(tintList.Value);
+            r.ReadByte(); r.ReadULong();
+            if (!r.ReadBool()) { r.ReadUInt(); r.ReadULong(); }
+            uint groups = r.ReadUInt();
+            for (uint g = 0; g < groups; g++)
+            {
+                for (int i = 0; i < 5; i++) r.ReadUInt();
+                uint n = r.ReadUInt();
+                for (uint i = 0; i < n; i++) r.ReadUInt();
+            }
+            var map = new Dictionary<string, uint>();
+            uint values = r.ReadUInt();
+            for (uint v = 0; v < values; v++)
+            {
+                r.ReadUInt();
+                uint id = r.ReadUInt();
+                for (int i = 0; i < 3; i++) r.ReadUInt();
+                map[r.ReadString()] = id;
+                r.ReadUInt();
+            }
+            return map;
+        });
+
+        public static uint TintIdOf(string alias) => alias != null && tintIdByAlias.Value.TryGetValue(alias, out uint id) ? id : 0;
 
         /// <summary>Tint aliases of the palette by their hash (the client's SetTintRequest sends only the hash).</summary>
         private static readonly Lazy<Dictionary<uint, string>> tintByHash = new(() =>
@@ -776,6 +954,9 @@ namespace LandmarkEmulator.WorldServer.Game
                 name = name[..128];
             prop.CustomName = name;
             Persist(prop);
+            byte[] update = PropNameUpdate(prop);
+            foreach (WorldSession viewer in PlayerManager.InZone(prop.Zone))
+                viewer.EnqueueMessage(ZoneMessageOpcode.PlayerUpdateUpdatePropName, update);
             log.Info($"{session.CharacterName} named prop 0x{guid:X} \"{name}\".");
         }
 
@@ -866,6 +1047,50 @@ namespace LandmarkEmulator.WorldServer.Game
         /// picking up returns the item it was placed from, deleting doesn't. Answered with PickUpReply (sub 6) or
         /// DeleteReply (sub 8): u64 player, bool success, u32 error (10 = no claim permission), u64 prop guid.
         /// </summary>
+        /// <summary>
+        /// PropAccess (sub 1 {u64 prop, u64, u32}; FUN_142f15300 / FUN_142f15550): the player picked a placed prop with the
+        /// prop tool to move it. The client marks itself waiting (+0x159) and opens the gizmo only when sub 2 answers
+        /// (FUN_142f1b980 case 2 → FUN_142f1ab30, which clears the wait): the prop's data when allowed, else a refusal
+        /// with the client's code (10 no permission, 13 the site is in Play Mode). Who may: as for picking up, the
+        /// prop's owner or anyone with "Let's Decorate" on its site. Without an answer the tool stayed stuck waiting
+        /// (seen in play: three PropAccess requests for one prop, no gizmo).
+        /// </summary>
+        public static void Access(WorldSession player, ulong guid)
+        {
+            PlacedProp prop = Find(guid);
+            uint error = 0;
+            if (prop == null || !prop.Placed)
+                error = NoClaimPermission;
+            else
+            {
+                Vector3 at = new Vector3(prop.Spawn.Position.X, prop.Spawn.Position.Y, prop.Spawn.Position.Z);
+                ulong? site = Claims.ClaimAt(prop.Zone, at);
+                if (site is ulong siteId && Claims.IsPlaying(siteId))
+                    error = SiteInPlayMode;
+                else if (!MayRearrange(player, prop))
+                    error = NoClaimPermission;
+            }
+            if (error == 0)
+                lock (sync)
+                    editSessions[player.PlayerGuid] = new EditSession
+                    {
+                        Guid = guid,
+                        Start = new Transform(prop.Spawn.Position, prop.Spawn.Rotation, prop.Spawn.Scale)
+                    };
+            player.EnqueueMessage(ZoneMessageOpcode.PropBase,
+                error == 0 ? BuildPropData(player.PlayerGuid, prop, newPlacement: false) : BuildRefusal(player.PlayerGuid, error));
+            log.Info($"{player.CharacterName} asked to edit prop 0x{guid:X}: {(error == 0 ? "ok" : $"refused ({error})")}.");
+        }
+
+        /// <summary>May the player move this placed prop: its owner, or "Let's Decorate" on the site it stands on?</summary>
+        private static bool MayRearrange(WorldSession player, PlacedProp prop)
+        {
+            if (prop.OwnerGuid == player.PlayerGuid)
+                return true;
+            Vector3 at = new Vector3(prop.Spawn.Position.X, prop.Spawn.Position.Y, prop.Spawn.Position.Z);
+            return Claims.ClaimAt(prop.Zone, at) != null && MayDecorateAt(player, at, prop.Zone);
+        }
+
         public static void PickUp(WorldSession owner, ulong guid, bool delete)
         {
             PlacedProp prop;
@@ -1059,14 +1284,32 @@ namespace LandmarkEmulator.WorldServer.Game
             foreach (PlacedProp prop in spawns)
             {
                 session.EnqueueMessage(prop.Spawn);
+                if (!string.IsNullOrEmpty(prop.CustomName))
+                    session.EnqueueMessage(ZoneMessageOpcode.PlayerUpdateUpdatePropName, PropNameUpdate(prop));
                 if (!prop.Disabled)
                     PropEffects.Send(session, prop.PropId, prop.Spawn.Guid);
+                // Usable props, and the props this viewer may edit: the client only lets the cursor pick (right-click
+                // menu, tint, edit tools) entities the server flagged and answered as interactable (editable ones
+                // only while in build mode, see SendInteractionInfo).
                 if (CraftingStations.StationForProp(prop.PropId) != 0 || Chests.Slots(prop.PropId) > 0 || StoryTools.IsClickable(prop.PropId)
-                    || prop.PropId == 489 || Vaults.IsVaultProp(prop.PropId))
+                    || prop.PropId == 489 || Vaults.IsVaultProp(prop.PropId) || MayRearrange(session, prop))
                     flagging.Guids.Add(prop.Spawn.Guid);
             }
             if (flagging.Guids.Count > 0)
                 session.EnqueueMessage(flagging);
+        }
+
+        /// <summary>
+        /// PlayerUpdate 0x7C UpdatePropName {u64 prop, string name} (reader FUN_142bb4650, PlayerUpdate_Dispatch case
+        /// 0x7b): the prop entity's shown name; an empty name goes back to the definition's (FUN_142cf1dc0).
+        /// </summary>
+        private static byte[] PropNameUpdate(PlacedProp prop)
+        {
+            var output = new List<byte>();
+            var writer = new GamePacketWriter(output);
+            writer.Write(prop.Spawn.Guid);
+            writer.Write(prop.CustomName ?? "");
+            return output.ToArray();
         }
 
         /// <summary>Cursors.txt 10 cursor_interaction_generic.</summary>
@@ -1086,22 +1329,45 @@ namespace LandmarkEmulator.WorldServer.Game
                     || WarpNetwork.IsCrystal(guid) || Outposts.Usable(guid) || LootChests.IsChest(guid)
                     || (Find(guid) is PlacedProp switchProp && StoryTools.IsClickable(switchProp.PropId))
                     || Creatures.IsStory(guid);
+                // A prop the player may edit is pickable too (right-click menu, tint, move), without the highlight,
+                // but only in build mode: outside it the client would show the interact / tool cursor on fences and
+                // decorations that do nothing (user request 2026-10-13). RefreshEditable updates them on Tab.
+                bool editable = !usable && BuildModeHolster.InBuildMode(session)
+                    && Find(guid) is PlacedProp own && own.Placed && MayRearrange(session, own);
                 reply.Entries.Add(new InteractionInfoReply.Entry
                 {
                     Guid = guid,
-                    Type = usable ? InteractionInfoReply.Interactable : InteractionInfoReply.None,
+                    Type = usable || editable ? InteractionInfoReply.Interactable : InteractionInfoReply.None,
                     // Entity +0x4118; the client's default leaves a station out of reach.
-                    Range = usable ? StationRange : -1f,
-                    // No outline flag: with it the client outlines the nearest prop by proximity (InteractionProcessor
-                    // highlighter, FUN_143324bd0), which the user does not want.
-                    Outline = false,
-                    // Hovering a usable prop within reach shows the interaction cursor instead.
+                    Range = usable || editable ? StationRange : -1f,
+                    // The gold / red highlight (InteractionProcessor highlighter FUN_143324bd0): the 0.589 client lights
+                    // the nearest usable entity near the player (gold in reach, red out of reach); there is no
+                    // mouse-only hover outline in this build. On for usable objects (user request 2026-10-13).
+                    Outline = usable,
+                    // Hovering a usable prop within reach shows the interaction cursor. Props that are only editable
+                    // (fences, decorations) keep the normal cursor: they do nothing when used (user request 2026-10-13).
                     CursorInReach = usable ? InteractionCursor : 0
                 });
             }
             if (reply.Entries.Count > 0)
                 session.EnqueueMessage(reply);
         }
+
+        /// <summary>
+        /// Build mode toggled: re-sends the interaction info of the nearby props this player may edit, so they become
+        /// pickable (build mode) or plain scenery (out of it) at once. The client applies a reply whether or not it
+        /// asked (FUN_142ee6b90); type 0 clears the interactable state. About 48 bytes per prop.
+        /// </summary>
+        public static void RefreshEditable(WorldSession session)
+        {
+            var guids = PlacedNear(session, EditableRefreshRange).Where(p => p.Placed && MayRearrange(session, p))
+                .Select(p => p.Spawn.Guid).ToList();
+            if (guids.Count > 0)
+                SendInteractionInfo(session, guids);
+        }
+
+        /// <summary>Metres: the client asks again about anything further away once it comes near.</summary>
+        private const float EditableRefreshRange = 64f;
 
         private static bool FreeBuild => Shared.Configuration.ConfigurationManager<WorldServerConfiguration>.Instance.Config.FreeBuild;
 

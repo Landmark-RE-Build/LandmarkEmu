@@ -47,18 +47,41 @@ Unattended setup: `start.bat -GamePath "D:\Games\Landmark" -Account me -Password
 
 ### Playing with others on your network
 
-The generated configs listen on this PC only (`127.0.0.1`). To let others on your network join, change `Host` to
-`0.0.0.0` under `Network` in `LandmarkEmulator.AuthServer\bin\Release\net10.0\AuthServer.json` and
-`LandmarkEmulator.WorldServer\bin\Release\net10.0\WorldServer.json`, set the world server's address in the auth database
-(`lmemu_auth.zone_server`, `host` column) to your PC's address, allow UDP 20042 and 19000 through the firewall, and have
-each player point their `ClientConfig.ini` at `Server=<your address>:20042`. Accounts for them are created with the
-`account create <name> <password>` command in the AuthServer window.
+**Host (the PC that runs the servers):** open `server.ini` next to `start.bat` (made on the first run) and set
+`ServerAddress=` to the address the other players reach your PC on — e.g. `ServerAddress=192.168.1.20` (`ipconfig`
+shows it as "IPv4 Address"), or a VPN address (Tailscale, ZeroTier). Close the two server windows and run `start.bat`
+again. It makes the servers listen on the network, tells players' games to load the world from that address (without
+it they stop on the loading screen) and offers to open the ports in Windows Firewall (UDP 20042 and 19000, TCP 5000
+and 19001). Empty `ServerAddress=` means this PC only.
+
+**Players on other PCs:** give them this folder (or the GitHub download) and have them run **`play.bat`**. It needs
+only the game — no .NET, MariaDB or build. The first run asks for their Landmark folder, the host's address and an
+account name / password; then it points their `ClientConfig.ini` at the host, creates the account there, logs in and
+starts Landmark. Later runs just play; `play.bat -Setup` changes the answers.
+
+**Passwords never cross the network.** `start.bat` and `play.bat` log in with SRP-6a (the same idea as Blizzard's and
+Apple's password logins): the launcher proves it knows the password without sending it, the server keeps only a
+verifier it cannot turn back into the password, and the session key comes back encrypted. The launchers save a derived
+key in their settings file, never the password itself. The old plain-text login only answers on the server PC.
+The game's own traffic after login is Landmark's protocol and is not encrypted (it carries no password), so for
+playing over the internet a VPN (Tailscale, ZeroTier) is still the safer choice than opening ports.
+
+### Admin menu
+
+The account `start.bat` logs in with is an admin; add more in `server.ini` (`Admins=name1, name2`, then restart the
+servers). Admins type **`/admin`** in chat to open the Admin page in the in-game browser: god mode, revive, coins and
+items, travel (Spire, own site, caves, landscapes, to a player), claim a site, play mode, time of day, creatures, a
+server shutdown countdown, and a box for any developer command — for themselves, everyone, or a chosen player.
 
 ### Troubleshooting
 
 - *MariaDB was not found / the service is missing*: install MariaDB with the "Install as service" option.
 - *Could not create the database user*: the MariaDB root password was wrong; run `start.bat -Setup` again.
 - *Nothing is listening on UDP 20042 / 19000*: look at the server window for the error (usually the database).
+- *Another PC gets stuck on the loading screen*: the host's `server.ini` has no `ServerAddress` (or the servers were
+  not restarted after setting it), or UDP 19000 is blocked by a firewall on the host.
+- *play.bat: "No answer from the server"*: the host's servers are not running, the address is wrong, or TCP 5000 is
+  blocked on the host.
 - The server windows show everything that happens; `console.log` next to each server keeps it.
 
 ## What's here

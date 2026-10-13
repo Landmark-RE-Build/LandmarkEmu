@@ -9,10 +9,14 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
 {
     /// <summary>
     /// What building with a voxel material costs. Voxel data names materials by VoxelMaterials.txt ARRAY_INDEX
-    /// (column 1; e.g. 79 = Sand). A material's CURRENCY_ID (column 36: 71 Dirt, 72 Sand, 73 Stone, 68-70 woods,
-    /// 74-77 stones, 78-87 metals, 88 Snow) names the resource it is built from; the item for that resource is the raw
-    /// one for dirt/sand/stone/snow and the processed one otherwise (cut wood, smelted metal), as in Landmark.
-    /// Materials without a currency fall back to ITEM_ID (column 40); with neither they are free.
+    /// (column 1; e.g. 79 = Sand). The cost is the material's ITEM_ID (column 40), exactly what the client's Materials
+    /// tray uses (FUN_1436f4180: material record +0x28 → +0x90; "IsFree" and the ∞ symbol when it is 0, otherwise
+    /// "Quantity" = how many of that item the player holds). Read from the running client for all 712 materials
+    /// (re/test/scenarios/adhoc/matcost.js, 2026-10-13): every one equals ITEM_ID. CURRENCY_ID (column 36) is not the
+    /// cost: charging by it made 137 materials disagree with the tray (∞ terrain textures and Halloween Black charged
+    /// Dirt / Sand / Stone / Snow; others charged a different item than the tray counts, e.g. Cut Marble for Marble,
+    /// Smelted Tin for Smelted Iron). ITEM_ID 0 = free-to-use (the wiki's
+    /// "Free-to-Use Building Materials": most Terrain textures, infinity symbol in the tray).
     /// One item builds <see cref="VoxelsPerItem"/> voxels, the rate mining pays out.
     /// </summary>
     public static class BuildMaterials
@@ -21,16 +25,6 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
 
         public const int VoxelsPerItem = 4;
         private static Dictionary<ushort, uint> itemByMaterial;
-
-        private static readonly Dictionary<uint, uint> itemByCurrency = new()
-        {
-            [68] = 2000, [69] = 2001, [70] = 2002,
-            [71] = 44, [72] = 45, [73] = 46, [88] = 76,
-            [74] = 121, [75] = 122, [76] = 123, [77] = 124,
-            [78] = 108, [79] = 109, [80] = 110, [81] = 111, [82] = 112,
-            [83] = 113, [84] = 114, [85] = 115, [86] = 116, [87] = 117,
-            [90] = 58,
-        };
 
         /// <summary>
         /// The item a voxel material is built from (0 = free), loading the table on first use.
@@ -55,7 +49,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         }
 
         /// <summary>
-        /// Reads VoxelMaterials.txt: ARRAY_INDEX (column 1) → CURRENCY_ID (column 36) → item, else ITEM_ID (column 40).
+        /// Reads VoxelMaterials.txt: ARRAY_INDEX (column 1) → ITEM_ID (column 40).
         /// </summary>
         private static void Load()
         {
@@ -73,10 +67,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                         continue;
                     if (uint.TryParse(f[2], out uint nameText) && nameText != 0)
                         names[index] = nameText;
-                    uint.TryParse(f[36], out uint currency);
                     uint.TryParse(f[40], out uint item);
-                    if (currency != 0 && itemByCurrency.TryGetValue(currency, out uint byCurrency))
-                        item = byCurrency;
                     if (item != 0)
                         map[index] = item;
                 }

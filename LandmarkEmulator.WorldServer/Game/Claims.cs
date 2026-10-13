@@ -1,4 +1,4 @@
-using LandmarkEmulator.WorldServer.Storage;
+﻿using LandmarkEmulator.WorldServer.Storage;
 using LandmarkEmulator.Database.Character.Model;
 using LandmarkEmulator.Shared.Database;
 using LandmarkEmulator.Shared.Network;
@@ -325,6 +325,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     SendSimple(session, 0x11, w => { w.Write(0u); w.Write(0u); });
                     break;
                 default:
+                    Network.OpcodeStats.Unanswered("Claims 0xF9", sub);
                     log.Debug($"Unhandled claims request 0x{sub:X2}: {BitConverter.ToString(body)}");
                     break;
             }
@@ -1107,6 +1108,27 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>
+        /// The build check for one terrain cell (global box), done once per cell instead of per voxel: null when every
+        /// site overlapping the box lets the player build (or none does), otherwise a point test against only the
+        /// sites that refuse them. Same answer as <see cref="MayEdit"/> for points in the box; a 26-cell edit used to
+        /// run ~200,000 locked scans of all sites (2026-10-13: the remove tool stalled between clicks).
+        /// </summary>
+        public static Func<double, double, double, bool> BuildCheckIn(ulong playerGuid, uint zone,
+            (double X, double Y, double Z) min, (double X, double Y, double Z) max)
+        {
+            zone = zone == 0 ? Terrain.TerrainStore.HomeContinent : zone;
+            List<(double MinX, double MinY, double MinZ, double MaxX, double MaxY, double MaxZ)> refused;
+            lock (sync)
+                refused = claims.Where(c => c.ZoneId == zone && c.MinX <= max.X && c.MaxX >= min.X && c.MinY <= max.Y
+                        && c.MaxY >= min.Y && c.MinZ <= max.Z && c.MaxZ >= min.Z
+                        && (PermissionsFor(c, playerGuid) & PermissionBuild) != PermissionBuild)
+                    .Select(c => ((double)c.MinX, (double)c.MinY, (double)c.MinZ, (double)c.MaxX, (double)c.MaxY, (double)c.MaxZ)).ToList();
+            if (refused.Count == 0)
+                return null;
+            return (x, y, z) => !refused.Exists(b => x >= b.MinX && x <= b.MaxX && y >= b.MinY && y <= b.MaxY && z >= b.MinZ && z <= b.MaxZ);
+        }
+
+        /// <summary>
         /// A player's permission mask in one site: everything for the owner, their Special Access entry if any, else the
         /// site's Default Access.
         /// </summary>
@@ -1146,6 +1168,9 @@ namespace LandmarkEmulator.WorldServer.Game
             Resend(claim);
         }
 
+        /// <summary>ResultResponse result: no player or guild by that name.</summary>
+        private const uint NameNotFound = 0x17;
+
         /// <summary>Dev / tests: Special Access on the player's own (first) site, as Site Management sets it.</summary>
         public static bool DevGrant(WorldSession session, string name, uint mask)
         {
@@ -1170,7 +1195,16 @@ namespace LandmarkEmulator.WorldServer.Game
             CharacterModel target = DatabaseManager.Instance.CharacterDatabase.GetCharacterByName(name.Trim()).GetAwaiter().GetResult();
             if (target == null)
             {
-                Chat.System(session, $"No luminary called {name.Trim()} was found.");
+                // ClaimsBase 0x10 ResultResponse {u32 result, string name, u64} (reader FUN_142d012c0, handled in
+                // FUN_142d1ff50): result 0x17 prints the client's own "Claim Operation Result: ERROR: Player or Guild
+                // could not be found under the name [%s]!".
+                var output = new List<byte>();
+                var writer = new GamePacketWriter(output);
+                writer.Write((byte)0x10);
+                writer.Write(NameNotFound);
+                writer.Write(name.Trim());
+                writer.Write(claimId);
+                session.EnqueueMessage(ZoneMessageOpcode.ClaimsBase, output.ToArray());
                 return;
             }
             ulong id = claim.Id, characterId = target.Id;

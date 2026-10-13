@@ -1,4 +1,4 @@
-﻿using LandmarkEmulator.Shared.Network;
+using LandmarkEmulator.Shared.Network;
 using LandmarkEmulator.WorldServer.Network.Message;
 using LandmarkEmulator.WorldServer.Network.Message.Model;
 using NLog;
@@ -25,6 +25,10 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
             var reader = new GamePacketReader(request.Body);
             switch (request.SubOpcode)
             {
+                case PropRequest.Access:
+                    if (request.Body.Length >= 8)
+                        Game.Props.Access(session, reader.ReadULong());
+                    break;
                 case PropRequest.PlacePropById:
                 {
                     // The palette shows (and places from) the prop items the player carries: spend one of those when
@@ -84,6 +88,7 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                     // ({u32 state, u64, u32}); informational, no reply.
                     break;
                 default:
+                    Network.OpcodeStats.Unanswered("Prop 0xED", request.SubOpcode);
                     log.Debug($"Unhandled prop request 0x{request.SubOpcode:X2}: {BitConverter.ToString(request.Body)}");
                     break;
             }

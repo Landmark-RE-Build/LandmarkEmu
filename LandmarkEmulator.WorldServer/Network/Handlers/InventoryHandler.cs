@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using LandmarkEmulator.Database.Character.Model;
 using LandmarkEmulator.WorldServer.Network.Message;
@@ -26,13 +26,19 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
             {
                 case InventoryRequest.RequestTransferItem:
                     log.Debug($"TransferItem from {session.CharacterName}: {BitConverter.ToString(request.Body)}");
-                    bool done = HandleTransfer(session, TransferItemRequest.Read(request.Body));
-                    // TransferItemResponse (0x19, reader FUN_142e78a30): the request echoed, then a u32 result.
-                    // The client waits for it before sending the second half of a tool switch.
+                    TransferItemRequest transfer = TransferItemRequest.Read(request.Body);
+                    uint result = transfer.Source.OwnerType == Game.Chests.ChestOwnerType || transfer.Destination.OwnerType == Game.Chests.ChestOwnerType
+                        ? Game.Chests.Transfer(session, transfer)
+                        : HandleTransfer(session, transfer) ? Game.Chests.TransferDone : Game.Chests.TransferFailedInInventory;
+                    // TransferItemResponse (0x19, reader FUN_142e78a30): the request echoed, then a u32 result — the
+                    // client's "Item Transfer:" reasons (FUN_143b966c0, 42 names; 1 = success). Some show a message:
+                    // 0x16 / 0x17 Chest.AccessDeniedOnItemAction, 0x20 / 0x21 no-trade, 0x12 fraud timer, 0x25 a chest
+                    // holding items into a chest, 0x22 the unique-equip dialog. The client waits for it before sending
+                    // the second half of a tool switch.
                     byte[] response = new byte[2 + request.Body.Length + 4];
                     BitConverter.TryWriteBytes(response.AsSpan(0, 2), (ushort)0x19);
                     request.Body.CopyTo(response, 2);
-                    BitConverter.TryWriteBytes(response.AsSpan(2 + request.Body.Length), done ? 0u : 1u);
+                    BitConverter.TryWriteBytes(response.AsSpan(2 + request.Body.Length), result);
                     session.EnqueueMessage(ZoneMessageOpcode.InventoryBase, response);
                     break;
                 case InventoryRequest.ItemInstanceTooltipRequest:
@@ -99,12 +105,19 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                         HandleActivate(session, BitConverter.ToUInt64(request.Body, 0));
                     break;
                 default:
+                    Network.OpcodeStats.Unanswered("Inventory", request.SubOpcode);
                     log.Debug($"Unhandled inventory request 0x{request.SubOpcode:X2} ({request.Body.Length} bytes).");
                     break;
             }
         }
 
         /// <summary>Puts an item into an equipment slot (EquipmentSlotDefinitions id); what was there swaps to the bag.</summary>
+        /// <summary>Equips an item from code (build mode bringing the held item back).</summary>
+        public static void Equip(WorldSession session, ulong itemGuid, uint equipSlotId) => HandleEquip(session, itemGuid, equipSlotId);
+
+        /// <summary>Unequips a slot from code (build mode putting the held item away).</summary>
+        public static void Unequip(WorldSession session, uint equipSlotId) => HandleUnequip(session, equipSlotId);
+
         private static void HandleEquip(WorldSession session, ulong itemGuid, uint equipSlotId)
         {
             CharacterItemModel item = session.Inventory.Get(itemGuid);
@@ -209,8 +222,6 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
         /// </summary>
         private static bool HandleTransfer(WorldSession session, TransferItemRequest request)
         {
-            if (request.Source.OwnerType == Game.Chests.ChestOwnerType || request.Destination.OwnerType == Game.Chests.ChestOwnerType)
-                return Game.Chests.Transfer(session, request);
             Game.Inventory.Inventory inventory = session.Inventory;
             // The vault only while one is open within reach (Game.Vaults).
             if ((request.Source.Container == Game.Inventory.Inventory.VaultContainer

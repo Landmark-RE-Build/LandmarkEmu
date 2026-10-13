@@ -1,4 +1,4 @@
-namespace LandmarkEmulator.WorldServer.Network.Message
+﻿namespace LandmarkEmulator.WorldServer.Network.Message
 {
     public enum ZoneMessageOpcode : uint
     {
@@ -75,6 +75,8 @@ namespace LandmarkEmulator.WorldServer.Network.Message
         PlayerUpdateEmoteStringByIdWire = 0x260077,
         PlayerUpdateReadyToReviveResponseWire = 0x26003D,
         PlayerUpdateReadyToReviveWire = 0x260044,
+        PlayerUpdateStartReviveWire = 0x260042,
+        PlayerUpdateStopReviveWire = 0x260043,
         PlayerUpdateUpdateHitpointsWire = 0x260003,
         PlayerUpdateUpdateStatWire = 0x260053,
         PlayerUpdateCombatResourceEventWire = 0x260067,
@@ -198,10 +200,10 @@ namespace LandmarkEmulator.WorldServer.Network.Message
         PlayerUpdateFlashTemplateInformation = 0x26007600,
         PlayerUpdateEmoteStringById = 0x26007700,
         PlayerUpdateDoCombatNotification = 0x26007800,
-        PlayerUpdateDisplayPropText = 0x26007900,
+        PlayerUpdateDisplayPropText = 0x260079,      // wire 26 00 79: one-byte sub (reader FUN_142b8e6c0)
         PlayerUpdateSetPropTint     = 0x26007A,
         PlayerUpdateUpdatePropText  = 0x26007B00,
-        PlayerUpdateUpdatePropName  = 0x26007C00,
+        PlayerUpdateUpdatePropName  = 0x26007C,      // wire 26 00 7C: one-byte sub (reader FUN_142bb4650)
         PlayerUpdateUpdateEditProperties = 0x26007D00,
         PlayerUpdateDebugAILineOfSight = 0x26007E00,
         PlayerUpdateDebugAILineOfSightDisable = 0x26007F00,

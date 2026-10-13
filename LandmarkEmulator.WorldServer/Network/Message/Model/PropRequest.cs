@@ -10,6 +10,7 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
     [ZoneMessage(ZoneMessageOpcode.PropBase)]
     public class PropRequest : SubRequest8
     {
+        public const byte Access = 0x01;
         public const byte Save = 0x03;
         public const byte PickUp = 0x05;
         public const byte Delete = 0x07;

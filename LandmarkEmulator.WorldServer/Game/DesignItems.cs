@@ -1,4 +1,4 @@
-using LandmarkEmulator.Database.Character.Model;
+﻿using LandmarkEmulator.Database.Character.Model;
 using LandmarkEmulator.Shared.Database;
 using LandmarkEmulator.WorldServer.Network;
 using NLog;
@@ -68,7 +68,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 Chat.System(session, "This Player Design is empty.");
                 return true;
             }
-            if (!Templates.HasRoom(session))
+            if (!Templates.HasRoom(session, design))
             {
                 Chat.System(session, "Your design storage is full.");
                 return true;

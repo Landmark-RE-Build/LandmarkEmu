@@ -1,4 +1,4 @@
-using LandmarkEmulator.Shared.Configuration;
+﻿using LandmarkEmulator.Shared.Configuration;
 using LandmarkEmulator.WorldServer.Network;
 using Microsoft.Extensions.Configuration;
 using NLog;
@@ -303,6 +303,10 @@ namespace LandmarkEmulator.WorldServer.Game
                 string type = match.Groups[2].Value switch { "js" => "text/javascript; charset=utf-8", "css" => "text/css; charset=utf-8", _ => "image/png" };
                 return File.Exists(file) ? new Response(200, type, await File.ReadAllBytesAsync(file)) : NotFound;
             }
+            if (path == "/admin")
+                return Admin.IsAdmin(Store.SessionOf(query.GetValueOrDefault("t")))
+                    ? new Response(200, "text/html; charset=utf-8", Encoding.UTF8.GetBytes(Admin.Page))
+                    : new Response(403, "text/plain", Encoding.ASCII.GetBytes("Admins only."));
             if (path.StartsWith("/api/", StringComparison.Ordinal))
                 return await Api(method, path[5..], query);
             if (Path.HasExtension(path))
@@ -354,6 +358,14 @@ namespace LandmarkEmulator.WorldServer.Game
                 return Json(new { ok = false, message = "Open the Showcase from the game to sign in." }, 403);
             switch (name)
             {
+                case "admin/players":
+                    return Admin.IsAdmin(session) ? Json(new { ok = true, players = Admin.Players() })
+                        : Json(new { ok = false, message = "Admins only." }, 403);
+                case "admin/run":
+                {
+                    var (ok, message) = Admin.Run(session, query.GetValueOrDefault("target"), query.GetValueOrDefault("cmd"));
+                    return Json(new { ok, message }, ok ? 200 : 403);
+                }
                 case "take":
                 {
                     uint.TryParse(query.GetValueOrDefault("item"), out uint item);

@@ -1,4 +1,4 @@
-using LandmarkEmulator.Database.Configuration;
+﻿using LandmarkEmulator.Database.Configuration;
 using LandmarkEmulator.Gateway;
 using LandmarkEmulator.Shared;
 using LandmarkEmulator.Shared.Configuration;
@@ -58,7 +58,10 @@ namespace LandmarkEmulator.WorldServer
             Game.ModelFootprints.Load(worldConfig.GameDirectory);
             Game.Landscapes.Load(worldConfig.GameDirectory);
             Game.Gathering.Load(System.IO.Path.Combine(System.AppContext.BaseDirectory, "gathered_nodes.txt"));
+            Game.Terrain.BlockData.KeepVertexOnly = ConfigurationManager<WorldServerConfiguration>.Instance.Config.KeepVertexOnlyVoxels;
+            Game.Terrain.TerrainLod.Enabled = ConfigurationManager<WorldServerConfiguration>.Instance.Config.TerrainLodCopies;
             Game.Terrain.TerrainEdits.Load(System.IO.Path.Combine(System.AppContext.BaseDirectory, "TerrainEdits"));
+            Game.Terrain.TerrainLod.BuildAll();   // coarse copies of the edits, in the background
             Game.Terrain.VoxelTemplate.Folder = System.IO.Path.Combine(worldConfig.GameDirectory ?? "", "CommonData", "Voxel", "templates");
             Game.Spire.Load(worldConfig.GameDirectory, System.IO.Path.Combine(System.AppContext.BaseDirectory, "TerrainEdits"));
             Game.Outposts.Load(System.IO.Path.Combine(System.AppContext.BaseDirectory, "TerrainEdits"));
@@ -106,6 +109,7 @@ namespace LandmarkEmulator.WorldServer
                 Run("health", Game.Health.Update);
                 Run("buffs", Game.Buffs.Update);
                 Run("party frames", Game.Groups.Update);
+                Run("world editing", Game.WorldEditing.Update);
                 Run("creatures", Game.Creatures.Update);
                 Run("combat states", Game.Combat.Statuses.Update);
                 Run("outposts", Game.Outposts.Update);
@@ -122,6 +126,8 @@ namespace LandmarkEmulator.WorldServer
                 Run("terrain regeneration", () => Game.Terrain.TerrainEdits.Regenerate(Game.Claims.BoxesIn));
                 Run("ore veins", Game.Terrain.OreVeins.Update);
                 Run("terrain", Game.Terrain.TerrainEdits.Flush);
+                Run("terrain layers (one-time move)", () => Game.Terrain.TerrainEdits.MigrateToLayers(Game.Claims.BoxesIn));
+                Run("terrain LOD", Game.Terrain.TerrainLod.Update);
             });
 
             NetworkManager<WorldSession>.Instance.Initialise(ConfigurationManager<WorldServerConfiguration>.Instance.Config.Network);

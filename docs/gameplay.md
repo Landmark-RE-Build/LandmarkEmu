@@ -305,7 +305,12 @@ The full list is the `switch` in `DevCommands.cs`.
   2. it holds RevivePoints above 0 (resource type 12; Resources.txt ids 29 and 112, 50 points, FUN_143ad04e0).
   The client then whispers "I am reviving you!" to the target.
 - Server side (Game/Health.cs): a death sends the dead player's RevivePoints (resource 29) to everyone on the landscape
-  (and to newcomers), and cast 246 at a dead player within 8 m revives them in place. 0.589 has no accept prompt
+  (and to newcomers), and cast 246 at a dead player within 8 m starts a revive: StartRevive (0x42 {u64 dead, u64
+  reviver, u32 duration ms}, 3000 ms, our length) to players within 100 m of the body (every client records the reviver
+  on the dead entity, FUN_142e2abe0; the reviver's client shows the HUD revive bar, FUN_142ea2cc0 mode 2), then
+  ReadyToRevive after the channel; StopRevive (0x43 {u64 dead, u64 reviver, bool}) if the reviver dies, leaves or walks
+  off. The revived / reviver lines are the client's CombatSpam row 8 texts (564592, 564593); when an entity comes back
+  to life the client prints that row itself from the recorded reviver (vtable +0x488 → FUN_142e20a10 → FUN_142f43730). 0.589 has no accept prompt
   (UI.DoYouAcceptRevive / UI.BeingRevivedBy exist only as text mappings) and no point cost.
 - **What the live server sent** (packet registry cPlayerUpdatePacketId*): 0x39 KnockedOut to everyone when a player
   goes down (now sent: u64 victim, two character-info blocks, two stat blocks, a damage report, u32; read exactly by the

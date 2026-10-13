@@ -1,4 +1,4 @@
-using LandmarkEmulator.WorldServer.Network;
+﻿using LandmarkEmulator.WorldServer.Network;
 using LandmarkEmulator.WorldServer.Network.Message;
 using NLog;
 using System;
@@ -22,8 +22,25 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         public const uint Level = 2;
         /// <summary>Cell edge and voxel edge in world units (dm).</summary>
         public const double CellSize = 160, VoxelSize = CellSize / BlockData.Size;
-        /// <summary>Layer the overlays use (composited over the generated terrain by the client).</summary>
-        public const uint Layer = 0;
+        /// <summary>
+        /// Block layers, as the client names them (FUN_143bb4ef0) and as the live manifest used them: 0 "Cell Poi" -
+        /// server world stamps (Spire, outposts); 1 "Cell Permanent" - player building on build sites (the client
+        /// commits its own edits of a level-2 cell into layer level - 1 = 1, FUN_143f5d2c0, and caches them there);
+        /// 2 "Cell Timed Persistent" - digging outside build sites, which heals (with the ore veins under it);
+        /// 3 "Cell Transient" - unused. A CellsUpdate carries every layer of a cell; a layer it leaves out keeps the
+        /// client's old copy, so all three are always sent (empty where the server has nothing).
+        /// </summary>
+        public const uint PoiLayer = 0, BuildLayer = 1, DigLayer = 2;
+        public const uint LayerCount = 3;
+
+        /// <summary>
+        /// The store key of a cell's layer: the cell id with the layer in bits 56-57 (unused by level-2+ cell ids:
+        /// x needs 18 bits, ending at bit 53; TerrainStore.Decode masks them out). Layer 0 keys equal the cell id, so
+        /// files saved before layers load as layer 0.
+        /// </summary>
+        public static ulong Key(ulong cell, uint layer) => cell | ((ulong)layer << 56);
+        public static ulong CellOf(ulong key) => key & ~(3UL << 56);
+        public static uint LayerOf(ulong key) => (uint)(key >> 56) & 3;
 
         /// <summary>
         /// One edited cell. Expanded, a cell is 384 KB (flags, u16 materials, 3-byte offsets for 40³ voxels); most are
@@ -133,7 +150,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                     overlay.Version = BitConverter.ToUInt32(bytes, 0);
                     // Voxels with a vertex but no material hang the client's mesher (an old test mode wrote them).
                     int stripped = 0;
-                    for (int i = 0; i < BlockData.Count; i++)
+                    for (int i = 0; i < BlockData.Count && !BlockData.KeepVertexOnly; i++)
                         if (overlay.Blocks.Flags[i] == 2)
                         {
                             overlay.Blocks.Flags[i] = 0;
@@ -304,9 +321,12 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 foreach ((uint zone, var overlays) in stores)
                 {
                     permanent.TryGetValue(zone, out var keep);
-                    foreach ((ulong id, Overlay overlay) in overlays)
+                    foreach ((ulong key, Overlay overlay) in overlays)
                     {
-                        if (overlay.Dirty || now - overlay.LastEdit < RegenerationDelay || keep?.Contains(id) == true)
+                        // Build-site building (layer 1) is permanent; digging (layer 2) and old layer-0 edits heal.
+                        ulong id = CellOf(key);
+                        if (LayerOf(key) == BuildLayer || overlay.Dirty || now - overlay.LastEdit < RegenerationDelay
+                            || keep?.Contains(id) == true)
                             continue;
                         (_, uint cx, uint cy, uint cz) = TerrainStore.Decode(id);
                         double ox = cx * CellSize, oy = cy * CellSize, oz = cz * CellSize;
@@ -352,7 +372,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         /// (material 0) or to <paramref name="material"/>. Returns the cells changed and how many voxels changed.
         /// </summary>
         public static (List<ulong> Cells, int Voxels) Sphere(Vector3 local, double radius, ushort material, uint zone = 0,
-            Dictionary<ushort, int> oreMined = null, HashSet<ulong> oreCells = null)
+            Dictionary<ushort, int> oreMined = null, HashSet<ulong> oreCells = null, uint layer = DigLayer)
         {
             (double gx, double gy, double gz) = ToGlobal(local);
             var cells = new HashSet<ulong>();
@@ -378,8 +398,8 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                             if (iy < 0) { iy += BlockData.Size; cellY--; }
                             if (iz < 0) { iz += BlockData.Size; cellZ--; }
                             ulong id = TerrainStore.CellId(Level, (uint)cellX, (uint)cellY, (uint)cellZ);
-                            if (!Of(zone).TryGetValue(id, out Overlay overlay))
-                                Of(zone)[id] = overlay = new Overlay();
+                            if (!Of(zone).TryGetValue(Key(id, layer), out Overlay overlay))
+                                Of(zone)[Key(id, layer)] = overlay = new Overlay();
                             int index = VoxelIndex((int)ix, (int)iy, (int)iz);
                             if (overlay.Blocks.Flags[index] != 0 && overlay.Blocks.Materials[index] == material)
                                 continue;
@@ -403,11 +423,11 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                             list.Add(index);
                             changed++;
                         }
-                SmoothOffsets(gx, gy, gz, radius, cells, zone);
+                SmoothOffsets(gx, gy, gz, radius, cells, zone, layer);
                 foreach (ulong id in cells)
                 {
-                    Of(zone)[id].Version++;
-                    Of(zone)[id].Dirty = true;
+                    Of(zone)[Key(id, layer)].Version++;
+                    Of(zone)[Key(id, layer)].Dirty = true;
                 }
             }
             // Dug ground belongs to nobody (Voxel Vision).
@@ -437,7 +457,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         /// Test (dev "ball"): a solid ball of <paramref name="material"/> fully described by the overlay: solid voxels
         /// inside, explicit air outside, and every voxel within 1.2 voxels of the surface given a vertex on it.
         /// </summary>
-        public static List<ulong> Ball(Vector3 local, double radius, ushort material, uint zone = 0)
+        public static List<ulong> Ball(Vector3 local, double radius, ushort material, uint zone = 0, uint layer = PoiLayer)
         {
             (double gx, double gy, double gz) = ToGlobal(local);
             var cells = new HashSet<ulong>();
@@ -459,8 +479,8 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                             if (iy < 0) { iy += BlockData.Size; cellY--; }
                             if (iz < 0) { iz += BlockData.Size; cellZ--; }
                             ulong id = TerrainStore.CellId(Level, (uint)cellX, (uint)cellY, (uint)cellZ);
-                            if (!Of(zone).TryGetValue(id, out Overlay overlay))
-                                Of(zone)[id] = overlay = new Overlay();
+                            if (!Of(zone).TryGetValue(Key(id, layer), out Overlay overlay))
+                                Of(zone)[Key(id, layer)] = overlay = new Overlay();
                             int index = VoxelIndex((int)ix, (int)iy, (int)iz);
                             overlay.Blocks.SetSolid(index, inside ? material : (ushort)0);
                             if (near && d > 1e-6)
@@ -474,8 +494,8 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                         }
                 foreach (ulong id in cells)
                 {
-                    Of(zone)[id].Version++;
-                    Of(zone)[id].Dirty = true;
+                    Of(zone)[Key(id, layer)].Version++;
+                    Of(zone)[Key(id, layer)].Dirty = true;
                 }
             }
             return cells.ToList();
@@ -514,7 +534,8 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         /// Gives the air voxels on a carved sphere's boundary (inside, with a 6-neighbour outside) a surface offset at
         /// the nearest point of the sphere, so the client's mesher draws a round hole instead of 0.4 m steps.
         /// </summary>
-        private static void SmoothOffsets(double gx, double gy, double gz, double radius, HashSet<ulong> cells, uint zone = 0)
+        private static void SmoothOffsets(double gx, double gy, double gz, double radius, HashSet<ulong> cells, uint zone = 0,
+            uint layer = DigLayer)
         {
             if (OffsetMode == 0)
                 return;
@@ -581,11 +602,11 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                         if (iy < 0) { iy += BlockData.Size; cellY--; }
                         if (iz < 0) { iz += BlockData.Size; cellZ--; }
                         ulong id = TerrainStore.CellId(Level, (uint)cellX, (uint)cellY, (uint)cellZ);
-                        if (!Of(zone).TryGetValue(id, out Overlay overlay))
+                        if (!Of(zone).TryGetValue(Key(id, layer), out Overlay overlay))
                         {
                             if (inside)
                                 continue;
-                            Of(zone)[id] = overlay = new Overlay();
+                            Of(zone)[Key(id, layer)] = overlay = new Overlay();
                         }
                         int index = VoxelIndex((int)ix, (int)iy, (int)iz);
                         if (!inside)
@@ -644,8 +665,9 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
             var reverted = new Dictionary<ulong, List<int>>();
             lock (sync)
             {
-                foreach ((ulong id, Overlay overlay) in Of(zone))
+                foreach ((ulong key, Overlay overlay) in Of(zone))
                 {
+                    ulong id = CellOf(key);
                     (_, uint cx, uint cy, uint cz) = TerrainStore.Decode(id);
                     double ox = cx * CellSize, oy = cy * CellSize, oz = cz * CellSize;
                     if (ox > maxX || oy > maxY || oz > maxZ || ox + CellSize < minX || oy + CellSize < minY || oz + CellSize < minZ)
@@ -680,7 +702,8 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                         continue;
                     overlay.Version++;
                     overlay.Dirty = true;
-                    changed.Add(id);
+                    if (!changed.Contains(id))
+                        changed.Add(id);
                 }
             }
             // Natural ground again: nobody's (Voxel Vision).
@@ -694,8 +717,8 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         {
             lock (sync)
             {
-                if (!Of(zone).TryGetValue(id, out Overlay overlay))
-                    Of(zone)[id] = overlay = new Overlay();
+                if (!Of(zone).TryGetValue(Key(id, PoiLayer), out Overlay overlay))
+                    Of(zone)[Key(id, PoiLayer)] = overlay = new Overlay();
                 overlay.Blocks.Load(saved);
                 overlay.Version++;
                 overlay.Dirty = true;
@@ -706,7 +729,8 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         /// Net solid voxels per material an edit would add (positive) or take away (negative), against the server's
         /// overlay. Voxels the overlay doesn't hold (the generated ground) count as nothing.
         /// </summary>
-        public static Dictionary<ushort, int> MaterialDelta(ulong id, byte[] changed, BlockData result, uint zone = 0)
+        public static Dictionary<ushort, int> MaterialDelta(ulong id, byte[] changed, BlockData result, uint zone = 0,
+            uint layer = BuildLayer)
         {
             var delta = new Dictionary<ushort, int>();
             void Add(ushort material, int n)
@@ -714,17 +738,30 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 if (material != 0)
                     delta[material] = delta.GetValueOrDefault(material) + n;
             }
+            // Ore veins lie under the edits (as in BuildUpdate): the client's result carries the vein ore it was sent,
+            // so a vein voxel the overlay doesn't set was already there. Without this, editing near a vein charged
+            // for its ore (Raw Marble → "needs Cut Marble", 2026-10-13). Removing vein ore with build tools refunds
+            // nothing: it was never paid for (ore is gathered with a pick, outside build sites).
+            // Most cells have no vein: skip the 384 KB scratch cell for them (big brushes touch 100+ cells).
+            BlockData veins = OreVeins.Known(id, zone) ? new BlockData() : null;
+            bool hasVeins = veins != null && OreVeins.Compose(id, zone, veins);
             lock (sync)
             {
-                Of(zone).TryGetValue(id, out Overlay overlay);
+                Of(zone).TryGetValue(Key(id, layer), out Overlay overlay);
                 for (int i = 0; i < BlockData.Count; i++)
                 {
                     if ((changed[i >> 3] & (1 << (7 - (i & 7)))) == 0)
                         continue;
                     if ((result.Flags[i] & 1) != 0)
                         Add(result.Materials[i], 1);
-                    if (overlay != null && (overlay.Blocks.Flags[i] & 1) != 0)
-                        Add(overlay.Blocks.Materials[i], -1);
+                    if (overlay != null && overlay.Blocks.Flags[i] != 0)
+                    {
+                        if ((overlay.Blocks.Flags[i] & 1) != 0)
+                            Add(overlay.Blocks.Materials[i], -1);
+                    }
+                    else if (hasVeins && veins.Flags[i] != 0 && (result.Flags[i] & 1) != 0
+                        && result.Materials[i] == veins.Materials[i])
+                        Add(veins.Materials[i], -1);   // ore left as it was: no charge (and no refund when it goes)
                 }
             }
             return delta;
@@ -734,15 +771,24 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         public static void Resend(WorldSession session, ulong id)
         {
             uint zone = session.ZoneId;
-            lock (sync)
-                if (!Of(zone).ContainsKey(id))
-                    Of(zone)[id] = new Overlay();
-            byte[] update = BuildUpdate(id, zone);
+            // Every layer is sent (empty where the server has nothing), so this undoes the edit even in a new cell.
+            byte[] update = BuildUpdate(id, zone, always: true);
             if (update != null)
                 session.EnqueueMessage(ZoneMessageOpcode.TerrainCellCellsUpdate, update);
         }
 
         /// <summary>Would every voxel an edit changes be allowed by <paramref name="mayEdit"/> (global units)?</summary>
+        /// <summary>May a player build every voxel an edit changes in this cell (claims checked once per cell)?</summary>
+        public static bool MayApply(ulong id, byte[] changed, ulong playerGuid, uint zone)
+        {
+            (uint level, uint cx, uint cy, uint cz) = TerrainStore.Decode(id);
+            if (level != Level)
+                return false;
+            double ox = cx * CellSize, oy = cy * CellSize, oz = cz * CellSize;
+            var check = Claims.BuildCheckIn(playerGuid, zone, (ox, oy, oz), (ox + CellSize, oy + CellSize, oz + CellSize));
+            return check == null || MayApply(id, changed, check);
+        }
+
         public static bool MayApply(ulong id, byte[] changed, Func<double, double, double, bool> mayEdit)
         {
             (uint level, uint cx, uint cy, uint cz) = TerrainStore.Decode(id);
@@ -766,28 +812,26 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         /// <paramref name="mayEdit"/> says no (global units).
         /// </summary>
         public static bool ApplyDiff(ulong id, byte[] changed, BlockData result, Func<double, double, double, bool> mayEdit, out int voxels, uint zone = 0,
-            ulong owner = 0)
+            ulong owner = 0, uint layer = BuildLayer)
         {
             voxels = 0;
             (uint level, uint cx, uint cy, uint cz) = TerrainStore.Decode(id);
             if (level != Level)
                 return false;
             double ox = cx * CellSize, oy = cy * CellSize, oz = cz * CellSize;
-            var indices = new List<int>();
-            for (int i = 0; i < BlockData.Count; i++)
-                if ((changed[i >> 3] & (1 << (7 - (i & 7)))) != 0)
-                    indices.Add(i);
-            // Index order: y fastest, then x, then z (VoxelIndex).
-            foreach (int i in indices)
-            {
-                int y = i % BlockData.Size, x = i / BlockData.Size % BlockData.Size, z = i / (BlockData.Size * BlockData.Size);
-                if (!mayEdit(ox + (x + 0.5) * VoxelSize, oy + (y + 0.5) * VoxelSize, oz + (z + 0.5) * VoxelSize))
-                    return false;
-            }
+            List<int> indices = ChangedIndices(changed);
+            // Index order: y fastest, then x, then z (VoxelIndex). Null mayEdit: already checked (Building).
+            if (mayEdit != null)
+                foreach (int i in indices)
+                {
+                    int y = i % BlockData.Size, x = i / BlockData.Size % BlockData.Size, z = i / (BlockData.Size * BlockData.Size);
+                    if (!mayEdit(ox + (x + 0.5) * VoxelSize, oy + (y + 0.5) * VoxelSize, oz + (z + 0.5) * VoxelSize))
+                        return false;
+                }
             lock (sync)
             {
-                if (!Of(zone).TryGetValue(id, out Overlay overlay))
-                    Of(zone)[id] = overlay = new Overlay();
+                if (!Of(zone).TryGetValue(Key(id, layer), out Overlay overlay))
+                    Of(zone)[Key(id, layer)] = overlay = new Overlay();
                 foreach (int i in indices)
                 {
                     overlay.Blocks.Flags[i] = result.Flags[i];
@@ -805,6 +849,89 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
             return true;
         }
 
+        /// <summary>
+        /// First half of a build edit, one read-only pass per cell: the voxels the edit changes, their current values
+        /// in the layer (the undo record's "before") and the material difference it would make (solid voxels of the
+        /// result minus solid voxels it replaces). Nothing is written, so a refused edit costs nothing more.
+        /// </summary>
+        public static (int[] Indices, List<VoxelValue> Before) Prepare(ulong id, byte[] changed, BlockData result, uint zone,
+            Dictionary<ushort, int> delta, uint layer = BuildLayer)
+        {
+            int[] indices = ChangedIndices(changed).ToArray();
+            var before = new List<VoxelValue>(indices.Length);
+            lock (sync)
+            {
+                Of(zone).TryGetValue(Key(id, layer), out Overlay overlay);
+                BlockData blocks = overlay?.Blocks;
+                foreach (int i in indices)
+                {
+                    if ((result.Flags[i] & 1) != 0 && result.Materials[i] != 0)
+                        delta[result.Materials[i]] = delta.GetValueOrDefault(result.Materials[i]) + 1;
+                    if (blocks == null)
+                    {
+                        before.Add(new VoxelValue(i, 0, 0, 0, 0, 0));
+                        continue;
+                    }
+                    byte flags = blocks.Flags[i];
+                    ushort material = blocks.Materials[i];
+                    if ((flags & 1) != 0 && material != 0)
+                        delta[material] = delta.GetValueOrDefault(material) - 1;
+                    before.Add(new VoxelValue(i, flags, material, blocks.Offsets[i * 3], blocks.Offsets[i * 3 + 1], blocks.Offsets[i * 3 + 2]));
+                }
+            }
+            return (indices, before);
+        }
+
+        /// <summary>
+        /// Second half of a build edit: writes the result's values at the prepared voxels into the layer (one pass) and
+        /// returns them as the undo record's "after". Solid voxels become <paramref name="owner"/>'s, the rest nobody's.
+        /// </summary>
+        public static List<VoxelValue> Commit(ulong id, int[] indices, BlockData result, uint zone, ulong owner, uint layer = BuildLayer,
+            uint clientVersion = 0)
+        {
+            var after = new List<VoxelValue>(indices.Length);
+            lock (sync)
+            {
+                if (!Of(zone).TryGetValue(Key(id, layer), out Overlay overlay))
+                    Of(zone)[Key(id, layer)] = overlay = new Overlay();
+                BlockData blocks = overlay.Blocks;
+                foreach (int i in indices)
+                {
+                    byte flags = result.Flags[i], o0 = result.Offsets[i * 3], o1 = result.Offsets[i * 3 + 1], o2 = result.Offsets[i * 3 + 2];
+                    ushort material = result.Materials[i];
+                    blocks.Flags[i] = flags;
+                    blocks.Materials[i] = material;
+                    blocks.Offsets[i * 3] = o0;
+                    blocks.Offsets[i * 3 + 1] = o1;
+                    blocks.Offsets[i * 3 + 2] = o2;
+                    after.Add(new VoxelValue(i, flags, material, o0, o1, o2));
+                }
+                // The client sends the version it gave the layer after this edit (CRC32 of its compressed layer,
+                // CompressBlockData); adopting it keeps the server's and the client's versions equal, so its cached copy
+                // stays valid (no re-download) and the next edit's base version can be checked.
+                overlay.Version = clientVersion != 0 ? clientVersion : overlay.Version + 1;
+                overlay.Dirty = true;
+            }
+            VoxelOwnership.Set(zone, id, indices, i => (result.Flags[i] & 1) != 0 && result.Materials[i] != 0, owner);
+            return after;
+        }
+
+        /// <summary>The voxel indices set in an 8000-byte changed mask (MSB first), skipping empty bytes.</summary>
+        public static List<int> ChangedIndices(byte[] changed)
+        {
+            var indices = new List<int>(4096);
+            for (int b = 0; b < changed.Length; b++)
+            {
+                byte bits = changed[b];
+                if (bits == 0)
+                    continue;
+                for (int k = 0; k < 8; k++)
+                    if ((bits & (0x80 >> k)) != 0)
+                        indices.Add(b * 8 + k);
+            }
+            return indices;
+        }
+
         /// <summary>One overlay voxel's stored value (sparse undo/redo records).</summary>
         public readonly record struct VoxelValue(int Index, byte Flags, ushort Material, byte O0, byte O1, byte O2);
 
@@ -812,16 +939,15 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         /// The overlay's current values of the voxels set in <paramref name="changed"/> (all zero where the cell has no
         /// overlay: zero = no override, the generated ground shows).
         /// </summary>
-        public static List<VoxelValue> Read(ulong id, byte[] changed, uint zone = 0)
+        public static List<VoxelValue> Read(ulong id, byte[] changed, uint zone = 0, uint layer = BuildLayer)
         {
-            var values = new List<VoxelValue>();
+            List<int> indices = ChangedIndices(changed);
+            var values = new List<VoxelValue>(indices.Count);
             lock (sync)
             {
-                Of(zone).TryGetValue(id, out Overlay overlay);
-                for (int i = 0; i < BlockData.Count; i++)
+                Of(zone).TryGetValue(Key(id, layer), out Overlay overlay);
+                foreach (int i in indices)
                 {
-                    if ((changed[i >> 3] & (1 << (7 - (i & 7)))) == 0)
-                        continue;
                     values.Add(overlay == null ? new VoxelValue(i, 0, 0, 0, 0, 0)
                         : new VoxelValue(i, overlay.Blocks.Flags[i], overlay.Blocks.Materials[i],
                             overlay.Blocks.Offsets[i * 3], overlay.Blocks.Offsets[i * 3 + 1], overlay.Blocks.Offsets[i * 3 + 2]));
@@ -831,12 +957,12 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         }
 
         /// <summary>Net solid voxels per material that writing <paramref name="values"/> would add (+) or remove (−).</summary>
-        public static Dictionary<ushort, int> MaterialDelta(ulong id, List<VoxelValue> values, uint zone = 0)
+        public static Dictionary<ushort, int> MaterialDelta(ulong id, List<VoxelValue> values, uint zone = 0, uint layer = BuildLayer)
         {
             var delta = new Dictionary<ushort, int>();
             lock (sync)
             {
-                Of(zone).TryGetValue(id, out Overlay overlay);
+                Of(zone).TryGetValue(Key(id, layer), out Overlay overlay);
                 foreach (VoxelValue v in values)
                 {
                     if ((v.Flags & 1) != 0 && v.Material != 0)
@@ -852,15 +978,16 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         public static void ClearCell(ulong id, uint zone)
         {
             lock (sync)
-            {
-                if (!Of(zone).TryGetValue(id, out Overlay overlay))
-                    return;
-                Array.Clear(overlay.Blocks.Flags);
-                Array.Clear(overlay.Blocks.Materials);
-                Array.Clear(overlay.Blocks.Offsets);
-                overlay.Version++;
-                overlay.Dirty = true;
-            }
+                for (uint layer = 0; layer < LayerCount; layer++)
+                {
+                    if (!Of(zone).TryGetValue(Key(id, layer), out Overlay overlay))
+                        continue;
+                    Array.Clear(overlay.Blocks.Flags);
+                    Array.Clear(overlay.Blocks.Materials);
+                    Array.Clear(overlay.Blocks.Offsets);
+                    overlay.Version++;
+                    overlay.Dirty = true;
+                }
             VoxelOwnership.ClearCell(zone, id);
             Broadcast(new[] { id }, zone);
         }
@@ -869,7 +996,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         /// Writes stored voxel values back into a cell's overlay (undo / redo, paste). Solid voxels written become
         /// <paramref name="owner"/>'s and the others nobody's (Voxel Vision); owner 0 leaves ownership alone.
         /// </summary>
-        public static void Write(ulong id, List<VoxelValue> values, uint zone = 0, ulong owner = 0)
+        public static void Write(ulong id, List<VoxelValue> values, uint zone = 0, ulong owner = 0, uint layer = BuildLayer)
         {
             if (owner != 0)
             {
@@ -878,8 +1005,8 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
             }
             lock (sync)
             {
-                if (!Of(zone).TryGetValue(id, out Overlay overlay))
-                    Of(zone)[id] = overlay = new Overlay();
+                if (!Of(zone).TryGetValue(Key(id, layer), out Overlay overlay))
+                    Of(zone)[Key(id, layer)] = overlay = new Overlay();
                 foreach (VoxelValue v in values)
                 {
                     overlay.Blocks.Flags[v.Index] = v.Flags;
@@ -909,127 +1036,277 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 local.Z * 10 + TerrainStore.ZoneOrigin.Z);
 
         /// <summary>
-        /// Does the server hold player changes for this cell?
+        /// Does the server hold anything for this cell (an edited layer, ore veins, or a coarse copy)?
         /// </summary>
         public static bool Has(ulong cellId, uint zone = 0)
         {
             lock (sync)
-                if (Of(zone).ContainsKey(cellId))
-                    return true;
-            return OreVeins.Known(cellId, zone);
+                for (uint layer = 0; layer < LayerCount; layer++)
+                    if (Of(zone).ContainsKey(Key(cellId, layer)))
+                        return true;
+            return OreVeins.Known(cellId, zone) || TerrainLod.Has(cellId, zone == 0 ? Home : zone);
         }
 
-        /// <summary>A cell's layer version: player edits plus the vein layer (both only grow).</summary>
-        private static uint VersionOf(ulong cellId, uint zone)
-            => (Of(zone).TryGetValue(cellId, out Overlay overlay) ? overlay.Version : 0) + OreVeins.VersionOf(cellId, zone);
-
-        /// <summary>
-        /// Experiment: also send the carved voxels as layers 1-3. Off: with it on, the pick stopped finding a target on
-        /// the mountain and the upper surface still stood (2026-10-11).
-        /// </summary>
-        public static bool CarveAllLayers = false;
-
-        /// <summary>CellsUpdate (block data, version 0) for one edited cell, or null.</summary>
-        public static byte[] BuildUpdate(ulong cellId, uint zone = 0)
+        /// <summary>The landscapes that have edits.</summary>
+        internal static List<uint> Zones()
         {
-            var layers = new List<(uint, byte[])>();
-            uint version;
+            lock (sync)
+                return stores.Where(z => z.Value.Count > 0).Select(z => z.Key).ToList();
+        }
+
+        /// <summary>Every edited cell of one layer of a landscape with its version (cheap: nothing is expanded).</summary>
+        internal static Dictionary<ulong, uint> Versions(uint zone, uint layer)
+        {
+            lock (sync)
+                return Of(zone).Where(c => LayerOf(c.Key) == layer).ToDictionary(c => CellOf(c.Key), c => c.Value.Version);
+        }
+
+        /// <summary>Reads one edited cell layer's voxels under the store lock (packed again afterwards if it was).</summary>
+        internal static void WithCell(uint zone, ulong id, uint layer, Action<BlockData> read)
+        {
             lock (sync)
             {
-                Of(zone).TryGetValue(cellId, out Overlay overlay);
-                bool ore = OreVeins.Known(cellId, zone);
-                if (overlay == null && !ore)
-                    return null;
-                // Ore veins lie under the player's edits: voxels the overlay doesn't set get the vein layer's ore.
-                BlockData blocks = overlay?.Blocks ?? new BlockData();
-                if (ore)
-                {
-                    var composed = new BlockData();
-                    Array.Copy(blocks.Flags, composed.Flags, BlockData.Count);
-                    Array.Copy(blocks.Materials, composed.Materials, BlockData.Count);
-                    Array.Copy(blocks.Offsets, composed.Offsets, BlockData.Count * 3);
-                    OreVeins.Compose(cellId, zone, composed);
-                    blocks = composed;
-                }
-                layers.Add((Layer, blocks.ToLayerBlob()));
-                // The generated world has up to four layers (on mountains the top surface is in a higher one), and
-                // each is only carved by its own layer: the carved voxels go to layers 1-3 too, or a pick leaves the
-                // upper layer's surface standing over the hole (and the mining ring drawn underneath it).
-                if (CarveAllLayers && overlay?.Blocks.AirOnly() is BlockData air)
-                {
-                    byte[] airBlob = air.ToLayerBlob();
-                    for (uint layer = 1; layer <= 3; layer++)
-                        layers.Add((layer, airBlob));
-                }
-                version = VersionOf(cellId, zone);
+                if (!Of(zone).TryGetValue(Key(id, layer), out Overlay overlay))
+                    return;
+                bool wasExpanded = overlay.Expanded;
+                read(overlay.Blocks);
+                if (!wasExpanded)
+                    overlay.Compact();
             }
-            return TerrainStore.BuildBlocksUpdate(cellId, version, layers);
         }
 
-        /// <summary>Manifest entries (cell, layer version) for the zone-in modified-cell manifest.</summary>
-        public static List<(ulong Cell, uint Version)> ManifestEntries(uint zone = 0)
+        /// <summary>One number for "what the server would send for this cell now" (all layers; for de-duplication).</summary>
+        public static uint CurrentVersion(ulong cellId, uint zone)
+        {
+            uint sum = 0;
+            for (uint layer = 0; layer < LayerCount; layer++)
+                sum += LayerVersion(cellId, zone, layer);
+            return sum;
+        }
+
+        /// <summary>The version a CellsUpdate carries for one layer of a cell (0 = the server has nothing there).</summary>
+        public static uint LayerVersion(ulong cellId, uint zone, uint layer)
+        {
+            if (TerrainStore.Decode(cellId).Level > Level)
+                return TerrainLod.VersionOf(cellId, zone == 0 ? Home : zone, layer);
+            lock (sync)
+                return VersionOf(cellId, zone, layer);
+        }
+
+        private static int versionSamples;
+
+        /// <summary>
+        /// Research (2026-10-13): saves a few cells whose layer-1 version the client holds differently from ours, with
+        /// the client's number, to TerrainEdits/version-samples, to test whether the client's version (CRC32 of the
+        /// layer compressed by CompressBlockData, FUN_143f85d50) can be reproduced from the server's data.
+        /// </summary>
+        public static void SampleVersion(ulong cellId, uint zone, uint[] held)
+        {
+            if (folder == null || versionSamples >= 20 || held[BuildLayer] == 0)
+                return;
+            byte[] raw;
+            lock (sync)
+            {
+                if (!Of(zone).TryGetValue(Key(cellId, BuildLayer), out Overlay overlay) || overlay.Version == held[BuildLayer])
+                    return;
+                raw = overlay.Blocks.Serialize();
+            }
+            versionSamples++;
+            string dir = Path.Combine(folder, "version-samples");
+            Directory.CreateDirectory(dir);
+            File.WriteAllBytes(Path.Combine(dir, $"{cellId:X16}_{held[BuildLayer]}.raw"), raw);
+        }
+
+        /// <summary>Edit overlay version, plus the vein layer's for layer 2 (both only grow).</summary>
+        private static uint VersionOf(ulong cellId, uint zone, uint layer)
+            => (Of(zone).TryGetValue(Key(cellId, layer), out Overlay overlay) ? overlay.Version : 0)
+                + (layer == DigLayer ? OreVeins.VersionOf(cellId, zone) : 0);
+
+        /// <summary>
+        /// CellsUpdate (block data, version 0) for a cell: every layer, with its own version, empty where the server
+        /// has nothing (a layer left out of the packet keeps the client's old copy, FUN_143f5ce70 → FUN_143f1af90).
+        /// Null when the server has nothing at all for the cell, unless <paramref name="always"/>.
+        /// </summary>
+        public static byte[] BuildUpdate(ulong cellId, uint zone = 0, bool always = false)
+        {
+            if (TerrainStore.Decode(cellId).Level > Level)
+                return TerrainLod.BuildUpdate(cellId, zone == 0 ? Home : zone);
+            var layers = new List<(uint Layer, uint Version, byte[] Blob)>();
+            bool any = false;
+            lock (sync)
+            {
+                for (uint layer = 0; layer < LayerCount; layer++)
+                {
+                    Of(zone).TryGetValue(Key(cellId, layer), out Overlay overlay);
+                    bool ore = layer == DigLayer && OreVeins.Known(cellId, zone);
+                    BlockData blocks = overlay?.Blocks;
+                    if (ore)
+                    {
+                        // Ore veins lie under the digging: voxels the dig layer doesn't set get the vein's ore.
+                        var composed = new BlockData();
+                        if (blocks != null)
+                        {
+                            Array.Copy(blocks.Flags, composed.Flags, BlockData.Count);
+                            Array.Copy(blocks.Materials, composed.Materials, BlockData.Count);
+                            Array.Copy(blocks.Offsets, composed.Offsets, BlockData.Count * 3);
+                        }
+                        OreVeins.Compose(cellId, zone, composed);
+                        blocks = composed;
+                    }
+                    if (blocks != null)
+                        any = true;
+                    layers.Add((layer, VersionOf(cellId, zone, layer), (blocks ?? Empty).ToLayerBlob()));
+                }
+            }
+            return any || always ? TerrainStore.BuildBlocksUpdate(cellId, layers) : null;
+        }
+
+        private static readonly BlockData Empty = new();
+
+        /// <summary>Manifest entries (cell, layer version) of one layer, for the zone-in modified-cell manifest.</summary>
+        public static List<(ulong Cell, uint Version)> ManifestEntries(uint zone, uint layer)
         {
             var entries = new Dictionary<ulong, uint>();
             lock (sync)
             {
-                foreach ((ulong id, Overlay overlay) in Of(zone))
-                    entries[id] = overlay.Version;
-                foreach ((ulong id, uint version) in OreVeins.Entries(zone))
-                    entries[id] = entries.GetValueOrDefault(id) + version;
+                foreach ((ulong key, Overlay overlay) in Of(zone))
+                    if (LayerOf(key) == layer)
+                        entries[CellOf(key)] = overlay.Version;
+                if (layer == DigLayer)
+                    foreach ((ulong id, uint version) in OreVeins.Entries(zone))
+                        entries[id] = entries.GetValueOrDefault(id) + version;
             }
+            foreach ((ulong id, uint version) in TerrainLod.Entries(zone == 0 ? Home : zone, layer))
+                entries[id] = version;
             return entries.Select(e => (e.Key, e.Value)).ToList();
         }
 
         /// <summary>
-        /// New or changed vein-layer cells: every player on the landscape gets a 21-byte ModifiedCellManifestUpdate and
-        /// their client fetches the cell when it draws it (no voxels pushed).
+        /// New or changed vein cells (layer 2): every player on the landscape gets a 21-byte
+        /// ModifiedCellManifestUpdate and their client fetches the cell when it draws it (no voxels pushed).
         /// </summary>
         public static void Announce(List<ulong> cellIds, uint zone, WorldSession except = null)
         {
             var entries = new List<(ulong Id, uint Version)>();
             lock (sync)
                 foreach (ulong id in cellIds)
-                    entries.Add((id, VersionOf(id, zone)));
+                    entries.Add((id, VersionOf(id, zone, DigLayer)));
             foreach (WorldSession session in PlayerManager.InZone(zone == 0 ? Home : zone))
                 if (session != except)
                     foreach ((ulong id, uint version) in entries)
-                        TerrainStore.SendManifestEntry(session, id, Layer, version, 0);
+                        TerrainStore.SendManifestEntry(session, id, DigLayer, version, 0);
         }
 
         /// <summary>Players within this many metres of a changed cell get its voxels straight away.</summary>
         private const float FullUpdateRange = 256f;
 
         /// <summary>
-        /// Sends changed cells out. Nearby players get the voxel data (they can see it); everyone else only a
-        /// 21-byte ModifiedCellManifestUpdate, so their client fetches the cell if and when it comes into view.
+        /// Sends changed cells out. Nearby players get the voxel data (they can see it); everyone else a 21-byte
+        /// ModifiedCellManifestUpdate per layer the server holds, so their client fetches the cell when it comes into
+        /// view. The builder is left out (<paramref name="except"/>): their client already holds the edit in layer 1
+        /// and updated its own manifest when the edit was confirmed (HandleCellUpdateResponse FUN_143f52b60); data
+        /// sent for a cell they are still editing makes it refuse new edits.
         /// </summary>
         public static void Broadcast(IEnumerable<ulong> cellIds, uint zone = 0) => Broadcast(cellIds, null, zone);
 
-        /// <summary>Sends changed cells to nearby players (full voxels) and a manifest note to the rest, except one.</summary>
         public static void Broadcast(IEnumerable<ulong> cellIds, WorldSession except, uint zone = 0)
         {
-            var changed = new List<(ulong Id, Vector3 Centre, uint Version, byte[] Update)>();
+            // Nobody else on the landscape (building alone): no cell data to build and compress.
+            var viewers = PlayerManager.InZone(zone == 0 ? Home : zone).Where(s => s != except).ToList();
+            if (viewers.Count == 0)
+                return;
+            var changed = new List<(ulong Id, Vector3 Centre, uint[] Versions, byte[] Update)>();
             foreach (ulong id in cellIds)
             {
-                byte[] update = BuildUpdate(id, zone);
-                if (update == null)
-                    continue;
+                byte[] update = BuildUpdate(id, zone, always: true);
                 (Vector3 min, Vector3 max) = TerrainStore.LocalBounds(id);
-                uint version;
+                var versions = new uint[LayerCount];
                 lock (sync)
-                    version = VersionOf(id, zone);
-                changed.Add((id, (min + max) / 2, version, update));
+                    for (uint layer = 0; layer < LayerCount; layer++)
+                        versions[layer] = VersionOf(id, zone, layer);
+                changed.Add((id, (min + max) / 2, versions, update));
             }
-            foreach (WorldSession session in PlayerManager.InZone(zone == 0 ? Home : zone))
-                foreach ((ulong id, Vector3 centre, uint version, byte[] update) in changed)
+            foreach (WorldSession session in viewers)
+                foreach ((ulong id, Vector3 centre, uint[] versions, byte[] update) in changed)
                 {
-                    if (session == except)
-                        continue;
                     if (Vector3.Distance(session.Position, centre) <= FullUpdateRange)
                         session.EnqueueMessage(ZoneMessageOpcode.TerrainCellCellsUpdate, update);
                     else
-                        TerrainStore.SendManifestEntry(session, id, Layer, version, 0);
+                        for (uint layer = 0; layer < LayerCount; layer++)
+                            if (versions[layer] != 0)
+                                TerrainStore.SendManifestEntry(session, id, layer, versions[layer], 0);
                 }
+        }
+
+        /// <summary>
+        /// One-time move to layers (2026-10-13): before, every edit was one layer-0 overlay. Voxels inside build sites
+        /// are building and move to layer 1 (the layer the client keeps its own edits in); everything else stays in
+        /// layer 0 and heals as before. Stamped (permanent) cells stay layer 0. A marker file keeps it to one run.
+        /// </summary>
+        private static bool migrationChecked;
+
+        public static void MigrateToLayers(Func<uint, (double, double, double), (double, double, double),
+            List<(double MinX, double MinY, double MinZ, double MaxX, double MaxY, double MaxZ)>> claimsIn)
+        {
+            if (folder == null || migrationChecked)
+                return;
+            migrationChecked = true;
+            string marker = Path.Combine(folder, "layers.v2");
+            if (File.Exists(marker))
+                return;
+            int moved = 0, cellsMoved = 0;
+            lock (sync)
+                foreach ((uint zone, var overlays) in stores)
+                {
+                    permanent.TryGetValue(zone, out var keep);
+                    foreach ((ulong key, Overlay overlay) in overlays.ToList())
+                    {
+                        if (LayerOf(key) != PoiLayer || keep?.Contains(key) == true)
+                            continue;
+                        (_, uint cx, uint cy, uint cz) = TerrainStore.Decode(key);
+                        double ox = cx * CellSize, oy = cy * CellSize, oz = cz * CellSize;
+                        var sites = claimsIn(zone, (ox, oy, oz), (ox + CellSize, oy + CellSize, oz + CellSize));
+                        if (sites.Count == 0)
+                            continue;
+                        bool wasExpanded = overlay.Expanded;
+                        BlockData from = overlay.Blocks;
+                        Overlay target = null;
+                        for (int iz = 0; iz < BlockData.Size; iz++)
+                            for (int ix = 0; ix < BlockData.Size; ix++)
+                                for (int iy = 0; iy < BlockData.Size; iy++)
+                                {
+                                    int i = VoxelIndex(ix, iy, iz);
+                                    if (from.Flags[i] == 0)
+                                        continue;
+                                    double x = ox + (ix + 0.5) * VoxelSize, y = oy + (iy + 0.5) * VoxelSize, z = oz + (iz + 0.5) * VoxelSize;
+                                    if (!sites.Exists(b => x >= b.MinX && x <= b.MaxX && y >= b.MinY && y <= b.MaxY && z >= b.MinZ && z <= b.MaxZ))
+                                        continue;
+                                    if (target == null && !overlays.TryGetValue(Key(key, BuildLayer), out target))
+                                        overlays[Key(key, BuildLayer)] = target = new Overlay();
+                                    target.Blocks.Flags[i] = from.Flags[i];
+                                    target.Blocks.Materials[i] = from.Materials[i];
+                                    target.Blocks.Offsets[i * 3] = from.Offsets[i * 3];
+                                    target.Blocks.Offsets[i * 3 + 1] = from.Offsets[i * 3 + 1];
+                                    target.Blocks.Offsets[i * 3 + 2] = from.Offsets[i * 3 + 2];
+                                    from.Flags[i] = 0;
+                                    from.Materials[i] = 0;
+                                    moved++;
+                                }
+                        if (target == null)
+                        {
+                            if (!wasExpanded)
+                                overlay.Compact();
+                            continue;
+                        }
+                        cellsMoved++;
+                        target.Version = overlay.Version + 1;
+                        target.Dirty = true;
+                        overlay.Version++;
+                        overlay.Dirty = true;
+                    }
+                }
+            File.WriteAllText(marker, "Build-site voxels moved from layer 0 to layer 1.");
+            log.Info($"Terrain layers: moved {moved} build-site voxels in {cellsMoved} cell(s) to layer 1.");
         }
     }
 }

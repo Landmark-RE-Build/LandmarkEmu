@@ -1,4 +1,4 @@
-using LandmarkEmulator.Database.Character.Model;
+﻿using LandmarkEmulator.Database.Character.Model;
 using LandmarkEmulator.Shared.Database;
 using LandmarkEmulator.Shared.Network;
 using LandmarkEmulator.WorldServer.Network;
@@ -43,7 +43,8 @@ namespace LandmarkEmulator.WorldServer.Game
             DiceWeightA = "random_gate_static_weight_a", DiceWeightB = "random_gate_static_weight_b",
             DamageValue = "node_damage_value", DamageHeals = "node_damage_in_healing", FocusOnActivator = "pass_through_look_at",
             SpawnDelay = "player_npc_spawn_delay_flat", RespawnEnabled = "player_npc_respawn_enabled", SpawnerAi = "npc_spawner_ai_enabled",
-            TextDisplayTime = "prop_text_display_time", EmoteSpam = "npc_emote_spam_enabled";
+            TextDisplayTime = "prop_text_display_time", EmoteSpam = "npc_emote_spam_enabled",
+            TextDisplayType = "prop_text_display_type";
 
         public const string Mood = "npc_mood_setting", Stance = "npc_stance_selection", Emote = "npc_emote_setting";
 
@@ -57,6 +58,9 @@ namespace LandmarkEmulator.WorldServer.Game
             [Mood] = new (uint, uint)[] { (559169, 2), (559168, 1), (559170, 3) },
             [Stance] = new (uint, uint)[] { (559171, 223), (559172, 224), (559173, 246), (559174, 250), (559175, 248), (559176, 251) },
             [Emote] = new (uint, uint)[] { (559123, 217), (559144, 229), (559154, 230), (559155, 231), (559162, 240), (559163, 239), (559166, 242) },
+            // Text Location (576505): PlayerUpdate DisplayPropText modes (handler FUN_142ee6ce0) — 4 "In Chat Bubble"
+            // (the setting's default), 2 "On Screen", 3 "In Chat".
+            [TextDisplayType] = new (uint, uint)[] { (576481, 4), (576480, 2), (576482, 3) },
         };
 
         /// <summary>A drop-down setting's value, or its first option when nothing valid was chosen.</summary>
@@ -78,6 +82,10 @@ namespace LandmarkEmulator.WorldServer.Game
             [StoryTools.DiceRollProp] = new uint[] { 15, 16 },
             [StoryTools.DamageNodeProp] = new uint[] { 30, 32 },
             [StoryTools.FocusNodeProp] = new uint[] { 29 },
+            [StoryTools.RusticSignProp] = new uint[] { 25, 37 },
+            [StoryTools.FjordenBookOpenProp] = new uint[] { 25, 37 },
+            [StoryTools.FjordenBookClosedProp] = new uint[] { 25, 37 },
+            [StoryTools.GoldScrollProp] = new uint[] { 25, 37 },
             [StoryTools.StoryNodeProp] = new uint[] { 37, 24, 20, 21, 22 },
             ["spawner"] = new uint[] { 18, 19, 31 },
             ["flinger"] = new uint[] { 4, 5, 6 },

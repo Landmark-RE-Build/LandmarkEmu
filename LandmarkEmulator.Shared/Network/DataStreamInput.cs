@@ -1,4 +1,4 @@
-using LandmarkEmulator.Shared.Network.Cryptography;
+﻿using LandmarkEmulator.Shared.Network.Cryptography;
 using LandmarkEmulator.Shared.Network.Message.Model;
 using NLog;
 using System;
@@ -216,25 +216,8 @@ namespace LandmarkEmulator.Shared.Network
             return new List<byte[]> { data.ToArray() };
         }
 
-        private static uint ReadLengthStatic(ProtocolPacketReader reader)
-        {
-            var data = reader.GetRemainingData();
-            uint dataLength = reader.ReadByte();
-            if (dataLength == 0xFF)
-            {
-                if (data[0 + 1] == 0xFF && data[0 + 2] == 0xFF)
-                {
-                    reader.ReadUShort();
-                    dataLength = reader.ReadUInt();
-                }
-                else
-                {
-                    dataLength = reader.ReadUShort();
-                }
-            }
-
-            return dataLength;
-        }
+        /// <summary>The same variable length as MultiPacket sub-packets (see <see cref="Message.Model.MultiPacket"/>).</summary>
+        private static uint ReadLengthStatic(ProtocolPacketReader reader) => Message.Model.MultiPacket.ReadLength(reader);
 
         private uint ReadLength(ProtocolPacketReader reader) => ReadLengthStatic(reader);
 

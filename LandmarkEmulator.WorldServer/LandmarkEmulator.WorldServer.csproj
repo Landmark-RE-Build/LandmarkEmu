@@ -10,6 +10,11 @@
 	      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		  <TargetPath>Resources\%(RecursiveDir)\%(Filename)%(Extension)</TargetPath>
 	  </ContentWithTargetPath>
+	  <!-- Tint definitions (Game/ArtTints.cs): the login server's file, one copy for both servers. -->
+	  <ContentWithTargetPath Include="..\LandmarkEmulator.AuthServer\Resources\ArtTints.json">
+	      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		  <TargetPath>Resources\ArtTints.json</TargetPath>
+	  </ContentWithTargetPath>
   </ItemGroup>
 
   <ItemGroup>

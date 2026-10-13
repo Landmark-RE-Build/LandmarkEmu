@@ -1,4 +1,4 @@
-using LandmarkEmulator.Shared.Network;
+﻿using LandmarkEmulator.Shared.Network;
 using LandmarkEmulator.WorldServer.Network.Message;
 using LandmarkEmulator.WorldServer.Network.Message.Model;
 using NLog;
@@ -90,8 +90,10 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                 case CommandRequest.SelectPlayer:
                     break;
                 case CommandRequest.BuilderMode:
-                    // CommandPacketBuilderMode {u8 on} (FUN_1433bec40): the player entered or left build mode.
-                    // Informational; nothing to answer.
+                    // CommandPacketBuilderMode {u8 on} (FUN_1433bec40): the player entered or left build mode. The
+                    // client wants no answer; the held item is put away and brought back (Game.BuildModeHolster).
+                    if (request.Body.Length >= 1)
+                        Game.BuildModeHolster.BuildMode(session, request.Body[0] != 0);
                     break;
                 case CommandRequest.IgnoreRequest:
                     Game.Ignores.Handle(session, request.Body);
@@ -108,6 +110,7 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                     UseItem(session, new GamePacketReader(request.Body).ReadULong());
                     break;
                 default:
+                    Network.OpcodeStats.Unanswered("Command", request.SubOpcode);
                     log.Debug($"Unhandled command 0x{request.SubOpcode:X2}: {BitConverter.ToString(request.Body)}");
                     break;
             }

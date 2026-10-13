@@ -360,7 +360,16 @@ Full detail in [terrain.md](terrain.md).
     minimum corner is the origin), charges materials, records one undoable edit, answers a Response (sub 7,
     type 2), then TerrainCell sub 3 for every listed cell **before** sending the new voxels. The client holds the
     listed cells pending (and drops their updates) until it hears sub 3; a copy marks them pending too.
-- **0x0A ResponseObserved:** effect only.
+- **0x0A ResponseObserved (S→C)** `{u32 operation, double×4 min, double×4 max, u32×3 direction, bool}` (reader
+  FUN_1430b11e0, handler FUN_1430bbd60): another player's edit, effect only. Bounds are global VoxelFarm units (dm;
+  the client subtracts its scene origin and scales by 0.1), the w components are ignored. Operation → brush effect
+  (ModalToolBrushDefinitions BRUSH_TYPE): 0/2 placement (Stamp 4 when the bool is set, else FillStamp 11), 1 the
+  same as a box, 3 delete (2), 4 heal (1), 5 smooth (0), 6 paint (5). Direction is the placement's up axis (0,1,0 for
+  boxes); the bool picks ShapePlacement over ShapePlacementNoDestroy. A non-cubic box (or op 1) plays the box effect.
+  The server sends it after every applied edit to the other players within 100 m (the builder's client played it).
+  ApplyDiffRequest +0xe0 is the client's operation kind (1/2 box placement without/with an aimed cell, 3 any
+  sculpting brush, 4–9 other operations); it doesn't name the brush, so the server picks delete/paint/placement/
+  smooth from what the edit changed, and heal from the mask-only heal cells.
 - **Voxel ownership (Voxel Vision).** The site window's Voxel Vision button fires `GameEvents:OnOpenVoxelVision`;
   the Builder List widget calls Lua `VoxelOwnership.RequestAllCellsForClaim(site)` (FUN_14354c980), which works out
   the site's level-2 cells (16 m, 40³ voxels) itself.
@@ -382,7 +391,16 @@ Full detail in [terrain.md](terrain.md).
   - The client lists builders (FUN_143603e50: OwnerName, OwnerCharacterGuid, OwnedVoxelCount, OwnedVoxelPct,
     OwnerColor) and highlights each one's voxels. Server: `Game/Terrain/VoxelOwnership.cs`. Every edit's solid
     voxels become the builder's; air, heals, digs and site removal clear them.
-- **WorldEditing 0x010C:** cursor broadcasts (box/shape/selection) for other players' views.
+- **WorldEditing 0x010C (u32 sub, relayed):** the client sends its build cursor whenever it changes and draws other
+  players' cursors from the same packets (ClientWorldEditingEffectManager FUN_142fe3ae0, one effect per guid; it
+  does not skip its own guid, so the server must not echo). Wire: `u16 0x010C, u32 sub, u32 id`, then:
+  0 Clear `{u8 selection-only, u64 guid}` (0 removes everything for the guid), 1 Box `{vec4 min, vec4 max, string,
+  u64 guid}`, 2 Sphere `{vec3, f32 radius, string, u64 guid}`, 3 Shape `{4 × vec4 transform, u32, string, u64 guid}`,
+  4 Selection `{u32, 2 × vec4, string, u64 guid, u32}`, 5 PreviewSetup `{vec4, template records, vec4, string, u64
+  guid, byte array}`, 6 PreviewUpdate `{vec4, 4 × vec4, bool, string, u64 guid}`, 7 Fill `{u32 n × vec4, string,
+  u64 guid}`. The guid is the builder's character guid (BaseClient +0x32508). Server: `Game/WorldEditing.cs` relays
+  to players within 160 m, newest per builder at most every 100 ms, clears for viewers leaving range or when the
+  builder leaves, and drops packets whose guid is not the sender's.
 
 ### Designs (templates): TemplateBase 0xF0 (u8 sub)
 
@@ -470,7 +488,8 @@ Permission masks: No Touching 0, Play Around 0x003, Pillage & Plunder 0x007, Get
 
 | Sub | Dir | Name / layout |
 |---|---|---|
-| 2 | S→C | PropData (opens the placement session; needs the entity to exist first) |
+| 1 | C→S | PropAccess `{u64 prop, u64, u32}`: the prop tool picked a placed prop (FUN_142f15300); the client waits (+0x159) for sub 2 |
+| 2 | S→C | PropData (opens the placement / edit session; needs the entity to exist first). Also the answer to PropAccess: the data when the player may move the prop (owner, or Let's Decorate on its site), else success false with error 10 (no permission) or 13 (Play Mode) |
 | 3 | C→S | Save `{6 × vec4: position, rotation, scale, old position, …}` (repeated ~2/s while the gizmo is open) |
 | 4 | S→C | SaveReply `{u32 0, u64 guid}` |
 | 5 | C→S | PickUp `{u64 guid, u8}` |
@@ -690,8 +709,9 @@ The Spire menu's "Local Travel" (Lua `Teleport:ActivateLocalTravelMap`) switches
 
 ### 14.1 Client requests left unanswered on purpose (checked 2026-10-12)
 
-The server counts every received opcode (`opcode_stats.tsv`); `re/tools/coverage.py` compares those counts with the
-client's packet classes. Every request seen in play reaches a handler. Some are only logged or dropped, by design:
+The server counts every received opcode (`opcode_stats.tsv`), and every request that falls through to a handler's
+default branch (`OpcodeStats.Unanswered`); `re/tools/coverage.py` compares those counts with the client's packet
+classes and lists the default-branch hits as the runtime truth. Some requests are only logged or dropped, by design:
 
 | Request | When | Why there is no answer |
 |---|---|---|
@@ -699,7 +719,7 @@ client's packet classes. Every request seen in play reaches a handler. Some are 
 | InGamePurchase 0x46 type 2 (crafting Point-of-Need) | Crafting window "buy missing" | Opens a store URL in the client; no server reply known. |
 | Notifications 0x01 sub 2 AddNotification | The client queued an entry itself | Informational. |
 | Notifications 0x01 sub 1 ListNotifications | UI shutdown (logout / exit): the unanswered queue entries `{u32 n, n × Data}` | The server keeps invitations itself and resends a still-valid guild invitation at the next login (Guilds.Enter). |
-| ToolBase 0x117 sub 1, PlayerUpdate 0x6C, SocialShare 0x104, WorldEditing 0x10C | Tool switch, loading screen, sharing, build cursor | Informational; no reply expected. |
+| ToolBase 0x117 sub 1, PlayerUpdate 0x6C, SocialShare 0x104 | Tool switch, loading screen, sharing | Informational; no reply expected. (WorldEditing 0x10C used to be listed here; it is relayed to other players, §9.) |
 | ClaimsBase 0x19 | See §10 | Answered with SendAllClaimBasicInfo (sub 1); never with the AOI list. |
 
 ## Achievements (AchievementBase 0x92, u8 sub)

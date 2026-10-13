@@ -124,6 +124,17 @@ namespace LandmarkEmulator.Database.Auth
                 .SingleOrDefaultAsync(a => a.Username == username);
         }
 
+        /// <summary>Replaces an account's stored password verifier (an old-style value upgraded to an SRP verifier).</summary>
+        public async Task UpdateVerifier(AccountModel account, string verifier)
+        {
+            account.Verifier = verifier;
+
+            await using var context = new AuthContext(config);
+            EntityEntry<AccountModel> entity = context.Attach(account);
+            entity.Property(p => p.Verifier).IsModified = true;
+            await context.SaveChangesAsync();
+        }
+
         /// <summary>
         /// Update <see cref="AccountModel"/> with supplied server ticket asynchronously.
         /// </summary>

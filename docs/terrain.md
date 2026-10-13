@@ -40,8 +40,44 @@ Layers 0–3 are composited **on top of the client's own generated terrain**:
 - an air voxel (material 0) carves;
 - a solid voxel adds.
 
-So the server stores sparse *overlays* (`TerrainEdits`), one per edited cell, and persists them in
-`TerrainEdits/*.cell`.
+So the server stores sparse *overlays* (`TerrainEdits`), one per edited cell **and layer**, and persists them in
+`TerrainEdits/*.cell` (file name = the cell id with the layer in bits 56-57; layer-0 names are the plain cell id).
+
+### Layers (what each one is for)
+
+The client names them (FUN_143bb4ef0) and the captured live manifest uses them the same way:
+
+| Layer | Client name | What goes there | Live manifest |
+|---|---|---|---|
+| 0 | Cell Poi | Server world stamps: the Spire, outposts | 38,190 cells, levels 2-10 |
+| 1 | Cell Permanent | Player building on build sites | 11,162 cells, levels 2-10 |
+| 2 | Cell Timed Persistent | Digging outside build sites (heals after ~20 min), ore veins | 125,246 cells, levels 2-4 |
+| 3 | Cell Transient | Unused | none |
+
+- **The client keeps a player's own edits in layer 1.** It commits an edit of a level-2 cell into layer
+  `level - 1` (FUN_143f5d2c0) and, once the per-cell reply confirms it, writes its own copy of the cell to its disk
+  cache as layer 1 and updates its own manifest entry (HandleCellUpdateResponse FUN_143f52b60). Build edits must
+  therefore be stored in layer 1 on the server too: stored in layer 0, the client drew both copies after any refetch
+  (old shapes flickering in and out).
+- **A CellsUpdate must carry every layer.** Layers missing from the packet keep the client's old copy
+  (FUN_143f5ce70 → FUN_143f1af90), so the server always sends layers 0-2, empty where it has nothing.
+- **Requests carry the client's held versions** (4 × u32 per cell, FUN_143f56980): when they match, the answer is
+  UpToDateCells; a layer the client holds that the server doesn't is sent back empty.
+- **Layer version = CRC32** (FUN_142ac1800) of the layer compressed by CompressBlockData (FUN_143f85d50, level 6);
+  the server uses its own counters, so a builder re-downloads their own cells once per login.
+- **Busy client.** A cell with an unconfirmed edit that receives server data, or whose per-cell reply says
+  "not ok", is flagged; while any cell is flagged the build tool drops new edits (ClientConstructionManager
+  FUN_1430b4e90 → FUN_143f532e0) until the server's data for it arrives. So nothing is pushed to the builder for
+  their own edits, and every edit cell gets a reply.
+
+### Coarse levels (`TerrainLod.cs`)
+
+The client draws distant terrain from coarser cells (level L+1 = twice the edge). Without server copies there it
+generates the original ground: walls appeared only up close and dug terrain floated (2026-10-13). Copies are made per
+layer (layers 0/1 to level 6, layer 2 to level 4) with VoxelFarm's octree rule (VoxelFarm::updateBlockLOD,
+FUN_142a15480, compiled into the client but not called): a parent voxel takes the solid/air state and material of the
+child at its corner, and its vertex from the surface inside its 2×2×2 children (VoxelFarm solves a QEF; the mass point
+of the children's vertices is used). WorldServer.json `TerrainLodCopies` (default on).
 
 **Memory.**
 - An expanded cell is 384 KB: flags 64,000 B, u16 materials 128,000 B, 3-byte offsets 192,000 B.

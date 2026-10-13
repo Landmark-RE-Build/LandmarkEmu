@@ -249,6 +249,7 @@ namespace LandmarkEmulator.WorldServer.Game
                         SetAppData(session, body);
                         break;
                     default:
+                        Network.OpcodeStats.Unanswered("Guilds 0x83", sub);
                         log.Debug($"Guild packet 0x{sub:X2} from {session.CharacterName}: {BitConverter.ToString(body)}");
                         break;
                 }

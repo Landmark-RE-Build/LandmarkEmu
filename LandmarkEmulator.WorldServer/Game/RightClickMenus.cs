@@ -1,9 +1,10 @@
-using LandmarkEmulator.Shared.Network;
+﻿using LandmarkEmulator.Shared.Network;
 using LandmarkEmulator.WorldServer.Network;
 using LandmarkEmulator.WorldServer.Network.Message;
 using NLog;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace LandmarkEmulator.WorldServer.Game
 {
@@ -26,8 +27,7 @@ namespace LandmarkEmulator.WorldServer.Game
         // (button id, sort order) per request type, from RadialMenuButtons.txt (sort order = its BUTTON column).
         private static readonly Dictionary<uint, (uint Id, uint Order)[]> menus = new()
         {
-            // 1: a prop in the world (request type 1 with a prop's guid). Adjust 2, reposition 55, pick up 17, delete 3.
-            [1] = new[] { (2u, 5u), (55u, 4u), (17u, 8u), (3u, 10u) },
+            // 1: a prop in the world (request type 1 with a prop's guid): built per prop by PropMenu.
             // 2: a name in the Friends window. Group invite 24, remove friend 16, travel to 23, guild invite 58, tell 65.
             [2] = new[] { (24u, 0u), (16u, 1u), (23u, 2u), (58u, 6u), (65u, 7u) },
             // 3: another player (request type 1 with a player's guid). Group invite 21, trade 19, add friend 15,
@@ -55,14 +55,15 @@ namespace LandmarkEmulator.WorldServer.Game
             ulong target = BitConverter.ToUInt64(body, 0);
             uint type = BitConverter.ToUInt32(body, 8);
             // Request type 1 is any entity in the world: the menu depends on what it is. Another player gets the player
-            // menu; a placed prop the player may edit gets the prop menu; anything else (trees, plants, creatures, the
-            // Spire, someone else's props) gets none, as on live, where world objects had no right-click menu.
+            // menu; a placed prop the player may edit gets the prop menu, but only in build mode (editing tools belong
+            // to build mode; user request 2026-10-13); anything else (trees, plants, creatures, the Spire, someone
+            // else's props) gets none, as on live, where world objects had no right-click menu.
             uint menu = type;
             if (type == 1)
                 menu = PlayerManager.FindByGuid(target) is WorldSession other && other != session ? 3u
-                    : Props.CanEdit(session, target) ? 1u : 0u;
-            menus.TryGetValue(menu, out var buttons);
-            buttons ??= Array.Empty<(uint, uint)>();
+                    : BuildModeHolster.InBuildMode(session) && Props.CanEdit(session, target) ? 1u : 0u;
+            (uint Id, uint Order)[] buttons = menu == 1 ? PropMenu(target)
+                : menus.TryGetValue(menu, out var fixedButtons) ? fixedButtons : Array.Empty<(uint, uint)>();
 
             var output = new List<byte>();
             var w = new GamePacketWriter(output);
@@ -78,6 +79,28 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             w.Write(type);
             session.EnqueueMessage(ZoneMessageOpcode.HudManagerBase, output.ToArray());
+        }
+
+        /// <summary>
+        /// The prop menu (RadialMenuButtons.txt menu type 1; sort order in brackets): Script 63 (0) for story-tool props
+        /// (Prop.SetupScript), Settings 56 (1) for props with settings (Prop.SetupObject, PropSettings), Light on 73 (2) /
+        /// off 70 (3) for props with an on/off state (Prop.SetPropEnable; whichever applies), Reposition 55 (4), Adjust 2
+        /// (5), Duplicate 18 (7), Pick up 17 (8), Delete 3 (10). Disassemble 64 (9) is left out: it is pick-up / delete
+        /// under another name and live used it for no prop we know of.
+        /// </summary>
+        private static (uint Id, uint Order)[] PropMenu(ulong guid)
+        {
+            var buttons = new List<(uint, uint)> { (55u, 4u), (2u, 5u), (18u, 7u), (17u, 8u), (3u, 10u) };
+            if (Props.Find(guid) is not Props.PlacedProp prop)
+                return buttons.ToArray();
+            StoryTools.Kind kind = StoryTools.KindOf(prop.PropId);
+            if (kind != null)
+                buttons.Add((63u, 0u));
+            if (PropSettings.SettingsOf(prop.PropId).Count > 0)
+                buttons.Add((56u, 1u));
+            if (PropEffects.HasEffect(prop.PropId) || kind?.Toggle == true)
+                buttons.Add(prop.Disabled ? (73u, 2u) : (70u, 3u));
+            return buttons.OrderBy(b => b.Item2).ToArray();
         }
     }
 }

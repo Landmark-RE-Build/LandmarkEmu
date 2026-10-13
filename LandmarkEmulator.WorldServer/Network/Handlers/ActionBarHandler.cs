@@ -44,6 +44,7 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
             }
             if (request.SubOpcode != ActionManagerRequest.SetSlot || request.Body.Length < 20)
             {
+                Network.OpcodeStats.Unanswered("ActionBar", request.SubOpcode);
                 log.Debug($"Unhandled action bar request {request.SubOpcode} ({request.Body.Length} bytes).");
                 return;
             }

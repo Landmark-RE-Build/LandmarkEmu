@@ -752,6 +752,47 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <summary>Customize your Build Site name (Your Home Is Your Castle).</summary>
         public const uint CustomizeSiteName = 841;
 
+        public const byte GlobalAnnounceSub = 0x0F;
+
+        /// <summary>
+        /// Capstone titles the whole server hears about: title item → its announcement text (the texts follow the title
+        /// names in the client's table, 575528-575537 and 575546). Which achievement gives which title comes from the
+        /// live AchievementInitialize capture's reward bundles: 510 → the Dramatic (3900), 526 You Blockhead → Blockhead
+        /// (3901), 542 All The Things → the Collector (3902), 566 It's ...ALIVE! → the Creator (3907), 595 Slayer of All
+        /// the Things → Warmaster (3915), 618 There Can Be Only One → Elementalist (3923), 645 → Researcher (3927),
+        /// 655 Ridiculously Good Outfits → Fashion Mogul (3928), 685 Becoming a Luminary → Luminary (3929). Deforester
+        /// (3926, "finally got enough burled wood!") has no achievement in the 0.589 data but is listed for completeness;
+        /// 575535 "has obtained the unobtainable!" belongs to Treasure Hunter or Strip Miner (neither awarded in 0.589).
+        /// </summary>
+        private static readonly Dictionary<uint, uint> AnnouncedTitles = new()
+        {
+            [3900] = 575528, [3901] = 575529, [3902] = 575530, [3907] = 575531, [3915] = 575532, [3923] = 575533,
+            [3926] = 575534, [3927] = 575536, [3928] = 575537, [3929] = 575546,
+        };
+
+        /// <summary>
+        /// GlobalAnnounce (0x0F, reader FUN_142d8a7b0: {u32 achievement, u32 text, name block {u32 x 3, string first,
+        /// string last}, u64 player}) to everyone online: the client fills [*player*] with the name and prints the line
+        /// on the System channel in the announcement colour and as an on-screen message (FUN_142d921c0).
+        /// </summary>
+        private static void Announce(WorldSession player, Achievement a, uint textId)
+        {
+            byte[] packet = Build(GlobalAnnounceSub, w =>
+            {
+                w.Write(a.Id);
+                w.Write(textId);
+                w.Write(0u);
+                w.Write(0u);
+                w.Write(0u);
+                w.Write(player.CharacterName ?? "");
+                w.Write("");
+                w.Write(player.PlayerGuid);
+            });
+            foreach (WorldSession session in PlayerManager.Snapshot())
+                session.EnqueueMessage(ZoneMessageOpcode.AchievementBase, packet);
+            log.Info($"Announced {player.CharacterName}'s achievement {a.Id} (text {textId}) to everyone.");
+        }
+
         /// <summary>An achievement is done: tell the client, give the reward items, start the next Getting Started goal.</summary>
         private static void Complete(WorldSession session, Achievement a, List<CharacterObjectiveModel> saves)
         {
@@ -761,6 +802,9 @@ namespace LandmarkEmulator.WorldServer.Game
             foreach ((uint item, uint count) in a.Rewards)
                 session.GiveItem(item, Math.Max(count, 1));
             log.Info($"{session.CharacterName} completed achievement {a.Id}.");
+            foreach ((uint item, _) in a.Rewards)
+                if (AnnouncedTitles.TryGetValue(item, out uint announce))
+                    Announce(session, a, announce);
 
             int chain = Array.IndexOf(GettingStarted, a.Id);
             if (chain < 0 || chain + 1 >= GettingStarted.Length || Get(GettingStarted[chain + 1]) is not Achievement next)

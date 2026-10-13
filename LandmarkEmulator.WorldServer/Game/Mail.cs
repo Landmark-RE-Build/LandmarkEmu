@@ -1,4 +1,4 @@
-using LandmarkEmulator.Database.Character.Model;
+﻿using LandmarkEmulator.Database.Character.Model;
 using LandmarkEmulator.Shared.Database;
 using LandmarkEmulator.Shared.Network;
 using LandmarkEmulator.WorldServer.Network;
@@ -36,7 +36,7 @@ namespace LandmarkEmulator.WorldServer.Game
         /// 0xD user has too much mail in inbox, 0xE user has sent too many mail messages, 0x14 message not found.
         /// </summary>
         private const uint Success = 0, UserNotFound = 1, SelfWithAttachment = 2, AttachmentInvalid = 5,
-            ItemGone = 7, MultipleWithAttachment = 0xB, TooManyAttachments = 0xC, InboxFull = 0xD, SentTooMany = 0xE,
+            ItemGone = 7, NoTradeItem = 0xA, ChestWithItems = 0x12, IgnoredByTarget = 0xF, MultipleWithAttachment = 0xB, TooManyAttachments = 0xC, InboxFull = 0xD, SentTooMany = 0xE,
             MessageNotFound = 0x14, AttachmentNotFound = 0x1A, InsufficientFunds = 6, CurrencyFull = 0x1E,
             MustPayCodFirst = 0x1F, InsufficientFundsForCod = 0x20;
 
@@ -101,6 +101,7 @@ namespace LandmarkEmulator.WorldServer.Game
                         TakeAttachments(session, reader.ReadULong(), reader.ReadULong());
                         break;
                     default:
+                        Network.OpcodeStats.Unanswered("Mail", request.SubOpcode);
                         log.Debug($"Unhandled mail request 0x{request.SubOpcode:X2}: {BitConverter.ToString(request.Body)}");
                         break;
                 }
@@ -239,6 +240,12 @@ namespace LandmarkEmulator.WorldServer.Game
                     Reply(session, UserNotFound, name);
                     return;
                 }
+                // "user is being ignored by target" (the recipient's ignore list is known while they are online).
+                if (Ignores.Ignoring(PlayerManager.FindByGuid(character.Id), session))
+                {
+                    Reply(session, IgnoredByTarget, name);
+                    return;
+                }
                 recipients.Add(character);
             }
 
@@ -263,6 +270,16 @@ namespace LandmarkEmulator.WorldServer.Game
                     if (item == null || count == 0 || count > item.Count)
                     {
                         Reply(session, ItemGone);
+                        return;
+                    }
+                    if (Inventory.ItemDefinitionManager.Get(item.ItemDefinitionId) is { NoTrade: true })
+                    {
+                        Reply(session, NoTradeItem);
+                        return;
+                    }
+                    if (Chests.HasItems(item.Id))
+                    {
+                        Reply(session, ChestWithItems);
                         return;
                     }
                     items.Add((item.ItemDefinitionId, count));
@@ -600,6 +617,11 @@ namespace LandmarkEmulator.WorldServer.Game
                 if (BitConverter.ToUInt32(body, 0) != 1 || item == null || count == 0 || count > item.Count
                     || container == Inventory.Inventory.EquippedContainer || item.ItemDefinitionId == DesignItems.PlayerDesignItem)
                     result = AttachmentInvalid;
+                // The client's own reasons: "can't send NO_TRADE item", "can't send chest item (with items in it)".
+                else if (Inventory.ItemDefinitionManager.Get(item.ItemDefinitionId) is { NoTrade: true })
+                    result = NoTradeItem;
+                else if (Chests.HasItems(item.Id))
+                    result = ChestWithItems;
             }
             else
                 result = AttachmentInvalid;

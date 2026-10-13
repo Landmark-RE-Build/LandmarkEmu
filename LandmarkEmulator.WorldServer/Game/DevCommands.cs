@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using LandmarkEmulator.WorldServer.Network;
 using LandmarkEmulator.WorldServer.Network.Message;
 using NLog;
@@ -33,26 +33,40 @@ namespace LandmarkEmulator.WorldServer.Game
         /// Runs the commands written to dev_commands.txt (checked at most once a second, then emptied) for every player
         /// online. One command per line; lines starting with # are ignored.
         /// </summary>
+        /// <summary>Commands from the admin page (<see cref="Admin"/>), run with the file's on the next tick.</summary>
+        private static readonly System.Collections.Concurrent.ConcurrentQueue<string> queued = new();
+
+        /// <summary>Queues one command line ("@Name command" for one player, else everyone).</summary>
+        public static void Enqueue(string line) => queued.Enqueue(line);
+
         public static void Update(IEnumerable<WorldSession> players)
         {
-            if ((DateTime.UtcNow - lastCheck).TotalSeconds < 1)
+            var fromQueue = new List<string>();
+            while (queued.TryDequeue(out string q))
+                fromQueue.Add(q);
+            if (fromQueue.Count == 0 && (DateTime.UtcNow - lastCheck).TotalSeconds < 1)
                 return;
-            lastCheck = DateTime.UtcNow;
-            if (!File.Exists(path))
-                return;
-
-            string[] lines;
-            try
+            string[] lines = Array.Empty<string>();
+            if ((DateTime.UtcNow - lastCheck).TotalSeconds >= 1)
             {
-                lines = File.ReadAllLines(path);
-                if (lines.Length == 0)
-                    return;
-                File.WriteAllText(path, "");
+                lastCheck = DateTime.UtcNow;
+                if (File.Exists(path))
+                {
+                    try
+                    {
+                        lines = File.ReadAllLines(path);
+                        if (lines.Length > 0)
+                            File.WriteAllText(path, "");
+                    }
+                    catch (IOException)
+                    {
+                        lines = Array.Empty<string>();
+                    }
+                }
             }
-            catch (IOException)
-            {
+            lines = lines.Concat(fromQueue).ToArray();
+            if (lines.Length == 0)
                 return;
-            }
 
             List<WorldSession> everyone = players.ToList();
             foreach (string raw in lines)
@@ -292,6 +306,11 @@ namespace LandmarkEmulator.WorldServer.Game
                                 foreach (WorldSession session in targets)
                                     Achievements.Progress(session, uint.Parse(o[0]), amount);
                             }
+                            break;
+                        case "achreset":
+                            // achreset <achievement id>: back to not started (tests that complete an achievement).
+                            foreach (WorldSession session in targets)
+                                Achievements.ResetObjectives(session.PlayerGuid, uint.Parse(parts[1]), 0);
                             break;
                         case "rezonecave":
                             // rezonecave: test only. A random cavern through Teleport.Rezone (ClientBeginZoning).
@@ -600,6 +619,34 @@ namespace LandmarkEmulator.WorldServer.Game
                             }
                             break;
                         }
+                        case "vertexonly":
+                            // vertexonly on|off: keep the vertex-only voxels of client build diffs (round surfaces).
+                            Terrain.BlockData.KeepVertexOnly = parts.Length > 1 && parts[1].Trim() == "on";
+                            log.Info($"Vertex-only voxels from build diffs: {(Terrain.BlockData.KeepVertexOnly ? "kept" : "dropped")}.");
+                            break;
+                        case "observed":
+                            // observed <operation> [size m]: sends the player a ResponseObserved (another player's edit
+                            // effect, Building.SendObserved) for a box of that size 3 m in front of their feet.
+                            foreach (WorldSession session in targets)
+                            {
+                                string[] a = parts.Length > 1 ? parts[1].Trim().Split(' ') : Array.Empty<string>();
+                                uint op = a.Length > 0 && uint.TryParse(a[0], out uint o) ? o : 0;
+                                double size = a.Length > 1 && double.TryParse(a[1], System.Globalization.NumberStyles.Float,
+                                    System.Globalization.CultureInfo.InvariantCulture, out double m) ? m * 10 : 20;
+                                double x = session.Position.X * 10 + 30, y = session.Position.Y * 10, z = session.Position.Z * 10;
+                                Building.SendObserved(new[] { session }, op, (x, y, z), (x + size, y + size, z + size));
+                                log.Info($"Sent {session.CharacterName} ResponseObserved {op} ({size / 10} m box).");
+                            }
+                            break;
+                        case "lodbuild":
+                            // lodbuild: refreshes the coarse copies of the edits on the player's landscape now
+                            // (Terrain.TerrainLod; normally automatic once edits have been quiet for 20 s).
+                            foreach (WorldSession session in targets)
+                            {
+                                Terrain.TerrainLod.RefreshNow(session.ZoneId);
+                                break;
+                            }
+                            break;
                         case "tpclaim":
                             // tpclaim: to the middle of the player's own build site.
                             foreach (WorldSession session in targets)
@@ -814,6 +861,21 @@ namespace LandmarkEmulator.WorldServer.Game
                                 Props.SetText(session, Convert.ToUInt64(a[0], 16), a.Length > 1 ? a[1] : "");
                             break;
                         }
+                        case "propname":
+                        {
+                            // propname <prop hex> <name>: as the prop menu's rename (PropBase 0x19).
+                            string[] a = parts[1].Split(' ', 2);
+                            foreach (WorldSession session in targets)
+                                Props.SetName(session, Convert.ToUInt64(a[0], 16), a.Length > 1 ? a[1] : "");
+                            break;
+                        }
+                        case "propshowtext":
+                        {
+                            // propshowtext <prop hex> <mode> [seconds]: shows a prop's text as Links would (Props.DisplayText).
+                            string[] a = parts[1].Split(' ');
+                            Props.DisplayText(Convert.ToUInt64(a[0], 16), uint.Parse(a[1]), a.Length > 2 ? uint.Parse(a[2]) : 5);
+                            break;
+                        }
                         case "propset":
                         {
                             // propset <prop hex> <setting key> <value>: as the prop's settings window.
@@ -847,6 +909,27 @@ namespace LandmarkEmulator.WorldServer.Game
                                 log.Info($"gamepoint ({session.CharacterName}): {text}");
                             }
                             break;
+                        case "sysmsg":
+                        {
+                            // sysmsg id <text id> [name=value ...] | sysmsg key <key or text> | sysmsg chan7 <text>:
+                            // PacketShowSystemMessage / a channel-7 chat line, to compare what the client shows.
+                            string[] a = parts[1].Split(' ', 2);
+                            foreach (WorldSession session in targets)
+                            {
+                                if (a[0] == "id")
+                                {
+                                    string[] f = a[1].Split(' ');
+                                    var ps = f.Skip(1).Select(x => x.Split('=', 2)).Where(x => x.Length == 2).Select(x => (x[0], x[1])).ToArray();
+                                    SystemMessages.Show(session, uint.Parse(f[0]), ps);
+                                }
+                                else if (a[0] == "key")
+                                    SystemMessages.ShowKey(session, a[1]);
+                                else
+                                    Chat.SystemChannel(session, a[1]);
+                                log.Info($"sysmsg {parts[1]} sent to {session.CharacterName}.");
+                            }
+                            break;
+                        }
                         case "contestphase":
                             // contestphase <id> entries|voting|judging: moves a contest's dates so it is in that phase now.
                             {
@@ -1278,6 +1361,14 @@ namespace LandmarkEmulator.WorldServer.Game
                             foreach (WorldSession session in targets)
                                 Health.DevRevive(session);
                             break;
+                        case "reviveby":
+                            // reviveby <dead player>: as if the player cast the revive (246) at them (the 0.589 UI
+                            // can't reach that cast; see Health.ReviveBy).
+                            if (parts.Length >= 2)
+                                foreach (WorldSession session in targets)
+                                    Health.ReviveBy(session, PlayerManager.Snapshot().FirstOrDefault(p =>
+                                        string.Equals(p.CharacterName, parts[1], StringComparison.OrdinalIgnoreCase)));
+                            break;
                         case "god":
                             // god on|off: the player takes no damage (tests with hostile creatures).
                             foreach (WorldSession session in targets)
@@ -1356,6 +1447,67 @@ namespace LandmarkEmulator.WorldServer.Game
                             // propcost <prop id>: what placing the prop costs this player.
                             foreach (WorldSession session in targets)
                                 log.Info(Props.DescribeCost(session, uint.Parse(parts[1])));
+                            break;
+                        case "propmove":
+                        {
+                            // propmove <guid hex> dx dy dz: opens an edit session on a placed prop (PropAccess) and saves
+                            // it moved by the offset, as the placement gizmo does (tests prop-move undo).
+                            string[] a = parts[1].Split(' ');
+                            ulong guid = Convert.ToUInt64(a[0], 16);
+                            foreach (WorldSession session in targets)
+                            {
+                                Props.PlacedProp prop = Props.Find(guid);
+                                if (prop == null)
+                                    break;
+                                Props.Access(session, guid);
+                                var body = new List<byte>();
+                                var w = new LandmarkEmulator.Shared.Network.GamePacketWriter(body);
+                                w.Write(0u);
+                                w.Write((byte)0);
+                                w.Write(guid);
+                                w.Write(0u);
+                                var to = prop.Spawn.Position + new System.Numerics.Vector4(float.Parse(a[1]), float.Parse(a[2]), float.Parse(a[3]), 0f);
+                                foreach (var v in new[] { to, prop.Spawn.Rotation, prop.Spawn.Scale, prop.Spawn.Position, prop.Spawn.Rotation, prop.Spawn.Scale })
+                                {
+                                    w.Write(v.X);
+                                    w.Write(v.Y);
+                                    w.Write(v.Z);
+                                    w.Write(v.W);
+                                }
+                                w.Write((byte)0);
+                                w.Write(0ul);
+                                w.Write((byte)0);
+                                Props.Save(session, body.ToArray());
+                            }
+                            break;
+                        }
+                        case "giveprop":
+                            // giveprop <prop id>: one item that places that prop.
+                            foreach (WorldSession session in targets)
+                                if (Inventory.ItemDefinitionManager.ItemsForProp(uint.Parse(parts[1])).FirstOrDefault() is { } item)
+                                {
+                                    session.GiveItem(item.Id, 1);
+                                    log.Info($"Gave {session.CharacterName} item {item.Id} for prop {parts[1]}.");
+                                }
+                            break;
+                        case "copyhere":
+                            // copyhere <voxels>: copies the props in a box of that many voxels around the player (Building.DevCopy).
+                            foreach (WorldSession session in targets)
+                                log.Info($"{session.CharacterName}'s clipboard holds {Building.DevCopy(session, uint.Parse(parts[1]))} prop(s).");
+                            break;
+                        case "pasteat":
+                        {
+                            // pasteat dx dy dz: pastes the clipboard with its corner at that offset from the player.
+                            string[] a = parts[1].Split(' ');
+                            foreach (WorldSession session in targets)
+                                Building.DevPaste(session, session.Position + new System.Numerics.Vector3(float.Parse(a[0]), float.Parse(a[1]), float.Parse(a[2])));
+                            break;
+                        }
+                        case "undo":
+                        case "redo":
+                            // undo / redo: as Ctrl+Z / Ctrl+Y (VoxelConstruction sub 3).
+                            foreach (WorldSession session in targets)
+                                Building.Handle(session, Building.UndoRedoSub, BitConverter.GetBytes(parts[0] == "redo" ? 1u : 0u));
                             break;
                         case "prop":
                             string[] p = parts[1].Split(' ');

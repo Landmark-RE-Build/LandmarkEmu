@@ -50,6 +50,11 @@ namespace LandmarkEmulator.WorldServer.Game.Inventory
             /// <summary>Quality (RefItemQuality.txt: 0 common … 3, 4); colours the name and sets the cost multiplier.</summary>
             public uint Quality { get; init; }
             /// <summary>
+            /// NO_TRADE (first flag byte bit 7, client definition +0x0C: tooltip "UI.Tooltip.NoTrade", Lua NoTrade): Lumens,
+            /// Build Site Flags, store expansions, titles, founder pickaxes...
+            /// </summary>
+            public bool NoTrade { get; init; }
+            /// <summary>
             /// The definition exactly as in the definitions packet (u16 compressed size, u16 decompressed size, LZ4
             /// block). Tooltips carry it back to the client, which decompresses it (FUN_142b800a0).
             /// </summary>
@@ -107,7 +112,8 @@ namespace LandmarkEmulator.WorldServer.Game.Inventory
         {
             var reader = new GamePacketReader(item);
             uint id = reader.ReadUInt();
-            reader.ReadByte(); reader.ReadByte(); reader.ReadByte();
+            byte flags0 = reader.ReadByte();
+            reader.ReadByte(); reader.ReadByte();
             uint nameId = reader.ReadUInt();
             uint descriptionId = reader.ReadUInt();
             uint imageSetId = reader.ReadUInt();
@@ -149,7 +155,7 @@ namespace LandmarkEmulator.WorldServer.Game.Inventory
             {
                 Id = id, NameId = nameId, DescriptionId = descriptionId, ImageSetId = imageSetId, Categories = categories, EquipSlotId = equipSlot, MaxStack = maxStack,
                 ModelFile = model, TintAlias = tintAlias, Abilities = abilities, PropId = u35[3],
-                DurabilitySet = afterQuality[4], Quality = quality, AmbientEffect = u14[3]
+                DurabilitySet = afterQuality[4], Quality = quality, AmbientEffect = u14[3], NoTrade = (flags0 & 0x80) != 0
             };
         }
 

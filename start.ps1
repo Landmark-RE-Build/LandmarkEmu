@@ -1,25 +1,28 @@
-﻿# LandmarkEmu launcher: run start.bat.
+﻿# LandmarkEmu launcher for the PC that runs the servers: run start.bat. (Players on other PCs use play.bat.)
 #
 # First run: asks where Landmark (the 0.589 client) is installed and for an account name / password, then sets
 # everything up once — builds the servers, creates the database user, fills gameData from the game's own data tables,
 # writes the server configs and creates your account — and saves the answers in launcher-settings.json.
-# Every run after that: starts MariaDB's servers check, the auth and world servers, logs in and starts the game.
+# Every run: applies server.ini (see below), starts the auth and world servers, logs in and starts the game.
+#
+# server.ini (made on the first run, next to start.bat) holds what a host may want to change, e.g.
+#   ServerAddress=192.168.1.20     the address players on OTHER PCs reach this PC on; empty = this PC only
+# Edit it and run start.bat again (stop the servers first so they restart with it).
 #
 #   start.bat               set up (first time) and play
 #   start.bat -NoGame       servers only
 #   start.bat -Setup        run the first-time setup again (e.g. the game moved)
-# Unattended setup: -GamePath <folder> -Account <name> -Password <pw> [-DbRootPassword <pw>] [-KeepClientConfig]
-param([switch]$NoGame, [switch]$Setup, [string]$GamePath, [string]$Account, [string]$Password,
-      [string]$DbRootPassword, [switch]$KeepClientConfig)
+# Unattended setup: -GamePath <folder> -Account <name> -Password <pw> [-DbRootPassword <pw>]
+param([switch]$NoGame, [switch]$Setup, [string]$GamePath, [string]$Account, [string]$Password, [string]$DbRootPassword)
 $ErrorActionPreference = 'Stop'
 $rootPasswordGiven = $PSBoundParameters.ContainsKey('DbRootPassword')   # an empty one counts
 
 $root         = $PSScriptRoot
 $settingsFile = Join-Path $root 'launcher-settings.json'
+$serverIni    = Join-Path $root 'server.ini'
 $gameData     = Join-Path $root 'gameData'
 $dbUser       = 'lmemu_local'
-
-function Say([string]$text, [string]$color = 'Gray') { Write-Host $text -ForegroundColor $color }
+. (Join-Path $root 'launcher-common.ps1')
 
 function Wait-Port([int]$port, [string]$proto, [int]$seconds = 90) {
     $deadline = (Get-Date).AddSeconds($seconds)
@@ -56,27 +59,78 @@ function Find-Build([string]$name) {
     return $null
 }
 
-function Test-GameFolder([string]$path) {
-    return $path -and (Test-Path (Join-Path $path 'Landmark64.exe')) -and (Test-Path (Join-Path $path 'Resources'))
+function New-Password { -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 24 | ForEach-Object { [char]$_ }) }
+
+# server.ini: "Key=Value" lines, '#' comments. Written with explanations the first time.
+function Read-ServerIni {
+    if (-not (Test-Path $serverIni)) {
+        @(
+            '# LandmarkEmu server settings. Edit, then run start.bat again (close the two server windows first).',
+            '#',
+            '# ServerAddress: the address players on OTHER PCs use to reach this PC, e.g. its network address',
+            '# (192.168.1.20; "ipconfig" shows it as IPv4 Address), a VPN address (Tailscale / ZeroTier) or a host name.',
+            '# Leave it empty to play on this PC only. Players then run play.bat and enter the same address.',
+            '# Logins never send the password (SRP); the game traffic itself is not encrypted, so over the internet a VPN is safer.',
+            'ServerAddress=',
+            '#',
+            '# Admins: more account names (comma-separated) that get the in-game admin menu (type /admin in chat).',
+            '# Your own account (the one start.bat logs in with) is always an admin.',
+            'Admins='
+        ) | Set-Content $serverIni -Encoding UTF8
+    }
+    $ini = @{}
+    foreach ($line in Get-Content $serverIni) {
+        if ($line -match '^\s*([A-Za-z]+)\s*=\s*(.*?)\s*$') { $ini[$Matches[1]] = $Matches[2] }
+    }
+    return $ini
 }
 
-function New-Password { -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 24 | ForEach-Object { [char]$_ }) }
+# Writes the network part of server.ini into the server configs. This PC only: everything on 127.0.0.1. Hosting:
+# listen on every network card, send clients the address as the world server (AuthServer WorldAddress; without it a
+# remote client loads the world from its own PC and stops on the loading screen) and as the store pages' address.
+function Set-ServerNetwork([string]$address) {
+    $listen = if ($address) { '0.0.0.0' } else { '127.0.0.1' }
+    $authFile = Join-Path (Find-Build 'AuthServer') 'AuthServer.json'
+    $worldFile = Join-Path (Find-Build 'WorldServer') 'WorldServer.json'
+    $auth = Get-Content $authFile -Raw | ConvertFrom-Json
+    $world = Get-Content $worldFile -Raw | ConvertFrom-Json
+    $auth.Network.Host = $listen
+    $auth.WebApi.BaseURI = "http://${listen}:5000"
+    $auth | Add-Member -Force NoteProperty WorldAddress $address
+    $world.Network.Host = $listen
+    $world | Add-Member -Force NoteProperty WebPagesHost $listen
+    $world | Add-Member -Force NoteProperty WebPagesUrl $(if ($address) { "http://${address}:19001" } else { 'http://127.0.0.1:19001' })
+    $auth | ConvertTo-Json -Depth 5 | Set-Content $authFile -Encoding UTF8
+    $world | ConvertTo-Json -Depth 5 | Set-Content $worldFile -Encoding UTF8
+
+    if (-not $address) { return }
+    # Firewall: login (UDP 20042), world (UDP 19000), account / login service (TCP 5000), store pages (TCP 19001).
+    $rule = & netsh advfirewall firewall show rule name=LandmarkEmu-UDP 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not ($rule -match 'LandmarkEmu-UDP')) {
+        $yes = Read-Host 'Open the server ports in Windows Firewall (UDP 20042, 19000; TCP 5000, 19001)? Windows will ask for permission [Y/n]'
+        if ($yes -notmatch '^[nN]') {
+            $rules = "netsh advfirewall firewall add rule name=LandmarkEmu-UDP dir=in action=allow protocol=UDP localport=20042,19000; " +
+                     "netsh advfirewall firewall add rule name=LandmarkEmu-TCP dir=in action=allow protocol=TCP localport=5000,19001"
+            Start-Process powershell -Verb RunAs -Wait -ArgumentList "-NoProfile -Command $rules"
+        }
+    }
+    Say "Hosting for other PCs at ${address}: players run play.bat and enter ${address}." 'Cyan'
+}
+
+# The in-game admin menu (WorldServer.json Admins): this PC's own account plus the names in server.ini.
+function Set-ServerAdmins([string]$list, [string]$own) {
+    $names = @($own) + @(($list -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }) | Select-Object -Unique
+    $worldFile = Join-Path (Find-Build 'WorldServer') 'WorldServer.json'
+    $world = Get-Content $worldFile -Raw | ConvertFrom-Json
+    $world | Add-Member -Force NoteProperty Admins @($names)
+    $world | ConvertTo-Json -Depth 5 | Set-Content $worldFile -Encoding UTF8
+}
 
 function Invoke-Setup {
     Say "`n=== LandmarkEmu first-time setup ===`n" 'Cyan'
 
     # 1. The game.
-    $guesses = @('C:\Program Files (x86)\Steam\steamapps\common\Landmark', 'C:\Program Files\Steam\steamapps\common\Landmark') +
-        (Get-PSDrive -PSProvider FileSystem | ForEach-Object { Join-Path $_.Root 'SteamLibrary\steamapps\common\Landmark' })
-    $found = $guesses | Where-Object { Test-GameFolder $_ } | Select-Object -First 1
-    $game = $null
-    if ($GamePath) { if (Test-GameFolder $GamePath) { $game = $GamePath } else { throw "No Landmark64.exe / Resources in '$GamePath'." } }
-    while (-not $game) {
-        $prompt = if ($found) { "Landmark folder [$found]" } else { 'Landmark folder (the one with Landmark64.exe)' }
-        $answer = (Read-Host $prompt).Trim('" ')
-        $game = if ($answer) { $answer } else { $found }
-        if (-not (Test-GameFolder $game)) { Say "  No Landmark64.exe / Resources in '$game'." 'Yellow'; $game = $null }
-    }
+    $game = Select-GameFolder $GamePath
 
     # 2. Tools the setup needs.
     try { $sdk = (& dotnet --list-sdks) -join "`n" } catch { $sdk = '' }
@@ -111,8 +165,8 @@ function Invoke-Setup {
     $locale = Join-Path $game 'Locale\en_us_data.dat'
     if (Test-Path $locale) { Copy-Item $locale $gameData -Force } else { Say 'Locale\en_us_data.dat not found: names will be missing.' 'Yellow' }
     Copy-Item (Join-Path $root 'data\*') $gameData -Force
-    # Ground heights (trees, creature footing, ground checks): LandmarkEmu-terrain-heights.zip from the project's
-    # GitHub Releases, put next to start.bat (or in data\). Without it those stay off; see README.
+    # Ground heights (trees, creature footing, starting build sites): LandmarkEmu-terrain-heights.zip from the
+    # project's GitHub Releases, put next to start.bat (or in data\). Without it those stay off; see README.
     $heights = @((Join-Path $root 'LandmarkEmu-terrain-heights.zip'), (Join-Path $root 'data\LandmarkEmu-terrain-heights.zip')) |
         Where-Object { Test-Path $_ } | Select-Object -First 1
     if ($heights) {
@@ -120,11 +174,11 @@ function Invoke-Setup {
         Expand-Archive $heights -DestinationPath $gameData -Force
         Say "Terrain heights for $((Get-ChildItem $gameData -Filter 'TerrainHeights*.bin').Count) landscapes installed." 'Green'
     } else {
-        Say 'No LandmarkEmu-terrain-heights.zip found: trees and ground checks will be off (see README).' 'Yellow'
+        Say 'No LandmarkEmu-terrain-heights.zip found: trees, ground checks and starting build sites will be off (see README).' 'Yellow'
     }
     Say "gameData ready ($((Get-ChildItem $gameData).Count) files)." 'Green'
 
-    # 6. Server configs (listening on this PC only; see README to open it to your network).
+    # 6. Server configs (the network part comes from server.ini on every start).
     $conn = { param($db) "server=127.0.0.1;port=3306;user=$dbUser;password=$dbPassword;database=$db" }
     $database = [ordered]@{
         Auth      = [ordered]@{ ConnectionString = (& $conn 'lmemu_auth'); Provider = 'MySql' }
@@ -132,43 +186,21 @@ function Invoke-Setup {
     }
     $auth = [ordered]@{
         Network = [ordered]@{ Host = '127.0.0.1'; Port = 20042 }; Database = $database
-        WebApi = [ordered]@{ Enabled = $true; BaseURI = 'http://127.0.0.1:5000' }   # this PC only
-        CreationRules = [ordered]@{ StrictName = $false }; GameDataPath = $gameData
+        WebApi = [ordered]@{ Enabled = $true; BaseURI = 'http://127.0.0.1:5000' }
+        CreationRules = [ordered]@{ StrictName = $false }; GameDataPath = $gameData; WorldAddress = ''
     }
     $world = [ordered]@{
         Network = [ordered]@{ Host = '127.0.0.1'; Port = 19000 }; Database = $database
         GameDataPath = $gameData; GameDirectory = $game; Continent = 406; FreeBuild = $false
     }
-    $authDir = Find-Build 'AuthServer'; $worldDir = Find-Build 'WorldServer'
-    $auth  | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $authDir 'AuthServer.json') -Encoding UTF8
-    $world | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $worldDir 'WorldServer.json') -Encoding UTF8
+    $auth  | ConvertTo-Json -Depth 5 | Set-Content (Join-Path (Find-Build 'AuthServer') 'AuthServer.json') -Encoding UTF8
+    $world | ConvertTo-Json -Depth 5 | Set-Content (Join-Path (Find-Build 'WorldServer') 'WorldServer.json') -Encoding UTF8
 
-    # 7. The client has to log in here instead of the retired live servers.
-    $config = Join-Path $game 'ClientConfig.ini'
-    if (-not (Select-String -Path $config -Pattern '^Server=127\.0\.0\.1:20042' -Quiet)) {
-        $yes = if ($KeepClientConfig) { 'n' } else { Read-Host "Point the game at this server? Changes Server= in ClientConfig.ini (a copy is kept as ClientConfig.ini.orig) [Y/n]" }
-        if ($yes -notmatch '^[nN]') {
-            if (-not (Test-Path "$config.orig")) { Copy-Item $config "$config.orig" }
-            $lines = Get-Content $config | ForEach-Object { if ($_ -match '^Server=') { 'Server=127.0.0.1:20042' } else { $_ } }
-            if (-not ($lines -match '^Server=')) { $lines += 'Server=127.0.0.1:20042' }
-            Set-Content $config $lines -Encoding ASCII
-            Say 'ClientConfig.ini now points at 127.0.0.1:20042.' 'Green'
-        } else { Say 'Left ClientConfig.ini alone: set Server=127.0.0.1:20042 yourself before playing.' 'Yellow' }
-    }
+    # 7. Account.
+    $user, $password = Read-Account $Account $Password
 
-    # 8. Account.
-    $user = $Account
-    while ($user -notmatch '^[A-Za-z0-9_]{3,32}$') { $user = Read-Host 'Choose an account name (3-32 letters / digits)' }
-    # The server refuses passwords under 6 characters (WebAPI /create), so ask until it would accept one.
-    $password = $Password
-    while (-not $password -or $password.Length -lt 6) {
-        if ($password) { Say 'The password needs at least 6 characters.' 'Yellow' }
-        $pw = Read-Host 'Choose a password (at least 6 characters)' -AsSecureString
-        $password = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($pw))
-    }
-
-    $settings = [ordered]@{ GamePath = $game; Account = $user; Password = $password; Created = $false }
-    $settings | ConvertTo-Json | Set-Content $settingsFile -Encoding UTF8
+    $settings = [pscustomobject][ordered]@{ GamePath = $game; Account = $user; Password = $password; Created = $false }
+    Save-Settings $settings $settingsFile   # the password is never saved; the first login stores a derived key
     Say "Settings saved in launcher-settings.json (local only; delete it or run start.bat -Setup to start over).`n" 'Green'
     return $settings
 }
@@ -182,44 +214,26 @@ function Start-Server([string]$name, [int]$port) {
     Wait-Port $port 'UDP'
 }
 
-# Returns @{ Status = HTTP status code; Body = response text }.
-function Invoke-Api([string]$method, [string]$path, [string]$user, [string]$password) {
-    $url = "http://127.0.0.1:5000/$path`?username=$([uri]::EscapeDataString($user))&password=$([uri]::EscapeDataString($password))"
-    $out = & curl.exe -s -X $method -w "`n%{http_code}" $url
-    $lines = @($out)
-    $status = [int]$lines[-1]
-    $body = if ($lines.Count -gt 1) { ($lines[0..($lines.Count - 2)] -join "`n") } else { '' }
-    return @{ Status = $status; Body = $body }
-}
-
 # ---------------------------------------------------------------------------------------------------------------
 # Invoke-Setup's last output is the settings (anything else it printed went to the screen).
 $settings = if (-not $Setup -and (Test-Path $settingsFile)) { Get-Content $settingsFile -Raw | ConvertFrom-Json }
             else { Invoke-Setup | Select-Object -Last 1 }
 if (-not (Test-GameFolder $settings.GamePath)) { throw "The game is no longer at '$($settings.GamePath)'. Run start.bat -Setup." }
 
+$ini = Read-ServerIni
+if (-not (Get-Process 'LandmarkEmulator.AuthServer', 'LandmarkEmulator.WorldServer' -ErrorAction SilentlyContinue)) {
+    Set-ServerNetwork $ini['ServerAddress']
+    Set-ServerAdmins $ini['Admins'] $settings.Account
+} elseif ($ini['ServerAddress']) {
+    Say 'Servers already running: changes to server.ini apply after you close both server windows and run start.bat again.' 'Yellow'
+}
+# This PC's own game always logs in locally.
+Set-ClientConfig $settings.GamePath '127.0.0.1'
+
 Find-MariaDb | Out-Null
 Start-Server 'AuthServer' 20042
 Wait-Port 5000 'TCP'
 Start-Server 'WorldServer' 19000
 
-if (-not $settings.Created) {
-    $r = Invoke-Api 'POST' 'create' $settings.Account $settings.Password
-    if ($r.Status -eq 200) { Say "Account '$($settings.Account)' created." 'Green' }
-    elseif ($r.Status -eq 409) { Say "Account '$($settings.Account)' already exists; logging in with the saved password." 'Yellow' }
-    else { throw "Could not create account '$($settings.Account)' (HTTP $($r.Status)): $($r.Body)`nRun start.bat -Setup to choose another name / password." }
-    $settings.Created = $true
-    $settings | ConvertTo-Json | Set-Content $settingsFile -Encoding UTF8
-}
-
-if ($NoGame) { Say 'Servers are up.' 'Green'; return }
-
-$response = Invoke-Api 'POST' 'authenticate' $settings.Account $settings.Password
-if ($response.Status -eq 403) {
-    throw "Login failed: wrong password for account '$($settings.Account)' (or it does not exist). If that name was already taken by an earlier setup with another password, run start.bat -Setup and pick a new account name."
-}
-if ($response.Status -eq 429) { throw 'Login failed: too many wrong passwords; wait 5 minutes and try again.' }
-$session = if ($response.Status -eq 200) { ($response.Body | ConvertFrom-Json).sessionKey }
-if (-not $session) { throw "Login failed (HTTP $($response.Status)): $($response.Body)" }
-Say "Launching Landmark as $($settings.Account)..." 'Green'
-Start-Process (Join-Path $settings.GamePath 'Landmark64.exe') -ArgumentList "SessionId=$session CasSessionId=0 STEAM_ENABLED=0" -WorkingDirectory $settings.GamePath
+Connect-AndPlay $settings $settingsFile '127.0.0.1' 'start.bat -Setup' -NoGame:$NoGame
+if ($NoGame) { Say 'Servers are up.' 'Green' }

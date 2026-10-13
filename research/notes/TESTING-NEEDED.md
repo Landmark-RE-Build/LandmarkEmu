@@ -439,3 +439,50 @@ Please try:
 - [ ] Drink a healing potion at full health: refused, and the hotbar slot does NOT start its cooldown.
 - [ ] Build Mode on your site: the prop limit line shows "n/50 Chests"; place / pick up a chest and it updates.
 - [ ] Let a site lapse (or use Delete): the letter reads with line breaks, no "<br>".
+
+## Build cursors, moving props, revive (2026-10-12)
+Not yet run in the harness (waiting for the REA analysis to finish; scenarios propaccess, revivechannel).
+Please try:
+- [ ] With a friend nearby in Build Mode: you see their tool cursor (box / sphere / selection) move as they build, and
+      it disappears when they stop or walk away.
+- [ ] Click one of your placed props with the prop tool: the move gizmo opens and you can move / rotate it and save.
+      A visitor without "Let's Decorate" gets the refusal instead of a stuck tool.
+- [ ] Hold a power attack (charge) for a few seconds, several times in a row: every release lands, no
+      "sending packets too fast" in the server log.
+- [ ] Tints (2026-10-13 fix): log in fresh, open build mode → Tints, pick a colour and click your stool: it changes
+      colour and keeps it after relogging. Character / armour colours should also look right now.
+- [ ] Right-click one of your props outside build mode: no menu. Press Tab into build mode and right-click it: the
+      prop menu (Reposition, Adjust, Duplicate, Pick up, Delete) appears.
+- [ ] Missing voxels: build something on your site, walk far away (out of sight), come back: everything you built is
+      still there. Also check whether the voxels that went missing before came back after the relog.
+- [ ] Build costs: every material with ∞ in the Materials tray (e.g. Halloween Black, terrain textures) builds without
+      using anything; a material with a number builds while you hold that item and the number goes down.
+- [ ] Removed / built terrain looks the same from far away and while flying around (coarse copies refresh ~20 s after
+      you stop editing).
+- [ ] Spam the add / remove tool, including the biggest brush: no stretch where clicks do nothing.
+- [ ] Terrain v2 (layers): build, remove, sphere tool on your site; walk/fly away and back; relog. No old shapes
+      flickering in, no blocky spheres, no floating chunks; walls visible from far away (coarse copies refresh ~20 s
+      after you stop editing). Mine outside your site: the hole shows and heals after ~20 min.
+
+## Build effects seen by other players (2026-10-13)
+- With two players near each other, one builds (add, remove, smooth, paint, heal). The other should see the tool's
+  effect (sparkle/dust) at the edited spot. Checked only with one client (the server sending it to the builder via a
+  dev command); the two-player case needs a check.
+- Undo / redo (Ctrl+Z / Ctrl+Y) still works and the Voxel Vision window (if open) refreshes after it.
+- Saving a design: the Designs window's voxel bar (CurrentVoxels / MaxVoxels) and the server agree; a design that
+  would go over 6,000,000 voxels is refused with the "exceeds max template voxels" message.
+
+## Props (2026-10-13)
+- Move a placed prop with the gizmo, then Ctrl+Z: it goes back; Ctrl+Y moves it again. The undo list shows "Move Prop".
+- Copy (Select tool) a box with props in it and paste it: the props you have items for are placed with it (turned
+  with the paste — check a turned paste looks right), the rest are listed in chat ("Skipped props" + count : name).
+  Ctrl+Z removes the pasted props and gives the items back.
+- Save a design with props inside the box: the Designs window shows its prop count; placing it places the props.
+- Place a Rustic Sign, give it text, open its settings (Text Location / Text Duration), link a switch's "clicked"
+  to "...Have this sign display the text." and click the switch in Play Mode: the text shows as a bubble / on
+  screen / in chat as chosen.
+
+## Items (2026-10-13)
+- Try to attach Lumens or a Build Site Flag to a mail: "can't send NO_TRADE item". Try to trade one: it doesn't go in.
+- Put a NO_TRADE item into a chest on someone else's site: the client's "can't place no-trade" message; without
+  permission on a chest: "access denied". Moving items in your own bag / equipping still works.

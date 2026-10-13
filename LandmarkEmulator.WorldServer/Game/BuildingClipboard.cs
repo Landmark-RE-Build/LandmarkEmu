@@ -40,6 +40,9 @@ namespace LandmarkEmulator.WorldServer.Game
             public Clipboard(BlockData voxels, uint sizeX, uint sizeY, uint sizeZ)
                 : this(new Dictionary<(int, int, int), BlockData> { [(0, 0, 0)] = voxels }, sizeX, sizeY, sizeZ) { }
 
+            /// <summary>The props that stood in the box (offsets from its minimum corner).</summary>
+            public List<Props.DesignProp> Props { get; init; } = new();
+
             /// <summary>The block and index of a voxel of the box, or null where nothing is stored.</summary>
             public (BlockData Block, int Index)? At(int x, int y, int z)
                 => Cells.TryGetValue((x / BlockData.Size, y / BlockData.Size, z / BlockData.Size), out BlockData block)
@@ -171,12 +174,26 @@ namespace LandmarkEmulator.WorldServer.Game
                     TerrainEdits.Broadcast(changed, session.ZoneId);
                 return;
             }
-            SendResponse(session, AddTemporaryBlockSub, 0);
             if (request.Action == SaveDesignAction)
+            {
+                SortedDictionary<ushort, uint> materials = CountMaterials(request.Voxels);
+                if (!Templates.HasRoom(session, materials.Values.Sum(n => (long)n)))
+                {
+                    // The client's own message offers Voxel Storage Expanders (FUN_1430b6560).
+                    SendResponse(session, AddTemporaryBlockSub, ExceedsTemplateVoxels);
+                    SendCellResponses(session, request.Cells);
+                    return;
+                }
+                SendResponse(session, AddTemporaryBlockSub, 0);
                 Templates.Save(session, request.Name, request.Tags, request.SizeX, request.SizeY, request.SizeZ,
-                    body.AsSpan(request.BlocksStart, request.BlocksEnd - request.BlocksStart).ToArray(), CountMaterials(request.Voxels));
+                    body.AsSpan(request.BlocksStart, request.BlocksEnd - request.BlocksStart).ToArray(), materials,
+                    PropsInSelection(session, request));
+            }
             else
+            {
+                SendResponse(session, AddTemporaryBlockSub, 0);
                 Copy(session, body, request);
+            }
             SendCellResponses(session, request.Cells);   // a copy marks the cells pending too (edits there wait for it)
         }
 
@@ -204,19 +221,97 @@ namespace LandmarkEmulator.WorldServer.Game
             return true;
         }
 
+        /// <summary>
+        /// The selection box of a copy or design save in local metres: from the origin voxel's corner, (size + 1) voxels
+        /// per axis (the box spans size + 1 vertices).
+        /// </summary>
+        private static (System.Numerics.Vector3 Min, System.Numerics.Vector3 Max) SelectionBox(SelectionRequest request)
+        {
+            (double ox, double oy, double oz) = TerrainStore.CellOrigin(request.Cell);
+            double v = TerrainEdits.VoxelSize;
+            var origin = TerrainStore.ZoneOrigin;
+            var min = new System.Numerics.Vector3((float)((ox + request.X * v - origin.X) / 10), (float)((oy + request.Y * v - origin.Y) / 10),
+                (float)((oz + request.Z * v - origin.Z) / 10));
+            var size = new System.Numerics.Vector3((request.SizeX + 1) * (float)v / 10, (request.SizeY + 1) * (float)v / 10, (request.SizeZ + 1) * (float)v / 10);
+            return (min, min + size);
+        }
+
+        /// <summary>The placed props inside a copy / design selection (the client sends none; live kept them).</summary>
+        private static List<Props.DesignProp> PropsInSelection(WorldSession session, SelectionRequest request)
+        {
+            (System.Numerics.Vector3 min, System.Numerics.Vector3 max) = SelectionBox(request);
+            return Props.InBox(session.ZoneId, min, max);
+        }
+
+        /// <summary>
+        /// TemplateCommon::PropData (writer FUN_1430afea0, reader FUN_142f09280; fields in trace/systems/building.md):
+        /// u64, u32 name text, u32 prop definition, f32×3 offset (m), f32×4 rotation, f32×3 scale, u32 n × 16 bytes,
+        /// u64, u64, u32, u32 n × 20 bytes, u32 tint (art tint id), string name, string text, u32×3.
+        /// </summary>
+        public static void WritePropData(List<byte> output, Props.DesignProp prop)
+        {
+            var w = new LandmarkEmulator.Shared.Network.GamePacketWriter(output);
+            w.Write(0ul);
+            w.Write(Props.NameIdOf(prop.PropId));
+            w.Write(prop.PropId);
+            foreach (float f in new[] { prop.Offset.X, prop.Offset.Y, prop.Offset.Z, prop.Rotation.X, prop.Rotation.Y, prop.Rotation.Z,
+                         prop.Rotation.W, prop.Scale.X, prop.Scale.Y, prop.Scale.Z })
+                w.Write(f);
+            w.Write(0u);
+            w.Write(0ul);
+            w.Write(0ul);
+            w.Write(0u);
+            w.Write(0u);
+            w.Write(Props.TintIdOf(prop.Tint));
+            w.Write(prop.Name ?? "");
+            w.Write(prop.Text ?? "");
+            w.Write(0u);
+            w.Write(0u);
+            w.Write(0u);
+        }
+
+        /// <summary>
+        /// Test hook (dev "copyhere"): copies the box of <paramref name="size"/> voxels per axis around the player's feet,
+        /// props only (no voxels), as the player's clipboard. Returns how many props it holds.
+        /// </summary>
+        public static int DevCopy(WorldSession session, uint size)
+        {
+            (double gx, double gy, double gz) = TerrainEdits.ToGlobal(session.Position);
+            long vx = (long)Math.Floor(gx / TerrainEdits.VoxelSize) - size / 2, vy = (long)Math.Floor(gy / TerrainEdits.VoxelSize) - 2,
+                vz = (long)Math.Floor(gz / TerrainEdits.VoxelSize) - size / 2;
+            var request = new SelectionRequest
+            {
+                Cell = TerrainStore.CellId(TerrainEdits.Level, (uint)(vx / BlockData.Size), (uint)(vy / BlockData.Size), (uint)(vz / BlockData.Size)),
+                X = (uint)(vx % BlockData.Size), Y = (uint)(vy % BlockData.Size), Z = (uint)(vz % BlockData.Size),
+                SizeX = size, SizeY = size, SizeZ = size
+            };
+            List<Props.DesignProp> props = PropsInSelection(session, request);
+            lock (sync)
+                clipboards[session.PlayerGuid] = new Clipboard(new BlockData(), size, size, size) { Props = props };
+            return props.Count;
+        }
+
+        /// <summary>Test hook (dev "pasteat"): pastes the player's clipboard unturned with its corner at a local point.</summary>
+        public static bool DevPaste(WorldSession session, System.Numerics.Vector3 at) => PlaceDesign(session, 0, at);
+
         private static void Copy(WorldSession session, byte[] body, SelectionRequest request)
         {
             SortedDictionary<ushort, uint> materials = CountMaterials(request.Voxels);
+            List<Props.DesignProp> props = PropsInSelection(session, request);
             lock (sync)
             {
-                if (request.Voxels != null && materials.Count > 0)
-                    clipboards[session.PlayerGuid] = new Clipboard(request.Voxels, request.SizeX, request.SizeY, request.SizeZ);
+                if (request.Voxels != null && (materials.Count > 0 || props.Count > 0))
+                    clipboards[session.PlayerGuid] = new Clipboard(request.Voxels, request.SizeX, request.SizeY, request.SizeZ) { Props = props };
                 else
                     clipboards.Remove(session.PlayerGuid);
             }
 
+            // The box's props go back in the clipboard data; the client loads them into its paste clipboard
+            // (FUN_1430b7b10 → FUN_143ad8170), shows them in the preview and sends them back with the paste.
             var output = new List<byte> { ClipboardDataSub };
-            output.AddRange(body.AsSpan(request.PropsStart, request.PropsEnd - request.PropsStart).ToArray());
+            output.AddRange(BitConverter.GetBytes(props.Count));
+            foreach (Props.DesignProp prop in props)
+                WritePropData(output, prop);
             output.AddRange(BitConverter.GetBytes(materials.Count));
             foreach ((ushort material, uint n) in materials)
             {
@@ -230,7 +325,7 @@ namespace LandmarkEmulator.WorldServer.Game
             output.AddRange(BitConverter.GetBytes(0u));
             output.Add(request.Blocks > 0 ? (byte)1 : (byte)0);
             session.EnqueueMessage(Network.Message.ZoneMessageOpcode.VoxelConstructionBase, output.ToArray());
-            log.Debug($"{session.CharacterName} copied {request.SizeX}×{request.SizeY}×{request.SizeZ} ({request.Props} props, " +
+            log.Debug($"{session.CharacterName} copied {request.SizeX}×{request.SizeY}×{request.SizeZ} ({props.Count} props, " +
                 $"materials {string.Join(" ", materials.Select(m => $"{m.Key}×{m.Value}"))}).");
         }
 
@@ -245,7 +340,10 @@ namespace LandmarkEmulator.WorldServer.Game
             {
                 // Placing a design: its stored voxels, not the clipboard.
                 if (Templates.VoxelsOf(session, request.TemplateGuid) is { } design)
-                    clipboard = new Clipboard(design.Cells, design.SizeX, design.SizeY, design.SizeZ);
+                    clipboard = new Clipboard(design.Cells, design.SizeX, design.SizeY, design.SizeZ)
+                    {
+                        Props = Templates.PropsOf(request.TemplateGuid)
+                    };
             }
             else
                 lock (sync)
@@ -295,7 +393,7 @@ namespace LandmarkEmulator.WorldServer.Game
                         values.Add(new TerrainEdits.VoxelValue(to, source.Flags[from], source.Materials[from],
                             Offset(m, 0, o), Offset(m, 1, o), Offset(m, 2, o)));
                     }
-            if (byCell.Count == 0 || byCell.Count > (request.TemplateGuid != 0 ? MaxCellsPerDesign : MaxCellsPerEdit))
+            if ((byCell.Count == 0 && clipboard.Props.Count == 0) || byCell.Count > (request.TemplateGuid != 0 ? MaxCellsPerDesign : MaxCellsPerEdit))
             {
                 SendResponse(session, AddTemporaryBlockSub, Failed);
                 return null;
@@ -307,7 +405,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 var mask = new byte[BlockData.Count / 8];
                 foreach (TerrainEdits.VoxelValue v in values)
                     mask[v.Index >> 3] |= (byte)(1 << (7 - (v.Index & 7)));
-                if (!TerrainEdits.MayApply(cell, mask, (x, y, z) => Claims.MayEdit(session.PlayerGuid, x, y, z, zone)))
+                if (!TerrainEdits.MayApply(cell, mask, session.PlayerGuid, zone))
                 {
                     log.Info($"{session.CharacterName} tried to paste into cell {cell:X} without permission.");
                     SendResponse(session, AddTemporaryBlockSub, InsufficientPermissions);
@@ -336,6 +434,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 record.Cells.Add((cell, before, TerrainEdits.Read(cell, mask, zone)));
                 voxels += values.Count;
             }
+            PlaceProps(session, clipboard.Props, m, baseX, baseY, baseZ, record);
             Remember(session, record);
             if (request.TemplateGuid != 0)
                 Achievements.DesignPlaced(session, Templates.NameOf(session, request.TemplateGuid));
@@ -345,6 +444,72 @@ namespace LandmarkEmulator.WorldServer.Game
             log.Debug($"{session.CharacterName} pasted {voxels} voxels into {byCell.Count} cell(s) at {request.X},{request.Y},{request.Z} turned [{m[0]} {m[1]} {m[2]}; {m[4]} {m[5]} {m[6]}; {m[8]} {m[9]} {m[10]}].");
             return changed;
         }
+
+        /// <summary>
+        /// The props of a paste: each goes where its spot in the box lands (the same turn as the voxels: a point p of
+        /// the box, in voxels, goes to base + M·p, plus one voxel on each axis the turn flips), turned with the paste.
+        /// Each is paid with an item of it from the player's bag; the ones the player has none of are listed in
+        /// VoxelConstruction 9 ZoneMissingPropList (reader FUN_1430b31a0, handler FUN_1430b8590: chat
+        /// "Construction.SkippedProps" then "count : name" lines): {u32 n, n × i32 name text, u32 n, n × i32 count}.
+        /// </summary>
+        private static void PlaceProps(WorldSession session, List<Props.DesignProp> props, int[] m, long baseX, long baseY, long baseZ, Edit record)
+        {
+            if (props.Count == 0)
+                return;
+            double v = TerrainEdits.VoxelSize;
+            var origin = TerrainStore.ZoneOrigin;
+            var turn = System.Numerics.Quaternion.CreateFromRotationMatrix(new System.Numerics.Matrix4x4(
+                m[0], m[4], m[8], 0, m[1], m[5], m[9], 0, m[2], m[6], m[10], 0, 0, 0, 0, 1));
+            var skipped = new Dictionary<uint, int>();
+            foreach (Props.DesignProp prop in props)
+            {
+                double[] p = { prop.Offset.X * 10 / v, prop.Offset.Y * 10 / v, prop.Offset.Z * 10 / v };
+                double[] g = new double[3];
+                long[] b = { baseX, baseY, baseZ };
+                for (int i = 0; i < 3; i++)
+                {
+                    g[i] = b[i];
+                    for (int j = 0; j < 3; j++)
+                    {
+                        g[i] += m[i * 4 + j] * p[j];
+                        if (m[i * 4 + j] < 0)
+                            g[i] += 1;
+                    }
+                }
+                var at = new System.Numerics.Vector3((float)((g[0] * v - origin.X) / 10), (float)((g[1] * v - origin.Y) / 10), (float)((g[2] * v - origin.Z) / 10));
+                var q = new System.Numerics.Quaternion(prop.Rotation.X, prop.Rotation.Y, prop.Rotation.Z, prop.Rotation.W);
+                if (q.LengthSquared() < 1e-6f)
+                    q = System.Numerics.Quaternion.Identity;
+                q = System.Numerics.Quaternion.Normalize(System.Numerics.Quaternion.Concatenate(q, turn));
+                var rotation = new System.Numerics.Vector4(q.X, q.Y, q.Z, q.W);
+                ulong guid = Props.PlaceDesignProp(session, prop, at, rotation, out bool missing);
+                if (guid != 0)
+                    record.PastedProps.Add((prop, at, rotation, guid));
+                else if (missing)
+                {
+                    uint name = Props.NameIdOf(prop.PropId);
+                    skipped[name] = skipped.GetValueOrDefault(name) + 1;
+                }
+                else
+                    log.Debug($"{session.CharacterName}: pasted prop {prop.PropId} not placed at {at} (no model, or no build permission there).");
+            }
+            if (skipped.Count > 0)
+            {
+                var output = new List<byte>();
+                var w = new LandmarkEmulator.Shared.Network.GamePacketWriter(output);
+                w.Write(ZoneMissingPropListSub);
+                w.Write((uint)skipped.Count);
+                foreach (uint name in skipped.Keys)
+                    w.Write(name);
+                w.Write((uint)skipped.Count);
+                foreach (int n in skipped.Values)
+                    w.Write(n);
+                session.EnqueueMessage(Network.Message.ZoneMessageOpcode.VoxelConstructionBase, output.ToArray());
+            }
+            log.Debug($"{session.CharacterName} pasted {record.PastedProps.Count} of {props.Count} props ({skipped.Values.Sum()} skipped).");
+        }
+
+        public const byte ZoneMissingPropListSub = 9;
 
         private static int Dot(int[] m, int row, int[] v) => m[row * 4] * v[0] + m[row * 4 + 1] * v[1] + m[row * 4 + 2] * v[2];
 

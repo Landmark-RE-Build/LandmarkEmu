@@ -1,4 +1,4 @@
-using LandmarkEmulator.Database.Character.Model;
+﻿using LandmarkEmulator.Database.Character.Model;
 using LandmarkEmulator.Shared.Database;
 using LandmarkEmulator.Shared.GameTable;
 using LandmarkEmulator.Shared.Network;
@@ -120,6 +120,13 @@ namespace LandmarkEmulator.WorldServer.Game
 
         // Story-tool props (PropDefs ids; the items 3090 Logic Filter, 3127 Travel Point, 3131 Story Node, 3132 Dice
         // Roll Filter, 3137 Timer Filter, 3790 Starting Location, 4388 Damage, 4389 Focus, 4390 Reset place them).
+        /// <summary>
+        /// Props with text (PropBase 0x13 / 0x14) that Links can show: Rustic Sign, Fjorden Book (open / closed), Gold
+        /// Trimmed Scroll — "...Have this sign / book / scroll display the text." (texts 577157 / 577149 / 577150).
+        /// </summary>
+        public const uint RusticSignProp = 2939, FjordenBookOpenProp = 2228, FjordenBookClosedProp = 2229, GoldScrollProp = 2639;
+        public const uint SignDisplaysText = 577157, BookDisplaysText = 577149, ScrollDisplaysText = 577150;
+
         public const uint LogicFilterProp = 2325, TravelPointProp = 2330, StoryNodeProp = 2344, DiceRollProp = 2345,
             TimerProp = 2367, StartingLocationProp = 2655, FocusNodeProp = 2898, DamageNodeProp = 2899, ResetNodeProp = 2900,
             LinkingAreaProp = 1590;
@@ -188,6 +195,10 @@ namespace LandmarkEmulator.WorldServer.Game
                 Name = "focus node", Events = new[] { FocusActivates, FocusDeactivates }, Actions = new[] { ActivateFocus, DeactivateFocus }
             },
             [DamageNodeProp] = new Kind { Name = "damage node", Events = new[] { DamageActivates }, Actions = new[] { ActivateDamage } },
+            [RusticSignProp] = new Kind { Name = "sign", Actions = new[] { SignDisplaysText } },
+            [FjordenBookOpenProp] = new Kind { Name = "book", Actions = new[] { BookDisplaysText } },
+            [FjordenBookClosedProp] = new Kind { Name = "book", Actions = new[] { BookDisplaysText } },
+            [GoldScrollProp] = new Kind { Name = "scroll", Actions = new[] { ScrollDisplaysText } },
             [ResetNodeProp] = new Kind { Name = "reset node", Actions = new[] { ResetStory } },
             [AdventureTableProp] = new Kind { Name = "adventure game", Actions = new[] { CompleteAdventure } },
             [LinkingAreaProp] = new Kind
@@ -569,6 +580,14 @@ namespace LandmarkEmulator.WorldServer.Game
                     break;
                 case CompleteAdventure:
                     InstancedGames.CompleteAdventure(site.ClaimId);
+                    break;
+                case SignDisplaysText:
+                case BookDisplaysText:
+                case ScrollDisplaysText:
+                    // Where (Text Location: on screen / chat bubble / chat) and for how long (Text Duration) are the
+                    // prop's own settings.
+                    Props.DisplayText(r.Guid, PropSettings.Choice(r.Guid, PropSettings.TextDisplayType),
+                        (uint)Math.Max(1f, PropSettings.Get(r.Guid, PropSettings.TextDisplayTime)));
                     break;
                 case ResetStory:
                     // Restarts Play Mode once this chain has finished (next tick).

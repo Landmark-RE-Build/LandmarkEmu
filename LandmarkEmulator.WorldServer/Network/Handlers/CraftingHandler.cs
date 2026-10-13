@@ -1,4 +1,4 @@
-﻿using LandmarkEmulator.Shared.Network;
+using LandmarkEmulator.Shared.Network;
 using LandmarkEmulator.WorldServer.Network.Message;
 using LandmarkEmulator.WorldServer.Network.Message.Model;
 using NLog;
@@ -54,6 +54,7 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                     Game.Salvaging.Handle(session, request.SubOpcode, request.Body);
                     break;
                 default:
+                    Network.OpcodeStats.Unanswered("Recipe", request.SubOpcode);
                     log.Debug($"Unhandled recipe request 0x{request.SubOpcode:X2}: {BitConverter.ToString(request.Body)}");
                     break;
             }

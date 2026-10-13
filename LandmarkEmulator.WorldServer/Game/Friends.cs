@@ -37,6 +37,8 @@ namespace LandmarkEmulator.WorldServer.Game
         /// FriendAlreadyOnList).
         /// </summary>
         private const byte MessageInvalidName = 0x0C;
+        /// <summary>Client text 560713 "[*player*] has been removed from your friends list." (key FriendRemoved).</summary>
+        private const uint FriendRemovedText = 560713;
         private const int MaxFriends = 200;
 
         /// <summary>World entry: the player's list, and an "online" note to everyone who lists them.</summary>
@@ -94,13 +96,13 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             if (target.Id == session.PlayerGuid)
             {
-                Chat.System(session, "You can't add yourself as a friend.");
+                SystemMessages.Show(session, 560744);   // FriendYourself: "You already think of yourself as a friend."
                 return;
             }
             var friends = database.GetFriends(session.PlayerGuid);
             if (friends.Any(f => f.Id == target.Id))
             {
-                Chat.System(session, $"{target.Name} is already on your friends list.");
+                SystemMessages.Show(session, 560710, ("player", target.Name));   // FriendAlreadyOnList
                 return;
             }
             if (friends.Count >= MaxFriends)
@@ -146,13 +148,13 @@ namespace LandmarkEmulator.WorldServer.Game
 
             ulong characterId = session.PlayerGuid, friendId = friend.Id;
             database.Save(c => c.CharacterFriend.Remove(new CharacterFriendModel { CharacterId = characterId, FriendId = friendId }));
-            // The client means to print "[X] has been removed from your friends list." itself (FUN_143493b70,
-            // UI.FriendRemoved via FUN_143353000), and drops the row from Character.FriendsList, but its formatter gives
-            // no line for the record we send (open: which FriendData field it needs). Until then the server sends that
-            // same sentence (text 560713).
+            // The client drops the row (Character.FriendsList) and means to say "[X] has been removed from your friends
+            // list." (FUN_143493b70 → FUN_143353000 with key "UI.FriendRemoved"), but this client's CodeStringMappings.txt
+            // (the only source of its key lookup, FUN_142c78c20) has that text as "FriendRemoved", so the lookup finds
+            // nothing and the line never shows. The server shows the same text by id through the client's
+            // system-message path (PacketShowSystemMessage, text 560713, [*player*]).
             session.EnqueueMessage(ZoneMessageOpcode.FriendBase, Build(w => { w.Write(RemoveSub); w.Write(friendId); }));
-            Chat.System(session, (LandmarkEmulator.Shared.GameTable.Text.TextManager.Instance.GetTextForId(560713)
-                ?? "[*player*] has been removed from your friends list.").Replace("[*player*]", friend.Name));
+            SystemMessages.Show(session, FriendRemovedText, ("player", friend.Name));
             log.Info($"{session.CharacterName} removed {friend.Name} as a friend.");
         }
 

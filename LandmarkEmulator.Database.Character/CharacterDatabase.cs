@@ -1,4 +1,4 @@
-using LandmarkEmulator.Database.Character.Model;
+﻿using LandmarkEmulator.Database.Character.Model;
 using LandmarkEmulator.Database.Configuration;
 using Microsoft.EntityFrameworkCore;
 using NLog;
@@ -151,7 +151,9 @@ namespace LandmarkEmulator.Database.Character
         public void SaveObjectives(IEnumerable<CharacterObjectiveModel> rows)
         {
             using var context = new CharacterContext(config);
-            foreach (CharacterObjectiveModel row in rows)
+            // One batch can hold the same objective twice (two updates in one tick): both were inserted as new and
+            // the save failed on the duplicate key, losing the whole batch. The last value wins.
+            foreach (CharacterObjectiveModel row in rows.GroupBy(r => (r.CharacterId, r.ObjectiveId)).Select(g => g.Last()))
             {
                 CharacterObjectiveModel existing = context.CharacterObjective
                     .FirstOrDefault(o => o.CharacterId == row.CharacterId && o.ObjectiveId == row.ObjectiveId);

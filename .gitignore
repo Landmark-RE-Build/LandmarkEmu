@@ -345,3 +345,5 @@ tools/terrain/heightbake/
 launcher-settings.json
 # Terrain heights package (download from Releases, unpacked into gameData by start.bat)
 LandmarkEmu-terrain-heights.zip
+play-settings.json
+server.ini

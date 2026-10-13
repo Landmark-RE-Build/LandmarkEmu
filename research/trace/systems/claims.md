@@ -240,3 +240,12 @@ Still open:
 - Prop category limits (UpdatePropCategoryCount 0x5F, error 12): per-category maxima were server data; none known.
 - Snapshots (0x38-0x3C / 0x13-0x16): no UI in 0.589 (SnapshotPanel is empty) — skip.
 - ClaimsBase 0x44 OnClientRateClaim: informational (sent after a vote reply).
+
+## Module 4 rebuild pass (2026-10-13, archive claims-v1)
+
+- Dispatcher FUN_142d1ff50 switches on sub−1 (case 0xf = sub 0x10 ResultResponse, case 0x10 = sub 0x11 prop
+  exclusion area, case 0x12 = sub 0x13 snapshot save confirm ...).
+- ResultResponse 0x10 {u32 result, string name, u64} (reader FUN_142d012c0): result 0x17 → the client's own chat
+  line "Claim Operation Result: ERROR: Player or Guild could not be found under the name [%s]!". Special Access for
+  an unknown name now answers this (was a server chat line). Verified with dev grantaccess + Frida.
+- Table above is partly stale: 0x5F UpdatePropCategoryCount is sent (chests), 0x10 now sent.

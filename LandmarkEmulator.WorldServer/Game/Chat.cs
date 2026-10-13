@@ -120,14 +120,31 @@ namespace LandmarkEmulator.WorldServer.Game
             log.Info($"[npc say] {name}: {message}");
         }
 
-        /// <summary>A system line to one player (e.g. why an action was refused), shown in their chat window.</summary>
-        public static void System(WorldSession player, string message)
+        /// <summary>
+        /// A chat line on the client's System channel (7, Chat.SystemFormat): the receiver hands it to the notification
+        /// manager (FUN_1432b7bc0 case 7 → *DAT_145352490 vtable +0x38) instead of a "says" line.
+        /// </summary>
+        public static void SystemChannel(WorldSession player, string message)
         {
             byte[] tail = new byte[16 + 8 + 4 + 4 + 4 + 1 + 1];
             BitConverter.GetBytes(1f).CopyTo(tail, 12);
             BitConverter.GetBytes(uint.MaxValue).CopyTo(tail, 16 + 8 + 8);
-            player.EnqueueMessage(ZoneMessageOpcode.ChatBase, Build(0, Say, null, player.PlayerGuid, message, tail));
+            player.EnqueueMessage(ZoneMessageOpcode.ChatBase, Build(0, SystemChannelId, null, player.PlayerGuid, message, tail, ""));
         }
+
+        public const ushort SystemChannelId = 7;
+
+        /// <summary>
+        /// A system line to one player (e.g. why an action was refused) through the client's own system-message path
+        /// (<see cref="SystemMessages"/>: PacketShowSystemMessage with client text 558682 "[*message*]"), so it shows like
+        /// the client's own system lines. It used to be a Say line from "Server" ("[Server] says: ..."). Prefer
+        /// <see cref="SystemMessages.Show"/> with the client's own text id wherever the client has one for the situation.
+        /// </summary>
+        public static void System(WorldSession player, string message)
+            => SystemMessages.Show(player, PlainMessageText, ("message", message));
+
+        /// <summary>Client text 558682: just "[*message*]".</summary>
+        public const uint PlainMessageText = 558682;
 
         /// <summary>
         /// A tell (/whisper, /tell; channel 1, the client's "Chat.WhisperFormat" "[X] whispers: …"): only the named player

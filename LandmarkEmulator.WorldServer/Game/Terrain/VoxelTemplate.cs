@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
@@ -109,7 +109,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
             foreach (Cell cell in Cells)
             {
                 ulong id = TerrainStore.CellId(TerrainEdits.Level, (uint)(cellX + cell.X), (uint)(cellY + cell.Y), (uint)(cellZ + cell.Z));
-                if (TerrainEdits.ApplyDiff(id, cell.Changed, cell.Blocks, (_, _, _) => true, out int voxels, zone) && voxels > 0)
+                if (TerrainEdits.ApplyDiff(id, cell.Changed, cell.Blocks, (_, _, _) => true, out int voxels, zone, 0, TerrainEdits.PoiLayer) && voxels > 0)
                     changed.Add(id);
             }
             return changed;

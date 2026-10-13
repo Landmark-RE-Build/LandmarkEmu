@@ -54,24 +54,32 @@ namespace LandmarkEmulator.Shared.Network.Message.Model
             return true;
         }
 
-        private uint ReadLength(ProtocolPacketReader reader)
+        /// <summary>
+        /// A sub-packet length: one byte below 0xFF; 0xFF + u16 big-endian; 0xFF 0xFF 0xFF + u32 big-endian (client
+        /// reader FUN_142ad35e0). The client also sends a 255-byte sub-packet with the single byte 0xFF (seen
+        /// 2026-10-13: "FF 00 09 02 3F …" = 255 bytes of Data seq 0x023F). Misreading it as 0xFF + u16 0x0009 cut
+        /// the packet apart, the reliable stream never got that sequence and the client timed out 90 s later. The
+        /// long forms are only used from 0xFE up (writer FUN_142ad3650), and every SOE packet starts 00 01..00 1D, so
+        /// 0xFF followed by a u16 below 0xFE is the single-byte form.
+        /// </summary>
+        internal static uint ReadLength(ProtocolPacketReader reader)
         {
             var data = reader.GetRemainingData();
             uint dataLength = reader.ReadByte();
-            if (dataLength == 0xFF)
+            if (dataLength != 0xFF || data.Length < 3)
+                return dataLength;
+            if (data[1] == 0xFF && data[2] == 0xFF)
             {
-                if (data[0 + 1] == 0xFF && data[0 + 2] == 0xFF)
-                {
-                    reader.ReadUShort();
-                    dataLength = reader.ReadUInt();
-                }
-                else
-                {
-                    dataLength = reader.ReadUShort();
-                }
+                if (data.Length < 7)
+                    return 0;
+                reader.ReadUShort();
+                return reader.ReadUInt();
             }
-
-            return dataLength;
+            uint longForm = (uint)(data[1] << 8 | data[2]);
+            if (longForm < 0xFE)
+                return 0xFF;
+            reader.ReadUShort();
+            return longForm;
         }
 
         public void Write(ProtocolPacketWriter writer, PacketOptions options)

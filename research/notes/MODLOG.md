@@ -1609,3 +1609,163 @@ ActorFailures.log, ClientMountLog.txt, NetInfo.log, Landmark PlayClient (Test) (
   decompiled code blocks removed, decoded tables, notes) and refuses to finish on secrets / personal paths / client
   files. Launcher verified end to end on the staged copy against the test client (build, configs, account, login).
   export/release/LandmarkEmu-terrain-heights.zip (747 MB, all 29 landscapes) is for a GitHub Release asset.
+- 2026-10-12: REA (rea-agents 6.4.0) installed and run on the test client (full Ghidra analysis to
+  re/rea/Landmark64.rea-snapshot, background). Gap hunt against the decompile while it runs:
+- 2026-10-12: OTHER PLAYERS' BUILD CURSORS: WorldEditingBase 0x10C (Clear / Box / Sphere / Shape / Selection / Preview
+  setup + update / Fill; 17k+ received in play, verdict wrongly "unreachable") is now relayed to players within 160 m
+  (Game/WorldEditing.cs). The client draws them itself (ClientWorldEditingEffectManager FUN_142fe3ae0, FUN_1433b9530;
+  one effect per builder guid). Newest packet per builder at most every 100 ms; identical repeats only to newcomers;
+  Clear(0) to viewers who leave range and when the builder leaves; packets whose guid isn't the sender's are dropped.
+- 2026-10-12: EDITING A PLACED PROP: the prop tool's pick sends PropAccess (0xED sub 1, FUN_142f15300) and waits for
+  the server's sub-2 answer before opening the gizmo; nothing answered, so moving an existing prop never started (seen
+  in play: 3 requests, no gizmo). Props.Access answers with the prop data (owner, or Let's Decorate on its site) or
+  refusal 10 / 13 (Play Mode). Props.Save accepts decorators too (within decorate access). Test propaccess.
+- 2026-10-12: REVIVE CHANNEL: cast 246 sends StartRevive (0x42 {dead, reviver, 3000 ms}) to players near the body
+  (reviver's HUD bar, every client records the reviver), ReadyToRevive after the channel, StopRevive (0x43) if it
+  breaks off; result lines use the client's CombatSpam texts 564592 / 564593. dev reviveby <name>. Test revivechannel.
+- 2026-10-12: DESIGN LIST REQUEST (0xF0 sub 1, Lua GetList) answered with the list (was dropped).
+- 2026-10-12: OpcodeStats.Unanswered counts every request that reaches a handler's default branch (and raw / no-handler
+  packets) into opcode_stats.tsv; coverage.py lists them ("runtime truth") — its static "sub in handler" match was
+  fooled by case labels in shared handler files (Template 0x12 showed handled).
+- 2026-10-12: CHARGED ATTACKS NO LONGER TRIP THE FLOOD LIMITER: while a power attack charges the client sends
+  Abilities 0x27 0x17 DelayedTargetInfo every frame (617 in 2 s for 733; ClientAbilityManager vtable slot 2 →
+  FUN_1433ad3e0). Those used up the 100/s packet budget and the server dropped other packets (seen twice in play,
+  including MrLawKing's own session at 11:09). They are now discarded before the limiter (the server aims from the cast).
+- 2026-10-12: CAPSTONE ANNOUNCEMENTS: completing an achievement whose reward is a capstone title (the Dramatic, Blockhead,
+  the Collector, the Creator, Warmaster, Elementalist, Researcher, Fashion Mogul, Luminary; mapping from the live
+  capture's reward bundles) sends AchievementBase 0x0F GlobalAnnounce to everyone online with the client's text
+  (575528-575537, 575546: "[X] has become a Blockhead!"); the client prints it on the System channel and on screen
+  (FUN_142d921c0). dev achreset <id>. Test achannounce.
+- 2026-10-12: MESSAGE OF THE DAY: PacketMOTD (0x5A {string subject, string body}) once per login from WorldServer.json
+  MotdSubject / MotdBody (client shows it as a system message and in UI.MessageOfTheDay). Not yet tested in the harness.
+- 2026-10-12 (stopped here, out of credits): next = run scenarios propaccess, revivechannel, achannounce, then check
+  re/out/uisinks.md rows (ChatPacketEnterArea, TradeRejected, Mail attach response, ZoneDisplayNotification) and diff
+  REA's procedure/string lists (re/rea/procedures.json, strings.json; job run_lists.sh) against re/decomp_all/index.tsv.
+- 2026-10-13: REA RESULTS: REA's Ghidra run of Landmark64.exe found 234,612 functions vs our 234,539; the 73 extra are
+  PlayerUpdate packet constructors our project never made functions of (re/tools/rea_missing.py → 
+  re/out/rea_missing_functions.c). They confirm 65 PlayerUpdate sub-opcodes and name two unknowns: 0x4B
+  PlayerInGamePurchaseResult, 0x55 PlayerUpdateNonPriorityTargetCharacters (trace/playerupdate_subs.md).
+- 2026-10-13: LaunchPad.exe (32-bit, built 2026-05-13: Daybreak's current shared launcher, not Landmark's 2016 one) is a
+  CEF web shell that self-patches from manifest.patch.daybreakgames.com, loads a patcher DLL and shows Daybreak's login
+  pages (lpj.daybreakgames.com) before launching the game with a session id. Not useful for the emulator: it needs
+  Daybreak's live services and may update itself / the install. play.bat replaces it.
+- 2026-10-13: PROP RIGHT-CLICK MENU now offers the client's full prop button set (RadialMenuButtons.txt type 1):
+  Duplicate always, Settings / Script / Light on-off where the prop has them (was adjust, reposition, pick up, delete).
+- 2026-10-13: BUILD MODE PAGE REMEMBERED: Tab re-created the build widget on Designs while the client's active category
+  stayed on the last tab (panel and tool out of step). ClientFixes wraps Ui.SetActivePaletteCategory and restores the
+  last page (OnSetTab) plus the category on OnWidgetLoaded. Verified: Props → Tab off → Tab on comes back on Props
+  (UI events 9 then 11; scenario adhoc/pagememory).
+- 2026-10-13: ADMIN MENU: WorldServer.json "Admins" (start.bat adds its own account + server.ini Admins=). Admins type
+  /admin → Admin page in the in-game browser (Game/Admin.cs, served at /admin with the Showcase token): god mode,
+  revive, coins/items, travel, claim, play mode, time of day, creatures, shutdown, any dev command, per target.
+  Verified: page opens in the test client, commands run (logged "Admin X ran"), bad tokens refused.
+- 2026-10-13: TAB HOLSTERS THE HELD ITEM: build mode on moves the main-hand item to the bag (remembered), build mode
+  off equips it again (Game/BuildModeHolster.cs; the hotbar's own DoAction does the same TransferItem moves).
+  Verified with the pick (adhoc/holster, adhoc/holstershot). Harness: client.js request queue now served by the
+  newest attached script only (generation at queue+28), so a lingering runner no longer eats later probes' answers.
+- 2026-10-13: FINE-TUNE (Prop.AdjustObject) FIXED: PropAccess replies carried the new-placement flag (+0x6c), so
+  FUN_142f1ab30 took the new-placement path and never started the tweak handles (state 7 → FUN_142f21d20). Cleared for
+  placed props. Verified by the user on the test client: torch moved 5 m and rotated, both saved (world_prop row).
+- 2026-10-13: TINTS FIXED (5692c4c): the client's TintDefinitionManager (DAT_145351d90; lookup FUN_143c10110 by alias
+  hash +0x268 and type +0x26c or "ANY") is REPLACED by ArtData 0x116's lists on arrival (FUN_142c6ec20 → FUN_143c113c0;
+  list 7 = tint groups, element reader FUN_142b96540). We sent eight empty lists (since 2026-10-11), so the table was
+  empty (runtime probe adhoc/tintmgr: 0 entries) and no tint showed — props, items, character defaults. The SetTint
+  path itself worked (ED 16 requests saved and broadcast). Now the world server sends the login server's ArtTints.json
+  (Game/ArtTints.cs, linked into the build; 1114 aliases, 735,806 bytes once per login). Verified: 1114 entries, the
+  client log's "failed to apply default tint" is gone. Also: editable props flagged/answered interactable (right-click
+  verified by the user), prop right-click menu only in build mode (BuildModeHolster.InBuildMode).
+- 2026-10-13: Editable-only props (fences, decorations) no longer show the interaction cursor (CursorInReach 0); they
+  stay pickable for right-click / tint. Tint after relog confirmed by the user (stool kept Sky Blue).
+- 2026-10-13: Editable-only props are interactable ONLY in build mode (the interact / held-tool cursor showed on
+  fences outside it). Props.RefreshEditable re-sends InteractionInfoReply for nearby editable props on every build-mode
+  toggle (client applies unsolicited replies, FUN_142ee6b90). Verified in the log while the user pressed Tab: on → 11
+  props type 3; off → decorations type 0, the 3 usable props stay 3.
+- 2026-10-13: MISSING VOXELS AFTER LEAVING A CLAIM: ApplyDiff broadcast excluded the builder (their client drew the
+  edit itself), so the builder's VoxelFarm manifest (+0x150, FUN_143f5cc90; reload check FUN_143f4e3b0) kept the old
+  cell version and a reloaded cell showed the older copy. Now TerrainEdits.NoteVersions sends the builder a
+  ModifiedCellManifestUpdate per changed cell. Mining, paste, undo and heal already included the actor. Fresh login:
+  client fetched 31 edited cells. To confirm with the user: build, walk >300 m away, come back.
+- 2026-10-13: "Black Halloween voxels missing": Halloween Black (VoxelMaterials index 695, CURRENCY_ID 73) is built
+  from Stone (item 46, 4 voxels per Stone); LawTest had 211 Stone and the builds needed up to 2000, so the server
+  refused them (correct) — but the builder's client kept drawing the refused edit until the cell reloaded. ApplyDiff
+  refusals (materials, permission) now re-send the server's cells (Building.UndoLocalEdit → TerrainEdits.Resend), as
+  Heal already did. The client's own message is "Construction.InsufficentMaterials" (FUN_1430b6560).
+- 2026-10-13: BUILD COSTS = ITEM_ID (47c48f1). Materials tray (BuildView.as: IsFree → "∞", else Quantity) is filled by
+  FUN_1436f4180: IsFree = free build || cost item 0; cost item = material record (FUN_1430a75b0, keyed by VoxelMaterials
+  ID) +0x28 → +0x90; Quantity = count of that item held (FUN_142e80a10). Runtime read of all 712 records
+  (adhoc/matcost): cost item == ITEM_ID (column 40) for every one. The server had used CURRENCY_ID (column 36) first →
+  137 mismatches (∞ terrain textures and Halloween Black charged Dirt/Sand/Stone/Snow; Marble vs Cut Marble etc.).
+  Now ITEM_ID only; 0 = free (wiki "Free-to-Use Building Materials"). Voxels built under the old rule refund nothing
+  when removed if their material is now free.
+- 2026-10-13: "GAME CRASHED" = client timeout (90 s without server data) after the reliable stream stalled: a
+  MultiPacket carried a 255-byte Data packet with the length as a single 0xFF byte (FF 00 09 02 3F …). Our reader
+  took 0xFF + u16 (0x0009), cut it apart ("unknown protocol packet 0000023F"), seq 0x023F was never received and every
+  resend failed the same way. Fixed in MultiPacket.ReadLength (shared with DataStreamInput): 0xFF followed by a u16
+  below 0xFE is the single-byte form (the client's writer FUN_142ad3650 only uses the long form from 0xFE up).
+  Replay test (scratch): crash shape → 255 + 68-byte packets; FF 00 FE and FF 01 00 still read as 254 / 256.
+  The AuthServer process still runs the old build until its next start.
+- 2026-10-13: Build cost near ore veins: TerrainEdits.MaterialDelta now treats vein ore (OreVeins.Compose) the overlay
+  doesn't set as existing ground — kept ore costs nothing, removed ore refunds nothing (was: "needs 10 × Cut Marble"
+  while building sand next to Raw Marble). Builder manifest notes (5103b1e) were sent per edit and made the client
+  re-fetch every edited cell at once (3-11 CellsUpdates per click): spamming build/delete stalled behind them. Now
+  queued per builder (TerrainEdits.NoteVersions/UpdateNotes) and sent when the builder is 128 m from the cell.
+- 2026-10-13: TERRAIN LOD (Game/Terrain/TerrainLod.cs): edited areas get level 3-6 block copies (each parent voxel =
+  2x2x2 majority of its children; set when >= 4 children set, solid with the most common material when most are
+  solid, else air). Manifest + Answer + Has serve them like overlays; built at start (406: 663 copies in 3.9 s, 416:
+  142 in 0.8 s, background) and refreshed incrementally after 20 s without edits on a landscape. Verified with the
+  experiment (dev lodbuild): the client requested 67 level-3, 7 level-4, 1 level-5 copies, and the user saw removed
+  terrain stay removed while moving. Copies skip ids the captured live store has (home continent).
+- Build tool "nothing happens" while spamming: the client drops edits while its voxel engine has a pending fetch
+  (ClientConstructionManager FUN_1430b4e90 checks FUN_143f532e0). Deferred builder notes fired mid-edit (big brushes
+  reach cells > 128 m away), the fetch answered a newer version than the noted one, the request hung 50 s. Notes now
+  also need 15 s without touching the cell. Build permission: Claims.BuildCheckIn per cell (was per voxel); typical
+  timings now 1-4 ms small edits, ~100-270 ms for 20-43-cell removes.
+- 2026-10-13: ROOT CAUSE of "removed terrain comes back" + "build tool hangs": the per-session flood limiter (300 burst,
+  100/s) was exhausted by WorldEditing 0x10C build-cursor packets (up to 506/s while building) and dropped terrain
+  cell requests (one 131-cell request at 10:46:10 never reached the handler). Unanswered → after the client's 6 s
+  SCENE timer (FUN_143f571d0, ClientSceneProcessingErrors.log "ServerResponsePending: 1") it drew generated ground,
+  and the pending fetch made ClientConstructionManager refuse new edits. Fix (WorldSession): 0x10C handled before
+  the limiter (WorldEditing throttles its relay), 0xEC/0xF4 on their own limiter (200 burst, 50/s). Client facts:
+  CellsUpdate entries clear the scene's server-pending flag regardless of version (HandleCellsUpdate FUN_143f52db0);
+  ClientCellRequest per-cell 4×u32 are the client's cached layer versions (hash-like values, e.g. 1156681913).
+  Terrain code archived first: git tag terrain-v1 + archive/terrain-v1/.
+- 2026-10-13: Build edits up to 1024 cells (was 64: 140-cell brushes were refused with no per-cell replies, cells
+  stayed pending on the client → tool hung, its drawing discarded). Unreadable edits answer every cell read. Speed:
+  per-phase timing in the build log; apply phase was 660-850 ms for ~140 cells (per-voxel always-true lambda, bitwise
+  mask scans, 384 KB vein scratch per cell) → 0.2-0.45 s total now; the reply goes out before the undo-after record
+  (1ff29f9, live at next restart). Client "busy" list (FUN_143f532e0) read at runtime during a stall: empty.
+- 2026-10-13: TERRAIN V2 (502afd0, b810f20; old code tagged terrain-v1 + archive/terrain-v1/). Client trace in
+  trace/systems/terrain.md, format notes in docs/terrain.md "Layers" / "Coarse levels". Root causes of the flicker /
+  old shapes / blocky refetches: the client keeps a player's own edits in LAYER 1 (commits level-2 edits into layer
+  level-1, caches them there on the per-cell OK) while we stored everything in layer 0, so it drew both copies; a
+  CellsUpdate that leaves a layer out keeps the client's old copy. Now: overlays keyed (cell, layer) — build tools /
+  paste / undo / heal → 1, mining + veins → 2 (heals), stamps → 0; one-time migration moved 86M build-site voxels
+  (1,780 cells) to layer 1; every CellsUpdate carries layers 0-2 with own versions; requests with current held versions
+  → UpToDateCells, stale held layers → sent empty; no pushes/notes to the builder. Coarse copies per layer with
+  VoxelFarm's octree rule (corner child's state, mass-point vertex; updateBlockLOD FUN_142a15480), default on.
+  Build edits in two passes (Prepare/Commit). Also today: flood limiter starved by 0x10C cursor packets (dropped cell
+  requests), 64-cell edit limit, timeout resend dedupe, ITEM_ID build costs, real tint definitions (ArtData 0x116).
+  Open: reproduce the client's CRC32 layer versions (SampleVersion collects samples) so builders don't re-download
+  their own cells at login; Achievements "Saving objectives failed: Duplicate entry '2-1131'".
+- 2026-10-13: BUILDING (module 2 of trace/REBUILD-PLAN.md, archived building-v1): ApplyDiffRequest fully decoded
+  (trace/systems/building.md); server adopts the client's new layer-1 version per cell and refuses stale-base cells
+  (re-sends them). Login requests 1 cell instead of 400-500. ApplyDiff parser now skips the u32 after type-2/3 cells.
+- 2026-10-13: BUILDING ResponseObserved (0xF4 sub 0xA) — other players within 100 m now see build effects
+  (placement/delete/heal/smooth/paint) for every applied edit. Packet and op→effect map traced and verified in the
+  client with Frida (all 7 ops). Dev command `observed <op> [size m]`. ApplyDiffRequest +0xe0 = operation kind.
+- 2026-10-13: BUILDING audit continued: undo answers Response(3,0) (refreshes Voxel Vision); design storage is
+  counted in voxels like the client (6M + expanders, max 48M; refusal 0x11 offers expanders) instead of 100 designs;
+  Response result codes documented (0x11, 0x1A). TemplateBase family trace sub numbers were 2 too high (server right).
+  PropData decoded; design/copy props (live: server gathers props in the box, places them on paste, lists skipped)
+  moved to module 3. Building → verify in REBUILD-PLAN.
+- 2026-10-13: PROPS module started (props-v1 tag/archive; trace/systems/props.md). Prop moves are undoable (0x10
+  UndoRedoNotification, one step per edit session). Copies and designs keep the props inside the box and place them on
+  paste from the player's items; missing ones are listed by the client (VoxelConstruction 9 SkippedProps); undo picks
+  them up. Dev: propmove, undo, redo, giveprop, copyhere, pasteat.
+- 2026-10-13: PROPS text props: Rustic Sign / Fjorden Books / Gold Scroll get the Links "display the text" action
+  with Text Location / Text Duration settings; PlayerUpdate DisplayPropText (opcode fixed to a one-byte sub, 26 00 79).
+- 2026-10-13: PROPS: renamed props show their name for everyone (PlayerUpdate 0x7C UpdatePropName).
+- 2026-10-13: CLAIMS module started (claims-v1): unknown names in Special Access get the client's own error (ResultResponse 0x10, result 0x17).
+- 2026-10-13: INVENTORY module started (inventory-v1; trace/systems/inventory.md): TransferItemResponse results now the client's reasons (1 = success, chest permission / NO_TRADE / chest-in-chest messages); NO_TRADE flag decoded.
+- 2026-10-13: INVENTORY: NO_TRADE items can't be traded or mailed (client reasons 0xA / 0x12 / 0xF in mail).
+- 2026-10-13: Regression subset run (two runners overlapped by mistake → one-off flaky failures; each scenario passed in a clean run). Trade window icons verified in-client (tradeimg screenshots).

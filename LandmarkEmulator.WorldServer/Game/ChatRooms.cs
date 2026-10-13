@@ -65,7 +65,10 @@ namespace LandmarkEmulator.WorldServer.Game
                 else if (sub == LeaveRequest)
                     Leave(session, reader.ReadString().Trim());
                 else
+                {
+                    Network.OpcodeStats.Unanswered("ChatRooms", sub);
                     log.Debug($"Unhandled chat room request {sub} from {session.CharacterName}.");
+                }
             }
             catch (Exception e)
             {

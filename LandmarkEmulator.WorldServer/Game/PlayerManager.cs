@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using LandmarkEmulator.WorldServer.Network;
 using LandmarkEmulator.WorldServer.Network.Message.Model;
 using LandmarkEmulator.WorldServer.Network.Message;
@@ -80,6 +80,29 @@ namespace LandmarkEmulator.WorldServer.Game
             session.EnqueueMessage(ZoneMessageOpcode.PlayerStudioRegistered, new byte[] { 1 });
             Guilds.Enter(session);
             Store.SignIn(session);
+            Admin.Enter(session);
+            SendMotd(session);
+        }
+
+        /// <summary>
+        /// PacketMOTD (0x5A, reader FUN_142bb0af0: {string subject, string body}; zone dispatcher shows
+        /// "subject\nbody" through ShowSystemMessage and appends {Subject, body} to the UI.MessageOfTheDay data source),
+        /// once per login, from WorldServer.json MotdSubject / MotdBody.
+        /// </summary>
+        private static void SendMotd(WorldSession session)
+        {
+            if (session.MotdSent)
+                return;
+            var config = Shared.Configuration.ConfigurationManager<WorldServerConfiguration>.Instance.Config;
+            string subject = config.MotdSubject ?? "", body = config.MotdBody ?? "";
+            if (subject.Length == 0 && body.Length == 0)
+                return;
+            session.MotdSent = true;
+            var output = new List<byte>();
+            var w = new LandmarkEmulator.Shared.Network.GamePacketWriter(output);
+            w.Write(subject);
+            w.Write(body);
+            session.EnqueueMessage(ZoneMessageOpcode.MOTD, output.ToArray());
         }
 
         /// <summary>
@@ -205,6 +228,8 @@ namespace LandmarkEmulator.WorldServer.Game
             Combat.WeaponCombat.Forget(session);
             Vaults.Forget(session);
             PropLimits.Forget(session);
+            WorldEditing.Forget(session);
+            BuildModeHolster.Forget(session);
             Friends.Leave(session);
             Ignores.Leave(session);
             Guilds.Leave(session);

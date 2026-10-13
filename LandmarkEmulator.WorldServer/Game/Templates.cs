@@ -1,4 +1,4 @@
-using LandmarkEmulator.Shared.Database;
+﻿using LandmarkEmulator.Shared.Database;
 using LandmarkEmulator.Database.Character.Model;
 using LandmarkEmulator.Shared.Network;
 using LandmarkEmulator.WorldServer.Game.Terrain;
@@ -65,8 +65,12 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <summary>The designs held by an owner (a character or an item).</summary>
         public static List<TemplateModel> OwnedBy(ulong owner) => Owned(owner);
 
-        /// <summary>Does the player have room for one more design (game designs don't count)?</summary>
-        public static bool HasRoom(WorldSession session) => Owned(session.PlayerGuid).Count(t => !IsDesigner(t)) < Limit(session);
+        /// <summary>Does the player's design storage have room for <paramref name="voxels"/> more voxels?</summary>
+        public static bool HasRoom(WorldSession session, long voxels) => UsedVoxels(session.PlayerGuid) + voxels <= MaxVoxels(session);
+
+        /// <summary>Does the player's design storage have room for this design?</summary>
+        public static bool HasRoom(WorldSession session, TemplateModel design)
+            => HasRoom(session, Materials(design).Sum(m => (long)m.Count));
 
         /// <summary>Adds a design to the player's Designs list (3 SaveTemplateResponse, ok).</summary>
         public static void SendAdded(WorldSession session, TemplateModel design)
@@ -79,15 +83,25 @@ namespace LandmarkEmulator.WorldServer.Game
             session.EnqueueMessage(ZoneMessageOpcode.TemplateBase, output.ToArray());
         }
 
-        public const byte ListResponseSub = 2, SaveResponseSub = 3, VoxelDataRequestSub = 4, VoxelDataResponseSub = 5,
+        public const byte ListRequestSub = 1, ListResponseSub = 2, SaveResponseSub = 3, VoxelDataRequestSub = 4, VoxelDataResponseSub = 5,
             DeleteRequestSub = 6, DeleteResponseSub = 7, RenameRequestSub = 0xA, RenameErrorSub = 0xB, UpdateResponseSub = 0xC;
 
-        /// <summary>Designs a player may keep.</summary>
-        public const int StorageLimit = 100;
+        /// <summary>Templates.MaxVoxelExpandable: the most design storage expanders can bring a player to.</summary>
+        public const long MaxVoxelExpandable = 48_000_000;
 
-        /// <summary>Designs a player may keep: <see cref="StorageLimit"/> per 6,000,000 voxels of design storage.</summary>
-        public static int Limit(WorldSession session)
-            => (int)(StorageLimit * (long)ItemUses.DesignStorageOf(session.PlayerGuid) / ItemUses.DefaultDesignStorage);
+        /// <summary>
+        /// Design storage is counted in voxels, not designs (client FUN_143061750 → Lua Character.Template.Limits
+        /// MaxVoxels): Templates.MaxTotalStoredVoxelCount (6,000,000) plus the player's voxel storage expanders, at most
+        /// Templates.MaxVoxelExpandable. Over it, a save is refused with Response 0x11
+        /// (Construction.ExceedsMaxTotalTemplateVoxelsCount, which offers Voxel Storage Expanders).
+        /// </summary>
+        public static long MaxVoxels(WorldSession session) => Math.Min(ItemUses.DesignStorageOf(session.PlayerGuid), MaxVoxelExpandable);
+
+        /// <summary>
+        /// Voxels the player's designs take up (CurrentVoxels, summed in the client's list builder): the material counts
+        /// of every design that CountsAgainstStorageLimit — not the game's own (designer) designs.
+        /// </summary>
+        public static long UsedVoxels(ulong owner) => Owned(owner).Where(t => !IsDesigner(t)).Sum(t => Materials(t).Sum(m => (long)m.Count));
 
         // ---- Starter Castle ------------------------------------------------------------------------------------------
 
@@ -252,7 +266,15 @@ namespace LandmarkEmulator.WorldServer.Game
                 writer.WriteUShort(material);
                 writer.Write(n);
             }
-            writer.Write(0u);                       // props
+            // PropData list (PropCount; the client sends it back when the design is placed, FUN_1430b9d50).
+            List<Props.DesignProp> props = design.Id != 0 ? PropsOf(design.Id) : new List<Props.DesignProp>();
+            writer.Write((uint)props.Count);
+            foreach (Props.DesignProp prop in props)
+            {
+                var bytes = new List<byte>();
+                Building.WritePropData(bytes, prop);
+                writer.WriteBytes(bytes.ToArray());
+            }
             writer.Write(0u);
             writer.Write(0u);
             writer.Write(false);                    // IsDefault
@@ -275,9 +297,45 @@ namespace LandmarkEmulator.WorldServer.Game
         /// request's block list as sent, <paramref name="materials"/> its solid voxels per material.
         /// </summary>
         public static void Save(WorldSession session, string name, string tags, uint sizeX, uint sizeY, uint sizeZ,
-            byte[] blocks, IDictionary<ushort, uint> materials)
+            byte[] blocks, IDictionary<ushort, uint> materials, List<Props.DesignProp> props = null)
         {
-            Store(session, name, tags, sizeX, sizeY, sizeZ, blocks, materials, session.CharacterName ?? "");
+            Store(session, name, tags, sizeX, sizeY, sizeZ, blocks, materials, session.CharacterName ?? "", props);
+        }
+
+        /// <summary>A design's props, kept beside the design (TemplateProps/&lt;design id&gt;.json).</summary>
+        private static string PropsFile(ulong design) => System.IO.Path.Combine(AppContext.BaseDirectory, "TemplateProps", design + ".json");
+
+        private sealed record StoredProp(uint PropId, float[] Offset, float[] Rotation, float[] Scale, string Tint, string Name, string Text);
+
+        /// <summary>The props saved with a design (offsets from its box's corner), empty if none.</summary>
+        public static List<Props.DesignProp> PropsOf(ulong design)
+        {
+            string path = PropsFile(design);
+            if (!System.IO.File.Exists(path))
+                return new List<Props.DesignProp>();
+            try
+            {
+                return System.Text.Json.JsonSerializer.Deserialize<List<StoredProp>>(System.IO.File.ReadAllText(path))
+                    .Select(p => new Props.DesignProp(p.PropId, new System.Numerics.Vector3(p.Offset[0], p.Offset[1], p.Offset[2]),
+                        new System.Numerics.Vector4(p.Rotation[0], p.Rotation[1], p.Rotation[2], p.Rotation[3]),
+                        new System.Numerics.Vector4(p.Scale[0], p.Scale[1], p.Scale[2], p.Scale[3]), p.Tint, p.Name, p.Text))
+                    .ToList();
+            }
+            catch (Exception e)
+            {
+                log.Warn($"Unreadable props of design {design}: {e.Message}");
+                return new List<Props.DesignProp>();
+            }
+        }
+
+        private static void SaveProps(ulong design, List<Props.DesignProp> props)
+        {
+            if (props == null || props.Count == 0)
+                return;
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(PropsFile(design)));
+            System.IO.File.WriteAllText(PropsFile(design), System.Text.Json.JsonSerializer.Serialize(props.Select(p => new StoredProp(p.PropId,
+                new[] { p.Offset.X, p.Offset.Y, p.Offset.Z }, new[] { p.Rotation.X, p.Rotation.Y, p.Rotation.Z, p.Rotation.W },
+                new[] { p.Scale.X, p.Scale.Y, p.Scale.Z, p.Scale.W }, p.Tint, p.Name, p.Text))));
         }
 
         /// <summary>
@@ -304,7 +362,7 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         private static bool Store(WorldSession session, string name, string tags, uint sizeX, uint sizeY, uint sizeZ,
-            byte[] blocks, IDictionary<ushort, uint> materials, string author)
+            byte[] blocks, IDictionary<ushort, uint> materials, string author, List<Props.DesignProp> props = null)
         {
             name = (name ?? "").Trim();
             if (name.Length > 64)
@@ -312,7 +370,8 @@ namespace LandmarkEmulator.WorldServer.Game
             tags ??= "";
             if (tags.Length > 500)
                 tags = tags[..500];
-            bool ok = materials.Count > 0 && name.Length > 0 && Owned(session.PlayerGuid).Count(t => !IsDesigner(t)) < Limit(session);
+            bool ok = materials.Count > 0 && name.Length > 0
+                && (author == DesignerAuthor || HasRoom(session, materials.Values.Sum(n => (long)n)));
             TemplateModel design = null;
             if (ok)
             {
@@ -332,6 +391,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 using var context = DatabaseManager.Instance.CharacterDatabase.NewContext();
                 context.Template.Add(design);
                 context.SaveChanges();
+                SaveProps(design.Id, props);
             }
             var output = new List<byte>();
             var writer = new GamePacketWriter(output);
@@ -378,6 +438,11 @@ namespace LandmarkEmulator.WorldServer.Game
         {
             switch (sub)
             {
+                case ListRequestSub:
+                    // ClientListRequest (Lua GetList, FUN_143069140): sent only while the client has no list yet (+0xf8)
+                    // and none asked for (+0xf9). The list is pushed at world entry, so this is the fallback.
+                    SendList(session);
+                    break;
                 case VoxelDataRequestSub when body.Length >= 16:
                     SendVoxelData(session, BitConverter.ToUInt64(body, 0), BitConverter.ToUInt64(body, 8),
                         body.Length > 16 && body[16] != 0);
@@ -392,6 +457,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     DesignItems.Export(session, BitConverter.ToUInt64(body, 0));
                     break;
                 default:
+                    Network.OpcodeStats.Unanswered("Template 0xF0", sub);
                     log.Debug($"Template packet 0x{sub:X2} from {session.CharacterName}: {BitConverter.ToString(body, 0, Math.Min(body.Length, 64))}");
                     break;
             }

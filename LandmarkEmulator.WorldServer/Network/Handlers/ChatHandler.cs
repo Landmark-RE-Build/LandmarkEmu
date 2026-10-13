@@ -22,7 +22,10 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
             else if (request.SubOpcode == Game.ChatRooms.JoinRequest || request.SubOpcode == Game.ChatRooms.LeaveRequest)
                 Game.ChatRooms.Handle(session, (ushort)request.SubOpcode, request.Body);
             else
+            {
+                Network.OpcodeStats.Unanswered("Chat 0x13", request.SubOpcode);
                 log.Debug($"Unhandled chat request {request.SubOpcode}.");
+            }
         }
     }
 }

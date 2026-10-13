@@ -1,4 +1,4 @@
-using LandmarkEmulator.WorldServer.Storage;
+﻿using LandmarkEmulator.WorldServer.Storage;
 using LandmarkEmulator.Shared.Configuration;
 using LandmarkEmulator.Database.Character.Model;
 using LandmarkEmulator.Gateway.Network;
@@ -36,6 +36,8 @@ namespace LandmarkEmulator.WorldServer.Network
         /// Set once the client has finished loading the world.
         /// </summary>
         public bool WorldReady { get; set; }
+        /// <summary>The message of the day went out this login.</summary>
+        public bool MotdSent { get; set; }
 
         // T-KIRMMIN-WIRE-TIMING (logging only): t=0 at first SendSelfToClient SOE-pack.
         private long? _wireT0Ms;
@@ -510,6 +512,8 @@ namespace LandmarkEmulator.WorldServer.Network
         /// client (building, a few dozen a second at most). Packets beyond it are dropped unread.
         /// </summary>
         private readonly Game.RateLimiter packetLimiter = new(300, 100);
+        /// <summary>Terrain cell requests and build edits (see the flood check in the packet path).</summary>
+        private readonly Game.RateLimiter terrainLimiter = new(200, 50);
         private readonly Game.RateLimiter packetWarnLimiter = new(1, 1 / 60.0);
         private long droppedPackets;
 
@@ -872,6 +876,7 @@ namespace LandmarkEmulator.WorldServer.Network
             ZoneMessageHandlerDelegate handlerInfo = ZoneMessageManager.Instance.GetZoneMessageHandler(packet.Opcode, ClientProtocol);
             if (handlerInfo == null)
             {
+                Network.OpcodeStats.Unanswered($"no handler {packet.Opcode}", 0);
                 log.Warn($"Unhandled Zone packet {packet.Opcode}(0x{packet.Opcode:X}).");
                 return;
             }
@@ -1056,7 +1061,29 @@ namespace LandmarkEmulator.WorldServer.Network
                 return;
             }
 
-            if (!packetLimiter.TryTake())
+            // Abilities 0x27 sub 0x17 DelayedTargetInfo: while a power attack charges, the client sends its aim every frame
+            // (ClientAbilityManager vtable slot 2 → FUN_1433ad3e0; seen 617 in two seconds of charging 733). The server
+            // takes the aim from the cast, so these are dropped before the flood limiter, which they would otherwise
+            // exhaust, dropping the requests that matter (the charge's release among them).
+            if (data.Length >= 3 && data[0] == 0x27 && data[1] == 0x00 && data[2] == 0x17)
+                return;
+
+            // WorldEditingBase 0x10C: the build cursor, sent every frame while building (up to ~500 a second seen
+            // 2026-10-13). Game.WorldEditing throttles its relay itself (100 ms per builder). Through the flood limiter
+            // it used up the whole budget and the limiter then dropped terrain cell requests: never answered, the
+            // client drew the original ground after its 6 s scene timer (removed terrain came back) and refused new
+            // edits while the request stayed pending (the build tool hung).
+            if (data.Length >= 2 && data[0] == 0x0C && data[1] == 0x01)
+            {
+                OpcodeStats.Received(data);
+                Game.WorldEditing.Received(this, data);
+                return;
+            }
+
+            // Terrain cell requests (0xEC) and build edits (0xF4) have their own allowance, so a flood of anything
+            // else can't drop them.
+            bool terrain = data.Length >= 2 && data[1] == 0x00 && (data[0] == 0xEC || data[0] == 0xF4);
+            if (!(terrain ? terrainLimiter.TryTake() : packetLimiter.TryTake()))
             {
                 long dropped = System.Threading.Interlocked.Increment(ref droppedPackets);
                 if (packetWarnLimiter.TryTake())
@@ -1070,10 +1097,13 @@ namespace LandmarkEmulator.WorldServer.Network
 
             if (opcode == null)
             {
-                // WorldEditingBase 0x10C (build cursor box / shape / preview updates, several a second while building):
-                // the live server showed them to other builders; not relayed yet, so dropped quietly.
+                // WorldEditingBase 0x10C (build cursor box / shape / selection / preview updates, several a second while
+                // building): relayed to the players nearby, whose clients draw them (Game/WorldEditing.cs).
                 if (data.Length >= 2 && data[0] == 0x0C && data[1] == 0x01)
+                {
+                    Game.WorldEditing.Received(this, data);
                     return;
+                }
                 // WarpNetwork 0x113 sub 4 ClientRequest {u32 1, u32 zone, u32 world, ...} at ClientFinishedLoading: asks for
                 // the landscape's warp network (reply sub 2 WarpNetworkZoneNetwork, reader FUN_1434504c0: layers of
                 // warp points): handled as WarpNetworkWire (MiscHandler → Game/WarpNetwork.cs, Spire Local Travel).
@@ -1102,6 +1132,7 @@ namespace LandmarkEmulator.WorldServer.Network
                     Game.PlayerManager.RelayHeroicMovement(this, data);
                     return;
                 }
+                Network.OpcodeStats.Unanswered("raw 0x" + (data.Length >= 2 ? $"{data[1]:X2}{data[0]:X2}" : "?"), data.Length > 2 ? data[2] : -1);
                 log.Warn($"Unknown Zone Packet : {BitConverter.ToString(data)}");
                 return;
             }

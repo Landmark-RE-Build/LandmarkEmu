@@ -1,4 +1,4 @@
-using LandmarkEmulator.WorldServer.Storage;
+﻿using LandmarkEmulator.WorldServer.Storage;
 using LandmarkEmulator.Database.Character.Model;
 using LandmarkEmulator.Shared.Database;
 using LandmarkEmulator.Shared.GameTable;
@@ -197,7 +197,12 @@ namespace LandmarkEmulator.WorldServer.Game
         /// free chest slot; chest → bag puts it back in the bag (stacking as usual); chest → chest moves it to an
         /// empty slot. Returns whether anything moved.
         /// </summary>
-        public static bool Transfer(WorldSession session, TransferItemRequest request)
+        /// <summary>TransferItemResponse results (client names, FUN_143b966c0).</summary>
+        public const uint TransferDone = 0x1, DestinationFull = 0x2, SourceNotFound = 0x3, TransferFailedInInventory = 0x13,
+            NoSourceChestPermission = 0x16, NoDestinationChestPermission = 0x17, NoTradeIntoClaimChest = 0x20,
+            ChestWithItemsIntoChest = 0x25;
+
+        public static uint Transfer(WorldSession session, TransferItemRequest request)
         {
             bool toChest = request.Destination.OwnerType == ChestOwnerType;
             bool fromChest = request.Source.OwnerType == ChestOwnerType;
@@ -207,7 +212,7 @@ namespace LandmarkEmulator.WorldServer.Game
             if (slots == 0 || prop.Zone != session.ZoneId || !MayUse(session, prop))
             {
                 log.Info($"{session.CharacterName}: chest transfer refused (chest 0x{chest:X}, slots {slots}).");
-                return false;
+                return slots == 0 || prop.Zone != session.ZoneId ? SourceNotFound : toChest ? NoDestinationChestPermission : NoSourceChestPermission;
             }
 
             if (toChest && !fromChest)
@@ -217,13 +222,17 @@ namespace LandmarkEmulator.WorldServer.Game
             return MoveWithin(session, chest, slots, request);
         }
 
-        private static bool Deposit(WorldSession session, ulong chest, uint slots, TransferItemRequest request)
+        private static uint Deposit(WorldSession session, ulong chest, uint slots, TransferItemRequest request)
         {
             CharacterItemModel item = session.Inventory.Get(request.ItemGuid);
             if (item == null || item.Container == Inventory.Inventory.EquippedContainer)
-                return false;
+                return SourceNotFound;
             if (HasItems(item.Id))
-                return false;   // a chest holding items can't go into a chest (client error 0x25)
+                return ChestWithItemsIntoChest;
+            // "Can't place NO_TRADE item into claim's chest if you're not claim owner" (client reason 0x20).
+            if (Inventory.ItemDefinitionManager.Get(item.ItemDefinitionId) is { NoTrade: true }
+                && Props.Find(chest) is Props.PlacedProp placed && !OwnsSiteOf(session, placed))
+                return NoTradeIntoClaimChest;
             uint count = request.Quantity == 0 ? item.Count : Math.Min(request.Quantity, item.Count);
             ChestItemModel stored;
             lock (sync)
@@ -233,7 +242,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     ? request.Destination.Slot
                     : Enumerable.Range(0, (int)slots).Select(s => (uint?)s).FirstOrDefault(s => list.All(i => i.Slot != s));
                 if (slot == null)
-                    return false;   // chest full
+                    return DestinationFull;
                 stored = new ChestItemModel
                 {
                     // The whole stack keeps its guid; a split part gets a new one.
@@ -251,17 +260,24 @@ namespace LandmarkEmulator.WorldServer.Game
                 .ContinueWith(t => log.Error(t.Exception, "Failed to save chest item."),
                     System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
             BroadcastAdd(chest, stored);
-            return true;
+            return TransferDone;
         }
 
-        private static bool Withdraw(WorldSession session, ulong chest, TransferItemRequest request)
+        /// <summary>Does the player own the build site the chest stands on (or is it on no site)?</summary>
+        private static bool OwnsSiteOf(WorldSession session, Props.PlacedProp chest)
+        {
+            var at = new System.Numerics.Vector3(chest.Spawn.Position.X, chest.Spawn.Position.Y, chest.Spawn.Position.Z);
+            return Claims.ClaimAt(chest.Zone, at) is not ulong site || Claims.OwnerOf(site) == session.PlayerGuid;
+        }
+
+        private static uint Withdraw(WorldSession session, ulong chest, TransferItemRequest request)
         {
             ChestItemModel item;
             lock (sync)
                 item = Of(chest).FirstOrDefault(i => i.Id == request.ItemGuid)
                     ?? Of(chest).FirstOrDefault(i => i.Slot == request.Source.Slot);
             if (item == null)
-                return false;
+                return SourceNotFound;
             uint count = request.Quantity == 0 ? item.Count : Math.Min(request.Quantity, item.Count);
             session.GiveItem(item.ItemDefinitionId, count);
             bool gone;
@@ -287,18 +303,20 @@ namespace LandmarkEmulator.WorldServer.Game
             BroadcastDelete(chest, id);
             if (!gone)
                 BroadcastAdd(chest, item);
-            return true;
+            return TransferDone;
         }
 
-        private static bool MoveWithin(WorldSession session, ulong chest, uint slots, TransferItemRequest request)
+        private static uint MoveWithin(WorldSession session, ulong chest, uint slots, TransferItemRequest request)
         {
             ChestItemModel item;
             lock (sync)
             {
                 List<ChestItemModel> list = Of(chest);
                 item = list.FirstOrDefault(i => i.Id == request.ItemGuid);
-                if (item == null || request.Destination.Slot >= slots || list.Any(i => i.Slot == request.Destination.Slot))
-                    return false;
+                if (item == null)
+                    return SourceNotFound;
+                if (request.Destination.Slot >= slots || list.Any(i => i.Slot == request.Destination.Slot))
+                    return TransferFailedInInventory;
                 item.Slot = request.Destination.Slot;
             }
             ulong id = item.Id;
@@ -312,7 +330,7 @@ namespace LandmarkEmulator.WorldServer.Game
             });
             BroadcastDelete(chest, id);
             BroadcastAdd(chest, item);
-            return true;
+            return TransferDone;
         }
 
         /// <summary>ChestAddItem (5): u64 chest, u64 inventory, u32 length + {bool definition follows, item record}.</summary>
