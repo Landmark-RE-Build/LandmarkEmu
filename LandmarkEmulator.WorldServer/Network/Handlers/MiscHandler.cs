@@ -298,6 +298,17 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
             // Only now is the client's world ready to show other players. They're added on the first position update,
             // so everyone else spawns this player where they actually are.
             session.WorldReady = true;
+            // A relog from build mode left the hotbar hidden until Tab: the client syncs its native build mode from
+            // SendSelf (+0x286, off) at login (FUN_142c78ac0 -> FUN_1433bec40), which changes nothing when its tool
+            // manager (kept across relogs) is already off, so the Lua HUD never hears HudStateManager:OnDisableBuildMode
+            // and the ActionBar, resource bars and ability bar its OnEnableBuildMode hid stay hidden. Once per login
+            // (not after a re-zone, where the player may still be building) the server runs that function itself; it
+            // only shows those windows and hides the build mode widgets (UI/ScriptsBase.bin, re/tools/luadis.py).
+            if (!session.BuildHudReset)
+            {
+                session.BuildHudReset = true;
+                Game.ClientLua.RunCode(session, "if HudStateManager and HudStateManager.OnDisableBuildMode then HudStateManager:OnDisableBuildMode() end");
+            }
         }
 
         /// <summary>
@@ -390,7 +401,11 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
         {
             var reply = Game.Abilities.BuildItemAbilityInfo(weapon,
                 new Game.Inventory.ItemDefinitionManager.ItemAbility(abilityId, 0, "", ""));
-            reply.CastTime = 0.4f;
+            // The client ends the attack's animation with ActiveTimeEnd (selection 510, STOPS_CURRENT_SELECTION) one
+            // cast time after the cast success (measured: 401 ms with 0.4 s, re/test/scenarios/adhoc/castanim). With
+            // 0.4 s it stopped the strike ~50-130 ms in. The cast time is long enough for this weapon's latest strike
+            // (Release at the selection's AttackTime) plus its motion; the recovery stays short so combos chain.
+            reply.CastTime = Math.Max(0.4f, Game.WeaponAttacks.StrikeWindowSeconds(weapon, abilityId));
             reply.RecoveryTime = 0.1f;
             reply.MaxRange = 4f;
             uint cost = Game.WeaponAttacks.EnergyCost(abilityId);

@@ -135,7 +135,7 @@ namespace LandmarkEmulator.WorldServer.Game
             {
                 ulong id = c.Id;
                 (double a, double b, double d, double e, double f, double g) = (c.MinX, c.MaxX, c.MinY, c.MaxY, c.MinZ, c.MaxZ);
-                DatabaseManager.Instance.CharacterDatabase.Save(db =>
+                DatabaseManager.Instance.CharacterDatabase.SaveWorld(db =>
                 {
                     var model = new ClaimModel { Id = id };
                     db.Claim.Attach(model);
@@ -468,7 +468,7 @@ namespace LandmarkEmulator.WorldServer.Game
             lock (sync)
                 claims.Add(claim);
             Terrain.OreVeins.ClearSite(claim.ZoneId, (claim.MinX, claim.MinY, claim.MinZ), (claim.MaxX, claim.MaxY, claim.MaxZ));
-            DatabaseManager.Instance.CharacterDatabase.Save(c => c.Claim.Add(claim))
+            DatabaseManager.Instance.CharacterDatabase.SaveWorld(c => c.Claim.Add(claim))
                 .ContinueWith(t => log.Error(t.Exception, $"Failed to save claim {claim.Id}."),
                     System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
 
@@ -713,7 +713,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 tags = tags[..MaxTags];
             claim.Tags = tags;
             ulong id = claim.Id;
-            DatabaseManager.Instance.CharacterDatabase.Save(c =>
+            DatabaseManager.Instance.CharacterDatabase.SaveWorld(c =>
             {
                 var model = new ClaimModel { Id = id };
                 c.Claim.Attach(model);
@@ -740,7 +740,7 @@ namespace LandmarkEmulator.WorldServer.Game
             (claim.VisitorTimeHour, claim.VisitorTimeRate) = (Hour(visitorHour), Rate(visitorRate));
             ulong id = claim.Id;
             (int h1, float r1, int h2, float r2) = (claim.TimeHour, claim.TimeRate, claim.VisitorTimeHour, claim.VisitorTimeRate);
-            DatabaseManager.Instance.CharacterDatabase.Save(c =>
+            DatabaseManager.Instance.CharacterDatabase.SaveWorld(c =>
             {
                 var model = new ClaimModel { Id = id };
                 c.Claim.Attach(model);
@@ -1018,7 +1018,7 @@ namespace LandmarkEmulator.WorldServer.Game
             // Owners online drop it from their own sites (My Sites) too, not just from the area.
             foreach (ClaimModel claim in gone)
                 PlayerManager.FindByGuid(claim.OwnerGuid)?.EnqueueMessage(ZoneMessageOpcode.ClaimsBase, BuildInfoUpdate(claim, InfoDeleted));
-            DatabaseManager.Instance.CharacterDatabase.Save(c => c.Claim.RemoveRange(gone))
+            DatabaseManager.Instance.CharacterDatabase.SaveWorld(c => c.Claim.RemoveRange(gone))
                 .ContinueWith(t => log.Error(t.Exception, "Failed to delete claims."),
                     System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
             foreach (var group in gone.GroupBy(c => c.ZoneId))
@@ -1158,7 +1158,7 @@ namespace LandmarkEmulator.WorldServer.Game
             claim.DefaultPermissions = mask & OwnerPermissions;
             ulong id = claim.Id;
             uint value = claim.DefaultPermissions;
-            DatabaseManager.Instance.CharacterDatabase.Save(c =>
+            DatabaseManager.Instance.CharacterDatabase.SaveWorld(c =>
             {
                 var model = new ClaimModel { Id = id };
                 c.Claim.Attach(model);
@@ -1220,7 +1220,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     map[characterId] = mask;
                 specialNames[characterId] = target.Name;
             }
-            DatabaseManager.Instance.CharacterDatabase.Save(c =>
+            DatabaseManager.Instance.CharacterDatabase.SaveWorld(c =>
             {
                 ClaimPermissionModel row = c.ClaimPermission.Find(id, characterId);
                 if (mask == 0)
@@ -1343,7 +1343,7 @@ namespace LandmarkEmulator.WorldServer.Game
             lock (sync)
                 claims.Add(claim);
             Terrain.OreVeins.ClearSite(claim.ZoneId, (claim.MinX, claim.MinY, claim.MinZ), (claim.MaxX, claim.MaxY, claim.MaxZ));
-            DatabaseManager.Instance.CharacterDatabase.Save(c => c.Claim.Add(claim))
+            DatabaseManager.Instance.CharacterDatabase.SaveWorld(c => c.Claim.Add(claim))
                 .ContinueWith(t => log.Error(t.Exception, $"Failed to save claim {claim.Id}."),
                     System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
             byte[] add = BuildAoiUpdate(false, new[] { claim }, Array.Empty<ulong>());
@@ -1452,7 +1452,7 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             claim.Name = name;
             ulong id = claim.Id;
-            DatabaseManager.Instance.CharacterDatabase.Save(c =>
+            DatabaseManager.Instance.CharacterDatabase.SaveWorld(c =>
             {
                 var model = new ClaimModel { Id = id };
                 c.Claim.Attach(model);
@@ -1506,7 +1506,7 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             claim.Description = text;
             ulong id = claim.Id;
-            DatabaseManager.Instance.CharacterDatabase.Save(c =>
+            DatabaseManager.Instance.CharacterDatabase.SaveWorld(c =>
             {
                 var model = new ClaimModel { Id = id };
                 c.Claim.Attach(model);

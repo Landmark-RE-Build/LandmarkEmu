@@ -54,6 +54,7 @@ namespace LandmarkEmulator.WorldServer.Game
             // Sent after the copy exists: the item record names the design it holds (ItemBlock).
             session.SendItem(item, replace: false);
             Chat.System(session, $"\"{design.Name}\" is now a Player Design item in your bag.");
+            Achievements.DesignItemCreated(session);
             log.Info($"{session.CharacterName} exported design {design.Id} to item 0x{item.Id:X} (copy {copy.Id}).");
         }
 

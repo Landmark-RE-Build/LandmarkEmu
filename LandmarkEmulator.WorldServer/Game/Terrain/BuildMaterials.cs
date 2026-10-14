@@ -17,13 +17,17 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
     /// Dirt / Sand / Stone / Snow; others charged a different item than the tray counts, e.g. Cut Marble for Marble,
     /// Smelted Tin for Smelted Iron). ITEM_ID 0 = free-to-use (the wiki's
     /// "Free-to-Use Building Materials": most Terrain textures, infinity symbol in the tray).
-    /// One item builds <see cref="VoxelsPerItem"/> voxels, the rate mining pays out.
+    /// One item builds <see cref="VoxelsPerItem"/> voxel: the client's own pre-check (FUN_1435fd7c0) refuses an edit when
+    /// the items held are fewer than the brush's voxel count (cursor vtable +0xa0, FUN_1435fbed0: popcount of the brush's
+    /// 40³ cell masks, no division), and the material list it sends with each edit (ApplyDiffRequest +0x90) carries
+    /// the voxel count. The earlier 4 voxels per item had no source and let the server charge a quarter of what the
+    /// client counts (2026-10-14).
     /// </summary>
     public static class BuildMaterials
     {
         private static readonly ILogger log = LogManager.GetCurrentClassLogger();
 
-        public const int VoxelsPerItem = 4;
+        public const int VoxelsPerItem = 1;
         private static Dictionary<ushort, uint> itemByMaterial;
 
         /// <summary>

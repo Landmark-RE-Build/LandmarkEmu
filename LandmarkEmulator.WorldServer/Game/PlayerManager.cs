@@ -1,4 +1,5 @@
 ﻿using System;
+using LandmarkEmulator.Shared.Network;
 using LandmarkEmulator.WorldServer.Network;
 using LandmarkEmulator.WorldServer.Network.Message.Model;
 using LandmarkEmulator.WorldServer.Network.Message;
@@ -41,7 +42,21 @@ namespace LandmarkEmulator.WorldServer.Game
             lock (sync)
                 stale = players.Where(p => p.PlayerGuid == session.PlayerGuid && p != session).ToList();
             foreach (WorldSession old in stale)
+            {
                 Leave(old);
+                // A second login of the character while the first client is still connected: like live, the first
+                // client is kicked with the client's own message box (PacketClientKickedFromServer 0x53 {string
+                // StringFixed<128>}, Zone_DispatchPacket case 0x24: ErrorLabelWarning + KickedFromServerMessage with
+                // [message]), then its connection is closed once the message has gone out.
+                if (!old.Disconnected)
+                {
+                    var output = new List<byte>();
+                    new GamePacketWriter(output).Write("Your character has logged in from another location.");
+                    old.EnqueueMessage(ZoneMessageOpcode.ClientKickedFromServer, output.ToArray());
+                    _ = System.Threading.Tasks.Task.Delay(1500).ContinueWith(_ => { if (!old.Disconnected) old.OnDisconnect(); });
+                    log.Info($"{old.CharacterName}: an older session was kicked (logged in again).");
+                }
+            }
 
             lock (sync)
             {
@@ -170,6 +185,7 @@ namespace LandmarkEmulator.WorldServer.Game
         /// </summary>
         public static void ChangedZone(WorldSession session, uint oldZone)
         {
+            Trades.Moved(session, intoGame: false);
             lock (sync)
                 foreach (WorldSession other in players.Where(p => p != session))
                 {

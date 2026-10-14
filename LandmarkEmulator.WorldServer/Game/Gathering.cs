@@ -457,7 +457,7 @@ namespace LandmarkEmulator.WorldServer.Game
             uint zone = session.ZoneId;
             if (DevCommands.NoStreaming || !TerrainHeights.Has(zone))
                 return;   // no baked heights for this landscape: nothing can be placed on its ground
-            if (session.IsArriving)
+            if (session.StreamsOnHold)
                 return;
             Vector3 position = session.Position;
             var spawns = new List<PlayerUpdateAddLightweightProp>();

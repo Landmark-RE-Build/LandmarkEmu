@@ -55,7 +55,13 @@ namespace LandmarkEmulator.WorldServer.Game
             bool own = Claims.OwnerOf(claimId) == session.PlayerGuid;
             bool counted = !own && Unlocks.Add(session, Unlocks.ClaimVote, (uint)claimId);
             if (counted)
+            {
                 DailyGoals.LikeGiven(session);
+                Achievements.LikeGivenOrReceived(session);
+                Achievements.LikedTaggedSite(session, Claims.Get(claimId)?.Tags);
+                if (PlayerManager.FindByGuid(Claims.OwnerOf(claimId)) is WorldSession owner)
+                    Achievements.LikeGivenOrReceived(owner);
+            }
             ulong total = Total(claimId);
             var output = new List<byte>();
             var writer = new GamePacketWriter(output);

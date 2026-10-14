@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>LandmarkEmu LaunchPad</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'">
+<link rel="stylesheet" href="launchpad.css">
+</head>
+<body>
+<div id="lpContainer">
+
+  <!-- Header: drag area, game build, server, account, window buttons (LaunchPad #lpHeader). -->
+  <header id="lpHeader">
+    <div id="dragArea"></div>
+    <div id="gameVersion"><span class="logo">LANDMARK</span><span id="buildLabel"></span></div>
+    <div id="serverPicker">
+      <select id="serverSelect" title="Server"></select>
+    </div>
+    <div id="account" class="dropdown">
+      <button id="accountButton" class="link">Log in</button>
+      <div id="accountMenu" class="menu hidden">
+        <button id="menuLogin" class="link">Log in</button>
+        <button id="menuCreate" class="link">Create account</button>
+        <button id="menuLogout" class="link">Log out</button>
+      </div>
+    </div>
+    <div id="windowButtons">
+      <button id="btnMinimize" title="Minimize">&#x2013;</button>
+      <button id="btnClose" title="Close">&#x2715;</button>
+    </div>
+  </header>
+
+  <main id="lpContent">
+    <section id="lpContentTop">
+      <!-- Banner: the server's name, status and worlds (LaunchPad's carousel). -->
+      <div id="banner">
+        <h1 id="serverName">No server yet</h1>
+        <p id="serverStatus">Add your server in Settings to begin.</p>
+        <ul id="worlds"></ul>
+        <p id="websiteLink" class="hidden"><button class="link" id="openWebsite">Account website</button></p>
+      </div>
+      <!-- News from the server (GET /info). -->
+      <div id="lpNews">
+        <div id="lpNewsHeader">News</div>
+        <div id="lpNewsContent"><p class="muted">No news.</p></div>
+      </div>
+
+      <!-- Settings (LaunchPad #lpSettings: left tabs, content on the right). -->
+      <div id="lpSettings" class="hidden">
+        <nav id="settingsMenu">
+          <button data-tab="servers" class="active">Servers</button>
+          <button data-tab="packs">Patch packs</button>
+          <button data-tab="validate">Validate files</button>
+          <button data-tab="folder">Game folder</button>
+          <button data-tab="options">Options</button>
+          <button data-tab="about">About</button>
+        </nav>
+        <div id="settingsContent">
+          <section class="tab" id="tab-servers">
+            <h2>Servers</h2>
+            <p class="muted">Add the servers you play on: their address is all you need (ask the server's owner).
+              The server tells LaunchPad the rest, and any patches it needs.</p>
+            <ul id="serverList" class="list"></ul>
+            <form id="serverForm" autocomplete="off">
+              <input type="hidden" id="srvId">
+              <div class="row">
+                <label>Address<input id="srvAddress" maxlength="260" placeholder="play.example.com or 203.0.113.5:5000"></label>
+                <label>Name (optional)<input id="srvName" maxlength="40" placeholder="from the server"></label>
+              </div>
+              <div class="buttons">
+                <button type="submit" class="primary">Save server</button>
+                <button type="button" id="srvNew">New</button>
+                <button type="button" id="srvRemove" class="danger">Remove</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="tab hidden" id="tab-packs">
+            <h2>Patch packs</h2>
+            <p class="muted">The one patch LaunchPad installs is Daybreak's update from the Steam build to the final
+              build, checked file by file against the build's own list: nothing else gets into your game. Install it from
+              its .lmpatch file (choose it, or drop it on this window). It only goes on a complete Steam copy of Landmark, and the
+              files it replaces are kept in a compressed backup so it can be undone.</p>
+            <div class="buttons"><button id="choosePack" class="primary">Install a patch pack...</button>
+              <button id="undoPack">Undo the last patch</button>
+              <button id="revertAll" class="danger">Back to the Steam game</button></div>
+            <div id="packPreview" class="hidden card"></div>
+            <h3>Installed (newest first)</h3>
+            <ul id="packList" class="list"></ul>
+            <p class="muted"><span id="cacheInfo"></span> <button class="link" id="clearCache">Clear</button></p>
+          </section>
+
+          <section class="tab hidden" id="tab-validate">
+            <h2>Validate files</h2>
+            <p class="muted">Checks every game file: Steam's original, or the installed patch's version of it.
+              It reports problems; nothing is downloaded or changed.</p>
+            <div class="buttons"><button id="validate" class="primary">Validate files</button></div>
+            <div id="validateResult"></div>
+          </section>
+
+          <section class="tab hidden" id="tab-folder">
+            <h2>Game folder</h2>
+            <p class="muted">LaunchPad works on the folder it is in.</p>
+            <p id="folderPath" class="mono"></p>
+            <p id="folderBuild"></p>
+            <div class="buttons"><button id="verifySteam" class="primary">Verify the Steam copy</button>
+              <button id="openFolder">Open the folder</button></div>
+            <div id="verifyResult"></div>
+            <p class="muted">LaunchPad doesn't download the game: patches only go on a complete Steam install of
+              Landmark <span id="steamBuild"></span>. If files are missing or changed, use Steam's "Verify integrity of
+              game files" (Landmark &gt; Properties &gt; Installed Files).</p>
+          </section>
+
+          <section class="tab hidden" id="tab-options">
+            <h2>Options</h2>
+            <label class="check"><input type="checkbox" id="optAutoPlay"> Start the game automatically when LaunchPad opens</label>
+            <label>Game language
+              <select id="optLocale">
+                <option value="">Default</option><option value="en_US">English</option><option value="de_DE">Deutsch</option>
+                <option value="fr_FR">Fran&ccedil;ais</option><option value="es_ES">Espa&ntilde;ol</option>
+              </select>
+            </label>
+          </section>
+
+          <section class="tab hidden" id="tab-about">
+            <h2>About</h2>
+            <p>LandmarkEmu LaunchPad: a replacement for Landmark's LaunchPad for LandmarkEmu servers.</p>
+            <p class="muted">Your password never leaves this PC: logging in uses SRP, and "remember me" keeps a key that
+              only works for that account on that server. LandmarkEmu is a fan project, not affiliated with Daybreak Games.
+              Landmark is a trademark of Daybreak Game Company.</p>
+          </section>
+        </div>
+        <button id="settingsClose" title="Close settings">&#x2715;</button>
+      </div>
+    </section>
+
+    <!-- Bottom: progress, auto-play, settings, action button (LaunchPad #lpContentBottom). -->
+    <section id="lpContentBottom">
+      <div id="lpProgressBar">
+        <div class="progress"><div id="progressFill"></div></div>
+        <div id="progressText">Ready.</div>
+      </div>
+      <label id="autoPlayLabel" class="check"><input type="checkbox" id="autoPlay"> Auto-play</label>
+      <button id="settingsButton" title="Settings">&#x2699;</button>
+      <button id="actionBtn">PLAY</button>
+    </section>
+  </main>
+
+  <!-- Modals (LaunchPad #lpModal). -->
+  <div id="modalMask" class="hidden"></div>
+  <div id="loginModal" class="modal hidden">
+    <button class="modal-close">&#x2715;</button>
+    <h2 id="loginTitle">Log in</h2>
+    <p id="loginServer" class="muted"></p>
+    <form id="loginForm" autocomplete="off">
+      <label>Account name<input id="loginAccount" maxlength="32" autocomplete="username"></label>
+      <label>Password<input id="loginPassword" type="password" autocomplete="current-password"></label>
+      <label id="confirmRow" class="hidden">Password again<input id="loginConfirm" type="password" autocomplete="new-password"></label>
+      <label class="check"><input type="checkbox" id="loginRemember" checked> Remember me on this PC</label>
+      <p class="error" id="loginError"></p>
+      <button type="submit" class="primary wide" id="loginSubmit">Log in</button>
+      <p class="switch"><button type="button" class="link" id="loginSwitch">Create a new account</button></p>
+    </form>
+  </div>
+  <div id="errorModal" class="modal hidden">
+    <h2 id="errorTitle">Something went wrong</h2>
+    <p id="errorText"></p>
+    <button class="primary wide modal-close" id="errorOk">OK</button>
+  </div>
+  <div id="patchModal" class="modal hidden">
+    <button class="modal-close">&#x2715;</button>
+    <h2>Update for <span id="patchServer"></span></h2>
+    <p class="muted">This server plays on Daybreak's final build. Its update is checked file by file against
+      Daybreak's own list before anything changes; your files are backed up first, and Settings &gt; Patch packs
+      undoes it.</p>
+    <ul id="patchList" class="plain"></ul>
+    <button class="primary wide" id="patchAccept">Update</button>
+  </div>
+  <div id="spinnerModal" class="modal hidden">
+    <div class="spinner"></div>
+    <p id="spinnerText">Starting Landmark...</p>
+  </div>
+</div>
+<script src="launchpad.js"></script>
+</body>
+</html>

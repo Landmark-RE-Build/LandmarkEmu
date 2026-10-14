@@ -1,4 +1,4 @@
-# Landmark game rules (server-side reference)
+﻿# Landmark game rules (server-side reference)
 
 Rules the client doesn't contain, collected from official developer posts. Numbers are from the dates shown and
 changed over development (alpha 2014 → launch June 2016, our client is 0.589 ≈ launch era), so treat them as
@@ -114,6 +114,7 @@ building alternate mode F, prop tweak F, duplicate prop X, reset prop Ctrl+R, pi
   (https://landmark.fandom.com/wiki/Gathering).
 
 ## Build material costs
-- A voxel material costs its VoxelMaterials ITEM_ID item (4 voxels per item); ITEM_ID 0 = free-to-use, shown with
+- A voxel material costs its VoxelMaterials ITEM_ID item, **1 item per voxel** (the client's own pre-check counts the
+  brush's voxels against the items held; traced 2026-10-14); mining pays the same 1 item per voxel; ITEM_ID 0 = free-to-use, shown with
   the infinity symbol in the Materials tray (the client's own rule, read 2026-10-13; wiki "Free-to-Use Building
   Materials": most Terrain textures are unlimited).

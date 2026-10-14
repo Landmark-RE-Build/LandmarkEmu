@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    LandmarkEmu LaunchPad: a launcher laid out like Landmark's own LaunchPad (a native shell showing a web page, the page
+    driving login, patching and launch through a bridge). Here the page is local (wwwroot, shown with WebView2) and the
+    bridge is C# (Bridge.cs). Players add a server by its address, create accounts / log in (SRP: the password never
+    leaves the PC), get the server's patches (downloaded from it; only ever on top of a verified Steam copy of the game,
+    with compressed backups so they can be undone) or install their own packs, and play. docs/launchpad.md.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- A drop-in replacement for the game's own LaunchPad.exe: it lives in the Landmark folder (Steam's Play starts it). -->
+    <AssemblyName>LaunchPad</AssemblyName>
+    <RootNamespace>LandmarkEmulator.LaunchPad</RootNamespace>
+  </PropertyGroup>
+
+  <!-- dotnet publish: one self-contained LaunchPad.exe (no .NET install needed on the player's PC). A plain build (the
+       solution build start.bat runs) needs no Windows runtime download. -->
+  <PropertyGroup Condition="'$(_IsPublishing)' == 'true'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <!-- Keep the build folder's path out of the released exe. -->
+    <PathMap>$(MSBuildProjectDirectory)=LaunchPad</PathMap>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+    <PackageReference Include="System.IO.Hashing" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The launcher's page, inside the exe (served to WebView2 from the resources, MainWindow). -->
+    <EmbeddedResource Include="wwwroot\**" LogicalName="wwwroot/%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- Daybreak's file list for the final build (path, size, CRC32): names and checksums only, no game content. -->
+    <EmbeddedResource Include="Data\landmark-final-2017-file-list.csv" LogicalName="final-file-list.csv" />
+    <EmbeddedResource Include="Data\steam-0589-file-list.csv" LogicalName="steam-file-list.csv" />
+    <!-- The update's files (re/tools/update_files.py): which 0.695 files differ from a verified Steam copy. -->
+    <EmbeddedResource Include="..\LandmarkEmulator.WebAPI\update-0589-to-0695-files.csv" LogicalName="update-files.csv" />
+  </ItemGroup>
+
+</Project>

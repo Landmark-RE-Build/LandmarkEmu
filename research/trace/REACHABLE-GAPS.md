@@ -4,7 +4,7 @@ Messages the server does not handle / send that the client has a live path for (
 handlers that drive Lua events, data sources, texts or UI). Ranked within each family: UI-backed first. This is
 the work list for the per-system rebuild (with the system files for the rules).
 
-Client → server not handled but sendable: 0 · server → client never sent but used: 0. Checked by hand (verdicts.tsv, listed at the end): 267.
+Client → server not handled but sendable: 0 · server → client never sent but used: 0. Checked by hand (verdicts.tsv, listed at the end): 275.
 
 ## Checked by hand (re/tools/verdicts.tsv)
 
@@ -257,8 +257,9 @@ Client → server not handled but sendable: 0 · server → client never sent bu
 - SocialPacketUpdateLike (unreachable)
 - StartTimerPacket (unreachable)
 - StopInspectPacket (unreachable)
-- TemplatePacketClientListRequest (unreachable)
+- TemplatePacketClientListRequest (handled)
 - TemplatePacketEnvironmentAddOwnershipResponse (informational)
+- TemplatePacketEnvironmentInstanceDetailsResponse (unreachable)
 - TerrainCellPacketZoneProcessingComplete (informational)
 - ToolPacketActivate (informational)
 - UiMessagePacket (unreachable)
@@ -273,5 +274,12 @@ Client → server not handled but sendable: 0 · server → client never sent bu
 - WallOfDataUIEventPacket (unreachable)
 - WaypointCooldownPacket (unreachable)
 - WeaponHitFeedbackPacket (unreachable)
-- WorldEditingClearPacket (unreachable)
+- WorldEditingBoxUpdatePacket (handled)
+- WorldEditingClearPacket (handled)
+- WorldEditingFillUpdatePacket (handled)
+- WorldEditingPreviewSetupPacket (handled)
+- WorldEditingPreviewUpdatePacket (handled)
+- WorldEditingSelectionUpdate (handled)
+- WorldEditingShapeUpdatePacket (handled)
+- WorldEditingSphereUpdatePacket (handled)
 - ZoneWaypointPacket (unreachable)

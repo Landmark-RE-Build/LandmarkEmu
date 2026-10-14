@@ -39,7 +39,8 @@ namespace LandmarkEmulator.WorldServer.Game
     {
         private static readonly ILogger log = LogManager.GetCurrentClassLogger();
 
-        public const int Port = 19001;
+        /// <summary>The web pages' TCP port (WorldServer.json WebPagesPort, default 19001; each world container its own).</summary>
+        public static int Port => Shared.Configuration.SharedConfiguration.Configuration?.GetValue("WebPagesPort", 19001) ?? 19001;
         private const int MaxBody = 4096;
         private static TcpListener listener;
 
@@ -347,6 +348,12 @@ namespace LandmarkEmulator.WorldServer.Game
                     return Json(Store.Catalogue().Select(i => new { i.Id, i.Name, i.Description, i.Icon, i.Section, i.Group }));
                 case "gallery":
                     return Json(await OnWorldThread(Store.Gallery));
+                case "studio":
+                    return Json((await OnWorldThread(Commerce.ListedDesigns)).Select(d => new
+                    {
+                        id = d.Product.ToString(), d.Name, d.Description, d.Tags, d.Author, d.Voxels,
+                        image = Templates.HasImage(d.Template) ? Templates.ImagePath(d.Template) : ""
+                    }));
                 case "me":
                     if (session != null)
                         Store.Confirm(session);
@@ -376,6 +383,12 @@ namespace LandmarkEmulator.WorldServer.Game
                 }
                 case "myvendors":
                     return Json(await OnWorldThread(() => MyVendors(session)));
+                case "studio/take":
+                {
+                    ulong.TryParse(query.GetValueOrDefault("product"), out ulong product);
+                    (bool ok, string message) = await OnWorldThread(() => Commerce.TakeDesign(session, product));
+                    return Json(new { ok, message });
+                }
                 case "vendor/list":
                 {
                     ulong.TryParse(query.GetValueOrDefault("vendor"), out ulong vendor);

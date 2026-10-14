@@ -1,267 +1,196 @@
-﻿# LandmarkEmu launcher for the PC that runs the servers: run start.bat. Players on other PCs need only the one file
-# it makes when hosting, "Play LandmarkEmu.bat" (the server address is built in) - share that file with them.
+# LandmarkEmu servers, in Docker: run start.bat.
 #
-# First run: asks where Landmark (the 0.589 client) is installed and for an account name / password, then sets
-# everything up once — builds the servers, creates the database user, fills gameData from the game's own data tables,
-# writes the server configs and creates your account — and saves the answers in launcher-settings.json.
-# Every run: applies server.ini (see below), starts the auth and world servers, logs in and starts the game.
+#   start.bat            first run: sets everything up, then starts the servers; later runs: starts them
+#   start.bat -Stop      stops the servers (all data stays)
+#   start.bat -Update    rebuilds the servers from this folder's code (after downloading a new version)
+#   start.bat -Logs      shows the world server's console (Ctrl+C to leave)
+#   start.bat -Setup     runs the first-time questions again
 #
-# server.ini (made on the first run, next to start.bat) holds what a host may want to change, e.g.
-#   ServerAddress=192.168.1.20     the address players on OTHER PCs reach this PC on; empty = this PC only
-# Edit it and run start.bat again (stop the servers first so they restart with it).
-#
-#   start.bat               set up (first time) and play
-#   start.bat -NoGame       servers only
-#   start.bat -Setup        run the first-time setup again (e.g. the game moved)
-# Unattended setup: -GamePath <folder> -Account <name> -Password <pw> [-DbRootPassword <pw>]
-param([switch]$NoGame, [switch]$Setup, [string]$GamePath, [string]$Account, [string]$Password, [string]$DbRootPassword)
+# Settings:
+#   network.env              addresses and ports: the one file to edit for networking (made from network.env.example)
+#   docker\auth\.env         passwords and folders (made on the first run; rarely edited)
+#   docker\worlds\*.env      one file per world (main.env is made on the first run)
+# Players use LaunchPad (docs\launchpad.md) and add this server by its address.
+param([switch]$Stop, [switch]$Update, [switch]$Logs, [switch]$Setup)
 $ErrorActionPreference = 'Stop'
-$rootPasswordGiven = $PSBoundParameters.ContainsKey('DbRootPassword')   # an empty one counts
 
-$root         = $PSScriptRoot
-$settingsFile = Join-Path $root 'launcher-settings.json'
-$serverIni    = Join-Path $root 'server.ini'
-$gameData     = Join-Path $root 'gameData'
-$dbUser       = 'lmemu_local'
-. (Join-Path $root 'launcher-common.ps1')
+$root     = $PSScriptRoot
+$docker   = Join-Path $root 'docker'
+$network  = Join-Path $root 'network.env'
+$authEnv  = Join-Path $docker 'auth\.env'
+$worlds   = Join-Path $docker 'worlds'
+$gameData = Join-Path $root 'gameData'
 
-function Wait-Port([int]$port, [string]$proto, [int]$seconds = 90) {
-    $deadline = (Get-Date).AddSeconds($seconds)
-    while ((Get-Date) -lt $deadline) {
-        $up = if ($proto -eq 'UDP') { Get-NetUDPEndpoint -LocalPort $port -ErrorAction SilentlyContinue }
-              else { Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue }
-        if ($up) { return }
-        Start-Sleep -Milliseconds 500
+function Say([string]$text, [string]$color = 'Gray') { Write-Host $text -ForegroundColor $color }
+
+# KEY=VALUE files (network.env, .env): read and change one value, keeping the notes.
+function Read-Env([string]$file) {
+    $values = @{}
+    if (Test-Path $file) {
+        foreach ($line in Get-Content $file) {
+            if ($line -match '^\s*([A-Za-z_][A-Za-z0-9_]*)=(.*)$') { $values[$Matches[1]] = $Matches[2].Trim() }
+        }
     }
-    throw "Nothing is listening on $proto port $port after $seconds s. Check the server window for errors."
+    return $values
 }
-
-function Find-MariaDb {
-    $client = Get-ChildItem 'C:\Program Files\MariaDB*\bin\mariadb.exe', 'C:\Program Files\MySQL\*\bin\mysql.exe' -ErrorAction SilentlyContinue |
-        Select-Object -First 1
-    if (-not $client) {
-        throw 'MariaDB was not found. Install it (https://mariadb.org/download/ or: winget install MariaDB.Server), keep the "MariaDB" Windows service, then run start.bat again.'
-    }
-    $service = Get-Service MariaDB, MySQL -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $service) { throw 'MariaDB is installed but its Windows service is missing. Re-run the MariaDB installer with "Install as service".' }
-    if ($service.Status -ne 'Running') {
-        Say "Starting the $($service.Name) service (Windows may ask for permission)..."
-        Start-Process powershell -Verb RunAs -Wait -ArgumentList "-NoProfile -Command Start-Service $($service.Name)"
-    }
-    return $client.FullName
+function Set-EnvValue([string]$file, [string]$key, [string]$value) {
+    $lines = @(Get-Content $file)
+    $found = $false
+    $lines = $lines | ForEach-Object { if ($_ -match "^\s*$key=") { $found = $true; "$key=$value" } else { $_ } }
+    if (-not $found) { $lines += "$key=$value" }
+    Set-Content $file $lines -Encoding ASCII
 }
+function Path-ForDocker([string]$path) { return ($path -replace '\\', '/') }
 
-function Find-Build([string]$name) {
-    foreach ($config in 'Release', 'Debug') {
-        $dir = Get-ChildItem (Join-Path $root "LandmarkEmulator.$name\bin\$config") -Directory -Filter 'net*' -ErrorAction SilentlyContinue |
-            Where-Object { Test-Path (Join-Path $_.FullName "LandmarkEmulator.$name.exe") } | Select-Object -First 1
-        if ($dir) { return $dir.FullName }
-    }
-    return $null
+function Test-GameFolder([string]$path) {
+    return $path -and (Test-Path (Join-Path $path 'Landmark64.exe')) -and (Test-Path (Join-Path $path 'Resources'))
 }
 
 function New-Password { -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 24 | ForEach-Object { [char]$_ }) }
 
-# server.ini: "Key=Value" lines, '#' comments. Written with explanations the first time.
-function Read-ServerIni {
-    if (-not (Test-Path $serverIni)) {
-        @(
-            '# LandmarkEmu server settings. Edit, then run start.bat again (close the two server windows first).',
-            '#',
-            '# ServerAddress: the address players on OTHER PCs use to reach this PC, e.g. its network address',
-            '# (192.168.1.20; "ipconfig" shows it as IPv4 Address), a VPN address (Tailscale / ZeroTier) or a host name.',
-            '# Leave it empty to play on this PC only. When it is set, start.bat writes "Play LandmarkEmu.bat" next to',
-            '# itself: send players that one file (it needs only their Landmark install; the address is built in).',
-            '# Logins never send the password (SRP); the game traffic itself is not encrypted, so over the internet a VPN is safer.',
-            'ServerAddress=',
-            '#',
-            '# Admins: more account names (comma-separated) that get the in-game admin menu (type /admin in chat).',
-            '# Your own account (the one start.bat logs in with) is always an admin.',
-            'Admins='
-        ) | Set-Content $serverIni -Encoding UTF8
+# The compose command for the auth stack or one world, with the settings files in order (later ones win).
+function Compose-Auth { & docker compose --env-file $network --env-file $authEnv -p landmarkemu-auth -f (Join-Path $docker 'auth\docker-compose.yml') @args }
+function Compose-World([string]$worldEnv) {
+    $name = [IO.Path]::GetFileNameWithoutExtension($worldEnv)
+    & docker compose --env-file $network --env-file $authEnv --env-file $worldEnv -p "landmarkemu-world-$name" -f (Join-Path $docker 'world\docker-compose.yml') @args
+}
+function World-Files { Get-ChildItem $worlds -Filter '*.env' | Where-Object { $_.Name -notlike '*.example' } }
+
+# ---- Docker Desktop -------------------------------------------------------------------------------------------------
+function Start-Docker {
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+        throw 'Docker Desktop is not installed. Install it from https://www.docker.com/products/docker-desktop/ and run start.bat again.'
     }
-    $ini = @{}
-    foreach ($line in Get-Content $serverIni) {
-        if ($line -match '^\s*([A-Za-z]+)\s*=\s*(.*?)\s*$') { $ini[$Matches[1]] = $Matches[2] }
-    }
-    return $ini
+    & docker info *> $null
+    if ($LASTEXITCODE -eq 0) { return }
+    $desktop = Join-Path $env:ProgramFiles 'Docker\Docker\Docker Desktop.exe'
+    if (-not (Test-Path $desktop)) { throw 'Docker is installed but not running. Start Docker Desktop and run start.bat again.' }
+    Say 'Starting Docker Desktop (the first time can take a few minutes)...'
+    Start-Process $desktop
+    $deadline = (Get-Date).AddMinutes(5)
+    do { Start-Sleep -Seconds 3; & docker info *> $null } while ($LASTEXITCODE -ne 0 -and (Get-Date) -lt $deadline)
+    if ($LASTEXITCODE -ne 0) { throw 'Docker Desktop did not start within 5 minutes. Start it by hand, then run start.bat again.' }
 }
 
-# Writes the network part of server.ini into the server configs. This PC only: everything on 127.0.0.1. Hosting:
-# listen on every network card, send clients the address as the world server (AuthServer WorldAddress; without it a
-# remote client loads the world from its own PC and stops on the loading screen) and as the store pages' address.
-function Set-ServerNetwork([string]$address) {
-    $listen = if ($address) { '0.0.0.0' } else { '127.0.0.1' }
-    $authFile = Join-Path (Find-Build 'AuthServer') 'AuthServer.json'
-    $worldFile = Join-Path (Find-Build 'WorldServer') 'WorldServer.json'
-    $auth = Get-Content $authFile -Raw | ConvertFrom-Json
-    $world = Get-Content $worldFile -Raw | ConvertFrom-Json
-    $auth.Network.Host = $listen
-    $auth.WebApi.BaseURI = "http://${listen}:5000"
-    $auth | Add-Member -Force NoteProperty WorldAddress $address
-    $world.Network.Host = $listen
-    $world | Add-Member -Force NoteProperty WebPagesHost $listen
-    $world | Add-Member -Force NoteProperty WebPagesUrl $(if ($address) { "http://${address}:19001" } else { 'http://127.0.0.1:19001' })
-    $auth | ConvertTo-Json -Depth 5 | Set-Content $authFile -Encoding UTF8
-    $world | ConvertTo-Json -Depth 5 | Set-Content $worldFile -Encoding UTF8
-
-    if (-not $address) { return }
-    # Firewall: login (UDP 20042), world (UDP 19000), account / login service (TCP 5000), store pages (TCP 19001).
-    $rule = & netsh advfirewall firewall show rule name=LandmarkEmu-UDP 2>$null
-    if ($LASTEXITCODE -ne 0 -or -not ($rule -match 'LandmarkEmu-UDP')) {
-        $yes = Read-Host 'Open the server ports in Windows Firewall (UDP 20042, 19000; TCP 5000, 19001)? Windows will ask for permission [Y/n]'
-        if ($yes -notmatch '^[nN]') {
-            $rules = "netsh advfirewall firewall add rule name=LandmarkEmu-UDP dir=in action=allow protocol=UDP localport=20042,19000; " +
-                     "netsh advfirewall firewall add rule name=LandmarkEmu-TCP dir=in action=allow protocol=TCP localport=5000,19001"
-            Start-Process powershell -Verb RunAs -Wait -ArgumentList "-NoProfile -Command $rules"
-        }
-    }
-    Say "Hosting for other PCs at ${address}." 'Cyan'
-    Write-PlayerFile $address
-}
-
-# "Play LandmarkEmu.bat": one file for players to download - a batch header that runs the PowerShell after it, the
-# shared launcher functions and player-template.ps1 with this server's address filled in. Nothing else is needed on
-# their PC but Landmark; their settings go to %LOCALAPPDATA%\LandmarkEmu. Written again on every start.bat run, so
-# it always has the current address.
-function Write-PlayerFile([string]$address) {
-    $common = Get-Content (Join-Path $root 'launcher-common.ps1') -Raw
-    $player = (Get-Content (Join-Path $root 'player-template.ps1') -Raw).Replace('__SERVER_ADDRESS__', $address)
-    $header = @(
-        '@echo off',
-        "rem LandmarkEmu: play Landmark on the server at $address. Needs only Landmark (0.589) and Windows.",
-        'rem First run asks for your Landmark folder and an account. Run it with -Setup to change them.',
-        'set "LMEMU_BAT=%~f0"',
-        'set "LMEMU_ARGS=%*"',
-        'powershell -NoProfile -ExecutionPolicy Bypass -Command "$s=[IO.File]::ReadAllText($env:LMEMU_BAT); iex $s.Substring($s.IndexOf(''#LMEMU''+''-SCRIPT''))"',
-        'if errorlevel 1 pause',
-        'exit /b',
-        '#LMEMU-SCRIPT'
-    ) -join "`r`n"
-    # cmd reads the file as ANSI: keep it plain ASCII (the scripts' dashes and arrows are only in comments).
-    $text = ($header + "`r`n" + $common.TrimStart([char]0xFEFF) + "`r`n" + $player.TrimStart([char]0xFEFF)) -replace '[^\x00-\x7F]', '-'
-    $file = Join-Path $root 'Play LandmarkEmu.bat'
-    [IO.File]::WriteAllText($file, $text, (New-Object Text.ASCIIEncoding))
-    Say "Players: send them `"$file`" (one file; the address $address is built in)." 'Cyan'
-}
-
-# The in-game admin menu (WorldServer.json Admins): this PC's own account plus the names in server.ini.
-function Set-ServerAdmins([string]$list, [string]$own) {
-    $names = @($own) + @(($list -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }) | Select-Object -Unique
-    $worldFile = Join-Path (Find-Build 'WorldServer') 'WorldServer.json'
-    $world = Get-Content $worldFile -Raw | ConvertFrom-Json
-    $world | Add-Member -Force NoteProperty Admins @($names)
-    $world | ConvertTo-Json -Depth 5 | Set-Content $worldFile -Encoding UTF8
-}
-
+# ---- First-time setup -----------------------------------------------------------------------------------------------
 function Invoke-Setup {
     Say "`n=== LandmarkEmu first-time setup ===`n" 'Cyan'
 
-    # 1. The game.
-    $game = Select-GameFolder $GamePath
-
-    # 2. Tools the setup needs.
-    try { $sdk = (& dotnet --list-sdks) -join "`n" } catch { $sdk = '' }
-    if ($sdk -notmatch '(^|\n)(1\d|[2-9]\d)\.') { throw '.NET 10 SDK not found. Install it from https://dotnet.microsoft.com/download/dotnet/10.0 and run start.bat again.' }
-    $mariadb = Find-MariaDb
-
-    # 3. Database user (random password, local connections only) and the two databases' rights.
-    if ($rootPasswordGiven) { $rootPlain = $DbRootPassword }
-    else {
-        $rootPw = Read-Host 'MariaDB root password (leave empty if you did not set one)' -AsSecureString
-        $rootPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($rootPw))
+    # 1. The game (the servers read its data; nothing in it is changed).
+    $settings = Read-Env $authEnv
+    $game = $settings['GAME_DIR'] -replace '/', '\'
+    while (-not (Test-GameFolder $game)) {
+        $game = (Read-Host 'Your Landmark folder (the one with Landmark64.exe, e.g. ...\steamapps\common\Landmark)').Trim('" ')
+        if (-not (Test-GameFolder $game)) { Say 'Landmark64.exe and Resources were not found there.' 'Yellow' }
     }
-    $dbPassword = New-Password
-    $sql = "CREATE USER IF NOT EXISTS '$dbUser'@'localhost' IDENTIFIED BY '$dbPassword'; " +
-           "CREATE USER IF NOT EXISTS '$dbUser'@'127.0.0.1' IDENTIFIED BY '$dbPassword'; " +
-           "ALTER USER '$dbUser'@'localhost' IDENTIFIED BY '$dbPassword'; ALTER USER '$dbUser'@'127.0.0.1' IDENTIFIED BY '$dbPassword'; " +
-           "GRANT ALL PRIVILEGES ON ``lmemu\_%``.* TO '$dbUser'@'localhost'; GRANT ALL PRIVILEGES ON ``lmemu\_%``.* TO '$dbUser'@'127.0.0.1'; FLUSH PRIVILEGES;"
-    $sqlArgs = @('-u', 'root', '-h', '127.0.0.1', '-e', $sql)
-    if ($rootPlain) { $sqlArgs = @('-u', 'root', "-p$rootPlain", '-h', '127.0.0.1', '-e', $sql) }
-    & $mariadb @sqlArgs | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw 'Could not create the database user (wrong root password?).' }
-    Say 'Database user ready.' 'Green'
 
-    # 4. Build.
-    Say 'Building the servers (first time takes a few minutes)...'
-    & dotnet build (Join-Path $root 'LandmarkEmulator.sln') -c Release -v q -nologo '-clp:ErrorsOnly' | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw 'Build failed (see the messages above).' }
-
-    # 5. gameData: the game's own data tables and English texts (copied from your install, never changed there).
+    # 2. gameData: the game's own data tables and English texts, copied from the install, plus the project's data.
     New-Item -ItemType Directory -Force $gameData | Out-Null
     Copy-Item (Join-Path $game 'Resources\*.txt') $gameData -Force
     $locale = Join-Path $game 'Locale\en_us_data.dat'
     if (Test-Path $locale) { Copy-Item $locale $gameData -Force } else { Say 'Locale\en_us_data.dat not found: names will be missing.' 'Yellow' }
     Copy-Item (Join-Path $root 'data\*') $gameData -Force
     # Ground heights (trees, creature footing, starting build sites): LandmarkEmu-terrain-heights.zip from the
-    # project's GitHub Releases, put next to start.bat (or in data\). Without it those stay off; see README.
-    $heights = @((Join-Path $root 'LandmarkEmu-terrain-heights.zip'), (Join-Path $root 'data\LandmarkEmu-terrain-heights.zip')) |
-        Where-Object { Test-Path $_ } | Select-Object -First 1
-    if ($heights) {
+    # project's GitHub release, put next to start.bat. Without it those stay off.
+    $heights = Join-Path $root 'LandmarkEmu-terrain-heights.zip'
+    if (Test-Path $heights) {
         Say 'Unpacking terrain heights...'
         Expand-Archive $heights -DestinationPath $gameData -Force
-        Say "Terrain heights for $((Get-ChildItem $gameData -Filter 'TerrainHeights*.bin').Count) landscapes installed." 'Green'
     } else {
-        Say 'No LandmarkEmu-terrain-heights.zip found: trees, ground checks and starting build sites will be off (see README).' 'Yellow'
+        Say 'No LandmarkEmu-terrain-heights.zip next to start.bat: trees, ground checks and starting build sites will be off (see README).' 'Yellow'
     }
     Say "gameData ready ($((Get-ChildItem $gameData).Count) files)." 'Green'
 
-    # 6. Server configs (the network part comes from server.ini on every start).
-    $conn = { param($db) "server=127.0.0.1;port=3306;user=$dbUser;password=$dbPassword;database=$db" }
-    $database = [ordered]@{
-        Auth      = [ordered]@{ ConnectionString = (& $conn 'lmemu_auth'); Provider = 'MySql' }
-        Character = [ordered]@{ ConnectionString = (& $conn 'lmemu_character'); Provider = 'MySql' }
+    # 3. Settings files.
+    if (-not (Test-Path $network)) { Copy-Item (Join-Path $root 'network.env.example') $network }
+    if (-not (Test-Path $authEnv)) {
+        Copy-Item (Join-Path $docker 'auth\.env.example') $authEnv
+        Set-EnvValue $authEnv 'DB_ROOT_PASSWORD' (New-Password)
+        Set-EnvValue $authEnv 'DB_PASSWORD' (New-Password)
     }
-    $auth = [ordered]@{
-        Network = [ordered]@{ Host = '127.0.0.1'; Port = 20042 }; Database = $database
-        WebApi = [ordered]@{ Enabled = $true; BaseURI = 'http://127.0.0.1:5000' }
-        CreationRules = [ordered]@{ StrictName = $false }; GameDataPath = $gameData; WorldAddress = ''
+    Set-EnvValue $authEnv 'GAME_DIR' (Path-ForDocker $game)
+    Set-EnvValue $authEnv 'GAME_DATA_DIR' (Path-ForDocker $gameData)
+    $main = Join-Path $worlds 'main.env'
+    if (-not (World-Files)) {
+        Copy-Item (Join-Path $worlds 'main.env.example') $main
+        Set-EnvValue $main 'WORLD_DATA_DIR' (Path-ForDocker (Join-Path $root 'server-data\worlds\main'))
+        $admin = (Read-Host 'Your account name, to be an admin on your world (empty: none; you create the account in LaunchPad)').Trim()
+        if ($admin) { Set-EnvValue $main 'ADMIN_ACCOUNT' $admin }
     }
-    $world = [ordered]@{
-        Network = [ordered]@{ Host = '127.0.0.1'; Port = 19000 }; Database = $database
-        GameDataPath = $gameData; GameDirectory = $game; Continent = 406; FreeBuild = $false
-    }
-    $auth  | ConvertTo-Json -Depth 5 | Set-Content (Join-Path (Find-Build 'AuthServer') 'AuthServer.json') -Encoding UTF8
-    $world | ConvertTo-Json -Depth 5 | Set-Content (Join-Path (Find-Build 'WorldServer') 'WorldServer.json') -Encoding UTF8
 
-    # 7. Account.
-    $user, $password = Read-Account $Account $Password
-
-    $settings = [pscustomobject][ordered]@{ GamePath = $game; Account = $user; Password = $password; Created = $false }
-    Save-Settings $settings $settingsFile   # the password is never saved; the first login stores a derived key
-    Say "Settings saved in launcher-settings.json (local only; delete it or run start.bat -Setup to start over).`n" 'Green'
-    return $settings
+    # 4. Who can join.
+    $addresses = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+        Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } |
+        ForEach-Object { "$($_.IPAddress) ($($_.InterfaceAlias))" })
+    Say "`nPlayers on other PCs need an address that reaches this PC. This PC has:" 'Cyan'
+    $addresses | ForEach-Object { Say "  $_" }
+    $current = (Read-Env $network)['PUBLIC_HOST']
+    $answer = (Read-Host "Address for players (empty: this PC only$(if ($current) { "; now $current" }))").Trim()
+    if ($answer -or -not $current) { Set-EnvValue $network 'PUBLIC_HOST' $answer }
+    Say "Settings saved: network.env (addresses, ports), docker\auth\.env (passwords, folders), docker\worlds\main.env.`n" 'Green'
 }
 
-function Start-Server([string]$name, [int]$port) {
-    if (Get-Process "LandmarkEmulator.$name" -ErrorAction SilentlyContinue) { Say "$name already running."; return }
-    $dir = Find-Build $name
-    if (-not $dir) { throw "No build of $name found. Run start.bat -Setup." }
-    Say "Starting $name..."
-    Start-Process (Join-Path $dir "LandmarkEmulator.$name.exe") -WorkingDirectory $dir
-    Wait-Port $port 'UDP'
+# ---- Firewall (only when hosting for other PCs) ---------------------------------------------------------------------
+function Open-Firewall($net) {
+    $rule = & netsh advfirewall firewall show rule name=LandmarkEmu-UDP 2>$null
+    if ($LASTEXITCODE -eq 0 -and ($rule -match 'LandmarkEmu-UDP')) { return }
+    $yes = Read-Host "Open the server ports in Windows Firewall (UDP $($net.Login), $($net.World); TCP $($net.Account), $($net.WebPages), $($net.Website))? Windows will ask for permission [Y/n]"
+    if ($yes -match '^[nN]') { return }
+    $rules = "netsh advfirewall firewall add rule name=LandmarkEmu-UDP dir=in action=allow protocol=UDP localport=$($net.Login),$($net.World); " +
+             "netsh advfirewall firewall add rule name=LandmarkEmu-TCP dir=in action=allow protocol=TCP localport=$($net.Account),$($net.WebPages),$($net.Website)"
+    Start-Process powershell -Verb RunAs -Wait -ArgumentList "-NoProfile -Command $rules"
 }
 
-# ---------------------------------------------------------------------------------------------------------------
-# Invoke-Setup's last output is the settings (anything else it printed went to the screen).
-$settings = if (-not $Setup -and (Test-Path $settingsFile)) { Get-Content $settingsFile -Raw | ConvertFrom-Json }
-            else { Invoke-Setup | Select-Object -Last 1 }
-if (-not (Test-GameFolder $settings.GamePath)) { throw "The game is no longer at '$($settings.GamePath)'. Run start.bat -Setup." }
+# ---------------------------------------------------------------------------------------------------------------------
+Start-Docker
 
-$ini = Read-ServerIni
-if (-not (Get-Process 'LandmarkEmulator.AuthServer', 'LandmarkEmulator.WorldServer' -ErrorAction SilentlyContinue)) {
-    Set-ServerNetwork $ini['ServerAddress']
-    Set-ServerAdmins $ini['Admins'] $settings.Account
-} elseif ($ini['ServerAddress']) {
-    Say 'Servers already running: changes to server.ini apply after you close both server windows and run start.bat again.' 'Yellow'
+if ($Stop) {
+    foreach ($w in World-Files) { Compose-World $w.FullName down }
+    Compose-Auth down
+    Say 'Servers stopped (all data kept).' 'Green'
+    return
 }
-# This PC's own game always logs in locally.
-Set-ClientConfig $settings.GamePath '127.0.0.1'
+if ($Logs) {
+    $w = World-Files | Select-Object -First 1
+    Compose-World $w.FullName logs -f --tail 50
+    return
+}
 
-Find-MariaDb | Out-Null
-Start-Server 'AuthServer' 20042
-Wait-Port 5000 'TCP'
-Start-Server 'WorldServer' 19000
+$firstRun = $Setup -or -not (Test-Path $authEnv) -or -not (Test-Path $network) -or -not (World-Files)
+if ($firstRun) { Invoke-Setup }
 
-Connect-AndPlay $settings $settingsFile '127.0.0.1' 'start.bat -Setup' -NoGame:$NoGame
-if ($NoGame) { Say 'Servers are up.' 'Green' }
+$n = Read-Env $network
+$net = @{
+    Host = $(if ($n['PUBLIC_HOST']) { $n['PUBLIC_HOST'] } else { '127.0.0.1' })
+    Login = $(if ($n['LOGIN_PORT']) { $n['LOGIN_PORT'] } else { '20042' }); Account = $(if ($n['ACCOUNT_PORT']) { $n['ACCOUNT_PORT'] } else { '5000' })
+    World = $(if ($n['WORLD_PORT']) { $n['WORLD_PORT'] } else { '19000' }); WebPages = $(if ($n['WEB_PAGES_PORT']) { $n['WEB_PAGES_PORT'] } else { '19001' })
+    Website = $(if ($n['WEBSITE_PORT']) { $n['WEBSITE_PORT'] } else { '8080' })
+}
+# The account website link LaunchPad shows, unless set in docker\auth\.env.
+if (-not (Read-Env $authEnv)['WEBSITE_URL']) { $env:WEBSITE_URL = "http://$($net.Host):$($net.Website)/" }
+if ($n['PUBLIC_HOST']) { Open-Firewall $net }
+
+# Build (first run, or -Update) and start: the auth stack first, then every world.
+$up = @('up', '-d') + $(if ($firstRun -or $Update) { @('--build') } else { @() })
+if ($firstRun -or $Update) { Say 'Building the servers (the first time takes several minutes)...' }
+Compose-Auth @up
+if ($LASTEXITCODE -ne 0) { throw 'The auth stack did not start (see the messages above).' }
+foreach ($w in World-Files) {
+    Compose-World $w.FullName @up
+    if ($LASTEXITCODE -ne 0) { throw "The world $($w.BaseName) did not start (see the messages above)." }
+}
+
+# Ready when the account service lists a world as up (each world registers itself after loading).
+Say 'Waiting for the world server to load...'
+$deadline = (Get-Date).AddMinutes(4)
+while ($true) {
+    $info = & curl.exe -s --max-time 3 "http://127.0.0.1:$($net.Account)/info"
+    if ($info -match '"up":true') { break }
+    if ((Get-Date) -gt $deadline) { throw 'No world is up after 4 minutes: run start.bat -Logs to see why.' }
+    Start-Sleep -Seconds 3
+}
+
+Say "`nLandmarkEmu is running." 'Green'
+Say "  Players: in LaunchPad, Settings > Servers, add the address  $($net.Host)$(if ($net.Account -ne '5000') { ":$($net.Account)" })"
+Say "  Account website:  http://$($net.Host):$($net.Website)/"
+Say "  Stop: start.bat -Stop     Console: start.bat -Logs     Settings: network.env"

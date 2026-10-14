@@ -51,3 +51,29 @@ loading screen when the jump is > 80 m. Warp network: cost item 1579 (Lumens), B
   pioneer site gives the flag back (overflow) and **you can never place a site on a Pioneer landscape again**
   (Claims.UsersCantPlaceInNewbieZone). Alpha/beta veterans got a 2nd site via a build site expansion flag.
 - Daily server "bounce" at 5 am PST (tree / ore respawn issues).
+
+## Deep trace (rebuild module 9, 2026-10-14; archive travel-v1)
+Every Travel-family path checked for a 0.589 trigger (Lua bindings → UI scripts in testclient/Resources/Scripts and
+UI/Default, AS3 → Lua map re/out/ui_server_map.md, packet constructors in the decompile):
+- **Teleport queue** (0xFC 6 ToQueuedLocation, 7 CancelQueue; S→C 5 PostQueueNotify): Lua Teleport.CancelQueue /
+  TeleportToQueuedLocation; only Dialog.lua's teleport-queue dialog calls CancelQueue, and that dialog opens only
+  when the server reports a queue (live: a full destination world). Our server never queues → unreachable by design.
+- **PlayEffectRequest 9 / ManagedRequest 0xA**: sent only by PhysicsTeleportCallback (state machine FUN_143620610:
+  effect "*Bamf!*" → wait → managed teleport with the area's target), created by ClientAreaTeleporter(Base /
+  ClaimVisitation) for **area instances** with a teleport property (client AreaProperties type 23 / 38
+  "enable_teleportation" on area definitions 7 / 26). Area instances come from the server's AreaDefinition 0xEA list,
+  which we send empty (no live capture of zone areas exists). Unreachable until zone area data exists.
+- **GetRespawnLocations 0xCD**: Lua Respawn.UpdateRespawnLocations — no 0.589 script calls it (respawnhandler.lua uses
+  ReviveSelf / ReviveAtHub / ReviveFlee); the respawn list is sent unasked. Unreachable.
+- **SetWaypoint 0x32/0x12**: Lua Ui.SetWaypoint / RemoveWaypoint — no script or SWF calls them. Unreachable.
+- **Fog of war 0x102 / 0x103**: ClientFogOfWarManager (vtable slot 1 FUN_14341d310 sends the request; reply handler
+  FUN_14341d280 loads a zone's fog data) — never requested in play (no zone with fog in 0.589 data). Unreachable.
+- **Guide stones 0xB7**: S→C only, no 0.589 content. **Warp network 0x113**: handled (ClientRequest answered, network
+  sent); travel cost item 1579 with 0 costs = free (client constants).
+- Working and re-verified this pass: Spire / landscapes / own site / friend / random cave travel (casts 185-187,
+  RandomUnderground, NextUnderground offers), re-zone rules (cave-teleport-hang), safe-point evac 0x7C.
+- Audit 2026-10-14: Underground Adventure from Pioneer 416 and from the home continent both landed on the cavern floor
+  (y 285.9 / 292.3; adhoc/cavefall). One earlier trip to a cavern entry at y -673.4 ended at y -1305 (a 632 m fall)
+  although dev "cavecheck" finds a server floor under all 520 entry points — the client lacked that floor on arrival
+  Depth sweep (adhoc/cavedepth*): entries down to y -640 land on the floor; at -780 / -895 the client is still loading
+  after 35 s and the player then falls through. FIXED: random trips use entries at y >= -650 (about 430 of 520).

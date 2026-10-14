@@ -31,16 +31,23 @@ namespace LandmarkEmulator.Database.Character
         public DbSet<TemplateModel> Template { get; set; }
 
         private readonly IDatabaseConfig config;
+        private readonly DatabaseType type;
 
-        public CharacterContext(IDatabaseConfig config)
+        /// <param name="type">
+        /// Character: the shared database (characters, items, guilds, mail, designs...). Zone: one world server's own
+        /// database (its build sites, props, chests, vendors, prop links) when worlds keep those apart; both databases
+        /// have the same tables, each uses its own part (CharacterDatabase.NewWorldContext).
+        /// </param>
+        public CharacterContext(IDatabaseConfig config, DatabaseType type = DatabaseType.Character)
         {
             this.config = config;
+            this.type = type;
         }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
             if (!optionsBuilder.IsConfigured)
-                optionsBuilder.UseConfiguration(config, DatabaseType.Character);
+                optionsBuilder.UseConfiguration(config, type);
         }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -414,7 +421,7 @@ namespace LandmarkEmulator.Database.Character
 
                 entity.Property(e => e.Body)
                     .HasColumnName("body")
-                    .HasColumnType("varchar(2048)")
+                    .HasColumnType("varchar(4096)")
                     .HasDefaultValue("");
 
                 entity.Property(e => e.SentAt)

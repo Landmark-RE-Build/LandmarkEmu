@@ -24,15 +24,33 @@ namespace LandmarkEmulator.Database.Character
         public CharacterContext NewContext() => new CharacterContext(config);
 
         /// <summary>
+        /// True when this world server keeps its world data (build sites, props, chests, vendors, prop links) in its
+        /// own database (Database:Zone set), apart from the shared character database: several worlds then share the
+        /// characters, as on live Landmark (one character travels to every server; each server has its own sites).
+        /// Without Database:Zone everything stays in the character database, as before.
+        /// </summary>
+        public bool SeparateWorld => !string.IsNullOrWhiteSpace(config.GetConnectionString(DatabaseType.Zone)?.ConnectionString);
+
+        private DatabaseType WorldType => SeparateWorld ? DatabaseType.Zone : DatabaseType.Character;
+
+        /// <summary>A context on this world's own data (see <see cref="SeparateWorld"/>).</summary>
+        public CharacterContext NewWorldContext() => new CharacterContext(config, WorldType);
+
+        /// <summary><see cref="Save(Action{CharacterContext})"/> for world data (build sites, props, chests, vendors, links).</summary>
+        public Task SaveWorld(Action<CharacterContext> action) => Save(action, WorldType);
+
+        /// <summary>
         /// Runs one change set in its own context. Most callers fire and forget the returned task, so a failure is
         /// logged here (otherwise it would vanish unobserved and the change would silently not persist) and rethrown
         /// for any caller that does await it.
         /// </summary>
-        public async Task Save(Action<CharacterContext> action)
+        public Task Save(Action<CharacterContext> action) => Save(action, DatabaseType.Character);
+
+        private async Task Save(Action<CharacterContext> action, DatabaseType type)
         {
             try
             {
-                await using var context = new CharacterContext(config);
+                await using var context = new CharacterContext(config, type);
                 action.Invoke(context);
                 await context.SaveChangesAsync();
             }
@@ -53,12 +71,20 @@ namespace LandmarkEmulator.Database.Character
 
         public void Migrate()
         {
-            using var context = new CharacterContext(config);
+            Migrate(DatabaseType.Character);
+            // A world's own database has the same tables (it uses the world ones).
+            if (SeparateWorld)
+                Migrate(DatabaseType.Zone);
+        }
+
+        private void Migrate(DatabaseType type)
+        {
+            using var context = new CharacterContext(config, type);
 
             List<string> migrations = context.Database.GetPendingMigrations().ToList();
             if (migrations.Count > 0)
             {
-                log.Info($"Applying {migrations.Count} character database migration(s)...");
+                log.Info($"Applying {migrations.Count} {(type == DatabaseType.Zone ? "world" : "character")} database migration(s)...");
                 foreach (string migration in migrations)
                     log.Info(migration);
 
@@ -108,7 +134,7 @@ namespace LandmarkEmulator.Database.Character
         /// </summary>
         public List<ClaimModel> GetClaims()
         {
-            using var context = new CharacterContext(config);
+            using var context = NewWorldContext();
             return context.Claim.AsNoTracking().ToList();
         }
 
@@ -212,39 +238,36 @@ namespace LandmarkEmulator.Database.Character
 
         public List<ClaimPermissionModel> GetClaimPermissions()
         {
-            using var context = new CharacterContext(config);
+            using var context = NewWorldContext();
             return context.ClaimPermission.AsNoTracking().ToList();
         }
 
         public List<WorldPropModel> GetWorldProps()
         {
-            using var context = new CharacterContext(config);
+            using var context = NewWorldContext();
             return context.WorldProp.AsNoTracking().ToList();
         }
 
         public List<ChestItemModel> GetChestItems()
         {
-            using var context = new CharacterContext(config);
+            using var context = NewWorldContext();
             return context.ChestItem.AsNoTracking().ToList();
         }
 
-        /// <summary>The highest item guid in use, in bags or in chests.</summary>
-        public ulong GetMaxItemGuid()
+        /// <summary>
+        /// The highest item guid in use in [<paramref name="low"/>, <paramref name="high"/>), in bags (shared database),
+        /// chests and vendor listings (this world's data). Worlds sharing the character database each hand out guids
+        /// from their own range (Inventory.NextItemGuid), so they never pick the same one.
+        /// </summary>
+        public ulong GetMaxItemGuid(ulong low = 0, ulong high = ulong.MaxValue)
         {
-            using var context = new CharacterContext(config);
-            ulong items = context.CharacterItem
-                .Select(r => r.Id)
-                .DefaultIfEmpty()
-                .Max();
-            ulong chests = context.ChestItem
-                .Select(r => r.Id)
-                .DefaultIfEmpty()
-                .Max();
+            ulong items;
+            using (var context = new CharacterContext(config))
+                items = context.CharacterItem.Where(r => r.Id >= low && r.Id < high).Select(r => r.Id).DefaultIfEmpty().Max();
+            using var world = NewWorldContext();
+            ulong chests = world.ChestItem.Where(r => r.Id >= low && r.Id < high).Select(r => r.Id).DefaultIfEmpty().Max();
             // Build site vendor listings use item guids too.
-            ulong vendor = context.ClaimVendorItem
-                .Select(r => r.Id)
-                .DefaultIfEmpty()
-                .Max();
+            ulong vendor = world.ClaimVendorItem.Where(r => r.Id >= low && r.Id < high).Select(r => r.Id).DefaultIfEmpty().Max();
             return System.Math.Max(System.Math.Max(items, chests), vendor);
         }
 

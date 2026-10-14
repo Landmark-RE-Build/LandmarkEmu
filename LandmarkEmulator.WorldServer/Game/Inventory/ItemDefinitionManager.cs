@@ -126,15 +126,20 @@ namespace LandmarkEmulator.WorldServer.Game.Inventory
         /// </summary>
         public static void SendLoginList(WorldSession session)
         {
+            // Only a client that came back from character select (its world ticket starts with "R": it signed in to
+            // the login server with a relogin key) can still hold a list. A freshly started client - launcher, direct
+            // ticket, a restart after a crash - has none, whatever key the account last had: skipping the list for one
+            // left it without definitions, and using an item then read a null definition in the client (2026-10-14).
+            bool sameClient = session.LoginTicket.StartsWith("R", StringComparison.Ordinal);
             // A relogin session this server issued with this item list (RelogTag) means the client still holds it,
             // even across a restart of this server; another server, or changed items, send the list again.
-            if (session.Account?.SessionKey?.StartsWith(RelogTag, StringComparison.Ordinal) == true)
+            if (sameClient && session.Account?.SessionKey?.StartsWith(RelogTag, StringComparison.Ordinal) == true)
             {
                 reloginKeys.TryRemove(session.Account.Id, out _);
                 log.Info($"Account {session.Account.Id} is back from character select with this server's item list: not resent.");
                 return;
             }
-            if (session.Account != null && reloginKeys.TryRemove(session.Account.Id, out string key) && key == session.Account.SessionKey)
+            if (sameClient && session.Account != null && reloginKeys.TryRemove(session.Account.Id, out string key) && key == session.Account.SessionKey)
             {
                 log.Info($"Account {session.Account.Id} is back from character select on the same client: its item definitions are cached, not resent.");
                 return;

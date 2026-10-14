@@ -16,7 +16,8 @@ namespace LandmarkEmulator.WorldServer.Game
     /// cell-version list {u32 n × (u64 cell, u64 version)} (every cell the box touches),
     /// block list {u32 n × (u64 key, u64, u32 type, u32 len + packed block, u32 if type is 2 or 3)}, u32, u8, string, u8
     /// </code>
-    /// A copy carries one block: the selection's voxels in a 40³ grid with the box's origin at (0, 0, 0) (the same
+    /// A copy carries one block per cell of the box (key = a level-2 cell id holding the cell's place from the box's
+    /// corner; a box within 40 voxels a side is one block): the selection's voxels with the box's origin at (0, 0, 0) (the same
     /// packed format as a build edit: 8000-byte mask + SerializeBlockData format 2; index y fastest, then x, then z;
     /// the box's (size + 1) vertices per axis). The server keeps that grid as the player's clipboard and answers
     /// ClipboardData (sub 6, reader FUN_1430b0d80): {PropData list, material map, block list, 3 × u32 size, u32,
@@ -64,15 +65,26 @@ namespace LandmarkEmulator.WorldServer.Game
             public int PropsStart, PropsEnd, BlocksStart, BlocksEnd;
             public uint Props, Blocks;
             public BlockData Voxels;
+            /// <summary>
+            /// Every block of a copy / design save by its cell in the box (block key = a level-2 cell id whose x, y, z are
+            /// the cell's place counted from the box's corner; a 17×4×53 copy sent (0,0,0) and (0,0,1), 2026-10-14).
+            /// </summary>
+            public Dictionary<(int X, int Y, int Z), BlockData> BlockCells = new();
             public List<ulong> Cells = new();
             /// <summary>Paste of a design: its guid (0 for the clipboard). Saving a design: its name and tags.</summary>
             public ulong TemplateGuid;
             public string Name = "", Tags = "";
+            /// <summary>The box is larger than one cell's 40³ grid (fine for a paste, which places the server's copy).</summary>
+            public bool LargerThanCell;
         }
 
-        private static SelectionRequest ReadSelection(byte[] body)
+        /// <summary>Reads a request; on a malformed one it throws, leaving what was read (the cell list) in <paramref name="r"/>.</summary>
+        private static SelectionRequest ReadSelection(byte[] body) => ReadSelection(body, new SelectionRequest());
+
+        private static SelectionRequest ReadSelection(byte[] body, SelectionRequest r)
         {
-            var r = new SelectionRequest { Action = BitConverter.ToUInt32(body, 1), Cell = BitConverter.ToUInt64(body, 5) };
+            r.Action = BitConverter.ToUInt32(body, 1);
+            r.Cell = BitConverter.ToUInt64(body, 5);
             int p = 13;
             r.X = BitConverter.ToUInt32(body, p);
             r.Y = BitConverter.ToUInt32(body, p + 4);
@@ -106,16 +118,16 @@ namespace LandmarkEmulator.WorldServer.Game
             p += 4;
             for (uint i = 0; i < r.Blocks; i++)
             {
+                ulong key = BitConverter.ToUInt64(body, p);
                 p += 16;
                 uint type = BitConverter.ToUInt32(body, p);
                 int length = (int)BitConverter.ToUInt32(body, p + 4);
                 p += 8;
-                if (r.Voxels == null)
-                {
-                    // Just the 8000-byte mask when nothing in the box is solid.
-                    byte[] raw = TerrainStore.Unpack(body, p, length);
-                    r.Voxels = raw.Length > BlockData.Count / 8 ? BlockData.Deserialize(raw, BlockData.Count / 8) : new BlockData();
-                }
+                // Just the 8000-byte mask when nothing in the block is solid.
+                byte[] raw = TerrainStore.Unpack(body, p, length);
+                BlockData block = raw.Length > BlockData.Count / 8 ? BlockData.Deserialize(raw, BlockData.Count / 8) : new BlockData();
+                r.Voxels ??= block;
+                r.BlockCells[((int)((key >> 36) & 0x3FFFF), (int)(((key >> 18) & 0x3FFFF) >> 6), (int)(key & 0x3FFFF))] = block;
                 p += length;
                 if (type - 2 < 2)
                     p += 4;
@@ -126,8 +138,9 @@ namespace LandmarkEmulator.WorldServer.Game
             p += 1;
             if (p != body.Length)
                 throw new System.IO.InvalidDataException($"parsed to {p} of {body.Length} bytes");
-            if (r.SizeX >= BlockData.Size || r.SizeY >= BlockData.Size || r.SizeZ >= BlockData.Size)
-                throw new System.IO.InvalidDataException($"box {r.SizeX}×{r.SizeY}×{r.SizeZ} is too big");
+            // A copy or design save sends the box's voxels in one 40³ grid; a paste sends none (the server places its
+            // own copy, which may span many cells: a design such as the 85×17×65 Castle Courtyard).
+            r.LargerThanCell = r.SizeX >= BlockData.Size || r.SizeY >= BlockData.Size || r.SizeZ >= BlockData.Size;
             return r;
         }
 
@@ -140,6 +153,16 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>Solid voxels per material in a grid.</summary>
+        /// <summary>Solid voxels per material over every block of a copy / design save.</summary>
+        private static SortedDictionary<ushort, uint> CountMaterials(SelectionRequest request)
+        {
+            var materials = new SortedDictionary<ushort, uint>();
+            foreach (BlockData block in request.BlockCells.Values)
+                foreach ((ushort m, uint n) in CountMaterials(block))
+                    materials[m] = materials.GetValueOrDefault(m) + n;
+            return materials;
+        }
+
         private static SortedDictionary<ushort, uint> CountMaterials(BlockData voxels)
         {
             var materials = new SortedDictionary<ushort, uint>();
@@ -153,15 +176,34 @@ namespace LandmarkEmulator.WorldServer.Game
 
         private static void HandleSelection(WorldSession session, byte[] body)
         {
-            SelectionRequest request;
+            var request = new SelectionRequest();
             try
             {
-                request = ReadSelection(body);
+                ReadSelection(body, request);
             }
             catch (Exception e)
             {
+                // The client holds every cell the box touches as pending until each is answered; without the answers
+                // the build tools stayed locked after a refused (e.g. too big) request (2026-10-14).
                 log.Warn($"Unreadable selection request from {session.CharacterName}: {e.Message}");
                 SendResponse(session, AddTemporaryBlockSub, Failed);
+                SendCellResponses(session, request.Cells);
+                return;
+            }
+            if (request.LargerThanCell && request.Action is not (PasteAction or CopyAction or SaveDesignAction))
+            {
+                log.Info($"{session.CharacterName}: selection {request.SizeX}×{request.SizeY}×{request.SizeZ} (action {request.Action}) "
+                    + "is larger than one cell; only copies, design saves and pastes may be.");
+                try
+                {
+                    // Sample for decoding multi-block copies / design saves (Reports/, private research data).
+                    string dir = System.IO.Path.Combine(AppContext.BaseDirectory, "Reports", "selections");
+                    System.IO.Directory.CreateDirectory(dir);
+                    System.IO.File.WriteAllBytes(System.IO.Path.Combine(dir, $"sel-{request.Action}-{DateTime.UtcNow:yyyyMMdd-HHmmss}.bin"), body);
+                }
+                catch (Exception) { }
+                SendResponse(session, AddTemporaryBlockSub, Failed);
+                SendCellResponses(session, request.Cells);
                 return;
             }
             if (request.Action == PasteAction)
@@ -176,7 +218,7 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             if (request.Action == SaveDesignAction)
             {
-                SortedDictionary<ushort, uint> materials = CountMaterials(request.Voxels);
+                SortedDictionary<ushort, uint> materials = CountMaterials(request);
                 if (!Templates.HasRoom(session, materials.Values.Sum(n => (long)n)))
                 {
                     // The client's own message offers Voxel Storage Expanders (FUN_1430b6560).
@@ -296,12 +338,13 @@ namespace LandmarkEmulator.WorldServer.Game
 
         private static void Copy(WorldSession session, byte[] body, SelectionRequest request)
         {
-            SortedDictionary<ushort, uint> materials = CountMaterials(request.Voxels);
+            SortedDictionary<ushort, uint> materials = CountMaterials(request);
             List<Props.DesignProp> props = PropsInSelection(session, request);
             lock (sync)
             {
                 if (request.Voxels != null && (materials.Count > 0 || props.Count > 0))
-                    clipboards[session.PlayerGuid] = new Clipboard(request.Voxels, request.SizeX, request.SizeY, request.SizeZ) { Props = props };
+                    clipboards[session.PlayerGuid] = new Clipboard(new Dictionary<(int, int, int), BlockData>(request.BlockCells),
+                        request.SizeX, request.SizeY, request.SizeZ) { Props = props };
                 else
                     clipboards.Remove(session.PlayerGuid);
             }

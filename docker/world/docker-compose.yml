@@ -1,0 +1,55 @@
+# One LandmarkEmu world server (a "server" in the game's server list): the whole set of landscapes with its own build
+# sites, props and terrain, in its own database (lmemu_world_<WORLD_KEY>) on the auth stack's database server.
+# Characters are shared with every other world. start.bat starts every world in docker/worlds (one .env each), with
+# the settings from network.env (address, ports), docker/auth/.env (passwords, folders) and the world's own file. By
+# hand, from docker/world:
+#
+#   docker compose --env-file ../../network.env --env-file ../auth/.env --env-file ../worlds/main.env -p landmarkemu-world-main up -d --build
+#
+# A second world: copy main.env to e.g. serenity.env with its own WORLD_KEY, WORLD_ID, WORLD_NAME_ID, and its own
+# WORLD_PORT and WEB_PAGES_PORT (they override network.env's). It appears in the server list by itself.
+services:
+  world:
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile
+      target: world
+    image: landmarkemu-world
+    restart: unless-stopped
+    environment:
+      Database__Auth__ConnectionString: server=landmarkemu-db;port=3306;user=landmarkemu;password=${DB_PASSWORD};database=lmemu_auth
+      Database__Character__ConnectionString: server=landmarkemu-db;port=3306;user=landmarkemu;password=${DB_PASSWORD};database=lmemu_character
+      # This world's own data (build sites, props, chests, vendors, prop links).
+      Database__Zone__ConnectionString: server=landmarkemu-db;port=3306;user=landmarkemu;password=${DB_PASSWORD};database=lmemu_world_${WORLD_KEY}
+      Database__Zone__Provider: MySql
+      GameDataPath: /gamedata
+      GameDirectory: /game
+      ZoneServerId: ${WORLD_ID}
+      WorldNameId: ${WORLD_NAME_ID:-62147}
+      PublicAddress: ${PUBLIC_HOST:-127.0.0.1}:${WORLD_PORT:-19000}
+      Network__Port: ${WORLD_PORT:-19000}
+      WebPagesPort: ${WEB_PAGES_PORT:-19001}
+      # Listen on every interface in the container: the default (loopback) can't be reached through the port mapping.
+      WebPagesHost: 0.0.0.0
+      WebPagesUrl: http://${PUBLIC_HOST:-127.0.0.1}:${WEB_PAGES_PORT:-19001}
+      # Admins (account or character names): in-game admin commands and the /admin menu.
+      Admins__0: ${ADMIN_ACCOUNT:-}
+      Admins__1: ${ADMIN_2:-}
+      Admins__2: ${ADMIN_3:-}
+    volumes:
+      - ${GAME_DATA_DIR}:/gamedata:ro
+      - ${GAME_DIR}:/game:ro
+      # This world's saved files (terrain edits, felled trees, screenshots...), its console.log and dev_commands.txt:
+      # a folder on this PC (WORLD_DATA_DIR) or, when that isn't set, a Docker volume.
+      - ${WORLD_DATA_DIR:-data}:/data
+    ports:
+      - "${WORLD_PORT:-19000}:${WORLD_PORT:-19000}/udp"
+      - "${WEB_PAGES_PORT:-19001}:${WEB_PAGES_PORT:-19001}/tcp"
+    networks: [landmarkemu]
+
+volumes:
+  data:
+
+networks:
+  landmarkemu:
+    external: true

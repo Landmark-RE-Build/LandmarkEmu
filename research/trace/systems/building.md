@@ -174,3 +174,21 @@ u32 +0xe0, f32×3 +0xe4, u32 n × {u32, vec3, vec3} +0xf0, u8 +0x108.
   the 0x13 reply's use, then record an instance per design placement.
 - Correction: the instances are PURCHASED designs (Lua VoxelOwnership.PurchasedTemplate*; FUN_1434892a0 lists the
   site's purchased templates for Voxel Vision). Build with Player Studio purchases (module 12).
+
+## Fill / Line / Smooth shapes (checked 2026-10-14)
+- Reports: Fill sphere stays blocky, 2-voxel lines break into pieces, smoothing stays stepped — same before and after a
+  relog. Server-side check (dev `cellcompare on`, Building.CompareWithClient → TerrainEdits.Compare) with sphere edits
+  in the real client: after every edit the only differences were voxels the server holds that the sent cell lacks
+  (client 0 / server 2-3: earlier edits) — an ApplyDiff cell carries the edit, not the whole layer, and the server keeps
+  all of it (vertex-only voxels included since e187acc). The shapes are the 0.589 client's own; the official forum had
+  "[Feedback] Fill Cursor - Sphere application" (AugurDev, 3 Aug 2016, after this build).
+- Server-side causes fixed the same day: vertex-only voxels were dropped (e187acc); build cost 1 item per voxel
+  (717df47); tray counts are the client's own (ITEM_ID); material tray listeners are lost on relog (client bug, see below).
+- Material tray after a relog (client bug, traced): MaterialPaletteEntry registers its cost item with the player
+  inventory (FUN_1436f3ed0 → FUN_142e7e970, table +0x258/+0x278, notifier FUN_142e83480) only when the Materials
+  collection is built (FUN_1433bc830, once per game session from FUN_142c195f0); a relog replaces the inventory, so
+  counts stop updating until a full restart. No packet or Lua binding rebuilds collection 2 (re-checked 2026-10-14:
+  FUN_1434215f0(manager, n) repopulates a collection; packet handlers call it for collections 1, 3, 4 and 5, only
+  FUN_1433bc830 for 2 and 6).
+- Hotbar hidden after a relog from build mode: fixed (87429ea) — server runs HudStateManager:OnDisableBuildMode once
+  per login (testclient/Resources/Scripts/hudstate.lua).

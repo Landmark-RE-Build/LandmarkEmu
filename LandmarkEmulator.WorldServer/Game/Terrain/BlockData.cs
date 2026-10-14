@@ -158,9 +158,10 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                     continue;
                 byte flag = flags[f++];
                 // Vertex-only voxels (flag 2, no material bit): the client's own edits carry them on the generated side
-                // of a surface, which is what keeps a sphere round; without them the server's copy of the cell comes
-                // back blocky (2026-10-13). Server-written ones once hung the client mesher (2026-10-09), so they are
-                // kept only when KeepVertexOnly is on (WorldServer.json KeepVertexOnlyVoxels, dev "vertexonly").
+                // of a surface, which is what keeps a sphere round and a line's slope smooth; without them the server's
+                // copy of the cell comes back blocky / saw-toothed. The client meshes its own (its cache holds them), so
+                // they are kept (WorldServer.json KeepVertexOnlyVoxels, default on; dev "vertexonly"). The server
+                // never writes ones of its own.
                 if ((flag & 1) == 0 && (flag & 2) != 0)
                 {
                     System.Threading.Interlocked.Increment(ref VertexOnlySeen);

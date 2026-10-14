@@ -95,8 +95,8 @@ Cross-cutting layers (layer 1 extras)
 
 ## Reported issues to look at after the trace (do not fix yet — user, 2026-10-12)
 
-- Build site flag placement bugged while the LawTest test client was running (user closed the client). Check during
-  the Claims trace: two sessions / test client effects on PlaceClaimRequest, overlap with LawTest's site, refusals.
+- Build site flag placement bugged while the TestPlayer2 test client was running (user closed the client). Check during
+  the Claims trace: two sessions / test client effects on PlaceClaimRequest, overlap with TestPlayer2's site, refusals.
 - Power attack (right click) stopped working after a while; no casts reached the server. Traced: not the charged-cast
   path (our weapon CasterInfo uses the instant kind hash 0xDFB05E5F; charged = 0xF7150354, FUN_142d767b0). Most likely
   Energy: power costs 60, the client checks Energy itself, the server only sends a value after paying — verify whether

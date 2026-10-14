@@ -164,6 +164,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     return;
             }
             Count(session, Tourist);
+            Achievements.SiteVisited(session);
             log.Debug($"{session.CharacterName} visited build site {claim}.");
         }
     }

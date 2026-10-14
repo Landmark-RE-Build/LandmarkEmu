@@ -39,3 +39,9 @@ DesignItems, Vaults, Chests). Map-level notes: systems/items.md. Unreachable Câ†
   not confirmed; flags[0] bit 6 on starter / founder pickaxes and builder trophies; flags[1] bit 1 on 97 tools.
   Open: map the remaining bits from the code that fills the tooltip object's flag byte, then enforce NoDelete /
   NoSale / NoSalvage / UniqueEquip.
+- 2026-10-14: the tooltip flag byte is NOT computed by the client: it is the last u32 of the server's ItemTooltipReply
+  (reader FUN_142e784e0 â†’ +0x1c8; FUN_1436a9020 passes &+0x1c8 to FUN_1434655a0). The server now sends 0x20 for NoTrade
+  definitions. Definition flag census (2,885 items): byte0 bit3 2,180 stackables, bit6 18 founder tools / trophies,
+  bit7 64 NoTrade; byte1 bit1 97 gathering tools, bit3 32 Lumens + builder's bags, bit4 690 items the client exempts
+  from the overflow warning (FUN_142e83a30: container 7 and !(def+0xd & 0x10)); byte2 bit7 21 accessories (UniqueEquip?
+  unproven). No live tooltip capture exists, so the other tooltip bits stay 0.

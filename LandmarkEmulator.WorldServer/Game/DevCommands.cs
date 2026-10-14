@@ -307,6 +307,11 @@ namespace LandmarkEmulator.WorldServer.Game
                                     Achievements.Progress(session, uint.Parse(o[0]), amount);
                             }
                             break;
+                        case "studiotake":
+                            // studiotake <product id>: the Showcase's Player Studio "Get" without the browser (tests).
+                            foreach (WorldSession session in targets)
+                                log.Info($"studiotake {parts[1]}: {Commerce.TakeDesign(session, ulong.Parse(parts[1])).Message}");
+                            break;
                         case "achreset":
                             // achreset <achievement id>: back to not started (tests that complete an achievement).
                             foreach (WorldSession session in targets)
@@ -619,6 +624,11 @@ namespace LandmarkEmulator.WorldServer.Game
                             }
                             break;
                         }
+                        case "cellcompare":
+                            // cellcompare on|off: log how the stored cell compares with each edit's cell (Building.CompareWithClient).
+                            Building.CompareWithClient = parts.Length > 1 && parts[1].Trim() == "on";
+                            log.Info($"Cell compare after edits: {(Building.CompareWithClient ? "on" : "off")}.");
+                            break;
                         case "vertexonly":
                             // vertexonly on|off: keep the vertex-only voxels of client build diffs (round surfaces).
                             Terrain.BlockData.KeepVertexOnly = parts.Length > 1 && parts[1].Trim() == "on";
@@ -661,7 +671,7 @@ namespace LandmarkEmulator.WorldServer.Game
                                     StoryTools.ExpectArrival(session, siteId, respawn: false);
                                     var ground = Terrain.TerrainHeights.OnGround(centre.X, centre.Z, siteZone) ?? centre;
                                     Teleport.ToZone(session, ground + new System.Numerics.Vector3(0, 1, 0), siteZone);
-                                    log.Info($"{session.CharacterName} to build site at {ground}.");
+                                    log.Info($"{session.CharacterName} to build site {siteId} at {ground}.");
                                 }
                                 else
                                     log.Info($"{session.CharacterName} has no build site.");
@@ -1169,6 +1179,21 @@ namespace LandmarkEmulator.WorldServer.Game
                             }
                             break;
                         }
+                        case "cavecheck":
+                            // cavecheck: does every cavern entry point have a floor (Caves.CheckFloors)?
+                            log.Info("cavecheck: " + Caves.CheckFloors());
+                            break;
+                        case "cellstats":
+                        {
+                            // cellstats [x y z]: what the stored layers of the cell at the player (or a local point) hold.
+                            string[] a = parts.Length > 1 ? parts[1].Split(' ') : Array.Empty<string>();
+                            foreach (WorldSession session in targets)
+                            {
+                                var at = a.Length >= 3 ? new System.Numerics.Vector3(float.Parse(a[0]), float.Parse(a[1]), float.Parse(a[2])) : session.Position;
+                                log.Info($"cellstats {at}: {Terrain.TerrainEdits.Describe(at, session.ZoneId)}");
+                            }
+                            break;
+                        }
                         case "clearcell":
                             // clearcell <hex cell id>: drop every override in one terrain cell on the player's landscape.
                             foreach (WorldSession session in targets)
@@ -1411,13 +1436,30 @@ namespace LandmarkEmulator.WorldServer.Game
                             }
                             break;
                         case "weaponattack":
-                            // weaponattack basic|power [times]: the held weapon's attack at the nearest creature (Combat.WeaponCombat).
+                            // weaponattack basic|charged|power [times]: the held weapon's attack at the nearest creature
+                            // (Combat.WeaponCombat); "charged" is the basic attack fully charged (held), as the client's
+                            // charged cast ends.
                             foreach (WorldSession session in targets)
                             {
                                 string[] w = parts[1].Split(' ');
                                 int times = w.Length > 1 ? int.Parse(w[1]) : 1;
                                 for (int i = 0; i < times; i++)
-                                    Combat.WeaponCombat.DevAttack(session, w[0] == "power");
+                                    Combat.WeaponCombat.DevAttack(session, w[0] == "power", w[0] == "charged");
+                            }
+                            break;
+                        case "status":
+                            // status <name> [seconds]: puts a combat status on the player (Combat.Status, e.g. Eruption so
+                            // the next fire hits erupt, which is otherwise a 15 % roll).
+                            foreach (WorldSession session in targets)
+                            {
+                                string[] a = parts.Length > 1 ? parts[1].Split(' ') : Array.Empty<string>();
+                                if (a.Length > 0 && Enum.TryParse(a[0], true, out Combat.Status status))
+                                {
+                                    bool on = Combat.Statuses.Apply(session.PlayerGuid, status, session, seconds: a.Length > 1 ? float.Parse(a[1]) : 0f);
+                                    log.Info($"{session.CharacterName} status {status}: {(on ? "applied" : "not applied")}.");
+                                }
+                                else
+                                    log.Info($"status: unknown status '{(a.Length > 0 ? a[0] : "")}'.");
                             }
                             break;
                         case "states":

@@ -454,7 +454,7 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
         }
 
         /// <summary>Dev / test: an attack aimed at the nearest creature within 20 m (or straight ahead).</summary>
-        public static bool DevAttack(WorldSession player, bool power)
+        public static bool DevAttack(WorldSession player, bool power, bool charged = false)
         {
             var weapon = Abilities.HeldWeapon(player);
             uint ability = WeaponAttacks.CastIds.FirstOrDefault(id => WeaponAttacks.KindOf(id) == (power ? WeaponAttacks.Kind.Power : WeaponAttacks.Kind.Basic));
@@ -462,8 +462,8 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             ulong near = Creatures.InRadius(player.ZoneId, player.Position, 20f).FirstOrDefault();
             Vector3 dir = near != 0 && Creatures.PositionOfGuid(near) is Vector3 at ? Vector3.Normalize(at + new Vector3(0f, 1f, 0f) - eye) : Facing(player);
             uint damage = (uint)Math.Round(Abilities.WeaponDamageFor(player) * WeaponAttacks.DamageMultiplier(ability));
-            bool hit = Use(player, (eye, dir), eye + dir * 10f, weapon, ability, damage);
-            log.Info($"{player.CharacterName} dev {(power ? "power" : "basic")} attack ({ability}) with {weapon?.Id}: {(hit ? "hit" : "missed")}"
+            bool hit = Use(player, (eye, dir), eye + dir * 10f, weapon, ability, damage, charged ? true : null);
+            log.Info($"{player.CharacterName} dev {(power ? "power" : charged ? "charged basic" : "basic")} attack ({ability}) with {weapon?.Id}: {(hit ? "hit" : "missed")}"
                 + $" (nearest {(near == 0 ? "none" : $"{Vector3.Distance(Creatures.PositionOfGuid(near) ?? player.Position, player.Position):0.0} m")}).");
             return hit;
         }

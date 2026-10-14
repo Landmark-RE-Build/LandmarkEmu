@@ -256,7 +256,7 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             session.TakeFromStack(item.Id, count);
             ChestItemModel copy = stored;
-            DatabaseManager.Instance.CharacterDatabase.Save(c => c.ChestItem.Add(copy))
+            DatabaseManager.Instance.CharacterDatabase.SaveWorld(c => c.ChestItem.Add(copy))
                 .ContinueWith(t => log.Error(t.Exception, "Failed to save chest item."),
                     System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
             BroadcastAdd(chest, stored);
@@ -290,7 +290,7 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             ulong id = item.Id;
             uint left = item.Count;
-            DatabaseManager.Instance.CharacterDatabase.Save(c =>
+            DatabaseManager.Instance.CharacterDatabase.SaveWorld(c =>
             {
                 var model = new ChestItemModel { Id = id };
                 c.ChestItem.Attach(model);
@@ -321,7 +321,7 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             ulong id = item.Id;
             uint slot = item.Slot;
-            DatabaseManager.Instance.CharacterDatabase.Save(c =>
+            DatabaseManager.Instance.CharacterDatabase.SaveWorld(c =>
             {
                 var model = new ChestItemModel { Id = id };
                 c.ChestItem.Attach(model);
@@ -385,7 +385,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 item = new ChestItemModel { Id = Inventory.Inventory.NewItemGuid(), ChestGuid = chest, ItemDefinitionId = definitionId, Count = count, Slot = slot.Value };
                 list.Add(item);
             }
-            DatabaseManager.Instance.CharacterDatabase.Save(c => c.ChestItem.Add(item));
+            DatabaseManager.Instance.CharacterDatabase.SaveWorld(c => c.ChestItem.Add(item));
             BroadcastAdd(chest, item);
         }
 
@@ -407,7 +407,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     watching.Remove(w);
             }
             List<ulong> ids = items.Select(i => i.Id).ToList();
-            DatabaseManager.Instance.CharacterDatabase.Save(c =>
+            DatabaseManager.Instance.CharacterDatabase.SaveWorld(c =>
             {
                 foreach (ulong id in ids)
                 {
@@ -443,7 +443,7 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             foreach (ChestItemModel item in items)
                 to?.GiveItem(item.ItemDefinitionId, item.Count);
-            DatabaseManager.Instance.CharacterDatabase.Save(c => c.ChestItem.RemoveRange(c.ChestItem.Where(i => i.ChestGuid == chest)))
+            DatabaseManager.Instance.CharacterDatabase.SaveWorld(c => c.ChestItem.RemoveRange(c.ChestItem.Where(i => i.ChestGuid == chest)))
                 .ContinueWith(t => log.Error(t.Exception, "Failed to empty chest."),
                     System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
             log.Info($"Chest 0x{chest:X} emptied ({items.Count} stack(s)){(to != null ? $" into {to.CharacterName}'s bag" : "")}.");
@@ -467,7 +467,7 @@ namespace LandmarkEmulator.WorldServer.Game
             foreach (ChestItemModel item in items)
                 foreach ((CharacterItemModel changed, bool isNew) in owner.Inventory.AddToOverflow(item.ItemDefinitionId, item.Count))
                     owner.SendItem(changed, replace: !isNew);
-            DatabaseManager.Instance.CharacterDatabase.Save(c => c.ChestItem.RemoveRange(c.ChestItem.Where(i => i.ChestGuid == chest)))
+            DatabaseManager.Instance.CharacterDatabase.SaveWorld(c => c.ChestItem.RemoveRange(c.ChestItem.Where(i => i.ChestGuid == chest)))
                 .ContinueWith(t => log.Error(t.Exception, "Failed to empty chest."),
                     System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
             log.Info($"Chest 0x{chest:X}: {items.Count} stack(s) moved to {owner.CharacterName}'s overflow.");

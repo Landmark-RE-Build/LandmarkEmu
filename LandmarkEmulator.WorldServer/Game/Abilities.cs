@@ -318,7 +318,10 @@ namespace LandmarkEmulator.WorldServer.Game
             });
             ulong caster = session.PlayerGuid, castGuid = attempt.CastGuid;
             uint castHash = attempt.CastHash, ability = attempt.AbilityId;
-            // A weapon attack's Enter is followed by its Release (the strike) on the caster's own client too.
+            // A weapon attack's Enter is followed by its Release (the strike) on the caster's own client too. Not as a
+            // second "own cast" success: with Force (+0x48) the client's own-cast branch (FUN_142d7a370) played
+            // ActiveTimeStart 509 again and scheduled another ActiveTimeEnd 510, whose STOPS_CURRENT_SELECTION cut the
+            // strike short (measured 2026-10-14, re/test/scenarios/adhoc/castanim). Without it only the selection plays.
             if (animation is { Release: not 0 } weaponSwing)
                 System.Threading.Tasks.Task.Delay(weaponSwing.ReleaseMs).ContinueWith(_ =>
                 {
@@ -326,7 +329,7 @@ namespace LandmarkEmulator.WorldServer.Game
                         session.EnqueueMessage(new AbilityCastSuccess
                         {
                             CasterGuid = caster, CastGuid = castGuid, CastHash = castHash, AbilityId = ability,
-                            AnimationId = weaponSwing.Release
+                            AnimationId = weaponSwing.Release, Force = false
                         });
                 });
             // The swing is an Enter/Release pair (MODLOG: pick 226/227, axe 254/255, sickle 256/257); the confirm
@@ -707,8 +710,9 @@ namespace LandmarkEmulator.WorldServer.Game
                 log.Debug($"{session.CharacterName} pulverized {voxels} voxels in {cells.Count} cell(s).");
                 return voxels;
             }
+            // One item per voxel dug, the rate building costs (BuildMaterials.VoxelsPerItem, the client's own count).
             // Harvest Bonus (stat 17, e.g. Potion of Minor Yield +10): that many percent more; the Harvestron more again.
-            uint yield = (uint)Math.Max(1, voxels / 4 * (1f + Buffs.Apply(session, 17, 0f) / 100f)
+            uint yield = (uint)Math.Max(1, voxels / Terrain.BuildMaterials.VoxelsPerItem * (1f + Buffs.Apply(session, 17, 0f) / 100f)
                 * Gathering.ToolYieldBonus(HeldToolOf(session)));
             uint item = expected;
             // Ore: the vein voxels the swing dug out (OreVeins), one item per VoxelsPerOre voxels (at least one), and

@@ -23,6 +23,7 @@ namespace LandmarkEmulator.AuthServer
         /// this machine on (LAN IP, public IP or host name) when the game runs on a different PC than the servers —
         /// otherwise their client tries to load into the world on its own PC and stops on the loading screen.
         /// </summary>
+        /// <remarks>"host" keeps the row's port; "host:port" replaces both.</remarks>
         public string WorldAddress { get; set; } = "";
     }
 }

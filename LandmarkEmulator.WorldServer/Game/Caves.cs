@@ -30,6 +30,8 @@ namespace LandmarkEmulator.WorldServer.Game
         private static readonly Vector3 ArrivalOffset = new(0f, 10f, 0f);
 
         private static readonly List<Vector3> caverns = new();
+        /// <summary>Deepest cavern entry (local metres) a random Underground Adventure picks (see TravelRandom).</summary>
+        private const float MinTravelDepth = -650f;
         /// <summary>
         /// The caverns with their cave biome (VoxelBiomes: 41 AncientForestCavern, 45 CrystalCavern, 62 DeciduousCavern,
         /// 63 VolcanicCavern …), from the placement's property group (VoxelLayerPropertyGroups → biome, tier): the Chaos
@@ -123,6 +125,25 @@ namespace LandmarkEmulator.WorldServer.Game
             return inAir;
         }
 
+        /// <summary>
+        /// Developer check (dev "cavecheck"): for every cavern entry point, whether <see cref="Floor"/> finds a floor —
+        /// starting in rock, or no ground within 200 m below, leaves the arrival in the air or in rock.
+        /// </summary>
+        public static string CheckFloors()
+        {
+            int inRock = 0, noFloor = 0, ok = 0;
+            var bad = new List<string>();
+            foreach (Vector3 c in caverns)
+            {
+                (double gx, double gy, double gz) = Terrain.TerrainEdits.ToGlobal(c);
+                if (!Terrain.CavePieces.IsAir(gx, gy, gz)) { inRock++; if (bad.Count < 8) bad.Add($"rock {c}"); continue; }
+                Vector3 f = Floor(c);
+                if (f == c) { noFloor++; if (bad.Count < 8) bad.Add($"air {c}"); }
+                else ok++;
+            }
+            return $"{caverns.Count} caverns: {ok} floor found, {inRock} start in rock, {noFloor} no floor within 200 m; " + string.Join("; ", bad);
+        }
+
         public static void TravelRandom(WorldSession session)
         {
             if (caverns.Count == 0 || !Enabled)
@@ -130,7 +151,11 @@ namespace LandmarkEmulator.WorldServer.Game
                 Chat.System(session, "Underground adventures aren't open on this server yet.");
                 return;
             }
-            Vector3 at = Floor(caverns[random.Next(caverns.Count)]);
+            // Random trips use the caverns down to MinTravelDepth: deeper ones (the .cpa has them to about y -1000) were
+            // still loading on the client 35 s after arrival and the player then fell through (y -673 -> -1305,
+            // y -865 -> -1882; the audit of 2026-10-14). Entries down to y -640 landed on the floor every time.
+            var reachable = caverns.Where(c => c.Y >= MinTravelDepth).ToList();
+            Vector3 at = Floor(reachable.Count > 0 ? reachable[random.Next(reachable.Count)] : caverns[random.Next(caverns.Count)]);
             // The caverns are the home continent's: from another landscape the trip re-zones there.
             if (session.OnHomeContinent)
                 Teleport.To(session, at, snapToGround: false);

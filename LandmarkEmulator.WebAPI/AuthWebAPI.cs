@@ -1,4 +1,4 @@
-﻿using LandmarkEmulator.Database.Auth.Model;
+using LandmarkEmulator.Database.Auth.Model;
 using LandmarkEmulator.Database.Configuration;
 using LandmarkEmulator.Shared.Database;
 using LandmarkEmulator.Shared.Game;
@@ -26,6 +26,31 @@ namespace LandmarkEmulator.WebAPI
         bool enabled;
         WebApplication? app;
         string hostname;
+        static WebApiConfig settings = new();
+
+        /// <summary>
+        /// The player's address: the connecting address, or, for requests from the trusted proxy (the account website,
+        /// <see cref="WebApiConfig.TrustedProxy"/>), the last address in its X-Forwarded-For (the one the proxy saw).
+        /// </summary>
+        static string ClientAddress(HttpContext http)
+        {
+            IPAddress? remote = http.Connection.RemoteIpAddress;
+            if (remote != null && remote.IsIPv4MappedToIPv6)
+                remote = remote.MapToIPv4();
+            if (remote != null && !string.IsNullOrEmpty(settings.TrustedProxy) && IPAddress.TryParse(settings.TrustedProxy, out IPAddress? proxy)
+                && remote.Equals(proxy))
+            {
+                string forwarded = http.Request.Headers["X-Forwarded-For"].ToString();
+                string last = forwarded.Split(',').Select(p => p.Trim()).LastOrDefault(p => p.Length > 0) ?? "";
+                if (IPAddress.TryParse(last, out IPAddress? client))
+                    return client.ToString();
+            }
+            return remote?.ToString() ?? "";
+        }
+
+        /// <summary>All registrations in the current hour (<see cref="WebApiConfig.RegistrationsPerHour"/>).</summary>
+        static (int Count, DateTime Since) allRegistrations = (0, DateTime.UtcNow);
+        static readonly object registrationLock = new();
 
         /// <summary>
         /// Failed password checks per username and per remote address: after <see cref="MaxFailures"/> within
@@ -46,7 +71,7 @@ namespace LandmarkEmulator.WebAPI
         static async Task<(AccountModel? Account, IResult? Refusal)> CheckPassword(HttpContext http, string username, string password)
         {
             string user = "user:" + (username ?? "").ToLowerInvariant();
-            string address = "ip:" + http.Connection.RemoteIpAddress;
+            string address = "ip:" + ClientAddress(http);
             // Per address the limit is higher: several players may share one (home router, NAT).
             if (LockedOut(user, MaxFailures) || LockedOut(address, MaxFailuresPerAddress))
                 return (null, Results.StatusCode(429));
@@ -66,7 +91,8 @@ namespace LandmarkEmulator.WebAPI
         /// The plain-text endpoints (/create, /authenticate, /delete) take the password itself, so they only answer on
         /// this PC (the host's own start.bat and tools). Other PCs use the /srp endpoints (play.bat).
         /// </summary>
-        static bool IsLocal(HttpContext http) => http.Connection.RemoteIpAddress is IPAddress a && IPAddress.IsLoopback(a);
+        static bool IsLocal(HttpContext http) => http.Connection.RemoteIpAddress is IPAddress a && IPAddress.IsLoopback(a)
+            && http.Request.Headers["X-Forwarded-For"].Count == 0;
 
         static IResult LocalOnly() => Results.Json(new CreateModel
         {
@@ -81,7 +107,6 @@ namespace LandmarkEmulator.WebAPI
         static readonly byte[] fakeSaltSecret = RandomNumberGenerator.GetBytes(32);
         static readonly Regex AccountName = new("^[A-Za-z0-9_]{3,32}$");
         static readonly ConcurrentDictionary<string, (int Count, DateTime Since)> registrations = new();
-        const int MaxRegistrationsPerAddress = 10;
         static readonly TimeSpan RegistrationWindow = TimeSpan.FromHours(1);
 
         static bool IsHex(string value, int length)
@@ -94,6 +119,7 @@ namespace LandmarkEmulator.WebAPI
                 return;
 
             hostname = config.BaseURI ?? "https://0.0.0.0:5000";
+            settings = config;
             DatabaseManager.Instance.Initialise(databaseConfig);
         }
 
@@ -107,17 +133,64 @@ namespace LandmarkEmulator.WebAPI
 
             app.MapGet("/", () => "Hello World!");
 
-            // ---- SRP-6a (Shared/Network/Cryptography/Srp.cs; client: launcher-common.ps1). No password on the wire.
+            // ---- For the launcher: this server's name, news, worlds and requirements. Public; no account data.
+            app.MapGet("/info", () =>
+            {
+                object[] news = Array.Empty<object>();
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(settings.NewsFile) && System.IO.File.Exists(settings.NewsFile))
+                        news = System.Text.Json.JsonSerializer.Deserialize<object[]>(System.IO.File.ReadAllText(settings.NewsFile)) ?? news;
+                }
+                catch (Exception)
+                {
+                    // A half-edited news file shows no news rather than breaking the launcher.
+                }
+                var worlds = DatabaseManager.Instance.AuthDatabase.GetZoneServers().Select(z => new
+                {
+                    id = z.Id,
+                    name = LandmarkEmulator.Shared.GameTable.Text.TextManager.Instance.GetTextForId(z.NameId) ?? $"World {z.Id}",
+                    up = z.Heartbeat is DateTime beat && DateTime.UtcNow - beat < TimeSpan.FromSeconds(15),
+                    players = z.PlayersOnline,
+                    webPagesUrl = $"http://{z.Host}:{z.Port + 1}"
+                });
+                return Results.Ok(new
+                {
+                    name = settings.ServerName,
+                    websiteUrl = settings.WebsiteUrl,
+                    requiredClientBuild = settings.RequiredClientBuild,
+                    registrationOpen = settings.RegistrationOpen,
+                    // Everything else the launcher needs, so players only type the address.
+                    loginPort = settings.LoginPort,
+                    patches = PatchHost.Packs(settings.PatchFolder).Select(PatchHost.Describe),
+                    worlds,
+                    news
+                });
+            });
+            PatchHost.Map(app, () => settings.PatchFolder);
+
+            // ---- SRP-6a (Shared/Network/Cryptography/Srp.cs; clients: LaunchPad SrpClient.cs, docker/web/site/srp.js). No password on the wire.
 
             // Register: the client sends the salt and verifier it computed itself (it also enforces the 6-character
             // minimum, which the server can no longer see).
             app.MapPost("/srp/register", (HttpContext http, string username, string salt, string verifier) =>
             {
-                string address = "ip:" + http.Connection.RemoteIpAddress;
+                if (!settings.RegistrationOpen && !IsLocal(http))
+                    return Results.Json(new CreateModel { Message = "Account creation is closed." }, statusCode: 403);
+                string address = "ip:" + ClientAddress(http);
                 var r = registrations.AddOrUpdate(address, _ => (1, DateTime.UtcNow),
                     (_, f) => DateTime.UtcNow - f.Since < RegistrationWindow ? (f.Count + 1, f.Since) : (1, DateTime.UtcNow));
-                if (r.Count > MaxRegistrationsPerAddress && !IsLocal(http))
-                    return Results.StatusCode(429);
+                if (r.Count > settings.RegistrationsPerAddressPerHour && !IsLocal(http))
+                    return Results.Json(new CreateModel { Message = "Too many new accounts from your address. Try again later." }, statusCode: 429);
+                if (!IsLocal(http))
+                    lock (registrationLock)
+                    {
+                        if (DateTime.UtcNow - allRegistrations.Since >= RegistrationWindow)
+                            allRegistrations = (0, DateTime.UtcNow);
+                        if (allRegistrations.Count >= settings.RegistrationsPerHour)
+                            return Results.Json(new CreateModel { Message = "Too many new accounts right now. Try again later." }, statusCode: 429);
+                        allRegistrations.Count++;
+                    }
                 if (username == null || !AccountName.IsMatch(username) || !IsHex(salt, 32) || !Srp.IsVerifier(verifier))
                     return Results.BadRequest(new CreateModel { Message = "Account name (3-32 letters / digits), salt and verifier are required." });
                 if (DatabaseManager.Instance.AuthDatabase.AccountExists(username))
@@ -131,7 +204,7 @@ namespace LandmarkEmulator.WebAPI
             app.MapPost("/srp/start", async (HttpContext http, string username) =>
             {
                 string user = "user:" + (username ?? "").ToLowerInvariant();
-                if (LockedOut(user, MaxFailures) || LockedOut("ip:" + http.Connection.RemoteIpAddress, MaxFailuresPerAddress))
+                if (LockedOut(user, MaxFailures) || LockedOut("ip:" + ClientAddress(http), MaxFailuresPerAddress))
                     return Results.StatusCode(429);
                 foreach (var old in handshakes.Where(h => h.Value.Expires < DateTime.UtcNow).ToList())
                     handshakes.TryRemove(old.Key, out _);
@@ -167,7 +240,7 @@ namespace LandmarkEmulator.WebAPI
                 if (handshake == null || !handshakes.TryRemove(handshake, out Handshake? h) || h.Expires < DateTime.UtcNow)
                     return Results.BadRequest(new CreateModel { Message = "Login expired; try again." });
                 string user = "user:" + h.Username.ToLowerInvariant();
-                string address = "ip:" + http.Connection.RemoteIpAddress;
+                string address = "ip:" + ClientAddress(http);
                 if (LockedOut(user, MaxFailures) || LockedOut(address, MaxFailuresPerAddress))
                     return Results.StatusCode(429);
                 BigInteger? S = null;

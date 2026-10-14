@@ -1,4 +1,4 @@
-﻿using LandmarkEmulator.Shared.Configuration;
+using LandmarkEmulator.Shared.Configuration;
 using LandmarkEmulator.WebAPI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -42,6 +42,10 @@ namespace LandmarkEmulator.AuthServer
                 .ConfigureServices(sc =>
                 {
                     sc.AddHostedService<HostedService>();
+                    // The launcher is told the login port in /info; by default it is this server's own.
+                    var config = ConfigurationManager<AuthServerConfiguration>.Instance.Config;
+                    if (config.WebApi != null && config.WebApi.LoginPort == 0)
+                        config.WebApi.LoginPort = config.Network.Port;
                     sc.AddHostedService(service => 
                         new AuthWebAPI(
                             ConfigurationManager<AuthServerConfiguration>.Instance.Config.WebApi, 

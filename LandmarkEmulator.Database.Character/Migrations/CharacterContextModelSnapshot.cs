@@ -751,7 +751,7 @@ namespace LandmarkEmulator.Database.Character.Migrations
 
                     b.Property<string>("Body")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("varchar(2048)")
+                        .HasColumnType("varchar(4096)")
                         .HasDefaultValue("")
                         .HasColumnName("body");
 

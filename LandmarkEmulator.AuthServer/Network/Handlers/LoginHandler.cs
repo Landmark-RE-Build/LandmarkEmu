@@ -513,6 +513,11 @@ namespace LandmarkEmulator.AuthServer.Network.Handlers
                 }
 
                 string serverTicket = RandomProvider.GetBytes(16u).ToHexString();
+                // A client signed in with a relogin key ("R...", issued by a world when it went to character select) is
+                // the same running client coming back: its world ticket says so ("R" is not a hex digit), so the world
+                // can skip resending the item definitions it still holds. Launcher and direct logins get plain tickets.
+                if (session.Account.SessionKey?.StartsWith("R", StringComparison.Ordinal) == true)
+                    serverTicket = "R" + serverTicket[1..];
                 session.EnqueueEvent(new TaskEvent(DatabaseManager.Instance.AuthDatabase.UpdateServerTicket(session.Account, serverTicket),
                     () =>
                 {

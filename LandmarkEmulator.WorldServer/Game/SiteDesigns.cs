@@ -1,4 +1,4 @@
-using LandmarkEmulator.Database.Character.Model;
+﻿using LandmarkEmulator.Database.Character.Model;
 using LandmarkEmulator.Shared.Database;
 using LandmarkEmulator.WorldServer.Game.Terrain;
 using LandmarkEmulator.WorldServer.Network;
@@ -18,8 +18,8 @@ namespace LandmarkEmulator.WorldServer.Game
     /// The design holds what the owner built on the site — the voxels Voxel Vision says are theirs
     /// (<see cref="VoxelOwnership"/>) inside the site's box, with their current material and shape — not the natural
     /// ground, so placing it puts the build down rather than a chunk of hillside. Stored like a multi-cell prefab: u32 n ×
-    /// {u64 cell, u64 cell, u32 4, u32 length, packed (changed mask + format-2 block)} (<see cref="Templates.VoxelsOf"/>
-    /// reads it back). Props go back to the owner's bag as before (a design here carries voxels only).
+    /// {u64 cell, u64 cell, u32 4, u32 length, packed (changed mask + format-2 block)}, cells counted from the lowest one
+    /// (<see cref="Templates.VoxelsOf"/> reads it back). Props go back to the owner's bag as before (a design here carries voxels only).
     /// </para>
     /// </summary>
     public static class SiteDesigns
@@ -92,6 +92,8 @@ namespace LandmarkEmulator.WorldServer.Game
             blocks.Write(BitConverter.GetBytes((uint)cells));
             body.Position = 0;
             body.CopyTo(blocks);
+            // Cells counted from the design's lowest cell, as designs are (Templates.Rebased).
+            byte[] stored = Templates.Rebased(blocks.ToArray());
             string name = Trim($"{(string.IsNullOrWhiteSpace(claim.Name) ? "Build Site" : claim.Name)} ({DateTime.UtcNow:yyyy-MM-dd})");
             var design = new TemplateModel
             {
@@ -103,7 +105,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 SizeY = (maxY - minY + 1) * BlockData.Size - 1,
                 SizeZ = (maxZ - minZ + 1) * BlockData.Size - 1,
                 Materials = string.Join(";", materials.Select(m => $"{m.Key}:{m.Value}")),
-                Blocks = blocks.ToArray(),
+                Blocks = stored,
                 CreatedAt = DateTime.UtcNow
             };
             using (var context = DatabaseManager.Instance.CharacterDatabase.NewContext())

@@ -19,15 +19,24 @@ namespace LandmarkEmulator.WorldServer.Game
         private static readonly ILogger log = LogManager.GetCurrentClassLogger();
 
         /// <summary>
-        /// Emote commands → AnimationSelection id. The names are the client's own emote words (text 559123-559192);
-        /// which clip each plays was matched by eye (dev "anim", re/test/anim.sh), so only clear matches are listed.
-        /// Stances (Stance_Index rows) loop until "stand" (223) or another stance replaces them.
+        /// Emote commands → AnimationSelection id. The names are the client's own emote words (text 559123-559192:
+        /// groan, shoo, talk and nod are its words for the Frustrated, GoAway, TalkLong and Yes clips). Each word's
+        /// Emote_Index comes from the player network (PlayerAnimationNetwork64.mrn): the neutral emotes sit under two
+        /// Switch nodes whose child lists are, in order, Switch1 = Crafting, Beg, Bow, Cheer, Congratulate, Cry, Flirt,
+        /// Frustrated, Giggle, GoAway, Laugh (Emote_Index 1-11) and Switch2 = Switch1, Point, Shrug, Sob, TalkLong,
+        /// Taunt, Wave, No, Yes, Dancing (12-20); see trace/systems/social.md. Index 1 (Crafting) is the crafting
+        /// loop, not a word. Stances (Stance_Index rows) loop until "stand" (223) or another stance replaces them.
         /// </summary>
         private static readonly Dictionary<string, uint> emotes = new(StringComparer.OrdinalIgnoreCase)
         {
-            ["wave"] = 217, ["cheer"] = 230, ["bow"] = 229, ["point"] = 240, ["shrug"] = 239, ["taunt"] = 242,
-            ["cry"] = 231, ["cough"] = 247,
-            ["dance"] = 246, ["kneel"] = 224, ["skip"] = 248, ["drunk"] = 250, ["sneak"] = 251, ["stand"] = 223
+            ["beg"] = 228, ["bow"] = 229, ["cheer"] = 230, ["congratulate"] = 232, ["cry"] = 231, ["flirt"] = 233,
+            ["groan"] = 234, ["giggle"] = 235, ["shoo"] = 222, ["laugh"] = 237, ["point"] = 238, ["shrug"] = 239,
+            ["sob"] = 240, ["talk"] = 241, ["taunt"] = 242, ["wave"] = 217, ["no"] = 244, ["nod"] = 245,
+            ["dance"] = 246, ["kneel"] = 224, ["skip"] = 248, ["drunk"] = 250, ["sneak"] = 251, ["stand"] = 223,
+            // Moods (the client's words Calm / Angry / Happy): selections 218-220 only set Emote_Emotion 0-2, which every
+            // Emotion_Switch in the network reads in the order neutral, Angry, Happy, Sad (221, no client word) - the
+            // standing idle and every later emote play in that mood until another mood is chosen.
+            ["calm"] = 218, ["angry"] = 219, ["happy"] = 220
         };
 
         /// <summary>Stance emotes (looping until replaced) and the "stand" selection that ends them.</summary>

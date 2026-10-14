@@ -262,7 +262,7 @@ namespace LandmarkEmulator.WorldServer.Game
             {
                 if (loaded)
                     return;
-                using var context = DatabaseManager.Instance.CharacterDatabase.NewContext();
+                using var context = DatabaseManager.Instance.CharacterDatabase.NewWorldContext();
                 bindings.AddRange(context.WorldPropBinding.ToList());
                 nextBindingId = bindings.Count == 0 ? 0 : (long)bindings.Max(b => b.Id);
                 loaded = true;
@@ -285,7 +285,7 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         private static void Save(Action<Database.Character.CharacterContext> change)
-            => DatabaseManager.Instance.CharacterDatabase.Save(change)
+            => DatabaseManager.Instance.CharacterDatabase.SaveWorld(change)
                 .ContinueWith(t => log.Error(t.Exception, "Saving story-tool links failed."),
                     System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
 

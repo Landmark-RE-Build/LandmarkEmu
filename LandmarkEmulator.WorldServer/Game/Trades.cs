@@ -27,8 +27,13 @@ namespace LandmarkEmulator.WorldServer.Game
             AcceptSub = 6, CancelSub = 7, OfferItemSub = 8, CoinCountSub = 9, UpdateCoinCountSub = 10,
             UpdateAddItemSub = 11, UpdateItemCountSub = 12, UpdateAcceptSub = 13, MessageSub = 14, RejectedSub = 15;
         /// <summary>TradeMessage codes the client explains.</summary>
+        /// <summary>
+        /// TradeMessage codes the client explains (FUN_14358ee50 case 0xE): 1 TradeCanceled, 2 ...PartnerDisconnected,
+        /// 3 / 4 partner's / your offer invalid, 6 TradeCompleted, 7 TradeChangedAfterAccept, 8 "TradeCanceledYouEntered
+        /// InstancedZone", 9 "...PartnerEnteredInstancedZone" (both close the window), 10 TradeCannotAcceptFullInventory.
+        /// </summary>
         private const byte Canceled = 1, PartnerDisconnected = 2, PartnerOfferInvalid = 3, YourOfferInvalid = 4,
-            Completed = 6, ChangedAfterAccept = 7, InventoryFull = 10;
+            Completed = 6, ChangedAfterAccept = 7, YouEnteredInstance = 8, PartnerEnteredInstance = 9, InventoryFull = 10;
 
         private class Side
         {
@@ -221,14 +226,17 @@ namespace LandmarkEmulator.WorldServer.Game
                     Send(side.Session, MessageSub, w => w.Write(YourOfferInvalid));
                     Send(trade.Other(side).Session, MessageSub, w => w.Write(PartnerOfferInvalid));
                     End(trade);
+                    log.Info($"Trade {trade.Id} failed: {side.Session.CharacterName}'s offer is no longer there.");
                     return;
                 }
                 Side receiver = trade.Other(side);
-                if (receiver.Session.Inventory.FreeBagSlots() + receiver.Items.Count < side.Items.Count)
+                var incoming = side.Items.Select(o => (side.Session.Inventory.Get(o.Key).ItemDefinitionId, o.Value)).ToList();
+                if (!receiver.Session.Inventory.CanReceive(incoming, receiver.Items))
                 {
                     Send(receiver.Session, MessageSub, w => w.Write(InventoryFull));
                     Send(side.Session, MessageSub, w => w.Write(Canceled));
                     End(trade);
+                    log.Info($"Trade {trade.Id} failed: {receiver.Session.CharacterName}'s bag has no room.");
                     return;
                 }
             }
@@ -254,6 +262,9 @@ namespace LandmarkEmulator.WorldServer.Game
                     to.SendItem(single, replace: false);
                     DesignItems.Moved(oldItem, single.Id);
                 }
+            if (designs.Count > 0)
+                foreach (Side side in new[] { trade.A, trade.B })
+                    Achievements.DesignTraded(side.Session);
             foreach (Side side in new[] { trade.A, trade.B })
                 if (side.Coins > 0 && side.Session.ChangeCoins(-side.Coins))
                     trade.Other(side).Session.ChangeCoins(side.Coins);
@@ -297,6 +308,29 @@ namespace LandmarkEmulator.WorldServer.Game
                 WorldSession other = trade.Other(trade.Of(session)).Session;
                 Send(other, MessageSub, w => w.Write(PartnerDisconnected));
                 Send(other, EndSessionSub, w => w.Write((uint)trade.Id));
+            }
+        }
+
+        /// <summary>
+        /// A trader moved away from the trade: to another landscape (both see TradeCanceled) or into a running instanced
+        /// game (codes 8 / 9, "...you / your partner entered an instanced zone"). Trades need both on one landscape.
+        /// </summary>
+        public static void Moved(WorldSession session, bool intoGame)
+        {
+            List<Trade> gone;
+            lock (sync)
+            {
+                gone = trades.Values.Where(t => t.Of(session) != null).ToList();
+                foreach (Trade t in gone)
+                    trades.Remove(t.Id);
+            }
+            foreach (Trade trade in gone)
+            {
+                WorldSession other = trade.Other(trade.Of(session)).Session;
+                Send(session, MessageSub, w => w.Write(intoGame ? YouEnteredInstance : Canceled));
+                Send(other, MessageSub, w => w.Write(intoGame ? PartnerEnteredInstance : Canceled));
+                End(trade);
+                log.Info($"Trade {trade.Id} canceled: {session.CharacterName} {(intoGame ? "entered a game" : "changed landscape")}.");
             }
         }
 

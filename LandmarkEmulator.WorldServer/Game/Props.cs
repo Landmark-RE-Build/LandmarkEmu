@@ -307,6 +307,9 @@ namespace LandmarkEmulator.WorldServer.Game
         /// </summary>
         private const float MaxPlaceDistance = 5f;
 
+        /// <summary>How far below the player a prop waiting for its placement session is spawned (BeginPlacement).</summary>
+        private const float PlacementSpawnDepth = 20f;
+
         /// <summary>
         /// Places a temporary prop by using an item (the Cozy Campfire): it goes straight into the world near the aim
         /// point, isn't saved (the item's effect removes it again) and is returned as (guid, position).
@@ -367,7 +370,11 @@ namespace LandmarkEmulator.WorldServer.Game
                 return null;
             }
             var definition = GameTableManager.Instance.PropDefs.GetEntry(propId);
-            PlacedProp prop = Create(owner, propId, modelId, definition?.NameStringId ?? 0, owner.Position);
+            // Spawned out of the player's way: the client starts its placement session (FUN_142f1ab30 →
+            // FUN_142f215a0) only after it has asked for and received the prop's full data, and until then the prop is
+            // an ordinary solid entity — at the player's feet it pushed them up (2026-10-14). The session then moves it
+            // with the cursor and Save sends the real transform, so where it first appears doesn't matter.
+            PlacedProp prop = Create(owner, propId, modelId, definition?.NameStringId ?? 0, owner.Position - new Vector3(0f, PlacementSpawnDepth, 0f));
             prop.AwaitingPlacement = true;
             prop.PaidByItem = paidByItem;
             prop.PaidByItemGuid = paidByItemGuid;
@@ -1190,7 +1197,7 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             var ids = inside.Select(p => p.Spawn.Guid).ToHashSet();
             if (ids.Count > 0)
-                DatabaseManager.Instance.CharacterDatabase.Save(c =>
+                DatabaseManager.Instance.CharacterDatabase.SaveWorld(c =>
                 {
                     foreach (WorldPropModel stored in c.WorldProp.Where(p => ids.Contains(p.Id)))
                         stored.ZoneId = StowedZone;
@@ -1274,7 +1281,7 @@ namespace LandmarkEmulator.WorldServer.Game
             foreach (WorldSession session in PlayerManager.InZone(prop.Zone))
                 SendRemove(session, prop);
             ulong id = prop.Spawn.Guid;
-            DatabaseManager.Instance.CharacterDatabase.Save(c =>
+            DatabaseManager.Instance.CharacterDatabase.SaveWorld(c =>
             {
                 WorldPropModel stored = c.WorldProp.FirstOrDefault(p => p.Id == id);
                 if (stored != null)
@@ -1503,7 +1510,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 Text = prop.Text,
                 Disabled = prop.Disabled
             };
-            DatabaseManager.Instance.CharacterDatabase.Save(c =>
+            DatabaseManager.Instance.CharacterDatabase.SaveWorld(c =>
             {
                 if (c.WorldProp.Any(p => p.Id == model.Id))
                     c.WorldProp.Update(model);

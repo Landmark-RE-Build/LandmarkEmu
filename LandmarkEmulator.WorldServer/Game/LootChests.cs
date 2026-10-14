@@ -102,7 +102,7 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             foreach (WorldSession session in PlayerManager.Snapshot())
             {
-                if (session.IsArriving)
+                if (session.StreamsOnHold)
                     continue;
                 HashSet<int> have;
                 lock (sync)
@@ -188,6 +188,7 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             foreach (WorldSession s in viewers)
                 s.EnqueueMessage(new PlayerUpdateRemovePlayer { Guid = c.Prop.Guid });
+            Achievements.TreasureChestOpened(session);
             log.Info($"{session.CharacterName} opened a treasure chest ({sharers} share the loot).");
         }
 

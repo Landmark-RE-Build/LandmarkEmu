@@ -53,6 +53,7 @@ button.alt { background: #2b3b4a; border-color: #45607a; }
   display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center;
   padding: 10px 12px; margin-bottom: 8px; background: #172431; border: 1px solid #243444; border-radius: 4px;
 }
+.site .shot { width: 96px; height: 64px; object-fit: cover; border-radius: 3px; margin-right: 12px; -webkit-flex: none; flex: none; }
 .site .info { -webkit-flex: 1; flex: 1; }
 .site .title { font-size: 15px; color: #f3d98f; }
 .site .meta { font-size: 12px; color: #8ea2b3; }

@@ -34,8 +34,11 @@ namespace LandmarkEmulator.WorldServer.Game
         private const uint Success = 1, AlreadyInRoom = 8, InvalidPassword = 12, InTooManyRooms = 15, RoomNameTooLong = 17,
             PasswordTooLong = 18, RoomNameInappropriate = 19, LeaveRoomNotFound = 22, LeaveNotInRoom = 23;
         private const uint KindEntered = 1, KindUsersJoined = 2, KindUserLeft = 5;
-        /// <summary>Client constants Chat.PlayerPublicMaxChatRooms 10; room names up to 64, passwords up to 32 characters.</summary>
-        private const int MaxRoomsPerPlayer = 10, MaxNameLength = 64, MaxPasswordLength = 32;
+        /// <summary>
+        /// Client constants Chat.PlayerPublicMaxChatRooms 10, Chat.MaxRoomNameCharLength 32 (FUN_143aafcf0),
+        /// Chat.MaxRoomPasswordCharLength 32 (FUN_143aafd90).
+        /// </summary>
+        private const int MaxRoomsPerPlayer = 10, MaxNameLength = 32, MaxPasswordLength = 32;
 
         private sealed class Room
         {

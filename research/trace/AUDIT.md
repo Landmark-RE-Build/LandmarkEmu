@@ -3,115 +3,126 @@
 User 2026-10-12: audit everything already built against the client's code paths (packet layouts vs the client
 readers in trace/families, result codes vs trace/code-strings.md, animations / composite effects / models vs
 client data (trace/AUDIT-ASSETS.md), constants vs trace/client-constants.md, rules vs the system files) and fix
-what diverges. Verification: tests assert the client's own reaction where it has one (client.js chatlog = the text the
-client displays; rpc reads of client state), not only the server's log. Status: not audited · audited (date, commits) · partial (what is left).
+what diverges. Status: not audited · audited (date, commits) · partial (what is left).
 
 | File | Lines | Families | Opcodes used | Status |
 |---|---|---|---|---|
-| Game/Abilities.cs | 728 | 0x27 | AbilityAbilityEnd | partial 2026-10-12: weapon casts → Combat.WeaponCombat kits (client texts, wiki properties); HeldWeapon main hand only; tool paths audited earlier |
-| Game/Achievements.cs | 730 | 0x92 | AchievementBase | not audited |
+| Game/Abilities.cs | 779 | 0x27 | AbilityAbilityEnd | audited 2026-10-13/14 by rebuild #7 Combat (client re-trace; open items in systems/abilities-combat.md); earlier: partial 2026-10-12: weapon casts → Combat.WeaponCombat kits (client texts, wiki properties); HeldWeapon main hand only; tool paths audited earlier |
+| Game/Achievements.cs | 947 | 0x92 | AchievementBase | audited 2026-10-13/14 by rebuild #11 Progression (client re-trace; open items in systems/crafting-meta.md) |
+| Game/Admin.cs | 129 |  |  | audited 2026-10-13/14 by rebuild #12 Commerce (client re-trace; open items in systems/crafting-meta.md) |
+| Game/ArtTints.cs | 99 |  |  | audited 2026-10-14: 8 lists in the order of reader FUN_142bae270 (pkt.py), alias table +0x268 / +0x26c; runtime-verified (armour and prop tints show, user check 10-14) |
 | Game/Barbershop.cs | 88 | 0x11C | CharacterCustomizationBase | audited 2026-10-12: PlayerSet layout, CharCustomizationSlotCost prices; AddKnowledgeResponse unreachable |
-| Game/Buffs.cs | 344 | 0x27 | AbilityEffectEnd, AbilityEffectInitialized, AbilityEffectStart | partial 2026-10-12: EffectStart fields (types, strength, fade, duration, start) decoded; client effects + status icons |
-| Game/Building.cs | 434 | 0x117, 0xEC, 0xF4 | TerrainCellClientCellUpdateResponse, ToolBase, VoxelConstructionBase | not audited |
-| Game/BuildingClipboard.cs | 373 | 0xF4 | VoxelConstructionBase | not audited |
-| Game/Caves.cs | 103 |  |  | audited 2026-10-12: .cpa record layout, cavern pieces 104, biome groups |
+| Game/Buffs.cs | 385 | 0x27 | AbilityEffectEnd, AbilityEffectInitialized, AbilityEffectStart | audited 2026-10-13/14 by rebuild #7 Combat (client re-trace; open items in systems/abilities-combat.md); earlier: partial 2026-10-12: EffectStart fields (types, strength, fade, duration, start) decoded; client effects + status icons |
+| Game/BuildModeHolster.cs | 73 |  |  | audited 2026-10-13/14 by rebuild #2 Building (client re-trace; open items in systems/building.md) |
+| Game/Building.cs | 732 | 0x117, 0xEC, 0xF4 | TerrainCellClientCellUpdateResponse, ToolBase, VoxelConstructionBase | audited 2026-10-13/14 by rebuild #2 Building (client re-trace; open items in systems/building.md) |
+| Game/BuildingClipboard.cs | 581 | 0xF4 | VoxelConstructionBase | audited 2026-10-13/14 by rebuild #2 Building (client re-trace; open items in systems/building.md) |
+| Game/Caves.cs | 143 |  |  | audited 2026-10-12: .cpa record layout, cavern pieces 104, biome groups |
 | Game/CharacterResources.cs | 78 | 0xC4 | ResourcesBase | audited 2026-10-12: SetCharacterResource record (FUN_142b7f0c0), per-player sequence; energy re-sent on spend |
-| Game/Chat.cs | 183 | 0x13 | ChatBase | audited 2026-10-12: PacketChat kinds (0 / 2 not found / 3 offline), channel table (0 say, 1 whisper, 2 echo, 5 guild, 8 party, 10 room); tells went to everyone → only the target + TellEcho (sub 5) |
-| Game/ChatRooms.cs | 208 | 0x13 | ChatBase | audited 2026-10-12 (a470a5e) |
-| Game/Chests.cs | 449 | 0xFF | ChestBase | audited 2026-10-12: Enable/List/Add/Delete subs, access = Pillage and Plunder (wiki Build Site Management); lapsed-site chests come back to overflow with their contents (wiki Chests); sizes 10/20/30 are a choice among Chests.txt rows (the prop→row link is server data) |
-| Game/Claims.cs | 1491 | 0x1E, 0xF9 | ClaimsBase, CommandBase | audited 2026-10-12 (76744da..df9aabe): placement, buffer, codes, basic info, delete, upkeep; open items in systems/claims.md |
-| Game/ClientFixes.cs | 31 |  |  | not audited |
-| Game/ClientLua.cs | 85 | 0x1E, 0x6D | CommandBase, FirstTimeEventBase | not audited |
-| Game/Commerce.cs | 516 | 0x45 | InGamePurchaseBase | audited 2026-10-12: every client request triaged (verdicts.tsv); IsTemplateValid 0x4C answered; billing / SC store n/a (free store) |
-| Game/Consumables.cs | 325 |  |  | partial 2026-10-12: Cave Seeker → DetectCave; potion cooldowns in caster info; prospectors use vein overlay |
-| Game/Contests.cs | 187 | 0xA7, 0xF9 | ClaimsBase, RatingBase | audited 2026-10-12: list / submit layouts; phases now follow the contest dates (entries → voting → judging; 4 = closed by operators); contest votes counted (one per player per entry) from the rating's 'Contests' AddVote |
-| Game/Crafting.cs | 271 | 0x42 | RecipeBase | not audited |
-| Game/CraftingStations.cs | 139 | 0x42 | RecipeBase | not audited |
-| Game/Creatures.cs | 1138 | 0x24, 0x26, 0x27 | AbilityPlayAnim, CombatBase, PlayerUpdateCombatResourceEventWire, PlayerUpdateUpdateHitpointsWire | partial 2026-10-12: launch kinds / caverns; combat status gating, damage pipeline (Combat/) |
-| Game/DefaultCalculatedStats.cs | 60 |  |  | not audited |
-| Game/DesignItems.cs | 111 |  |  | audited 2026-10-12: design added → TemplateBase 0x11 EnvironmentAddOwnershipResponse (client's Learned.Template notice) |
-| Game/DevCommands.cs | 1179 | 0xEC | TerrainCellCellBlockDamage, TerrainCellCellsUpdate, TerrainCellZoneProcessingComplete | not audited |
+| Game/Chat.cs | 293 | 0x13 | ChatBase | audited 2026-10-12: PacketChat kinds (0 / 2 not found / 3 offline), channel table (0 say, 1 whisper, 2 echo, 5 guild, 8 party, 10 room); tells went to everyone → only the target + TellEcho (sub 5) |
+| Game/ChatRooms.cs | 214 | 0x13 | ChatBase | audited 2026-10-12 (a470a5e) |
+| Game/Chests.cs | 492 | 0xFF | ChestBase | audited 2026-10-12: Enable/List/Add/Delete subs, access = Pillage and Plunder (wiki Build Site Management); lapsed-site chests come back to overflow with their contents (wiki Chests); sizes 10/20/30 are a choice among Chests.txt rows (the prop→row link is server data) |
+| Game/Claims.cs | 1543 | 0x1E, 0xF9 | ClaimsBase, CommandBase | audited 2026-10-12 (76744da..df9aabe): placement, buffer, codes, basic info, delete, upkeep; open items in systems/claims.md |
+| Game/ClientFixes.cs | 49 |  |  | audited 2026-10-14: both patches answer real 0.589 script gaps (ClaimVendorScreen global missing vs LuaClaimVendor natives; build page reset by BuildModeWidget.as); runtime Lua only, no file changes |
+| Game/ClientLua.cs | 85 | 0x1E, 0x6D | CommandBase, FirstTimeEventBase | audited 2026-10-14: Command 0x1E RunLuaCode path; never used to call natives that open the external browser |
+| Game/Commerce.cs | 572 | 0x45 | InGamePurchaseBase | audited 2026-10-12: every client request triaged (verdicts.tsv); IsTemplateValid 0x4C answered; billing / SC store n/a (free store) |
+| Game/Consumables.cs | 395 |  |  | audited 2026-10-13/14 by rebuild #5 Inventory (client re-trace; open items in systems/inventory.md); earlier: partial 2026-10-12: Cave Seeker → DetectCave; potion cooldowns in caster info; prospectors use vein overlay |
+| Game/Contests.cs | 258 | 0xA7, 0xF9 | ClaimsBase, RatingBase | audited 2026-10-12: list / submit layouts; phases now follow the contest dates (entries → voting → judging; 4 = closed by operators); contest votes counted (one per player per entry) from the rating's 'Contests' AddVote |
+| Game/Crafting.cs | 271 | 0x42 | RecipeBase | audited 2026-10-13/14 by rebuild #8 Crafting (client re-trace; open items in systems/crafting-meta.md) |
+| Game/CraftingStations.cs | 139 | 0x42 | RecipeBase | audited 2026-10-13/14 by rebuild #8 Crafting (client re-trace; open items in systems/crafting-meta.md) |
+| Game/Creatures.cs | 1600 | 0x24, 0x26, 0x27 | AbilityPlayAnim, CombatBase, PlayerUpdateCombatResourceEventWire, PlayerUpdateUpdateHitpointsWire | audited 2026-10-13/14 by rebuild #7 Combat (client re-trace; open items in systems/abilities-combat.md); earlier: partial 2026-10-12: launch kinds / caverns; combat status gating, damage pipeline (Combat/) |
+| Game/DailyGoals.cs | 171 |  |  | audited 2026-10-13/14 by rebuild #11 Progression (client re-trace; open items in systems/crafting-meta.md) |
+| Game/DefaultCalculatedStats.cs | 60 |  |  | audited 2026-10-13/14 by rebuild #7 Combat (client re-trace; open items in systems/abilities-combat.md) |
+| Game/DesignItems.cs | 112 |  |  | audited 2026-10-12: design added → TemplateBase 0x11 EnvironmentAddOwnershipResponse (client's Learned.Template notice) |
+| Game/DevCommands.cs | 1549 | 0x1E, 0xEC | CommandBase, TerrainCellCellBlockDamage, TerrainCellCellsUpdate, TerrainCellZoneProcessingComplete | n/a 2026-10-14: developer tool (dev_commands.txt / admin page), not client behaviour |
 | Game/Durability.cs | 132 | 0x42 | RecipeBase | audited 2026-10-12: DurabilitySet rows, condition math, repair reply {u32 0x22, bool} matches FUN_142e91a00; broken-gear line is the client's own (FUN_142e876e0), server duplicate removed |
-| Game/Emotes.cs | 238 | 0x1E, 0x27 | AbilityPlayAnim, CommandBase | partial 2026-10-12: /sit EmoteStringById relayed as ChatPacketFromStringId (0x13 sub 4); dynamic emote commands and clip choices are server-side (0.589 has no emote packet besides /sit) |
-| Game/Encounters.cs | 427 | 0x2C | EncounterBase | partial 2026-10-12: duel lines are server-command text (0.589 has no duel UI or texts) |
-| Game/FirstTimeEvents.cs | 174 | 0x6D | FirstTimeEventBase | not audited |
-| Game/Friends.cs | 196 | 0x4D | FriendBase | audited 2026-10-12: list/online/offline/add/remove records; FriendMessage 0x0C 'does not exist' for unknown names; the client prints add/remove itself (duplicate chat line removed) and refuses self / already-listed before sending; no /friend remove in the play client (Ui.RemoveFriend) |
-| Game/GameDataFiles.cs | 58 |  |  | not audited |
-| Game/Gathering.cs | 673 |  |  | audited 2026-10-12: claim rule, party share, drops, tool bonuses, harvest failures (EffectEnd reasons), loot toasts |
+| Game/Emotes.cs | 278 | 0x13, 0x1E, 0x27 | AbilityPlayAnim, ChatBase, CommandBase | audited 2026-10-13/14 by rebuild #10 Social (client re-trace; open items in systems/social.md); earlier: partial 2026-10-12: /sit EmoteStringById relayed as ChatPacketFromStringId (0x13 sub 4); dynamic emote commands and clip choices are server-side (0.589 has no emote packet besides /sit) |
+| Game/Encounters.cs | 427 | 0x2C | EncounterBase | audited 2026-10-13/14 by rebuild #7 Combat (client re-trace; open items in systems/abilities-combat.md); earlier: partial 2026-10-12: duel lines are server-command text (0.589 has no duel UI or texts) |
+| Game/FirstTimeEvents.cs | 174 | 0x6D | FirstTimeEventBase | audited 2026-10-13/14 by rebuild #11 Progression (client re-trace; open items in systems/crafting-meta.md) |
+| Game/Friends.cs | 230 | 0x4D | FriendBase | audited 2026-10-12: list/online/offline/add/remove records; FriendMessage 0x0C 'does not exist' for unknown names; the client prints add/remove itself (duplicate chat line removed) and refuses self / already-listed before sending; no /friend remove in the play client (Ui.RemoveFriend) |
+| Game/GameDataFiles.cs | 58 |  |  | audited 2026-10-14: reads the client tables (^-separated, # header) the same way the client loaders do |
+| Game/Gathering.cs | 711 | 0x27 | AbilityEffectEnd | audited 2026-10-12: claim rule, party share, drops, tool bonuses, harvest failures (EffectEnd reasons), loot toasts |
 | Game/Graveyards.cs | 66 |  |  | audited 2026-10-12 (0658dba) |
-| Game/Groups.cs | 476 | 0x2B | GroupsBase | audited 2026-10-12: member record, UpdateMember party frames (9e5001e); invite results with the client's codes (type 2, FUN_143b5f4a0), RemoveInvitation expiry (0x17); raids / looking-for-more n/a |
-| Game/Guilds.cs | 755 | 0x83 | GuildBase | audited 2026-10-12: ranks, description, app data (guildranks); GuildNotification 0x19 codes replace English lines (create / invite results, rank change refused); a leaver gets RemoveMember about themselves (not Disband, which said 'disbanded') |
-| Game/Health.cs | 451 | 0x24, 0x26, 0x29 | ClientUpdateHitpoints, CombatBase, PlayerUpdateKnockedOutWire, PlayerUpdateReadyToReviveWire | partial 2026-10-12: LastDamageTime hit indicators / hit marker (6b2ab4f); death/respawn via Graveyards; rest open |
-| Game/HitEffects.cs | 120 | 0x26 | PlayerUpdatePlayCompositeEffectWire | audited 2026-10-12 (652f954, runtime-verified) |
+| Game/Groups.cs | 674 | 0x2B | GroupsBase | audited 2026-10-12: member record, UpdateMember party frames (9e5001e); invite results with the client's codes (type 2, FUN_143b5f4a0), RemoveInvitation expiry (0x17); raids / looking-for-more n/a |
+| Game/Guilds.cs | 1134 | 0x83 | GuildBase | audited 2026-10-12: ranks, description, app data (guildranks); GuildNotification 0x19 codes replace English lines (create / invite results, rank change refused); a leaver gets RemoveMember about themselves (not Disband, which said 'disbanded') |
+| Game/Health.cs | 567 | 0x24, 0x26, 0x29 | ClientUpdateHitpoints, CombatBase, PlayerUpdateKnockedOutWire, PlayerUpdateReadyToReviveWire, PlayerUpdateStartReviveWire, PlayerUpdateStopReviveWire | audited 2026-10-13/14 by rebuild #7 Combat (client re-trace; open items in systems/abilities-combat.md); earlier: partial 2026-10-12: LastDamageTime hit indicators / hit marker (6b2ab4f); death/respawn via Graveyards; rest open |
+| Game/HitEffects.cs | 152 | 0x26 | PlayerUpdatePlayCompositeEffectWire | audited 2026-10-12 (652f954, runtime-verified) |
 | Game/Ignores.cs | 168 | 0x72 | IgnoreBase | audited 2026-10-12: Command 0x20 / IgnoreBase 0x72; the client prints IgnoreAdded/Removed; failure lines have no client text (kept) |
-| Game/InstancedGames.Editor.cs | 548 | 0x10D | InstancedGameBase | not audited |
-| Game/InstancedGames.Queue.cs | 145 | 0x10D | InstancedGameBase | not audited |
-| Game/InstancedGames.cs | 1582 | 0x10D | InstancedGameBase | not audited |
-| Game/ItemAudit.cs | 88 |  |  | not audited |
-| Game/ItemUses.cs | 414 | 0x2D | InventoryBase | not audited |
-| Game/Landscapes.cs | 235 | 0xFC | TeleportBase | not audited |
-| Game/LootPinatas.cs | 186 | 0xFB | LootPinataBase | not audited |
-| Game/Mail.cs | 632 | 0xF8 | MailBase | partial 2026-10-12: all C→S subs handled; ClearInbox unreachable; system letters' <br> → line breaks (the window escapes markup) |
-| Game/ModelFootprints.cs | 44 |  |  | not audited |
-| Game/Notifications.cs | 59 | 0x1 | Notifications | not audited |
-| Game/Palettes.cs | 118 | 0xF5 | PaletteBase | not audited |
-| Game/Pioneer.cs | 119 |  |  | not audited |
-| Game/PlayerManager.cs | 297 | 0x26, 0xFE | PlayerStudioRegistered, PlayerUpdatePlayerTitleWire | not audited |
-| Game/Portraits.cs | 154 | 0x98 | FotomatBase | not audited |
-| Game/PropAnimations.cs | 79 | 0xFD | UpdatePropInteractionState | not audited |
-| Game/PropEffects.cs | 186 | 0xFD | UpdatePropInteractionState | not audited |
-| Game/PropSettings.cs | 324 | 0xED, 0xFD | PropBase, UpdatePropInteractionState | not audited |
-| Game/Props.cs | 1317 | 0x26, 0xED | PlayerUpdateSetPropTint, PropBase | partial 2026-10-12: pickup / delete reply codes (FUN_142f1b980), free placements refund nothing, chest counts → PropLimits (0xF9 0x5F) |
-| Game/RateLimiter.cs | 42 |  |  | not audited |
-| Game/Ratings.cs | 110 | 0xA7 | RatingBase | audited 2026-10-12: AddVote / VoteReply / CanVote layouts; 'Contests' votes now answered and counted (Contests.Vote) |
-| Game/RecipeBook.cs | 248 | 0x115, 0x42 | KnownPropAddPropResponse, RecipeBase | audited 2026-10-12: AddRecipe (Learned.Recipe); KnownProp AddPropResponse carries the prop name so the client shows Learned.Prop itself (English line removed) |
-| Game/Reports.cs | 92 | 0x55, 0x56 | BugSubmissionBase, ClaimReportSubmissionBase | not audited |
-| Game/RightClickMenus.cs | 83 | 0xDC | HudManagerBase | not audited |
-| Game/Salvaging.cs | 178 | 0x42 | RecipeBase | not audited |
-| Game/ServerClock.cs | 18 |  |  | not audited |
-| Game/Shutdown.cs | 112 | 0x5F | WorldShutdownNotice | not audited |
-| Game/SiteContents.cs | 72 |  |  | not audited |
+| Game/InstancedGames.Editor.cs | 548 | 0x10D | InstancedGameBase | audited 2026-10-13/14 by rebuild #14 Instanced games (client re-trace; open items in systems/activities.md) |
+| Game/InstancedGames.Queue.cs | 145 | 0x10D | InstancedGameBase | audited 2026-10-13/14 by rebuild #14 Instanced games (client re-trace; open items in systems/activities.md) |
+| Game/InstancedGames.cs | 1585 | 0x10D | InstancedGameBase | audited 2026-10-13/14 by rebuild #14 Instanced games (client re-trace; open items in systems/activities.md) |
+| Game/ItemAudit.cs | 88 |  |  | audited 2026-10-13/14 by rebuild #5 Inventory (client re-trace; open items in systems/inventory.md) |
+| Game/ItemUses.cs | 414 | 0x2D | InventoryBase | audited 2026-10-13/14 by rebuild #5 Inventory (client re-trace; open items in systems/inventory.md) |
+| Game/Landscapes.cs | 235 | 0xFC | TeleportBase | audited 2026-10-13/14 by rebuild #9 Travel (client re-trace; open items in systems/world-travel.md) |
+| Game/LootChests.cs | 204 |  |  | audited 2026-10-13/14 by rebuild #6 Gathering (client re-trace; open items in systems/gathering.md) |
+| Game/LootPinatas.cs | 215 | 0x2D, 0xFB | InventoryBase, LootPinataBase | audited 2026-10-13/14 by rebuild #6 Gathering (client re-trace; open items in systems/gathering.md) |
+| Game/Mail.cs | 676 | 0xF8 | MailBase | audited 2026-10-13/14 by rebuild #10 Social (client re-trace; open items in systems/social.md); earlier: partial 2026-10-12: all C→S subs handled; ClearInbox unreachable; system letters' <br> → line breaks (the window escapes markup) |
+| Game/ModelFootprints.cs | 44 |  |  | audited 2026-10-14: Models.txt PATH_BLOCK_RADIUS / OFFSET columns (client path-blocking data) |
+| Game/Notifications.cs | 59 | 0x1 | Notifications | audited 2026-10-13/14 by rebuild #13 Player & session (client re-trace; open items in systems/session.md) |
+| Game/Outposts.cs | 524 | 0xFC | TeleportBase | audited 2026-10-13/14 by rebuild #4 Claims (client re-trace; open items in systems/claims.md) |
+| Game/Palettes.cs | 118 | 0xF5 | PaletteBase | audited 2026-10-13/14 by rebuild #2 Building (client re-trace; open items in systems/building.md) |
+| Game/Pioneer.cs | 119 |  |  | audited 2026-10-13/14 by rebuild #11 Progression (client re-trace; open items in systems/crafting-meta.md) |
+| Game/PlayerManager.cs | 344 | 0x26, 0x53, 0x5A, 0xFE | ClientKickedFromServer, MOTD, PlayerStudioRegistered, PlayerUpdatePlayerTitleWire | audited 2026-10-13/14 by rebuild #13 Player & session (client re-trace; open items in systems/session.md) |
+| Game/Portraits.cs | 154 | 0x98 | FotomatBase | audited 2026-10-13/14 by rebuild #13 Player & session (client re-trace; open items in systems/session.md) |
+| Game/PropAnimations.cs | 79 | 0xFD | UpdatePropInteractionState | audited 2026-10-13/14 by rebuild #3 Props (client re-trace; open items in systems/props.md) |
+| Game/PropEffects.cs | 186 | 0xFD | UpdatePropInteractionState | audited 2026-10-13/14 by rebuild #3 Props (client re-trace; open items in systems/props.md) |
+| Game/PropLimits.cs | 82 | 0xF9 | ClaimsBase | audited 2026-10-13/14 by rebuild #3 Props (client re-trace; open items in systems/props.md) |
+| Game/PropSettings.cs | 332 | 0xED, 0xFD | PropBase, UpdatePropInteractionState | audited 2026-10-13/14 by rebuild #3 Props (client re-trace; open items in systems/props.md) |
+| Game/Props.cs | 1700 | 0x26, 0xED | PlayerUpdateDisplayPropText, PlayerUpdateSetPropTint, PlayerUpdateUpdatePropName, PropBase | audited 2026-10-13/14 by rebuild #3 Props (client re-trace; open items in systems/props.md); earlier: partial 2026-10-12: pickup / delete reply codes (FUN_142f1b980), free placements refund nothing, chest counts → PropLimits (0xF9 0x5F) |
+| Game/RateLimiter.cs | 42 |  |  | n/a 2026-10-14: server-side flood guard (chat 5 then 1 per 1.5 s, reports) - no client rule |
+| Game/Ratings.cs | 132 | 0xA7 | RatingBase | audited 2026-10-12: AddVote / VoteReply / CanVote layouts; 'Contests' votes now answered and counted (Contests.Vote) |
+| Game/RecipeBook.cs | 245 | 0x115, 0x42 | KnownPropAddPropResponse, RecipeBase | audited 2026-10-12: AddRecipe (Learned.Recipe); KnownProp AddPropResponse carries the prop name so the client shows Learned.Prop itself (English line removed) |
+| Game/Reports.cs | 92 | 0x55, 0x56 | BugSubmissionBase, ClaimReportSubmissionBase | audited 2026-10-13/14 by rebuild #10 Social (client re-trace; open items in systems/social.md) |
+| Game/RightClickMenus.cs | 106 | 0xDC | HudManagerBase | audited 2026-10-13/14 by rebuild #3 Props (client re-trace; open items in systems/props.md) |
+| Game/Salvaging.cs | 178 | 0x42 | RecipeBase | audited 2026-10-13/14 by rebuild #5 Inventory (client re-trace; open items in systems/inventory.md) |
+| Game/ServerClock.cs | 18 |  |  | audited 2026-10-13/14 by rebuild #13 Player & session (client re-trace; open items in systems/session.md) |
+| Game/ServerHeartbeat.cs | 51 |  |  | audited 2026-10-13/14 by rebuild #13 Player & session (client re-trace; open items in systems/session.md) |
+| Game/Shutdown.cs | 210 | 0x5F | WorldShutdownNotice | audited 2026-10-13/14 by rebuild #13 Player & session (client re-trace; open items in systems/session.md) |
+| Game/SiteContents.cs | 74 |  |  | audited 2026-10-13/14 by rebuild #4 Claims (client re-trace; open items in systems/claims.md) |
+| Game/SiteDesigns.cs | 148 |  |  | audited 2026-10-13/14 by rebuild #2 Building (client re-trace; open items in systems/building.md) |
+| Game/SiteScreenshots.cs | 118 | 0x45 | InGamePurchaseBase | audited 2026-10-13/14 by rebuild #4 Claims (client re-trace; open items in systems/claims.md) |
 | Game/SiteUpkeep.cs | 82 |  |  | audited 2026-10-12 (7d4c0a4) |
-| Game/Spire.cs | 258 |  |  | not audited |
-| Game/StatNames.cs | 21 |  |  | not audited |
-| Game/Store.cs | 275 |  |  | not audited |
-| Game/StoryTools.cs | 1136 | 0x111 | GameScriptingBase | not audited |
-| Game/Teleport.cs | 195 | 0x29, 0x2E | ClientUpdateTeleportToLocation, SendZoneDetails | not audited |
-| Game/Templates.cs | 559 | 0xF0 | TemplateBase | not audited |
+| Game/Spire.cs | 261 |  |  | audited 2026-10-13/14 by rebuild #4 Claims (client re-trace; open items in systems/claims.md) |
+| Game/StatNames.cs | 21 |  |  | audited 2026-10-13/14 by rebuild #7 Combat (client re-trace; open items in systems/abilities-combat.md) |
+| Game/Store.cs | 275 |  |  | audited 2026-10-13/14 by rebuild #12 Commerce (client re-trace; open items in systems/crafting-meta.md) |
+| Game/StoryTools.cs | 1155 | 0x111 | GameScriptingBase | audited 2026-10-13/14 by rebuild #3 Props (client re-trace; open items in systems/props.md) |
+| Game/SystemMessages.cs | 43 | 0x69 | ShowSystemMessage | audited 2026-10-13/14 by rebuild #13 Player & session (client re-trace; open items in systems/session.md) |
+| Game/Teleport.cs | 195 | 0x29, 0x2E | ClientUpdateTeleportToLocation, SendZoneDetails | audited 2026-10-13/14 by rebuild #9 Travel (client re-trace; open items in systems/world-travel.md) |
+| Game/Templates.cs | 650 | 0xF0 | TemplateBase | audited 2026-10-13/14 by rebuild #2 Building (client re-trace; open items in systems/building.md) |
 | Game/Titles.cs | 173 | 0x26, 0x94 | PlayerTitleBase, PlayerUpdatePlayerTitleWire | audited 2026-10-12: Add / RequestSelect / PlayerTitle; the client prints nothing on Add, so the server's 'New title' line stays |
-| Game/Trades.cs | 341 | 0x3E | TradeBase | audited 2026-10-12: all TradeBase subs both ways, the client's TradeMessage codes for failures (scenario trade 8/8) |
-| Game/Travel.cs | 57 |  |  | not audited |
-| Game/Unlocks.cs | 132 |  |  | not audited |
+| Game/Trades.cs | 377 | 0x3E | TradeBase | audited 2026-10-12: all TradeBase subs both ways, the client's TradeMessage codes for failures (scenario trade 8/8) |
+| Game/Travel.cs | 61 |  |  | audited 2026-10-13/14 by rebuild #9 Travel (client re-trace; open items in systems/world-travel.md) |
+| Game/Unlocks.cs | 132 |  |  | audited 2026-10-13/14 by rebuild #8 Crafting (client re-trace; open items in systems/crafting-meta.md) |
+| Game/Vaults.cs | 79 | 0x1E | CommandBase | audited 2026-10-12 (5e0c3fd): InteractionVault 0x50, vault props, reach |
 | Game/Vendors.cs | 388 | 0x112 | ClaimVendorBase | audited 2026-10-12: ClaimVendorBase subs both ways (FUN_1432cd470 readers), purchase results use the client's ClaimVendor.* texts (FUN at 0x143... 1 success / 2 funds / 3 no item / generic); extra reason lines kept (scenario vendor 11/11) |
 | Game/WarpNetwork.cs | 299 | 0x113, 0xFC | TeleportBase, WarpNetworkWire | audited 2026-10-12 (c728036, runtime-verified: network, terminal, warps, markers) |
-| Game/WeaponAttacks.cs | 264 |  |  | not audited |
-| Game/WebPages.cs | 398 |  |  | not audited |
-| Game/WorldClock.cs | 44 |  |  | not audited |
-| Game/Inventory/Inventory.cs | 643 |  |  | partial 2026-10-12: rearrange (sort), vault container, quantity split / merge (5e0c3fd); overflow, loadouts open |
-| Game/Vaults.cs | 90 |  | CommandBase | audited 2026-10-12 (5e0c3fd): InteractionVault 0x50, vault props, reach |
-| Game/Combat/*.cs | 1400 | 0x27, 0x26 | AbilityEffectStart, PlayCompositeEffect | built 2026-10-12 from client texts + wiki (c9fc988, 700bda9, 96220f4); numbers ours |
-| Game/Inventory/ItemDefinitionManager.cs | 211 |  |  | not audited |
-| Game/Terrain/BlockData.cs | 222 |  |  | not audited |
-| Game/Terrain/BuildMaterials.cs | 93 |  |  | not audited |
-| Game/Terrain/CavePieces.cs | 210 |  |  | not audited |
-| Game/Terrain/OreVeins.cs | 565 |  |  | not audited |
-| Game/Terrain/TerrainEdits.cs | 936 | 0xEC | TerrainCellCellsUpdate | not audited |
-| Game/Terrain/TerrainHeights.cs | 188 |  |  | not audited |
-| Game/Terrain/TerrainMaterials.cs | 267 |  |  | not audited |
-| Game/Terrain/TerrainStore.cs | 355 | 0xEC | TerrainCellModifiedCellManifest, TerrainCellModifiedCellManifestUpdate | not audited |
-| Game/Terrain/TestMesh.cs | 98 |  |  | not audited |
-| Game/Terrain/VeinGenerator.cs | 305 |  |  | not audited |
-| Game/Terrain/VeinOverlay.cs | 85 | 0xEC | TerrainCellDetectVeins, TerrainCellEndDetectVeins | not audited |
-| Game/Terrain/VoxelOwnership.cs | 362 | 0xF4 | VoxelConstructionBase | audited 2026-10-12 (60267ca, runtime-verified: request parse, grid format, builders row) |
-| Game/Terrain/VoxelTemplate.cs | 114 |  |  | not audited |
-| Network/Handlers/ActionBarHandler.cs | 57 | 0x9A | ActionManagerBase | not audited |
-| Network/Handlers/CharacterSelectHandler.cs | 58 | 0x14, 0xF6 | CharacterSelectSessionRequest, ClientLogout | not audited |
-| Network/Handlers/ChatHandler.cs | 28 | 0x13 | ChatBase | not audited |
-| Network/Handlers/ClaimsHandler.cs | 18 | 0xF9 | ClaimsBase | not audited |
-| Network/Handlers/CraftingHandler.cs | 62 | 0x42 | RecipeBase | not audited |
-| Network/Handlers/InteractionHandler.cs | 294 | 0x1, 0x1E, 0x26, 0x2B, 0x2C, 0x3E, 0x45, 0x4D, 0x83, 0x94, 0xB5, 0xF0, 0xF4, 0xFB, 0xFF | ChestBase, CommandBase, EncounterBase, FriendBase, GroupsBase, GuildBase, InGamePurchaseBase, LootPinataBase, Notifications, PlayerTitleBase, PlayerUpdateIntera | not audited |
-| Network/Handlers/InventoryHandler.cs | 243 | 0x2D | InventoryBase | not audited |
-| Network/Handlers/MiscHandler.cs | 480 | 0x10, 0x113, 0x116, 0x12, 0x26, 0x27, 0x29, 0x2D, 0x2E, 0x3, 0x32, 0x37, 0x46, 0x59, 0x5B, 0x63, 0x6B, 0x6D, 0x6F, 0x75, 0x7C, 0x8F, 0x98, 0xA0, 0xA2, 0xA7, 0xBD, 0xBE, 0xC3, 0xC7, 0xD, 0xDC, 0xDD, 0xE9, 0xEA, 0xED, 0xF8, 0xFC | AbilityCastAttempt, AbilityCasterInfoReply, AbilityCasterInfoRequest, AbilityCollisionReport, AbilityDefaultInfoReply, AbilityDefaultInfoRequest, AbilityDelayed | not audited |
-| Network/Handlers/PlayerHandler.cs | 91 | 0x26 | PlayerUpdateEmoteStringByIdWire, PlayerUpdateFullCharacterDataRequestWire, PlayerUpdatePreferredLanguagesWire, PlayerUpdateReadyToReviveResponseWire, PlayerUpda | not audited |
-| Network/Handlers/PropHandler.cs | 92 | 0xED | PropBase | not audited |
-| Network/Handlers/TerrainHandler.cs | 60 | 0xEC | TerrainCellCellsUpdate, TerrainCellClientCellRequest, TerrainCellPendingRequestTimeout | not audited |
+| Game/WeaponAttacks.cs | 334 |  |  | audited 2026-10-13/14 by rebuild #7 Combat (client re-trace; open items in systems/abilities-combat.md) |
+| Game/WebPages.cs | 418 |  |  | audited 2026-10-13/14 by rebuild #12 Commerce (client re-trace; open items in systems/crafting-meta.md) |
+| Game/WorldClock.cs | 44 |  |  | audited 2026-10-13/14 by rebuild #13 Player & session (client re-trace; open items in systems/session.md) |
+| Game/WorldEditing.cs | 192 |  |  | audited 2026-10-13/14 by rebuild #2 Building (client re-trace; open items in systems/building.md) |
+| Game/Inventory/Inventory.cs | 820 |  |  | audited 2026-10-13/14 by rebuild #5 Inventory (client re-trace; open items in systems/inventory.md); earlier: partial 2026-10-12: rearrange (sort), vault container, quantity split / merge (5e0c3fd); overflow, loadouts open |
+| Game/Inventory/ItemDefinitionManager.cs | 258 | 0x1E | CommandBase | audited 2026-10-13/14 by rebuild #5 Inventory (client re-trace; open items in systems/inventory.md) |
+| Game/Terrain/BlockData.cs | 240 |  |  | audited 2026-10-13/14 by rebuild #1 Terrain (client re-trace; open items in systems/terrain.md) |
+| Game/Terrain/BuildMaterials.cs | 88 |  |  | audited 2026-10-13/14 by rebuild #1 Terrain (client re-trace; open items in systems/terrain.md) |
+| Game/Terrain/CavePieces.cs | 210 |  |  | audited 2026-10-13/14 by rebuild #1 Terrain (client re-trace; open items in systems/terrain.md) |
+| Game/Terrain/OreVeins.cs | 620 |  |  | audited 2026-10-13/14 by rebuild #1 Terrain (client re-trace; open items in systems/terrain.md) |
+| Game/Terrain/TerrainEdits.cs | 1352 | 0xEC | TerrainCellCellsUpdate | audited 2026-10-13/14 by rebuild #1 Terrain (client re-trace; open items in systems/terrain.md) |
+| Game/Terrain/TerrainHeights.cs | 188 |  |  | audited 2026-10-13/14 by rebuild #1 Terrain (client re-trace; open items in systems/terrain.md) |
+| Game/Terrain/TerrainLod.cs | 344 |  |  | audited 2026-10-13/14 by rebuild #1 Terrain (client re-trace; open items in systems/terrain.md) |
+| Game/Terrain/TerrainMaterials.cs | 267 |  |  | audited 2026-10-13/14 by rebuild #1 Terrain (client re-trace; open items in systems/terrain.md) |
+| Game/Terrain/TerrainStore.cs | 379 | 0xEC | TerrainCellModifiedCellManifest, TerrainCellModifiedCellManifestUpdate | audited 2026-10-13/14 by rebuild #1 Terrain (client re-trace; open items in systems/terrain.md) |
+| Game/Terrain/TestMesh.cs | 98 |  |  | audited 2026-10-13/14 by rebuild #1 Terrain (client re-trace; open items in systems/terrain.md) |
+| Game/Terrain/VeinGenerator.cs | 305 |  |  | audited 2026-10-13/14 by rebuild #1 Terrain (client re-trace; open items in systems/terrain.md) |
+| Game/Terrain/VeinOverlay.cs | 85 | 0xEC | TerrainCellDetectVeins, TerrainCellEndDetectVeins | audited 2026-10-13/14 by rebuild #1 Terrain (client re-trace; open items in systems/terrain.md) |
+| Game/Terrain/VoxelOwnership.cs | 386 | 0xF4 | VoxelConstructionBase | audited 2026-10-12 (60267ca, runtime-verified: request parse, grid format, builders row) |
+| Game/Terrain/VoxelTemplate.cs | 118 |  |  | audited 2026-10-13/14 by rebuild #1 Terrain (client re-trace; open items in systems/terrain.md) |
+| Network/Handlers/ActionBarHandler.cs | 58 | 0x9A | ActionManagerBase | audited 2026-10-13/14 by rebuild #5 Inventory (client re-trace; open items in systems/inventory.md) |
+| Network/Handlers/CharacterSelectHandler.cs | 59 | 0x14, 0xF6 | CharacterSelectSessionRequest, ClientLogout | audited 2026-10-13/14 by rebuild #13 Player & session (client re-trace; open items in systems/session.md) |
+| Network/Handlers/ChatHandler.cs | 31 | 0x13 | ChatBase | audited 2026-10-13/14 by rebuild #10 Social (client re-trace; open items in systems/social.md) |
+| Network/Handlers/ClaimsHandler.cs | 18 | 0xF9 | ClaimsBase | audited 2026-10-13/14 by rebuild #4 Claims (client re-trace; open items in systems/claims.md) |
+| Network/Handlers/CraftingHandler.cs | 63 | 0x42 | RecipeBase | audited 2026-10-13/14 by rebuild #8 Crafting (client re-trace; open items in systems/crafting-meta.md) |
+| Network/Handlers/InteractionHandler.cs | 313 | 0x1, 0x1E, 0x26, 0x2B, 0x2C, 0x3E, 0x45, 0x4D, 0x83, 0x94, 0xB5, 0xF0, 0xF4, 0xFB, 0xFF | ChestBase, CommandBase, EncounterBase, FriendBase, GroupsBase, GuildBase, InGamePurchaseBase, LootPinataBase, Notifications, PlayerTitleBase, PlayerUpdateIntera | audited 2026-10-13/14 by rebuild #13 Player & session (client re-trace; open items in systems/session.md) |
+| Network/Handlers/InventoryHandler.cs | 297 | 0x2D | InventoryBase | audited 2026-10-13/14 by rebuild #5 Inventory (client re-trace; open items in systems/inventory.md) |
+| Network/Handlers/MiscHandler.cs | 525 | 0x10, 0x113, 0x116, 0x12, 0x26, 0x27, 0x29, 0x2D, 0x2E, 0x3, 0x32, 0x37, 0x46, 0x59, 0x5B, 0x63, 0x6B, 0x6D, 0x6F, 0x75, 0x7C, 0x8F, 0x98, 0xA0, 0xA2, 0xA7, 0xBD, 0xBE, 0xC3, 0xC7, 0xD, 0xDC, 0xDD, 0xE9, 0xEA, 0xED, 0xF8, 0xFC | AbilityCancelCast, AbilityCastAttempt, AbilityCasterInfoReply, AbilityCasterInfoRequest, AbilityCollisionReport, AbilityDefaultInfoReply, AbilityDefaultInfoRequ | audited 2026-10-13/14 by rebuild #13 Player & session (client re-trace; open items in systems/session.md) |
+| Network/Handlers/PlayerHandler.cs | 95 | 0x26 | PlayerUpdateEmoteStringByIdWire, PlayerUpdateFullCharacterDataRequestWire, PlayerUpdatePreferredLanguagesWire, PlayerUpdateReadyToReviveResponseWire, PlayerUpda | audited 2026-10-13/14 by rebuild #13 Player & session (client re-trace; open items in systems/session.md) |
+| Network/Handlers/PropHandler.cs | 97 | 0xED | PropBase | audited 2026-10-13/14 by rebuild #3 Props (client re-trace; open items in systems/props.md) |
+| Network/Handlers/TerrainHandler.cs | 104 | 0xEC | TerrainCellCellsUpdate, TerrainCellClientCellRequest, TerrainCellPendingRequestTimeout | audited 2026-10-13/14 by rebuild #1 Terrain (client re-trace; open items in systems/terrain.md) |

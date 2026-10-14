@@ -103,7 +103,7 @@ namespace LandmarkEmulator.WorldServer.Game
             {
                 if (definitions != null)
                     return;
-                using var context = DatabaseManager.Instance.CharacterDatabase.NewContext();
+                using var context = DatabaseManager.Instance.CharacterDatabase.NewWorldContext();
                 foreach (WorldPropSettingModel s in context.WorldPropSetting.ToList())
                     values[(s.PropId, s.Key)] = s.Value;
                 definitions = defs;
@@ -302,7 +302,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 rows = pending.Where(values.ContainsKey).Select(k => new WorldPropSettingModel { PropId = k.Prop, Key = k.Key, Value = values[k] }).ToList();
                 pending.Clear();
             }
-            DatabaseManager.Instance.CharacterDatabase.Save(c =>
+            DatabaseManager.Instance.CharacterDatabase.SaveWorld(c =>
             {
                 foreach (WorldPropSettingModel row in rows)
                 {
@@ -326,7 +326,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     values.Remove(k);
             }
             if (had)
-                DatabaseManager.Instance.CharacterDatabase.Save(c => c.WorldPropSetting.RemoveRange(c.WorldPropSetting.Where(s => s.PropId == guid)));
+                DatabaseManager.Instance.CharacterDatabase.SaveWorld(c => c.WorldPropSetting.RemoveRange(c.WorldPropSetting.Where(s => s.PropId == guid)));
         }
     }
 }

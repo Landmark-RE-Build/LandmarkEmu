@@ -1,4 +1,4 @@
-using LandmarkEmulator.WorldServer.Network;
+﻿using LandmarkEmulator.WorldServer.Network;
 using NLog;
 using System;
 using System.Collections.Generic;
@@ -178,6 +178,25 @@ namespace LandmarkEmulator.WorldServer.Game
                 map.TryAdd(key, new Animation(attack, 0, 0));
             classAnimations = map;
             log.Info($"Weapon attack animations: {map.Count} (class, index) pairs.");
+        }
+
+        /// <summary>Time a strike's motion needs after its Release before ActiveTimeEnd may stop it (seconds; not in client data).</summary>
+        private const float StrikeMotionSeconds = 0.35f;
+
+        /// <summary>Slack for the cast success's trip to the client: the window starts at the client's cast, the strike at the answer.</summary>
+        private const float AnswerSlackSeconds = 0.15f;
+
+        /// <summary>
+        /// How long a weapon cast's window must last (cast + recovery) so ActiveTimeEnd comes after the strike: the latest
+        /// Release this cast can play with this weapon (any combo stage) plus the strike's motion and the answer's trip.
+        /// </summary>
+        public static float StrikeWindowSeconds(Inventory.ItemDefinitionManager.ItemDefinition weapon, uint ability)
+        {
+            int releaseMs = 0;
+            for (int stage = 0; stage < 3; stage++)
+                if (AttackAnimation(weapon, ability, stage) is { Release: not 0 } a)
+                    releaseMs = Math.Max(releaseMs, a.ReleaseMs);
+            return releaseMs / 1000f + StrikeMotionSeconds + AnswerSlackSeconds;
         }
 
         /// <summary>The animation a weapon cast plays with this weapon, or null when its class has none.</summary>

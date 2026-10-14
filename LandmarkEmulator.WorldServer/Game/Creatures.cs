@@ -814,7 +814,7 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             // The loot drops as a bag where the creature fell; the killer collects it by walking over it.
             LootPinatas.SpawnBag(killer, c.Position + new Vector3(0f, 0.5f, 0f), RollLoot(c.Kind));
-            Achievements.Killed(killer);
+            Achievements.Killed(killer, c.Kind.Name);
             DailyGoals.Killed(killer, c.Kind.Name);
             InstancedGames.CreatureKilled(killer);
             log.Info($"{killer.CharacterName} killed a {c.Kind.Name}.");
@@ -850,7 +850,7 @@ namespace LandmarkEmulator.WorldServer.Game
             uint zone = session.ZoneId;
             if (DevCommands.NoStreaming || !TerrainHeights.Has(zone))
                 return;   // no baked heights for this landscape: creatures can't stand on its ground
-            if (session.IsArriving)
+            if (session.StreamsOnHold)
                 return;
             Vector3 p = session.Position;
             var spawns = new List<Creature>();

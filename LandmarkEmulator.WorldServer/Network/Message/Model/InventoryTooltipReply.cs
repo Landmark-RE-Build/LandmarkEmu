@@ -81,7 +81,13 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
             writer.Write(0u);
 
             writer.Write(0u);                // related items (none)
-            writer.Write(0u);
+            // Tooltip flags (reply +0x1c8, the last field; FUN_1436a9020 hands it to FUN_1434655a0, which writes one line
+            // per bit: 0x40 NoSale, 0x20 NoTrade, 0x10 RemovedOnUse, 8 NoDelete, 4 NoUpgrade, 2 UniqueEquip, 1 NoSalvage).
+            // The live server filled it; the only one the definition settles for sure is NoTrade (first flag byte bit 7,
+            // the same bit the client's Lua NoTrade reads). Other definition bits: byte 0 bit 3 on 2,180 stackable items,
+            // bit 6 on founder tools and trophies; byte 1 bit 1 on 97 gathering tools, bit 3 on Lumens and builder's bags,
+            // bit 4 on 690 items the client doesn't warn about in overflow (FUN_142e83a30); byte 2 bit 7 on 21 accessories.
+            writer.Write(definition.NoTrade ? 0x20u : 0u);
             return output.ToArray();
         }
     }

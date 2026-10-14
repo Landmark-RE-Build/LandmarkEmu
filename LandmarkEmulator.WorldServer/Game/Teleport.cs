@@ -172,7 +172,7 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>A pending re-zone older than this is taken as lost (a new one is sent).</summary>
-        private static readonly TimeSpan PendingRezoneLimit = TimeSpan.FromSeconds(60);
+        public static readonly TimeSpan PendingRezoneLimit = TimeSpan.FromSeconds(60);
 
         /// <summary>
         /// Called when the client confirms a re-zone (its repeat ClientIsReady): the re-zone is over, so the next one

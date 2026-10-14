@@ -593,7 +593,10 @@ namespace LandmarkEmulator.WorldServer.Game
             lock (sync)
                 players = game.Players.ToList();
             foreach (Player player in players)
+            {
+                Trades.Moved(player.Session, intoGame: true);
                 Respawn(game, player);
+            }
             SetState(game, StateRunning);
             // An Adventure plays the site's story from the start for each round.
             if (game.Rules.Cooperative && Claims.Get(game.ClaimId) is Database.Character.Model.ClaimModel site)
@@ -1234,9 +1237,12 @@ namespace LandmarkEmulator.WorldServer.Game
         private static void Respawn(Game game, Player player)
         {
             player.RespawnAt = null;
-            if (!MoveToSpawn(game, player, start: false) && (Health.IsDead(player.Session) || Health.Current(player.Session) < Health.MaxHealth))
+            // Already on the chosen spawn point there is no move (no re-zone, so no "arrived at a spawn point" later):
+            // the player is revived where they stand, and the log says which happened.
+            bool moving = MoveToSpawn(game, player, start: false);
+            if (!moving && (Health.IsDead(player.Session) || Health.Current(player.Session) < Health.MaxHealth))
                 Health.Revive(player.Session);
-            log.Info($"{Title(game)}: {player.Session.CharacterName} respawned.");
+            log.Info($"{Title(game)}: {player.Session.CharacterName} respawned{(moving ? "" : " in place")}.");
         }
 
         /// <summary>

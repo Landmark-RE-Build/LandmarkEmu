@@ -396,6 +396,69 @@ namespace LandmarkEmulator.WorldServer.Game
                 Templates.SendUpdated(owner, product.TemplateId);
         }
 
+        /// <summary>A listed Player Studio design for the Showcase's Player Studio page.</summary>
+        public record StudioDesign(ulong Product, string Name, string Description, string Tags, string Author, uint Voxels,
+            ulong Template);
+
+        /// <summary>The designs peer review accepted (status Listed), newest first, with their makers' names.</summary>
+        public static List<StudioDesign> ListedDesigns()
+        {
+            using var context = DatabaseManager.Instance.CharacterDatabase.NewContext();
+            var products = context.PlayerStudioProduct.Where(p => p.Status == Listed && p.ItemType == ItemDesign)
+                .OrderByDescending(p => p.CreatedAt).ToList();
+            var names = DatabaseManager.Instance.CharacterDatabase.GetCharacterNames(products.Select(p => p.OwnerGuid).Distinct());
+            var designs = context.Template.Where(t => products.Select(p => p.TemplateId).Contains(t.Id))
+                .Select(t => new { t.Id, t.Materials }).ToDictionary(t => t.Id, t => t.Materials);
+            return products.Where(p => designs.ContainsKey(p.TemplateId)).Select(p => new StudioDesign(p.Id, p.Name ?? "",
+                p.Description ?? "", p.Tags ?? "", names.GetValueOrDefault(p.OwnerGuid, "?"),
+                (uint)Templates.MaterialCount(designs[p.TemplateId]), p.TemplateId)).ToList();
+        }
+
+        /// <summary>
+        /// Takes a listed Player Studio design (the Showcase's Player Studio page; the store is free, as in
+        /// <see cref="Store"/>): the buyer gets their own copy of the design, credited to its maker — the Designs window
+        /// files it under Collected — once per product. The maker hears about it.
+        /// </summary>
+        public static (bool Ok, string Message) TakeDesign(WorldSession session, ulong productId)
+        {
+            TemplateModel copy;
+            string maker;
+            ulong source;
+            using (var context = DatabaseManager.Instance.CharacterDatabase.NewContext())
+            {
+                PlayerStudioProductModel product = context.PlayerStudioProduct.FirstOrDefault(p => p.Id == productId);
+                if (product == null || product.Status != Listed || product.ItemType != ItemDesign)
+                    return (false, "That design is not on Player Studio.");
+                if (product.OwnerGuid == session.PlayerGuid)
+                    return (false, "That is your own design.");
+                if (productId > uint.MaxValue || Unlocks.Has(session, Unlocks.StudioDesign, (uint)productId))
+                    return (false, "You already have this design.");
+                TemplateModel design = context.Template.FirstOrDefault(t => t.Id == product.TemplateId);
+                if (design == null)
+                    return (false, "That design is no longer available.");
+                if (!Templates.HasRoom(session, design))
+                    return (false, "Your design storage is full.");
+                source = design.Id;
+                maker = context.Character.Where(c => c.Id == product.OwnerGuid).Select(c => c.Name).FirstOrDefault() ?? "";
+                copy = new TemplateModel
+                {
+                    OwnerGuid = session.PlayerGuid, AuthorName = maker, Name = design.Name, Tags = design.Tags,
+                    SizeX = design.SizeX, SizeY = design.SizeY, SizeZ = design.SizeZ, Materials = design.Materials,
+                    Blocks = design.Blocks, CreatedAt = DateTime.UtcNow
+                };
+                context.Template.Add(copy);
+                context.SaveChanges();
+            }
+            Unlocks.Add(session, Unlocks.StudioDesign, (uint)productId);
+            Templates.CopyImages(source, copy.Id);
+            Templates.SendAdded(session, copy);
+            Templates.SendLearned(session, copy.Id, copy.Name);
+            if (PlayerManager.Snapshot().FirstOrDefault(p => p.CharacterName == maker) is WorldSession owner)
+                Chat.System(owner, $"{session.CharacterName} took your design \"{copy.Name}\" from Player Studio.");
+            log.Info($"{session.CharacterName} took Player Studio design {productId} '{copy.Name}' by {maker} (copy {copy.Id}).");
+            return (true, $"\"{copy.Name}\" is now in your Designs (Collected).");
+        }
+
         /// <summary>Test tooling (DevCommands "psoffer"): the reply to GetProductForReview, unasked.</summary>
         public static void OfferReview(WorldSession session) => SendProductForReview(session);
 

@@ -28,18 +28,36 @@ namespace LandmarkEmulator.AuthServer.Zone
 
         public void Initialise()
         {
-            // AuthServer.json WorldAddress, when set, replaces the stored host (see AuthServerConfiguration.WorldAddress).
-            string address = ConfigurationManager<AuthServerConfiguration>.Instance.Config?.WorldAddress?.Trim();
             ZoneServers = DatabaseManager.Instance.AuthDatabase.GetZoneServers()
                 .Select(s =>
                 {
-                    if (!string.IsNullOrEmpty(address))
-                        s.Host = address;
-                    var server = new ZoneServer(s);
+                    var server = new ZoneServer(WithAddressOverride(s));
                     Apply(server, s);
                     return server;
                 })
                 .ToImmutableList();
+        }
+
+        /// <summary>
+        /// AuthServer.json WorldAddress, when set, replaces the stored address for every world (see
+        /// AuthServerConfiguration.WorldAddress): "host", or "host:port" for a world published on another port than its
+        /// row's. Worlds that register their own address (WorldServer.json PublicAddress) leave it empty.
+        /// </summary>
+        private static ZoneServerModel WithAddressOverride(ZoneServerModel s)
+        {
+            string address = ConfigurationManager<AuthServerConfiguration>.Instance.Config?.WorldAddress?.Trim();
+            if (!string.IsNullOrEmpty(address))
+            {
+                int colon = address.LastIndexOf(':');
+                if (colon > 0 && ushort.TryParse(address[(colon + 1)..], out ushort port))
+                {
+                    s.Host = address[..colon];
+                    s.Port = port;
+                }
+                else
+                    s.Host = address;
+            }
+            return s;
         }
 
         /// <summary>Is a world's row (read just now) that of a running world?</summary>
@@ -62,6 +80,9 @@ namespace LandmarkEmulator.AuthServer.Zone
         /// </summary>
         public void Update()
         {
+            // The tick thread starts before Initialise has read the list (HostedService), so wait for it.
+            if (ZoneServers == null)
+                return;
             if (pending != null)
             {
                 if (!pending.IsCompleted)
@@ -70,13 +91,29 @@ namespace LandmarkEmulator.AuthServer.Zone
                 pending = null;
                 if (task.IsCompletedSuccessfully)
                     foreach (ZoneServerModel model in task.Result)
-                        if (ZoneServers.FirstOrDefault(z => z.Id == model.Id) is ZoneServer server && Apply(server, model))
+                    {
+                        WithAddressOverride(model);
+                        ZoneServer server = ZoneServers.FirstOrDefault(z => z.Id == model.Id);
+                        bool changed;
+                        if (server == null || server.Host != model.Host || server.Port != model.Port || server.NameId != model.NameId)
                         {
-                            log.Info($"World {server.Id} ({server.ZoneName}) is {(server.Up ? "up" : "down")}.");
-                            var update = new ServerUpdate { Server = server.Build() };
-                            foreach (AuthSession session in NetworkManager<AuthSession>.Instance.Sessions().Where(s => s.Account != null))
-                                session.EnqueueMessage(update);
+                            // A world registered itself (a new world container) or changed its name or address.
+                            var fresh = new ZoneServer(model);
+                            Apply(fresh, model);
+                            ZoneServers = server == null ? ZoneServers.Add(fresh) : ZoneServers.Replace(server, fresh);
+                            log.Info($"World {fresh.Id} ({fresh.ZoneName}) {(server == null ? "added" : "changed")}: {fresh.Host}:{fresh.Port}.");
+                            server = fresh;
+                            changed = true;
                         }
+                        else
+                            changed = Apply(server, model);
+                        if (!changed)
+                            continue;
+                        log.Info($"World {server.Id} ({server.ZoneName}) is {(server.Up ? "up" : "down")}.");
+                        var update = new ServerUpdate { Server = server.Build() };
+                        foreach (AuthSession session in NetworkManager<AuthSession>.Instance.Sessions().Where(s => s.Account != null))
+                            session.EnqueueMessage(update);
+                    }
             }
             if (DateTime.UtcNow < nextCheck)
                 return;

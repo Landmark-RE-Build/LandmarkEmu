@@ -27,6 +27,28 @@ namespace LandmarkEmulator.WorldServer
             Game.Shutdown.StopServer = lifetime.StopApplication;
         }
 
+        /// <summary>
+        /// Writes this world's entry in the server list (lmemu_auth.zone_server: id, name text, public address), so a new
+        /// world container shows up at character select without editing the database (docs/docker.md).
+        /// </summary>
+        private static void RegisterInServerList()
+        {
+            WorldServerConfiguration config = ConfigurationManager<WorldServerConfiguration>.Instance.Config;
+            string host = null;
+            ushort port = 0;
+            string address = config.PublicAddress?.Trim();
+            if (!string.IsNullOrEmpty(address))
+            {
+                int colon = address.LastIndexOf(':');
+                if (colon > 0 && ushort.TryParse(address[(colon + 1)..], out ushort p))
+                    (host, port) = (address[..colon], p);
+                else
+                    host = address;
+            }
+            DatabaseManager.Instance.AuthDatabase.RegisterZoneServer(config.ZoneServerId, config.WorldNameId, host, port).Wait();
+            log.Info($"World {config.ZoneServerId} registered in the server list" + (host != null ? $" at {host}:{(port != 0 ? port : config.Network.Port)}." : "."));
+        }
+
         public Task StartAsync(CancellationToken cancellationToken)
         {
             log.Info("Initialising...");
@@ -34,6 +56,7 @@ namespace LandmarkEmulator.WorldServer
             DatabaseManager.Instance.Initialise(ConfigurationManager<WorldServerConfiguration>.Instance.Config.Database);
             DatabaseManager.Instance.Migrate(DatabaseType.Auth);
             DatabaseManager.Instance.Migrate(DatabaseType.Character);
+            RegisterInServerList();
 
             GameTableManager.Instance.Initialise();
             Game.Inventory.ItemDefinitionManager.Load(System.IO.Path.Combine(System.AppContext.BaseDirectory, "Resources", "PacketDumps", "44-CommandBase"));

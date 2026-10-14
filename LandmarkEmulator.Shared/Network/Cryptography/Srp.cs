@@ -13,7 +13,7 @@ namespace LandmarkEmulator.Shared.Network.Cryptography
     /// Login: the server sends salt and B = k·v + g^b; the client sends A = g^a and
     /// M1 = H(A | B | S) with S = (B − k·g^x)^(a + u·x), u = H(A | B); the server checks M1 against S = (A·v^u)^b and
     /// answers M2 = H(A | M1 | S) and the session key XOR H(S | "session"). All numbers are big-endian, padded to 256
-    /// bytes inside hashes. launcher-common.ps1 is the client side.
+    /// bytes inside hashes. LaunchPad (SrpClient.cs) and the account website (srp.js) are the client side.
     /// </para>
     /// </summary>
     public static class Srp

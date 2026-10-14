@@ -11,4 +11,11 @@
     <ProjectReference Include="..\LandmarkEmulator.Shared\LandmarkEmulator.Shared.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Daybreak's final-build file list (path, size, CRC32): the patch host only serves the verified update to it. -->
+    <EmbeddedResource Include="..\LandmarkEmulator.LaunchPad\Data\landmark-final-2017-file-list.csv" LogicalName="final-file-list.csv" />
+    <!-- The files the update must carry: final-build files a verified Steam copy doesn't already have (re/tools/update_files.py). -->
+    <EmbeddedResource Include="update-0589-to-0695-files.csv" LogicalName="update-files.csv" />
+  </ItemGroup>
+
 </Project>

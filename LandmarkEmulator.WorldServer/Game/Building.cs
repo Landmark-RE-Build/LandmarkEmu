@@ -29,6 +29,14 @@ namespace LandmarkEmulator.WorldServer.Game
         /// </summary>
         private const int MaxCellsPerEdit = 1024;
 
+        /// <summary>
+        /// Log how the stored cell compares with the client's after each edit (dev "cellcompare on|off"). Checked
+        /// 2026-10-14 with sphere edits in the real client: the only differences were voxels the server holds and the
+        /// sent cell lacks (client 0 / server 2-3), i.e. the cell in an ApplyDiff carries the edit, not the whole layer,
+        /// and the server keeps everything the client sent. Fill / Line / Smooth shapes are the client's own.
+        /// </summary>
+        public static bool CompareWithClient;
+
         /// <summary>Voxels built (+) or taken down (-) per player and item, not yet settled as whole items.</summary>
         private static readonly Dictionary<(ulong Player, uint Item), int> credit = new();
         private static readonly object sync = new();
@@ -382,6 +390,15 @@ namespace LandmarkEmulator.WorldServer.Game
             {
                 p += 8 + 12 + 12;
                 int materials = BitConverter.ToInt32(body, p);
+                if (materials > 0 && materials < 256)
+                {
+                    // The client's own count per material (what its pre-check FUN_1435fd7c0 compares with the items
+                    // held); logged to compare with what the server charges.
+                    var counts = new List<string>();
+                    for (int m = 0; m < materials; m++)
+                        counts.Add($"{BitConverter.ToUInt16(body, p + 4 + m * 6)}={BitConverter.ToUInt32(body, p + 6 + m * 6)}");
+                    log.Debug($"Client materials: {string.Join(", ", counts)}");
+                }
                 p += 4 + materials * 6;
                 p += 8;
                 int n = BitConverter.ToInt32(body, p);
@@ -674,6 +691,23 @@ namespace LandmarkEmulator.WorldServer.Game
                 record.Cells.Add((id, before, after));
             }
             long tApply = watch.ElapsedMilliseconds;
+            if (CompareWithClient && log.IsDebugEnabled)
+            {
+                // Does the server now hold exactly the client's cell? (first 16 cells; TerrainEdits.Compare)
+                int cf = 0, cm = 0, co = 0, outside = 0, compared = 0;
+                lock (TerrainEdits.LastOutside)
+                    TerrainEdits.LastOutside.Clear();
+                foreach ((ulong id, byte[] changed, BlockData result) in edits.Take(16))
+                {
+                    if (stale.Contains(id))
+                        continue;
+                    var c = TerrainEdits.Compare(id, zone, result, changed);
+                    cf += c.Flags; cm += c.Materials; co += c.Offsets; outside += c.OutsideMask; compared++;
+                }
+                log.Debug($"{session.CharacterName}: client vs server cell after edit ({compared} cells): {cf} flag, {cm} material, "
+                    + $"{co} offset differences, {outside} outside the changed mask"
+                    + (outside > 0 ? " (client/server flags: " + string.Join(", ", TerrainEdits.LastOutside.Select(p => $"{p.Key.Client}/{p.Key.Server}×{p.Value}")) + ")." : "."));
+            }
             // The client waits for this before it sends its next edit (an error code shows its own message).
             SendResponse(session, ApplyDiffSub, 0);
             SendCellResponses(session, edits.Select(e => e.Id));

@@ -193,3 +193,20 @@ of the action manager at game+0x32128, and cast +0xa0, as Lua AbilityStart uses 
   shared cast ids when re-sent on weapon change.
 - Open: charged casts (kind 0xF7150354, FinishChargedCast); location composite effects for lingering areas (PlayCompositeEffect
   target type 2 layout); real durations / numbers (server data).
+
+## Revive channel — first harness run (2026-10-14 audit)
+- scenario revivechannel: StartRevive (0x42) reaches the dead client's FUN_142e2abe0 (reviver recorded), ReadyToRevive
+  (0x44, layout FUN_142b90b20 {u64 dead, u64 reviver, u64, bool, u32} matches the server) is sent 3 s later, but
+  PlayerUpdate_Dispatch ignores it unless the dead entity passes (entity +0x250)->vtable[+0xB0]() — it didn't, so the
+  client never calls FUN_142e2abe0 again and never answers. The answer itself is only Lua Respawn.AcceptRevivalRequest /
+  DeclineRevivalRequest, which no 0.589 script or SWF calls (the "auto-accept" noted on 10-12 is not what happens).
+  Together with the right-click revive being unreachable (MODLOG 10-12), player-revives-player stays unverified in 0.589.
+  Open: identify the +0x250 component / +0xB0 check if this is ever needed.
+- 2026-10-14 (day): the check is IsKnockedOut = entity state word +0xa20 bit 7 (FUN_142e0b7a0 on the +0x250 interface).
+  For the local player it is set only at creation (SendSelf dead flag, FUN_142cbaca0 +0x29a & 0x80; AddPc's flag in
+  PlayerUpdate_Dispatch) — the KnockedOut packet's local handler (FUN_143287010) does not set it, and a live death never
+  set it on the dead client in our tests (probe adhoc/kocheck). Live had PlayerUpdate UpdateCharacterState (0x0F,
+  {u64 guid, u64 state, u32}) and UpdateCharacterStateDelta (0x51, {u64 guid, u64, u64 set, u64 clear, u32}; both queue
+  through FUN_142e2eff0). TRIED and REVERTED: a Delta setting bit 7 on death crashed the dead client at once
+  (0xc0000005 at 0x142e13533 in FUN_142e130e0, the state-change handler: a null object in distance math — probably the
+  killer / camera target live set up first). Don't send it without tracing FUN_142e130e0's inputs.

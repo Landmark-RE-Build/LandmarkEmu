@@ -127,6 +127,21 @@ Sender `PlayerStudio.MailUser`, subject `PlayerStudio.MailSubject`; the body's `
 so the server puts the product name there. Other kind bits (1, 2, 4, 8, 0x100, 0x800, 0x1000, 0x2000) are other
 system mails (returned mail, follow manager, …).
 
+## Taking a listed design (Showcase → Player Studio)
+
+The live marketplace sold accepted designs for Daybreak Cash. This server's store is free, so the Showcase page
+(`Resources/Web`, `Game/WebPages.cs`) has a **Player Studio** tab listing every accepted design product
+(`GET /api/studio`); **Get** (`POST /api/studio/take`, `Commerce.TakeDesign`) gives the player a copy of the design:
+
+- the copy belongs to the taker and keeps the maker's name as its author, so the Designs window files it under
+  **Collected** (TemplateBasicData's "own design" flag is false when the author isn't the holder);
+- one copy per product per character (unlock kind 16), not your own products, design storage limit applies;
+- the client prints its own "Learned.Template" notice (EnvironmentAddOwnershipResponse), and the maker, if online,
+  gets a line saying who took it.
+
+Not built: live placed bought designs as **template instances** so Voxel Vision credits their maker
+(trace/systems/crafting-meta.md); a taken copy is placed like any other design.
+
 ## Tests
 
 `re/test/scenarios/adhoc/psprobe` (create), `psreview` (offer, popup, TemplateData, vote, decision),

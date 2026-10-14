@@ -378,6 +378,18 @@ namespace LandmarkEmulator.WorldServer.Game
             lock (sync)
             {
                 var (state, current) = StateOf(character, o, a);
+                // Not started yet (captured state 0: meta goals "<X> completed", the secret emote goals, Guild joined,
+                // Blocks removed ...): the first thing that counts for it starts it (ObjectiveActivated), so every goal
+                // can be earned. Dailies and the Getting Started chain are started by their own rules.
+                if (state == 0 && !a.Daily && Array.IndexOf(GettingStarted, a.Id) < 0)
+                {
+                    state = 1;
+                    Set(character, a, o, 1, 0, saves);
+                    session.EnqueueMessage(ZoneMessageOpcode.AchievementBase, Build(ActivatedSub, w =>
+                    {
+                        w.Write(a.Id); w.Write(o.Id); w.Write(0u); w.Write(Math.Max(o.Required, 1)); w.Write(0u); w.Write(false);
+                    }));
+                }
                 if (state != 1)
                     return;
                 uint required = Math.Max(o.Required, 1);
@@ -684,6 +696,9 @@ namespace LandmarkEmulator.WorldServer.Game
             if (CraftObjectives.TryGetValue(itemDefinitionId, out List<uint> objectives))
                 foreach (uint objective in objectives)
                     Progress(session, objective);
+            // "Extractor acquired" (Power! Unlimited ...Power!): the NovaTech Extractor is the 0.589 extractor.
+            if (ItemName(itemDefinitionId).Contains("Extractor", StringComparison.OrdinalIgnoreCase))
+                ProgressByText(session, "Extractor acquired");
         }
 
         private static Dictionary<uint, List<uint>> craftObjectives;
@@ -710,7 +725,11 @@ namespace LandmarkEmulator.WorldServer.Game
                         string text = LandmarkEmulator.Shared.GameTable.Text.TextManager.Instance.GetTextForId(o.TextId);
                         if (text == null || !text.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
                             continue;
-                        foreach (uint item in itemsByName[text[..^suffix.Length].Trim()])
+                        string itemName = text[..^suffix.Length].Trim();
+                        // Plural counts ("Lightstones crafted") name the item in the plural.
+                        if (!itemsByName.Contains(itemName) && itemName.EndsWith('s'))
+                            itemName = itemName[..^1];
+                        foreach (uint item in itemsByName[itemName])
                         {
                             if (!map.TryGetValue(item, out var list))
                                 map[item] = list = new List<uint>();
@@ -729,8 +748,71 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <summary>"Designs placed in a Build Site" (Building Better Worlds).</summary>
         public const uint DesignsPlaced = 783;
 
-        public static void Killed(WorldSession session) => Progress(session, MonstersKilled);
+        /// <summary>
+        /// A creature kill: "Monsters killed" (every tier with that text), the creature family's "&lt;Family&gt; killed"
+        /// (Barren, Scalewind, Highfall, NovaTech, Ebonguard, Stoneskin — the names the creature kinds carry), "Dispatch
+        /// explode-y mushrooms" for Fiery Fungus, and "Kills with a(n) &lt;Element&gt; weapon" for the held weapon's
+        /// affinity (Physical is the Earth line, as for the daily wielder goals).
+        /// </summary>
+        public static void Killed(WorldSession session, string creatureName = "")
+        {
+            ProgressByText(session, "Monsters killed");
+            string name = creatureName ?? "";
+            foreach (string family in new[] { "Barren", "Scalewind", "Highfall", "NovaTech", "Ebonguard", "Stoneskin" })
+                if (name.Contains(family, StringComparison.OrdinalIgnoreCase))
+                    ProgressByText(session, family + " killed");
+            if (name.Contains("Fung", StringComparison.OrdinalIgnoreCase) || name.Contains("Mushroom", StringComparison.OrdinalIgnoreCase))
+                ProgressByText(session, "Dispatch explode-y mushrooms");
+            string element = HitEffects.HeldAffinity(session) switch { "Physical" => "Earth", null => null, var a => a };
+            if (!string.IsNullOrEmpty(element))
+            {
+                ProgressByText(session, $"Kills with a {element} weapon");
+                ProgressByText(session, $"Kills with an {element} weapon");
+            }
+        }
+
         public static void Traded(WorldSession session) => Progress(session, ItemTraded);
+
+        /// <summary>"Give or receive a Design in trade" (I Made This!): a Player Design item changed hands.</summary>
+        public static void DesignTraded(WorldSession session) => ProgressByText(session, "Give or receive a Design in trade");
+
+        /// <summary>"Guild joined" (Strength in Numbers): joining or founding a guild.</summary>
+        public static void GuildJoined(WorldSession session) => ProgressByText(session, "Guild joined");
+
+        /// <summary>"Treasure Chests opened" (Raider of Riches): a cave treasure chest opened.</summary>
+        public static void TreasureChestOpened(WorldSession session) => ProgressByText(session, "Treasure Chests opened");
+
+        /// <summary>"Design item created" (I Definitely Made This): a design exported to a Player Design item.</summary>
+        public static void DesignItemCreated(WorldSession session) => ProgressByText(session, "Design item created");
+
+        /// <summary>"Build Site "Like" given or received" (Hooked on Build Site Likes): both the voter and the owner.</summary>
+        public static void LikeGivenOrReceived(WorldSession session) => ProgressByText(session, "Build Site \"Like\" given or received");
+
+        /// <summary>
+        /// A Like given to a site with these tags (Build Site Management tags, the client's words 576620-576645: Aquatic,
+        /// Fantasy, Modern, Scary, SciFi, Steampunk, Underground, Western, City, Dungeon, Fortress, Home, Guildhall, Inn,
+        /// Restaurant, Sculpture, Shop, Theater, Other, In-Progress, Combat, Socialize, Story, Trade, Tutorial, Puzzle):
+        /// '"Like" a(n) &lt;Tag&gt; Build Site' for each (What I've Seen With These Eyes, Wander Round-a-Round-a-Round,
+        /// Swords to Plowshares).
+        /// </summary>
+        public static void LikedTaggedSite(WorldSession session, string tags)
+        {
+            foreach (string tag in (tags ?? "").Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries).Distinct())
+            {
+                ProgressByText(session, $"\"Like\" a {tag} Build Site");
+                ProgressByText(session, $"\"Like\" an {tag} Build Site");
+            }
+        }
+
+        /// <summary>"Build Sites visited" (All Those Who Wander) and "2 unique Build Sites visited" (Baby Steps).</summary>
+        public static void SiteVisited(WorldSession session)
+        {
+            ProgressByText(session, "Build Sites visited");
+            ProgressByText(session, "2 unique Build Sites visited");
+        }
+
+        /// <summary>"Scan completed" (Scanning, Captain): a Holoseeker scan.</summary>
+        public static void ScanCompleted(WorldSession session) => ProgressByText(session, "Scan completed");
         public static void DesignPlaced(WorldSession session, string name = "")
         {
             Progress(session, DesignsPlaced);

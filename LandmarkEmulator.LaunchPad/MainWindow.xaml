@@ -1,0 +1,12 @@
+<Window x:Class="LandmarkEmulator.LaunchPad.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="LandmarkEmu LaunchPad" Width="915" Height="616"
+        WindowStyle="None" ResizeMode="CanMinimize" WindowStartupLocation="CenterScreen"
+        Background="#1b2124">
+    <!-- Like LaunchPad (915 x 616, no system frame): the page draws the title bar and its own close / minimise buttons. -->
+    <Grid>
+        <wv2:WebView2 x:Name="Web" DefaultBackgroundColor="#1b2124" />
+    </Grid>
+</Window>

@@ -315,7 +315,7 @@ namespace LandmarkEmulator.WorldServer.Game
 
         private static void Stream(WorldSession session, DateTime now)
         {
-            if (session.IsArriving)
+            if (session.StreamsOnHold)
                 return;
             HashSet<int> have, seen;
             lock (sync)

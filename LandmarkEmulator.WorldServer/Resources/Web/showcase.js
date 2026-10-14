@@ -15,7 +15,7 @@
     }
   })();
 
-  var catalogue = null, gallery = null;
+  var catalogue = null, gallery = null, studio = null;
   var state = { view: 'marketplace', group: null, search: '', shown: 0 };
   var PAGE = 120;
 
@@ -64,6 +64,7 @@
     var tags = /SearchTags=([^&]*)/.exec(hash);
     if (hash.indexOf('#!/gallery') === 0) state.view = 'gallery';
     else if (hash.indexOf('#!/myvendors') === 0) state.view = 'myvendors';
+    else if (hash.indexOf('#!/studio') === 0) state.view = 'studio';
     else if (hash.indexOf('#!/help') === 0) state.view = 'help';
     else state.view = 'marketplace';
     if (tags) {
@@ -73,6 +74,7 @@
     }
     $('tab-marketplace').className = state.view === 'marketplace' ? 'on' : '';
     $('tab-gallery').className = state.view === 'gallery' ? 'on' : '';
+    $('tab-studio').className = state.view === 'studio' ? 'on' : '';
     $('tab-myvendors').className = state.view === 'myvendors' ? 'on' : '';
     $('tab-help').className = state.view === 'help' ? 'on' : '';
     closeDetail();
@@ -82,6 +84,7 @@
   function render() {
     if (state.view === 'gallery') renderGallery();
     else if (state.view === 'myvendors') renderVendors();
+    else if (state.view === 'studio') renderStudio();
     else if (state.view === 'help') renderHelp();
     else renderStore();
   }
@@ -207,6 +210,43 @@
     });
   }
 
+  // ---- Player Studio: designs other players submitted and peer review accepted ----
+  function loadStudio() {
+    request('GET', '/api/studio', null, function (list) {
+      studio = list || [];
+      if (state.view === 'studio') render();
+    });
+  }
+
+  function renderStudio() {
+    $('side').innerHTML = '<div class="section">Player Studio</div><a href="javascript:void 0" class="on">Designs<span>'
+      + (studio ? studio.length : '') + '</span></a>';
+    if (!studio) { $('content').innerHTML = '<p class="note">Loading Player Studio...</p>'; loadStudio(); return; }
+    var html = '<h1 class="heading">Player Studio designs</h1><p class="note">Designs made by players on this server and '
+      + 'accepted by peer review. Get adds a copy to your Designs (Collected); it stays credited to its maker.</p>';
+    var shown = 0;
+    for (var i = 0; i < studio.length; i++) {
+      var d = studio[i];
+      var text = (d.name + ' ' + d.author + ' ' + d.tags + ' ' + d.description).toLowerCase();
+      if (state.search && text.indexOf(state.search.toLowerCase()) < 0) continue;
+      shown++;
+      html += '<div class="site">' + (d.image ? '<img class="shot" src="' + esc(d.image) + '" alt="">' : '')
+        + '<div class="info"><div class="title">' + esc(d.name || 'Unnamed design') + '</div>'
+        + '<div class="meta">by ' + esc(d.author) + ' · ' + d.voxels + ' voxels' + (d.tags ? ' · ' + esc(d.tags) : '') + '</div>'
+        + (d.description ? '<div class="desc">' + esc(d.description) + '</div>' : '') + '</div>'
+        + '<button data-studio="' + esc(d.id) + '">Get</button></div>';
+    }
+    if (!shown) html += '<p class="note">No Player Studio designs' + (state.search ? ' match.' : ' yet.') + '</p>';
+    $('content').innerHTML = html;
+  }
+
+  function takeDesign(id) {
+    if (!token) { toast('Open the Showcase from the game to sign in.', true); return; }
+    request('POST', '/api/studio/take', { product: id }, function (r) {
+      toast(r ? r.message : 'The server did not answer.', !(r && r.ok));
+    });
+  }
+
   // ---- my vendors (build site vendors: the owner's side, which the client has no screen for) ----
   var mine = null;
   function loadVendors() {
@@ -265,6 +305,8 @@
       + 'site games, story tools, friends, groups, guilds, mail and trade.</p>'
       + '<h2>Showcase</h2><ul><li><b>Store</b>: outfits, decorations and designs, all free. Get puts the item in your bag.</li>'
       + '<li><b>Gallery</b>: every build site on the server. Visit takes you there.</li>'
+      + '<li><b>Player Studio</b>: designs other players submitted (Designs window, Player Studio) and peer review '
+      + 'accepted. Get copies one into your Designs.</li>'
       + '<li><b>My vendors</b>: put items from your bag up for sale on a Build Site Vendor (from the Store, Decorations). '
       + 'Visitors buy with coins and the coins reach you by mail.</li></ul>'
       + '<h2>Chat commands</h2><ul>'
@@ -283,7 +325,7 @@
   // ---- events ----
   document.addEventListener('click', function (e) {
     var el = e.target;
-    while (el && el !== document && !(el.getAttribute && (el.getAttribute('data-take') || el.getAttribute('data-visit')
+    while (el && el !== document && !(el.getAttribute && (el.getAttribute('data-take') || el.getAttribute('data-visit') || el.getAttribute('data-studio')
       || el.getAttribute('data-list') || el.getAttribute('data-price') || el.getAttribute('data-unlist')
       || el.getAttribute('data-item') || el.getAttribute('data-group') !== null || el.id === 'more' || el.id === 'close'))) {
       el = el.parentNode;
@@ -291,6 +333,7 @@
     if (!el || el === document) return;
     if (el.getAttribute('data-take')) { take(+el.getAttribute('data-take')); return; }
     if (el.getAttribute('data-visit')) { visit(el.getAttribute('data-visit')); return; }
+    if (el.getAttribute('data-studio')) { takeDesign(el.getAttribute('data-studio')); return; }
     if (el.getAttribute('data-list')) {
       var g = el.getAttribute('data-list');
       request('POST', '/api/vendor/list', { vendor: vendorChoice(), item: g, count: $('c' + g).value, price: $('q' + g).value }, afterVendor);

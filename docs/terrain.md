@@ -1,4 +1,4 @@
-# Terrain (VoxelFarm)
+﻿# Terrain (VoxelFarm)
 
 Landmark's world is a VoxelFarm voxel terrain. The client already contains the whole generator: it builds the
 untouched world itself from data files in its install (`CommonData/Voxel/…`). The server only has to store and send
@@ -102,8 +102,12 @@ The layer blob is the client block codec (`A1 B2 C3 D4`, big-endian size, zlib) 
 - **Materials** are `VoxelMaterials.txt` ARRAY_INDEX values (column 1), not the ID column. For example 79 = Sand.
 - **Offset byte** = `floor((clamp(u, −1, 2) + 1) · 85 + 0.5)`, where `u` is the surface vertex position in voxel
   units from the voxel's corner (0.5 → 128). The byte order is x, y, z.
-- **Never write a voxel with the offset flag but no material.** The client mesher hangs on it and the game
-  freezes. The server strips such voxels on load and when decoding client diffs.
+- **Vertex-only voxels** (offset flag, no material) carry the surface position on the generated side of an edit.
+  Clients send them with every smooth edit (line slopes, spheres, fills) and keep them in their own cache (one
+  player's cache held 67,662 in 45 cells), so the server stores them as sent (`KeepVertexOnlyVoxels`, default on).
+  Dropping them made lines saw-toothed and fills stair-stepped once the cell came back from the server. The server
+  never generates such voxels itself: a 2026-10-09 test mode that did was blamed for a client freeze (the same day's
+  browser reload was the likelier cause, but server-made ones stay off).
 
 ### Building diffs
 

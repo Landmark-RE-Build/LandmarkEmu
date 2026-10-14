@@ -61,7 +61,7 @@ namespace LandmarkEmulator.WorldServer.Game
         {
             if (listings == null)
             {
-                using var context = DatabaseManager.Instance.CharacterDatabase.NewContext();
+                using var context = DatabaseManager.Instance.CharacterDatabase.NewWorldContext();
                 listings = context.ClaimVendorItem.ToList();
                 log.Info($"Loaded {listings.Count} vendor listing(s).");
             }
@@ -353,7 +353,7 @@ namespace LandmarkEmulator.WorldServer.Game
         private static void Save(ClaimVendorItemModel listing)
         {
             ClaimVendorItemModel copy = Copy(listing);
-            DatabaseManager.Instance.CharacterDatabase.Save(c =>
+            DatabaseManager.Instance.CharacterDatabase.SaveWorld(c =>
             {
                 if (copy.Count == 0)
                 {

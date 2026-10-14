@@ -92,3 +92,38 @@ colour 40, delay 3000 ms.
   Cavern Crawler (5 Lost Crystals), Shrewd Miner (16000 ore / gems / stone), Lucky Logger (4000 wood), On the
   Warpath (50 kills), faction hunts (15 Scalewind / Stoneskin / Highfall / Ebonguard / Barren), affinity kills (25
   with a fire / radiance / shadow / affliction / earth / lightning / water weapon).
+
+## Deep trace — Progression (rebuild module 11, 2026-10-14; archive progression-v1)
+Packets: all reachable ones handled (REACHABLE-GAPS; PlayerTitleRequestSelect handled). The work list was the
+objectives the server never counted. Every objective text in the live capture (re/out/achievements.tsv, 898
+achievements: 569 Recipe Discoveries, Replicator lists, Decorating, Social 29, Combat 21, Building 16, Crafting 15,
+Exploration 14, Getting Started 5, Daily 2) was checked against the server's triggers. ADDED (all by the client's own
+objective text, so every tier with that text counts):
+- Monsters killed (all tiers, not only 1016), "<Family> killed" (Barren / Scalewind / Highfall / NovaTech /
+  Ebonguard / Stoneskin), "Dispatch explode-y mushrooms" (Fiery Fungus), "Kills with a(n) <Element> weapon" (held
+  weapon affinity; Physical = Earth, as the daily wielders).
+- Guild joined (join or found), Give or receive a Design in trade, Treasure Chests opened (cave chests), Design item
+  created (design → Player Design item), Build Site "Like" given or received (voter and online owner), Build Sites
+  visited / 2 unique Build Sites visited (first visit per site per day, as Build Site Tourist), Scan completed
+  (Holoseeker overlay shown), Extractor acquired (an Extractor crafted), plural crafted goals ("Lightstones crafted").
+Still not counted (no 0.589 trigger known): "Like" a <category> Build Site (sites carry no category in 0.589 — the
+management record's CategoryName is never set by any UI), the emote challenges 492-503 ("Get loopy with the cacti"
+… — which emote and where is not in the client), Boom knowledge obtained, Adventure landscape Build Site claimed,
+Venison / Revenge / bad match / Clothing malfunction (event-specific), Breeze Boots.
+Titles, first-time events, Pioneer start sites and character resources: already traced against the client (headers
+of Titles.cs / FirstTimeEvents.cs / Pioneer.cs / CharacterResources.cs); no divergence found.
+
+## Deep trace — Commerce & store (rebuild module 12, 2026-10-14; archive commerce-v1)
+- Packets: every reachable InGamePurchase / ClaimVendor / Rating request handled (REACHABLE-GAPS 0; claim-vendor
+  results 1/2/3 match FUN_142d…; contest CanVote reply layout fixed 10-12 by the s2cprobe).
+- Template **instances** (the open item from building.md): placing a design "as an instance" is a VoxelConstruction
+  option (S→C 0xB AdminForceInstancesSetting "Place all templates as instances", FUN_1430b7bf0); an instance's voxels
+  are marked in the terrain cell's ownership grid (v4: optional i64 instance list + u16 list before the voxel
+  indices, FUN_14307f3a0 / FUN_14307f2b0 — written empty by the server), VoxelTemplateLookup::AddTemplateInstance
+  (FUN_143fa49c0) indexes them, ClientTemplateManager::PopulateClaimInstanceDataToOwnershipDS (FUN_1434892a0 /
+  FUN_14348add0) lists a site's instances for Voxel Vision (Lua VoxelOwnership.PurchasedTemplate*) and asks
+  GetInstanceDetailsRequest (0xF0/0x12) for unknown ones. AddOwnershipResponse (0xF0/0x11, FUN_143061f90) only prints
+  "Learned.Template". Live used instances for PURCHASED (Player Studio) designs so Voxel Vision can credit their
+  creator. NOT BUILT: needs instance ids in the terrain ownership grid (module 1 format change) and a Player Studio
+  purchase flow (the server's store hands out client design items; player-made products are submitted and reviewed
+  but nobody can buy them). Logged in TESTING-NEEDED as a known gap.

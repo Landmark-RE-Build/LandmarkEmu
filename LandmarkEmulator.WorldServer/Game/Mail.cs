@@ -53,7 +53,14 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <summary>Sending limit: at most this many messages per sender in <see cref="SendWindow"/>.</summary>
         private const int MaxSends = 20;
         private static readonly TimeSpan SendWindow = TimeSpan.FromMinutes(10);
-        private const int MaxSubject = 64, MaxBody = 2000;
+        /// <summary>The compose window's own limits (client constants Mail.MaxSubjectCharLength 128, MaxBodyCharLength 4096).</summary>
+        private const int MaxSubject = 128, MaxBody = 4096;
+        /// <summary>
+        /// Client constant Mail.ExpireTimeMinutes (43200 = 30 days): the inbox shows the time left from the sent time
+        /// (FUN_1435849b0). The server deletes expired messages that hold nothing; ones with items or coins still
+        /// waiting stay until they are taken, so nothing is lost.
+        /// </summary>
+        private static readonly TimeSpan Expiry = TimeSpan.FromMinutes(43200);
 
         private static readonly ConcurrentDictionary<ulong, Queue<DateTime>> recentSends = new();
 
@@ -123,8 +130,19 @@ namespace LandmarkEmulator.WorldServer.Game
         {
             List<MailModel> inbox;
             using (var context = DatabaseManager.Instance.CharacterDatabase.NewContext())
+            {
+                DateTime cutoff = DateTime.UtcNow - Expiry;
+                var expired = context.Mail.Where(m => m.RecipientGuid == session.PlayerGuid && m.SentAt < cutoff).ToList()
+                    .Where(m => !ParseAttachments(m.Attachments).Any(a => a.Count > 0)).ToList();
+                if (expired.Count > 0)
+                {
+                    context.Mail.RemoveRange(expired);
+                    context.SaveChanges();
+                    log.Info($"Deleted {expired.Count} expired message(s) from {session.CharacterName}'s inbox.");
+                }
                 inbox = context.Mail.AsNoTracking().Where(m => m.RecipientGuid == session.PlayerGuid)
                     .OrderByDescending(m => m.SentAt).Take(MaxInbox).ToList();
+            }
             Send(session, InboxListResponse, w =>
             {
                 w.Write(0u);

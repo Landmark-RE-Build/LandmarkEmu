@@ -35,13 +35,16 @@ namespace LandmarkEmulator.WorldServer.Game
     /// </summary>
     public static class Guilds
     {
+        /// <summary>Size of each world's guild id range when worlds share the character database.</summary>
+        private const ulong GuildIdRange = 0x100000ul;
+
         private static readonly ILogger log = LogManager.GetCurrentClassLogger();
 
         public const ushort CreateSub = 1, DisbandSub = 2, InviteSub = 4, InviteReplySub = 5, MotdSub = 0x0B,
             QuitSub = 0x0D, UpdateRankSub = 0x0E, DataSub = 0x13, AddMemberSub = 0x15, RemoveMemberSub = 0x16,
             UpdateInvitationSub = 0x17, OnlineStatusSub = 0x18;
         public const uint LeaderRank = 1, MemberRank = 2, OfficerRank = 3;
-        public const ushort ChangeMemberRankSub = 0x0A, KickSub = 0x0C, DescriptionSub = 0x0F, AppDataFieldSub = 0x11;
+        public const ushort ChangeMemberRankSub = 0x0A, KickSub = 0x0C, DescriptionSub = 0x0F, MuteSub = 0x10, AppDataFieldSub = 0x11;
 
         /// <summary>
         /// Rank order (level: 1 highest) and what each may do besides viewing invites. The leader has every permission;
@@ -52,9 +55,18 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <summary>A rank's level in this guild (1 highest; an unknown rank counts as the lowest).</summary>
         private static uint Level(Guild guild, uint rank) => guild.Ranks.FirstOrDefault(r => r.Id == rank)?.Level ?? 99u;
         private static readonly string[] OfficerPermissions =
-            { "CreateGuildInvite", "ViewGuildInvites", "KickFromGuild", "ChangeMemberRank", "UpdateMotd", "ViewGuildLog" };
-        public const ushort ChatChannel = 5;
-        private const int MaxMembers = 500;
+            { "CreateGuildInvite", "ViewGuildInvites", "KickFromGuild", "ChangeMemberRank", "UpdateMotd", "ViewGuildLog",
+              JoinOfficerChat, MuteGuildChat };
+        /// <summary>Chat channels (ChatChannels.txt rows 6 / 7, wire ids 5 / 6): guild chat and officer chat.</summary>
+        public const ushort ChatChannel = 5, OfficerChatChannel = 6;
+        /// <summary>
+        /// Rank permissions the client checks but its rank editor never lists (string table at 0x145218798, next to
+        /// Guild.MaxMembers): JoinOfficerChat makes the client join chat channel 6 (FUN_142e5c120, on every guild /
+        /// rank update), MuteGuildChat / MuteOfficerChat allow "/guild mute_member" for channel 5 / 6 (FUN_142e5ae70).
+        /// </summary>
+        public const string JoinOfficerChat = "JoinOfficerChat", MuteGuildChat = "MuteGuildChat", MuteOfficerChat = "MuteOfficerChat";
+        /// <summary>Client constant Guild.MaxMembers (250; the 2016 wiki's guild page says the same).</summary>
+        private const int MaxMembers = 250;
         private static readonly TimeSpan InviteLifetime = TimeSpan.FromMinutes(5);
 
         /// <summary>Permission names a rank can hold (client checks them by name, FUN_1439960b0).</summary>
@@ -70,7 +82,7 @@ namespace LandmarkEmulator.WorldServer.Game
         {
             "DisbandGuild", "CreateGuildInvite", "ReplyGuildPetition", "RevokeGuildInvite", "ViewGuildInvites",
             "TransferGuildLeadership", "ChangeMemberRank", "KickFromGuild", "ViewGuildLog", "ModifyGuildLog",
-            "ModifyRanks", "UpdateMotd", "UpdateDesc", "RenameGuild",
+            "ModifyRanks", "UpdateMotd", "UpdateDesc", "RenameGuild", JoinOfficerChat, MuteGuildChat, MuteOfficerChat,
         };
 
         /// <summary>A guild rank: id (members carry it), level (1 highest), name and permission names.</summary>
@@ -97,7 +109,16 @@ namespace LandmarkEmulator.WorldServer.Game
             try
             {
                 var ranks = System.Text.Json.JsonSerializer.Deserialize<List<Rank>>(json);
-                return ranks != null && ranks.Any(r => r.Id == LeaderRank) && ranks.Any(r => r.Id == MemberRank) ? ranks : DefaultRanks();
+                if (ranks == null || !ranks.Any(r => r.Id == LeaderRank) || !ranks.Any(r => r.Id == MemberRank))
+                    return DefaultRanks();
+                // Guilds saved before the chat permissions existed: the leader holds every permission, the stock
+                // Officer rank gets officer chat (it never had any of the three, and the rank editor can't add them).
+                foreach (Rank rank in ranks)
+                    if (rank.Id == LeaderRank)
+                        rank.Permissions = AllPermissions.ToList();
+                    else if (rank.Id == OfficerRank && !rank.Permissions.Any(x => x is JoinOfficerChat or MuteGuildChat or MuteOfficerChat))
+                        rank.Permissions.AddRange(new[] { JoinOfficerChat, MuteGuildChat });
+                return ranks;
             }
             catch (System.Text.Json.JsonException)
             {
@@ -185,6 +206,90 @@ namespace LandmarkEmulator.WorldServer.Game
             SendToMembers(guild, OnlineStatus(guild, session.PlayerGuid, false), session);
         }
 
+        /// <summary>
+        /// Officer chat (channel 6): the online members of the sender's guild whose rank has JoinOfficerChat - the same
+        /// members whose client joined the channel. Nobody when the sender can't use it.
+        /// </summary>
+        public static List<WorldSession> OfficersOf(WorldSession session)
+        {
+            Guild guild;
+            lock (sync)
+            {
+                EnsureLoaded();
+                guild = GuildOf(session.PlayerGuid);
+                if (guild == null || !Has(guild, session.PlayerGuid, JoinOfficerChat))
+                    return new List<WorldSession>();
+            }
+            List<WorldSession> online = OnlineMembers(guild);
+            lock (sync)
+                return online.Where(s => Has(guild, s.PlayerGuid, JoinOfficerChat)).ToList();
+        }
+
+        /// <summary>(guild, channel, member) -> muted until (UTC; MaxValue = until unmuted). Kept while the server runs.</summary>
+        private static readonly Dictionary<(ulong Guild, ushort Channel, ulong Member), DateTime> mutes = new();
+
+        /// <summary>Is this member muted on guild channel 5 / 6? (Chat drops their lines.)</summary>
+        public static bool IsMuted(WorldSession session, ushort channel)
+        {
+            lock (sync)
+            {
+                ulong guild = guildOf.GetValueOrDefault(session.PlayerGuid);
+                if (guild == 0 || !mutes.TryGetValue((guild, channel, session.PlayerGuid), out DateTime until))
+                    return false;
+                if (until > DateTime.UtcNow)
+                    return true;
+                mutes.Remove((guild, channel, session.PlayerGuid));
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// GuildRequestMutePlayer (0x10; "/guild_debug mute_member &lt;guild id&gt; &lt;member guid&gt; [guildchat] [minutes]"
+        /// and unmute_member — both ids are parsed as decimal numbers (FUN_1432dc490 / FUN_142d04f30), "guildchat" picks
+        /// channel 5 and anything else channel 6; chat command FUN_1432fbb50 -> FUN_142e5ae70, serializer FUN_142e44450): {u64 guild, u32 channel (5 guild /
+        /// 6 officer), u32 duration (-1 = until unmuted), string member name, string requester name, u8 mute}. The client
+        /// sends it only when the requester's rank has MuteGuildChat / MuteOfficerChat and is above the member's rank
+        /// (else "Guild.InsufficientRank"); the server checks the same. The client has no reply text for it, so the
+        /// result is a plain system line.
+        /// </summary>
+        private static void Mute(WorldSession session, byte[] body)
+        {
+            var r = new GamePacketReader(body);
+            ulong guildId = r.ReadULong();
+            uint channel = r.ReadUInt();
+            uint minutes = r.ReadUInt();
+            string name = (r.ReadString() ?? "").Trim();
+            r.ReadString();
+            bool mute = r.ReadByte() != 0;
+            string permission = channel == ChatChannel ? MuteGuildChat : channel == OfficerChatChannel ? MuteOfficerChat : null;
+            ulong target;
+            lock (sync)
+            {
+                Guild guild = GuildOf(session.PlayerGuid);
+                if (guild == null || guild.Model.Id != guildId || permission == null || !Has(guild, session.PlayerGuid, permission))
+                    return;
+                target = guild.Members.FirstOrDefault(m => string.Equals(m.Value.Name, name, StringComparison.OrdinalIgnoreCase)).Key;
+                if (target == 0 || target == session.PlayerGuid
+                    || Level(guild, guild.Members[session.PlayerGuid].Rank) >= Level(guild, guild.Members[target].Rank))
+                {
+                    Chat.System(session, target == 0 ? $"{name} is not in your guild." : "You cannot mute that member.");
+                    return;
+                }
+                var key = (guildId, (ushort)channel, target);
+                if (mute)
+                    mutes[key] = minutes == uint.MaxValue || minutes == 0 ? DateTime.MaxValue : DateTime.UtcNow.AddMinutes(minutes);
+                else
+                    mutes.Remove(key);
+            }
+            string where = channel == ChatChannel ? "guild chat" : "officer chat";
+            Chat.System(session, mute ? $"{name} is muted in {where}." : $"{name} is no longer muted in {where}.");
+            WorldSession muted = PlayerManager.FindByGuid(target);
+            if (muted != null)
+                Chat.System(muted, mute ? $"You have been muted in {where}." : $"You are no longer muted in {where}.");
+            log.Info($"{session.CharacterName} {(mute ? "muted" : "unmuted")} {name} in guild {guildId} channel {channel}"
+                + (mute && minutes != uint.MaxValue && minutes != 0 ? $" for {minutes} min." : "."));
+        }
+
         /// <summary>The online members of the player's guild (guild chat).</summary>
         public static List<WorldSession> MembersOf(WorldSession session)
         {
@@ -248,6 +353,9 @@ namespace LandmarkEmulator.WorldServer.Game
                     case AppDataFieldSub:
                         SetAppData(session, body);
                         break;
+                    case MuteSub:
+                        Mute(session, body);
+                        break;
                     default:
                         Network.OpcodeStats.Unanswered("Guilds 0x83", sub);
                         log.Debug($"Guild packet 0x{sub:X2} from {session.CharacterName}: {BitConverter.ToString(body)}");
@@ -284,7 +392,12 @@ namespace LandmarkEmulator.WorldServer.Game
                     Notify(session, NotifyNameTaken, name);
                     return;
                 }
-                ulong id = guilds.Count == 0 ? 1 : guilds.Keys.Max() + 1;
+                // Worlds sharing the character database each number new guilds in their own range (world n: n × 2^20
+                // up to the next), so two running worlds never pick the same id.
+                ulong low = DatabaseManager.Instance.CharacterDatabase.SeparateWorld
+                    ? GuildIdRange * Shared.Configuration.ConfigurationManager<WorldServerConfiguration>.Instance.Config.ZoneServerId : 0;
+                ulong id = Math.Max(low, guilds.Keys.Where(k => k >= low && k < low + (low == 0 ? ulong.MaxValue : GuildIdRange))
+                    .DefaultIfEmpty(0ul).Max()) + 1;
                 guild = new Guild { Model = new GuildModel { Id = id, Name = name, Motd = "", LeaderId = session.PlayerGuid, CreateTime = DateTime.UtcNow } };
                 guild.Members[session.PlayerGuid] = (session.CharacterName, LeaderRank);
                 guilds[id] = guild;
@@ -299,6 +412,7 @@ namespace LandmarkEmulator.WorldServer.Game
             });
             SendGuild(session, guild);
             Notify(session, NotifyCreated, model.Name);
+            Achievements.GuildJoined(session);
             log.Info($"{session.CharacterName} created guild {model.Id} '{model.Name}'.");
         }
 
@@ -377,6 +491,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 c.GuildMember.Add(new GuildMemberModel { CharacterId = characterId, GuildId = guildId, RankId = MemberRank }));
             SendGuild(session, guild);
             SendToMembers(guild, BuildAddMember(guild, session.PlayerGuid, session.CharacterName, MemberRank), session);
+            Achievements.GuildJoined(session);
             log.Info($"{session.CharacterName} joined guild {guildId}.");
         }
 

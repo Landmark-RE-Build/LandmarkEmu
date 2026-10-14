@@ -1,0 +1,107 @@
+# LandmarkEmu auth stack: the database server, the auth (login) server and the account website. It holds everything shared by all worlds:
+# accounts, the server list and the characters (one character travels to every world, as on live Landmark). Each world
+# server runs in its own container from docker/world and keeps its own world database here (lmemu_world_<name>).
+#
+# start.bat (in the project folder) starts it, with the settings from network.env (addresses, ports) and .env here
+# (passwords and folders; start.bat makes it on its first run). Start this before any world. By hand, from docker/auth:
+#
+#   docker compose --env-file ../../network.env --env-file .env up -d --build
+#   docker compose --env-file ../../network.env --env-file .env logs -f auth
+#   docker compose --env-file ../../network.env --env-file .env down      (data stays in the "db" volume)
+name: landmarkemu-auth
+
+services:
+  db:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MARIADB_USER: landmarkemu
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - db:/var/lib/mysql
+      - ../db-init:/docker-entrypoint-initdb.d:ro
+    ports:
+      # Only on this PC, for tools like HeidiSQL; not reachable from other machines.
+      - "127.0.0.1:${DB_PORT:-3307}:3306"
+    networks:
+      landmarkemu:
+        aliases: [landmarkemu-db]
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  auth:
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile
+      target: auth
+    image: landmarkemu-auth
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      Database__Auth__ConnectionString: server=landmarkemu-db;port=3306;user=landmarkemu;password=${DB_PASSWORD};database=lmemu_auth
+      Database__Character__ConnectionString: server=landmarkemu-db;port=3306;user=landmarkemu;password=${DB_PASSWORD};database=lmemu_character
+      GameDataPath: /gamedata
+      Network__Port: ${LOGIN_PORT:-20042}
+      # The account API listens on 5000 inside the container (the website calls it there); ACCOUNT_PORT is outside.
+      WebApi__BaseURI: http://0.0.0.0:5000
+      # Empty: each world registers its own address (its PublicAddress). Set only to force one address for all worlds.
+      WorldAddress: ""
+      # The account website (service "web") may pass on the player's address; sign-up limits.
+      WebApi__TrustedProxy: 172.30.77.10
+      WebApi__RegistrationOpen: ${REGISTRATION_OPEN:-true}
+      WebApi__RegistrationsPerAddressPerHour: ${REGISTRATIONS_PER_ADDRESS_PER_HOUR:-3}
+      WebApi__RegistrationsPerHour: ${REGISTRATIONS_PER_HOUR:-60}
+      # What LaunchPad shows for this server (docs/launchpad.md): name, website link, required game build, news.
+      WebApi__ServerName: ${SERVER_NAME:-LandmarkEmu}
+      WebApi__WebsiteUrl: ${WEBSITE_URL:-}
+      WebApi__RequiredClientBuild: ${REQUIRED_CLIENT_BUILD:-}
+      WebApi__NewsFile: /launcher/news.json
+    volumes:
+      - ${GAME_DATA_DIR}:/gamedata:ro
+      - ${LAUNCHER_DIR:-../launcher}:/launcher:ro
+    ports:
+      # The game login port is the same inside and outside the container.
+      - "${LOGIN_PORT:-20042}:${LOGIN_PORT:-20042}/udp"
+      - "${ACCOUNT_PORT:-5000}:5000/tcp"
+    networks:
+      landmarkemu: {}
+      landmarkemu-web:
+        aliases: [landmarkemu-auth-api]
+
+  # The account website: a sign-up page and one rate-limited route to the auth server (docker/web/nginx.conf). It is
+  # only on the landmarkemu-web network, so it can reach the auth server's account API and nothing else (not the
+  # database, not the worlds), and it has no passwords.
+  web:
+    image: nginxinc/nginx-unprivileged:1.27-alpine
+    restart: unless-stopped
+    depends_on: [auth]
+    read_only: true
+    tmpfs: [/tmp]
+    volumes:
+      - ../web/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../web/site:/usr/share/nginx/html:ro
+    ports:
+      - "${WEBSITE_PORT:-8080}:8080/tcp"
+    networks:
+      landmarkemu-web:
+        ipv4_address: 172.30.77.10
+
+volumes:
+  db:
+
+networks:
+  # World containers join this network to reach the database (see docker/world/docker-compose.yml).
+  landmarkemu:
+    name: landmarkemu
+  # The website and the auth server only (fixed range: the auth server trusts the website's address).
+  landmarkemu-web:
+    name: landmarkemu-web
+    ipam:
+      config:
+        - subnet: 172.30.77.0/24

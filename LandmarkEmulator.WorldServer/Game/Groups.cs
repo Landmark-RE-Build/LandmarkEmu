@@ -57,7 +57,11 @@ namespace LandmarkEmulator.WorldServer.Game
         /// join because the party is full.".
         /// </summary>
         private const uint JoinSuccess = 0, JoinBadInvitation = 2, JoinGroupFull = 13;
-        public const int MaxMembers = 6;
+        /// <summary>
+        /// "A party is a group of four people" (2016 wiki, Party page; forum posts speak of "a party of 4"). The client has
+        /// no size constant of its own (the party frame list grows with its data source), so this is the server's rule.
+        /// </summary>
+        public const int MaxMembers = 4;
         private static readonly TimeSpan InviteLifetime = TimeSpan.FromMinutes(2);
 
         private class Group

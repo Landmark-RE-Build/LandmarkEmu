@@ -152,7 +152,7 @@ buffer, 28 on Pioneer land, 3 for other bad spots. Also send RecievePropExclusio
 
 ## Reported issue (to check, not fix yet)
 
-**Trace result (2026-10-12, console.log 21:31:18-21:32:07):** LawTest (who already owns site 20) pressed Place 16
+**Trace result (2026-10-12, console.log 21:31:18-21:32:07):** TestPlayer2 (who already owns site 20) pressed Place 16
 times; each PlaceClaimRequest was refused with result 0. Per step 3 the client then showed "Unable to place build
 site." and **put the player straight back into placement mode**, so every press repeated the refusal and the player
 seemed stuck. (Our chat line "You already have a Build Site…" went to the chat window, easy to miss.) The open
@@ -161,9 +161,9 @@ trace): send result 10 (MaxNumberOwnedRootClaims) etc. so the client shows the r
 before entering placement: check what the live client did on flag use when the owner limit is reached.
 
 
-- 2026-10-12: placing the flag misbehaved while the LawTest test client was running (user closed it). Notes: one
+- 2026-10-12: placing the flag misbehaved while the TestPlayer2 test client was running (user closed it). Notes: one
   site per player (MaxClaimsPerOwner 1, refusal with chat text); overlap with other sites + 40 m buffer refuses
-  silently; LawTest's site 20 lies next to MrLawKing's site 9 on landscape 416.
+  silently; TestPlayer2's site 20 lies next to TestPlayer's site 9 on landscape 416.
 
 ## Client constants (trace/client-constants.md, Resources/StringHashToValue.txt — same file as the real install)
 

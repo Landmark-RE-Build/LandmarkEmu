@@ -1,4 +1,4 @@
-# Server systems
+﻿# Server systems
 
 What each part of `LandmarkEmulator.WorldServer` does, which packets it uses (layouts in
 [protocol.md](protocol.md)) and what is still missing. Paths are relative to `LandmarkEmulator.WorldServer/`.
@@ -56,6 +56,8 @@ What each part of `LandmarkEmulator.WorldServer` does, which packets it uses (la
   4-second cast animation.
 - **Underground Adventure** (`Game/Caves.cs`, `Game/Travel.cs`): a random cavern from the client's own cave
   placements.
+  Random trips use cavern entries at y >= -650 only: deeper caverns were still loading on the client 35 s after
+  arrival and the player fell through the world (audit 2026-10-14).
 - **Right-click menus** (`Game/RightClickMenus.cs`): the server chooses the buttons for players, friends, party and
   guild members, props and chat tabs, from the client's RadialMenuButtons.txt.
 
@@ -75,7 +77,7 @@ What each part of `LandmarkEmulator.WorldServer` does, which packets it uses (la
 
 - Handles `ApplyDiffRequest` from every brush (add, remove, smooth, paint, fill, …):
   - per-voxel claim permission check;
-  - material cost: 4 voxels per item, charged from the inventory, refunded on removal (`BuildMaterials.cs` maps
+  - material cost: 1 item per voxel (the client's own pre-check counts the brush's voxels), charged from the inventory, refunded on removal (`BuildMaterials.cs` maps
     voxel materials to items);
   - apply to the overlay, save, broadcast to nearby players;
   - reply with `Response` (ok / insufficient materials / no permission).
@@ -138,8 +140,19 @@ What each part of `LandmarkEmulator.WorldServer` does, which packets it uses (la
 
 ## Social
 
-- `Game/Chat.cs`: say within 100 m, other channels to everyone, party (8) to the group, guild (5) to the guild.
-  `Chat.System` sends a server line.
+- `Game/Chat.cs`: wire channel = ChatChannels.txt row − 1 (0 Say, 1 Tell, 3 Shout, 4 Emote, 5 Guild, 6 Officers,
+  8 Party, 9 Public, 10 player rooms). Say and emote lines reach 100 m, shouts 500 m in the same landscape, party
+  the group, guild the guild, officers the guild ranks holding JoinOfficerChat, rooms the room, the rest everyone.
+  Channels only the server writes (2 TellEcho, 7 System, 11 Error, 12 Loot, 13 Combat) are dropped when a client
+  sends them. `Chat.System` sends a server line.
+- Guild ranks also carry three permissions the client checks but its rank editor never shows (string table next
+  to Guild.MaxMembers): JoinOfficerChat (the client joins channel 6 with it), MuteGuildChat / MuteOfficerChat
+  ("/guild_debug mute_member <guild id> <member guid> [guildchat] [minutes]" → GuildRequestMutePlayer 0x83/0x10).
+  Leaders hold all three, the stock Officer rank the first two. Guilds hold up to 250 members, parties 4.
+- Mail limits are the compose window's (subject 128, body 4096); messages expire after 30 days (the client's
+  Mail.ExpireTimeMinutes) and are deleted then unless they still hold items or coins.
+- Trades end when a trader changes landscape (TradeCanceled) or enters a running site game (codes 8 / 9). The bag
+  check counts stacking onto the receiver's own stacks.
 - `Game/Friends.cs`: one-way friend lists with online/offline notices, stored in `character_friend`.
 - `Game/Groups.cs`: invites (the popup's Accept / Decline come back as a GroupsBase Join), the party window, leader, kick, leave, disband.
 - `Game/Guilds.cs`: create, invite, ranks with permissions, MOTD, online flags, persisted (`guild`,
@@ -166,7 +179,12 @@ What each part of `LandmarkEmulator.WorldServer` does, which packets it uses (la
   - wood and pick harvesting (tutorial, lifetime and per-material objectives);
   - biome visits (Tundra's Still the Best), checked when the biome under the player changes;
   - placing the tutorial props (chest, stool, Starting Location, Target Dummy);
-  - opening Build Site Management.
+  - opening Build Site Management;
+  - by the objective's own text (every tier with that text): Monsters killed, "<Family> killed", Dispatch explode-y
+    mushrooms, Kills with a(n) <Element> weapon (held weapon affinity, Physical = Earth), Guild joined, Give or
+    receive a Design in trade, Treasure Chests opened, Design item created, Build Site "Like" given or received,
+    Build Sites visited, Scan completed (Holoseeker), Extractor acquired, "<item> crafted" (plural names too),
+    "<prop> placed", "<material> blocks placed / removed", "<achievement> completed".
 - Dev command `objective <id> [n]` counts any objective.
 
 ## Health, death and creatures (`Game/Health.cs`, `Game/Creatures.cs`)
@@ -237,6 +255,12 @@ use the generic "Basic Attack" / "Power Attack" and their affinity's main state.
   and on release sends FinishChargedCast {u32 ability, u32, vec4 camera, vec4 aim}; the server times the hold (damage
   60-100 %, "fully charged" at ≥ 95 % of 1.2 s), runs the attack with the release aim and only then answers the cast —
   a CastSuccess during the charge ends it (FUN_142d7a370 clears the charging state). CancelCast closes it unanswered.
+- **Attack animation timing** (measured in the client, re/test/scenarios/adhoc/castanim): the caster's own
+  CastSuccess plays its animation (the Enter) plus ActiveTimeStart 509; one **cast time** later the client plays
+  ActiveTimeEnd 510, which stops the current selection. The Release (strike) is sent at the selection's AttackTime as a
+  CastSuccess without Force (+0x48), so it plays without restarting the window; the weapon casts' cast time is sized
+  to the latest strike + 0.35 s motion + 0.15 s for the answer's trip (WeaponAttacks.StrikeWindowSeconds). With the
+  old 0.4 s cast time and a forced second success the strike was stopped 50-130 ms in ("janky" swings).
 - **Ours, not the client's**: durations, chances, damage shares (the ability data was server-side).
 - Dev: `wield <item>`, `weaponattack basic|power [n]`, `states`, `combatgear`, `revive`, `god on|off`. Tests:
   `re/test/scenarios/weaponkits.json`, `charge.json` (client.js `castability` presses / releases through FUN_142d71800).

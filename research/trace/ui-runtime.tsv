@@ -1,4 +1,4 @@
-# data source	rows right after login (LawTest, 2026-10-12, re/test/scenarios/dsprobe.json; -1 = not created)
+# data source	rows right after login (TestPlayer2, 2026-10-12, re/test/scenarios/dsprobe.json; -1 = not created)
 LocalPlayer.Resources.Health	1
 LocalPlayer.Resources.Mana	1
 GameData.LocalPlayer.Resources.Mana	1

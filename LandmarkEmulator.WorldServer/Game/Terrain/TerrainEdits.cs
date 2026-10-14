@@ -148,7 +148,8 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                     byte[] bytes = File.ReadAllBytes(file);
                     var overlay = Overlay.FromSaved(bytes.AsSpan(4).ToArray());
                     overlay.Version = BitConverter.ToUInt32(bytes, 0);
-                    // Voxels with a vertex but no material hang the client's mesher (an old test mode wrote them).
+                    // Vertex-only voxels: kept (clients send them with every smooth edit); stripped only when
+                    // KeepVertexOnlyVoxels is off.
                     int stripped = 0;
                     for (int i = 0; i < BlockData.Count && !BlockData.KeepVertexOnly; i++)
                         if (overlay.Blocks.Flags[i] == 2)
@@ -917,6 +918,45 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         }
 
         /// <summary>The voxel indices set in an 8000-byte changed mask (MSB first), skipping empty bytes.</summary>
+        /// <summary>
+        /// Diagnostic: how the server's copy of a layer differs from the cell an edit sent (voxels with other flags /
+        /// material / vertex offsets, and how many lie outside the changed mask). The sent cell holds the edit's voxels,
+        /// not the whole layer, so voxels only the server has (earlier edits) are expected; a voxel the client sent that
+        /// the server lacks or holds differently would mean a relog or another player sees something else.
+        /// </summary>
+        /// <summary>Per (client flags, server flags) pair of voxels that differ outside the changed mask (diagnostic).</summary>
+        public static readonly Dictionary<(int Client, int Server), int> LastOutside = new();
+
+        public static (int Flags, int Materials, int Offsets, int OutsideMask) Compare(ulong id, uint zone, BlockData client,
+            byte[] changed, uint layer = BuildLayer)
+        {
+            int f = 0, m = 0, o = 0, outside = 0;
+            lock (sync)
+            {
+                Of(zone).TryGetValue(Key(id, layer), out Overlay overlay);
+                BlockData server = overlay?.Blocks;
+                for (int i = 0; i < BlockData.Count; i++)
+                {
+                    byte cf = client.Flags[i], sf = server?.Flags[i] ?? 0;
+                    bool diff = false;
+                    if ((cf & 3) != (sf & 3)) { f++; diff = true; }
+                    else
+                    {
+                        if ((cf & 1) != 0 && client.Materials[i] != server.Materials[i]) { m++; diff = true; }
+                        if ((cf & 2) != 0 && (client.Offsets[i * 3] != server.Offsets[i * 3] || client.Offsets[i * 3 + 1] != server.Offsets[i * 3 + 1]
+                            || client.Offsets[i * 3 + 2] != server.Offsets[i * 3 + 2])) { o++; diff = true; }
+                    }
+                    if (diff && (changed[i >> 3] & (1 << (7 - (i & 7)))) == 0)
+                    {
+                        outside++;
+                        lock (LastOutside)
+                            LastOutside[(cf & 3, sf & 3)] = LastOutside.GetValueOrDefault((cf & 3, sf & 3)) + 1;
+                    }
+                }
+            }
+            return (f, m, o, outside);
+        }
+
         public static List<int> ChangedIndices(byte[] changed)
         {
             var indices = new List<int>(4096);
@@ -1018,6 +1058,35 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 overlay.Version++;
                 overlay.Dirty = true;
             }
+        }
+
+        /// <summary>
+        /// Developer report (dev "cellstats"): what each stored layer of the cell at a local point holds — solid voxels
+        /// per material, carving (air) voxels, vertex-only voxels.
+        /// </summary>
+        public static string Describe(Vector3 local, uint zone)
+        {
+            ulong cell = CellAt(local);
+            var text = new System.Text.StringBuilder($"cell {cell:X16}:");
+            lock (sync)
+                for (uint layer = 0; layer < LayerCount; layer++)
+                {
+                    if (!Of(zone).TryGetValue(Key(cell, layer), out Overlay overlay))
+                        continue;
+                    BlockData b = overlay.Blocks;
+                    var solids = new Dictionary<ushort, int>();
+                    int air = 0, vertexOnly = 0;
+                    for (int i = 0; i < BlockData.Count; i++)
+                    {
+                        if (b.Flags[i] == 0) continue;
+                        if ((b.Flags[i] & 1) == 0) { vertexOnly++; continue; }
+                        if (b.Materials[i] == 0) air++;
+                        else solids[b.Materials[i]] = solids.GetValueOrDefault(b.Materials[i]) + 1;
+                    }
+                    text.Append($" layer {layer}: air {air}, vertex-only {vertexOnly}, solid "
+                        + string.Join(", ", solids.OrderByDescending(x => x.Value).Take(6).Select(x => $"{x.Key}×{x.Value}")) + ";");
+                }
+            return text.ToString();
         }
 
         /// <summary>The level-2 cell containing a local point.</summary>

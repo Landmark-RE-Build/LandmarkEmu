@@ -1,5 +1,6 @@
 using LandmarkEmulator.WorldServer.Storage;
 using LandmarkEmulator.Database.Character.Model;
+using LandmarkEmulator.Shared.Configuration;
 using LandmarkEmulator.Shared.Database;
 using LandmarkEmulator.Shared.GameTable;
 using LandmarkEmulator.WorldServer.Network.Message.Model.Shared;
@@ -120,12 +121,25 @@ namespace LandmarkEmulator.WorldServer.Game.Inventory
         {
             if (Interlocked.Read(ref nextItemGuid) == 0)
             {
-                ulong max = DatabaseManager.Instance.CharacterDatabase.GetMaxItemGuid();
-                // Start well above character ids so item and character guids can't be confused.
-                Interlocked.CompareExchange(ref nextItemGuid, Math.Max(max, 0x1000000ul), 0);
+                var db = DatabaseManager.Instance.CharacterDatabase;
+                ulong start;
+                if (db.SeparateWorld)
+                {
+                    // Worlds sharing the character database each take guids from their own range (world n: n × 2^28 up
+                    // to the next), so two running worlds never create the same guid. The ranges stay below 2^32.
+                    ulong low = ItemGuidRange * ConfigurationManager<WorldServerConfiguration>.Instance.Config.ZoneServerId;
+                    start = Math.Max(db.GetMaxItemGuid(low, low + ItemGuidRange), low);
+                }
+                else
+                    // Start well above character ids so item and character guids can't be confused.
+                    start = Math.Max(db.GetMaxItemGuid(), 0x1000000ul);
+                Interlocked.CompareExchange(ref nextItemGuid, start, 0);
             }
             return Interlocked.Increment(ref nextItemGuid);
         }
+
+        /// <summary>Size of each world's item guid range when worlds share the character database.</summary>
+        private const ulong ItemGuidRange = 0x10000000ul;
 
         private static Dictionary<uint, (uint Slot, uint Max)> ResourceSlots
         {
@@ -430,6 +444,33 @@ namespace LandmarkEmulator.WorldServer.Game.Inventory
             long partial = items.Where(i => i.Container == BagContainer && i.ItemDefinitionId == definitionId && i.Count < maxStack)
                 .Sum(i => (long)(maxStack - i.Count));
             return partial + (long)FreeBagSlots() * maxStack;
+        }
+
+        /// <summary>
+        /// Would these incoming stacks fit in the bag once the outgoing offers (guid → count) have left? Incoming items
+        /// first fill this bag's part-full stacks of the same item (as <see cref="Add"/> does; stacks being given away
+        /// don't count), the rest needs free slots; a stack given away whole frees its slot. Player Design items never
+        /// stack. Used by trades (the client's "TradeCannotAcceptFullInventory").
+        /// </summary>
+        public bool CanReceive(IEnumerable<(uint Definition, uint Count)> incoming, IReadOnlyDictionary<ulong, uint> outgoing)
+        {
+            int free = FreeBagSlots() + outgoing.Count(o => Get(o.Key) is { } i && i.Container == BagContainer && o.Value >= i.Count);
+            long needed = 0;
+            foreach (var group in incoming.GroupBy(x => x.Definition))
+            {
+                if (group.Key == Game.DesignItems.PlayerDesignItem)
+                {
+                    needed += group.Count();
+                    continue;
+                }
+                long maxStack = Math.Max(1u, ItemDefinitionManager.Get(group.Key)?.MaxStack ?? 1u);
+                long count = group.Sum(x => (long)x.Count);
+                long partial = items.Where(i => i.Container == BagContainer && i.ItemDefinitionId == group.Key
+                        && i.Count < maxStack && !outgoing.ContainsKey(i.Id))
+                    .Sum(i => maxStack - i.Count);
+                needed += (Math.Max(0, count - partial) + maxStack - 1) / maxStack;
+            }
+            return needed <= free;
         }
 
         /// <summary>Grows the bag (an Inventory Expansion was used); the caller tells the client.</summary>

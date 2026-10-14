@@ -16,10 +16,12 @@ namespace LandmarkEmulator.WorldServer
 
         /// <summary>
         /// Keep the vertex-only voxels (surface position, no material) that clients send with build edits: they keep
-        /// edited surfaces round when the server sends the cell back. Off until confirmed safe in the client (server-
-        /// written ones once froze its mesher). Dev "vertexonly on|off" switches it while running.
+        /// edited surfaces smooth (line slopes, spheres) when the server sends the cell back; dropping them gave
+        /// saw-toothed lines and stair-stepped fills after a relog (2026-10-14). The client stores and meshes them
+        /// itself (its own cache, Cache/2/Voxel/416, held 67,662 of them in 45 of the player's cells). The server never
+        /// makes such voxels itself. Dev "vertexonly on|off" switches it while running.
         /// </summary>
-        public bool KeepVertexOnlyVoxels { get; set; }
+        public bool KeepVertexOnlyVoxels { get; set; } = true;
 
         /// <summary>
         /// Serve coarse (LOD) copies of player edits (Game/Terrain/TerrainLod), as live did: without them edits vanish
@@ -35,6 +37,21 @@ namespace LandmarkEmulator.WorldServer
 
         /// <summary>This world's row in the login database's zone_server table (its heartbeat for character select).</summary>
         public ulong ZoneServerId { get; set; } = 1;
+
+        /// <summary>
+        /// This world's name in the server list: a client text id (0 = keep the stored one). The client has the live
+        /// server names: 560911 Courage, 560912 Liberation, 560913 Satisfaction (EU), 560914 Understanding (EU),
+        /// 560915 Rebellion, 560916 Serenity, 560917 Determination, 560918 Confidence, 560919 Adventure, 560920 Gratitude,
+        /// 560921 Prosperity, 560922 Success, 560923 Triumph, 560924 Victory, 560925 Opportunity, 560926 Inspiration;
+        /// 62147 is "Dev Server".
+        /// </summary>
+        public uint WorldNameId { get; set; }
+
+        /// <summary>
+        /// "host:port" game clients use to reach this world, written to its server-list entry at start (empty = keep the
+        /// stored one). Each world container sets its own (docs/docker.md).
+        /// </summary>
+        public string PublicAddress { get; set; } = "";
 
         /// <summary>Continent of the starting zone (sent in SendZoneDetails).</summary>
         public uint Continent { get; set; } = 406;

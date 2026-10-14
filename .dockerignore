@@ -1,0 +1,9 @@
+**/bin/
+**/obj/
+.git/
+.vs/
+docker/auth/.env
+**/*.user
+export/
+docker/worlds/*.env
+publish/

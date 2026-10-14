@@ -318,6 +318,8 @@ namespace LandmarkEmulator.WorldServer.Game
                 if (shown && DateTime.UtcNow - last.At < TimeSpan.FromSeconds(25) && Vector3.Distance(last.Where, s.Position) < 12f)
                     continue;
                 Terrain.VeinOverlay.Send(s, Terrain.VeinOverlay.Holoseeker, ProspectRadius);
+                if (!shown)
+                    Achievements.ScanCompleted(s);     // "Scan completed" (Scanning, Captain)
                 holoseekers[s] = (DateTime.UtcNow, s.Position);
             }
             foreach (WorldSession gone in holoseekers.Keys.Where(k => k.Disconnected).ToList())

@@ -61,3 +61,17 @@ fixed defaults — gap):
   30-300 s. Creatures act only in Play Mode.
 - Combined with creatures: killing a creature can collapse voxels (heal / destroy voxels), closing a door spawns a
   creature, etc.
+
+## Deep trace — Instanced games (rebuild module 14, 2026-10-14; archive instancedgames-v1)
+Packets: every reachable InstancedGame request handled (REACHABLE-GAPS). Rules come from the client's Ig* tables
+(docs/instanced-games.md). Parameter by parameter (IgRuleTypeParameters, names from the text table):
+- Applied: Time Limit (1), Points Per Kill (2), Penalty Per Death (3), Penalty Per Self Kill (6), Penalty Per
+  Environment Death (7), Point Limit (10), Team Point Limit (11), Points Per Capture (14), Points Per Score Tick (15),
+  Score Tick Interval (16), Respawn Delay (19 / 20), Time to Capture (23); general settings min / max players,
+  countdown, observers, PvP, difficulty.
+- Not applied: Penalty Per Team Kill (4) / Friendly Fire Death (5) — team games never let teammates hurt each other,
+  so they cannot occur; Points Per Kill / Heal Assist (8 / 9) — needs per-hit damage credit (Health keeps only the
+  last attacker); Control Point is Spawner / Spawn Delay (21 / 22); Start / Exit Respawn Delay (31 / 32); movement
+  permissions (rule type 17: Allow Jumping / Climbing / Multi Jump / Gliding / Sprinting / Grappling Hook, all default
+  True) — no client code reading them was found (movement flags would have to come from the server), so they stay
+  at their defaults. Code Test (34) is a dev parameter.

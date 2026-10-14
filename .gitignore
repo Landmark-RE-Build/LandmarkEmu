@@ -342,9 +342,18 @@ ops/dev.local.ps1
 tools/terrain/heightbake/
 
 # LandmarkEmu launcher (start.bat): local settings, never commit
-launcher-settings.json
 # Terrain heights package (download from Releases, unpacked into gameData by start.bat)
 LandmarkEmu-terrain-heights.zip
 play-settings.json
-server.ini
-/Play LandmarkEmu.bat
+
+# Docker settings with passwords (the .env.example files are the templates)
+docker/auth/.env
+docker/worlds/*.env
+
+# Patch packs carry game data: never commit or export them.
+*.lmpatch
+*.lmpatch.part
+
+# Local settings and data of a running server (made by start.bat).
+network.env
+server-data/

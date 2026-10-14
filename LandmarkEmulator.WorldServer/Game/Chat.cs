@@ -22,7 +22,15 @@ namespace LandmarkEmulator.WorldServer.Game
     {
         private static readonly ILogger log = LogManager.GetCurrentClassLogger();
 
-        public const ushort Say = 0, Tell = 1, Party = 8;
+        /// <summary>
+        /// Wire channel ids = ChatChannels.txt row - 1: 0 Say, 1 Tell, 2 TellEcho, 3 Shout, 4 Emote, 5 Guild, 6 Officers,
+        /// 7 System, 8 Party, 9 Public, 10 PlayerPublic (chat rooms), 11 Error, 12 Loot, 13 Combat. The client's chat
+        /// commands (FUN_1432ac6b0) send Say, Tell, Shout (/shout /yell), Emote (/emote /em /me), Guild, Officers (/officer),
+        /// Party (/party /p /groupsay) and the public / room channels; TellEcho, System, Error, Loot and Combat are lines
+        /// only the server or the client itself makes, so a client sending them is dropped.
+        /// </summary>
+        public const ushort Say = 0, Tell = 1, Shout = 3, Emote = 4, Party = 8;
+        private static readonly HashSet<ushort> ServerOnlyChannels = new() { 2, SystemChannelId, 11, 12, 13 };
 
         /// <summary>
         /// PacketChat kinds (the first u16 after the sub, client FUN_1432b7bc0 case 1): 0 a message; 2 "User '[target]' not
@@ -34,12 +42,19 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <summary>TellEcho (ChatBase sub 5, reader FUN_1432aa700, handler FUN_1432c0f90): the sender's "To [X]: …" line.</summary>
         private const ushort TellEchoSub = 5;
         private const float SayRange = 100f;
+        /// <summary>
+        /// /shout and /yell: "Broadcasts a message to the zone (with limited range)" (2016 wiki, Commands List). The
+        /// client has no range constant for it; the server uses a wide radius in the sender's zone.
+        /// </summary>
+        private const float ShoutRange = 500f;
         private const int MaxMessageLength = 512;
 
         /// <summary>
         /// A chat message from a client (0x13 sub 1). The sender fields the client wrote are ignored and replaced with the
-        /// real sender, then the message goes to its audience: say within 100 m, party (8) to the group, guild (5) to the
-        /// guild, other channels to everyone. Over-long or empty messages are dropped.
+        /// real sender, then the message goes to its audience: say and emotes within 100 m, shouts within 500 m of the
+        /// zone, party (8) to the group, guild (5) to the guild, officers (6) to ranks with JoinOfficerChat, rooms (10) to
+        /// the room, other channels to everyone. Over-long or empty messages, server-only channels and muted guild
+        /// members' guild lines are dropped.
         /// </summary>
         public static void Handle(WorldSession sender, byte[] body)
         {
@@ -68,18 +83,32 @@ namespace LandmarkEmulator.WorldServer.Game
                     SendTell(sender, kind, to, toName, message, rest);
                     return;
                 }
+                if (ServerOnlyChannels.Contains(channel))
+                {
+                    log.Debug($"{sender.CharacterName} sent chat on server-only channel {channel}: dropped.");
+                    return;
+                }
+                if ((channel == Guilds.ChatChannel || channel == Guilds.OfficerChatChannel) && Guilds.IsMuted(sender, channel))
+                {
+                    System(sender, $"You are muted in {(channel == Guilds.ChatChannel ? "guild" : "officer")} chat.");
+                    return;
+                }
                 log.Info($"[chat {channel}] {sender.CharacterName}: {message}");
 
                 byte[] relay = Build(kind, channel, sender, to, message, rest);
                 IEnumerable<WorldSession> recipients = channel == Party ? Groups.MembersOf(sender)
                     : channel == Guilds.ChatChannel ? Guilds.MembersOf(sender)
+                    : channel == Guilds.OfficerChatChannel ? Guilds.OfficersOf(sender)
                     : channel == ChatRooms.RoomChannel ? ChatRooms.MembersFor(sender, RoomNameOf(rest))
                     : PlayerManager.Snapshot();
+                // Say and emotes are heard nearby, shouts across a wide radius of the zone, the rest by everyone the
+                // channel reaches.
+                float range = channel == Say || channel == Emote ? SayRange : channel == Shout ? ShoutRange : float.MaxValue;
                 foreach (WorldSession session in recipients)
                     if (Ignores.Ignoring(session, sender))
                         continue;
-                    else if (channel != Say || (session.ZoneId == sender.ZoneId
-                            && Vector3.Distance(session.Position, sender.Position) <= SayRange))
+                    else if (range == float.MaxValue || (session.ZoneId == sender.ZoneId
+                            && Vector3.Distance(session.Position, sender.Position) <= range))
                         session.EnqueueMessage(ZoneMessageOpcode.ChatBase, relay);
             }
             catch (Exception e)

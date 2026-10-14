@@ -188,6 +188,32 @@ namespace LandmarkEmulator.Database.Auth
                 .ExecuteUpdateAsync(s => s.SetProperty(z => z.Heartbeat, now).SetProperty(z => z.PlayersOnline, players));
         }
 
+        /// <summary>
+        /// A world server's own entry in the server list (zone_server): created on its first start, then kept up to date
+        /// with its name text id and public address when those are configured (0 / null leave the stored value).
+        /// </summary>
+        public async Task RegisterZoneServer(ulong zoneServerId, uint nameId, string host, ushort port)
+        {
+            using var context = new AuthContext(config);
+            ZoneServerModel row = await context.ZoneServer.SingleOrDefaultAsync(s => s.Id == zoneServerId);
+            if (row == null)
+            {
+                row = new ZoneServerModel { Id = zoneServerId, NameId = nameId != 0 ? nameId : 62147u, Host = host ?? "127.0.0.1",
+                    Port = port != 0 ? port : (ushort)19000, Flags = 1 };
+                context.ZoneServer.Add(row);
+            }
+            else
+            {
+                if (nameId != 0)
+                    row.NameId = nameId;
+                if (!string.IsNullOrEmpty(host))
+                    row.Host = host;
+                if (port != 0)
+                    row.Port = port;
+            }
+            await context.SaveChangesAsync();
+        }
+
         /// <summary>One zone server's row as it is now (its heartbeat), or null.</summary>
         public async Task<ZoneServerModel> GetZoneServerAsync(ulong zoneServerId)
         {

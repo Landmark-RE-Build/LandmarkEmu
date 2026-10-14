@@ -21,13 +21,14 @@ namespace LandmarkEmulator.WorldServer.Game
         /// claim id), 8 an achievement the player tracks in the Goals panel, 9 a first-time event (help page) already
         /// seen, 10 first-time events turned off (value 1; see <see cref="FirstTimeEvents"/>), 11 a build site the player
         /// rated (value: the claim id; see <see cref="Ratings"/>), 12 the music chosen for the player's build site,
-        /// 13 the build site timer in days and 14 the last login day (days since 2000; see <see cref="SiteUpkeep"/>).
+        /// 13 the build site timer in days and 14 the last login day (days since 2000; see <see cref="SiteUpkeep"/>),
+        /// 15 daily goals, 16 a Player Studio design the player has taken (value: the product id; see <see cref="Commerce"/>).
         /// Sizes are single rows
         /// holding the current size.
         /// </summary>
         public const uint TitleOwned = 1, TitleShown = 2, BagSize = 3, PropTaught = 4, VaultSize = 5, DesignStorage = 6,
             SiteContents = 7, TrackedAchievement = 8, FirstTimeEventSeen = 9, FirstTimeEventsOff = 10,
-            ClaimVote = 11, SiteMusic = 12, UpkeepDays = 13, UpkeepLastLoginDay = 14, DailyGoal = 15;
+            ClaimVote = 11, SiteMusic = 12, UpkeepDays = 13, UpkeepLastLoginDay = 14, DailyGoal = 15, StudioDesign = 16;
 
         private static readonly ConcurrentDictionary<ulong, HashSet<(uint Kind, uint Value)>> cache = new();
 

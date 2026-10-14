@@ -36,6 +36,8 @@ namespace LandmarkEmulator.WorldServer.Network
         /// Set once the client has finished loading the world.
         /// </summary>
         public bool WorldReady { get; set; }
+        /// <summary>The build mode HUD was put back for this login (MiscHandler.ClientFinishedLoading).</summary>
+        public bool BuildHudReset { get; set; }
         /// <summary>The message of the day went out this login.</summary>
         public bool MotdSent { get; set; }
 
@@ -123,6 +125,17 @@ namespace LandmarkEmulator.WorldServer.Network
 
         /// <summary>True between a teleport and the client's first position update at the destination.</summary>
         public bool IsArriving => arrivingUntil is DateTime until && DateTime.UtcNow < until;
+
+        /// <summary>
+        /// World streams (creatures, gathering nodes, chests, outposts) wait while the player is arriving or a re-zone is
+        /// still loading (<see cref="RezoneTarget"/> set until ClientIsReady). The client can report a position at the
+        /// destination before it is ready, which ended the arrival; creatures streamed then were kept by the client and
+        /// sent again by PlayerManager.Reintroduce at ClientIsReady, and the client refused every repeat
+        /// (LightweightProxy.log "Failed to spawn ProxiedCharacter": an entity with that guid already exists,
+        /// FUN_142eeb3c0), 107 in one session of cave trips (2026-10-14).
+        /// </summary>
+        public bool StreamsOnHold => IsArriving
+            || (RezoneTarget != null && DateTime.UtcNow - RezoneStarted < Game.Teleport.PendingRezoneLimit);
 
         /// <summary>
         /// The client confirmed a re-zone (its repeat ClientIsReady, sent while the loading screen still waits for the
@@ -258,6 +271,9 @@ namespace LandmarkEmulator.WorldServer.Network
             EquipSlotId = equipSlotId,
             ItemGuid = item.Id,
             ModelName = Game.Inventory.ItemDefinitionManager.Get(item.ItemDefinitionId).ModelFile,
+            // The item's colours: the same attachment layout as the character select payload, whose third string
+            // (semantic tint alias) colours the outfit there. Left empty, armour showed in its untinted base colours.
+            TintAlias = Game.Inventory.ItemDefinitionManager.Get(item.ItemDefinitionId).TintAlias ?? "",
             CompositeEffect = Game.Inventory.ItemDefinitionManager.Get(item.ItemDefinitionId).AmbientEffect
         };
 

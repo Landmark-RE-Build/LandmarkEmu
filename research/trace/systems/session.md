@@ -73,3 +73,19 @@ Login: Logout, ServerUpdate, ForcedDisconnect, CharacterTransfer, tunnel types 3
 create. Zone: kicks (0x53/0x65), final shutdown 0x4C, MOTD 0x5A, ShowSystemMessage 0x69, TargetClientNotOnline 0x1A,
 Inspect 0x91, POI 0x6A, SetClientArea 0x5C, coin wheel 0xA4, flash timers 0xAA, population 0xE1, PlayerStop 0xE4,
 facial anims 0xF2, tint data 0x116 — each to be judged against 0.589 UI reachability in its own system.
+
+## Deep trace — Player & session (rebuild module 13, 2026-10-14; archive player-v1)
+The "never sends" table above was re-checked against the 0.589 triggers:
+- 0x53 ClientKickedFromServer {StringFixed<128> message} (Zone_DispatchPacket case 0x24 → message box
+  ErrorLabelWarning / KickedFromServerMessage [message], NetInfo.log "RECEIVED=KickedFromServer"). ADDED: a second
+  login of a character that is still connected kicks the first client with it (it used to stay connected with the
+  same guid as the new session), then closes that connection 1.5 s later.
+- 0x4C ClientServerShuttingDown: not used on purpose — the graceful shutdown (WorldShutdownNotice countdown, then the
+  connection closes) returns players to character select (logout-findings); 0x4C would log them out of the game.
+- 0x65 pending kick, 0x1A TargetClientNotOnline: no server action needs them (each social family has its own
+  result codes for an offline target: group invite 9, tell kind 2/3, mail 1, friend 0x0C).
+- 0x5A MOTD / 0x69 ShowSystemMessage / 0xE1 population / 0xF2 facial anims / 0x116 tint data / 0xA4 coin wheel /
+  0x6A POI / 0x5C SetClientArea / 0xAA flash timers / 0x91 Inspect: covered in their systems (ShowSystemMessage is the
+  server's system-text path; the rest have no 0.589 trigger — verdicts.tsv).
+- Barbershop (Crimson Parlor), portraits, notifications (Game Action Queue), server / world clocks, heartbeat:
+  already traced to the client (file headers); no divergence found.

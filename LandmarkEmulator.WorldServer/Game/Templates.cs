@@ -219,6 +219,10 @@ namespace LandmarkEmulator.WorldServer.Game
             session.EnqueueMessage(ZoneMessageOpcode.TemplateBase, output.ToArray());
         }
 
+        /// <summary>Solid voxels in a stored material list ("material:count;...").</summary>
+        public static long MaterialCount(string materials)
+            => Materials(new TemplateModel { Materials = materials ?? "" }).Sum(m => (long)m.Count);
+
         private static IEnumerable<(ushort Material, uint Count)> Materials(TemplateModel design)
         {
             foreach (string entry in design.Materials.Split(';', StringSplitOptions.RemoveEmptyEntries))
@@ -243,6 +247,22 @@ namespace LandmarkEmulator.WorldServer.Game
             writer.Write(UpdateResponseSub);
             WriteBasicData(writer, design);
             session.EnqueueMessage(ZoneMessageOpcode.TemplateBase, output.ToArray());
+        }
+
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<ulong, string> ownerNames = new();
+
+        /// <summary>
+        /// Is the design its holder's own work? Designs another player made (bought in Player Studio, or a Player Design
+        /// item from someone else) carry their author's name and go to the Designs window's Collected category, as
+        /// live; the game's own designs stay where IsDesignerTemplate puts them.
+        /// </summary>
+        private static bool IsOwnWork(TemplateModel design)
+        {
+            if (string.IsNullOrEmpty(design.AuthorName) || IsDesigner(design))
+                return true;
+            string owner = ownerNames.GetOrAdd(design.OwnerGuid, id =>
+                DatabaseManager.Instance.CharacterDatabase.GetCharacterNames(new[] { id }).GetValueOrDefault(id) ?? "");
+            return owner.Length == 0 || string.Equals(owner, design.AuthorName, StringComparison.OrdinalIgnoreCase);
         }
 
         private static void WriteBasicData(GamePacketWriter writer, TemplateModel design)
@@ -285,7 +305,7 @@ namespace LandmarkEmulator.WorldServer.Game
             writer.Write(!IsDesigner(design) ? 0u : StarterNameId(design.Name) is uint starterName and not 0 ? starterName : ItemUses.DesignNameId(design.Name));
             writer.Write(0u);
             writer.Write(0u);
-            writer.Write(true);                     // the player's own design: Personal category (false: Collected)
+            writer.Write(IsOwnWork(design));        // the player's own design: Personal category (false: Collected)
             writer.Write(design.AuthorName);
             writer.Write(0u);                       // TemplateValue
             writer.Write(false);                    // ContestWinner
@@ -409,6 +429,42 @@ namespace LandmarkEmulator.WorldServer.Game
         /// (u32 n × {u64 cell, u64, u32 type, u32 length, packed changed mask + format-2 block, u32 more for types 2/3}),
         /// keyed by its cell relative to the lowest one. A design saved in game is one block; a prefab spans many.
         /// </summary>
+        /// <summary>
+        /// A design's block list with its cells counted from the design's lowest cell (0, 0, 0), as the client needs them.
+        /// Its paste clipboard is sized from the design's dimensions and puts each cell's voxels at cell × 40 + voxel with
+        /// no offset (FUN_143ad6ff0, called from FUN_1430671e0 when a design is picked in the Designs tab). Game designs
+        /// and the client's own saves are already 0-based, but site designs saved before 2026-10-15 kept world cell ids
+        /// (159874, 185, 159790...), so the client wrote far outside its buffer and crashed (dump 2026-10-14 08:45:
+        /// write fault in FUN_1429dd2f0 under FUN_143ad6ff0).
+        /// </summary>
+        public static byte[] Rebased(byte[] blocks)
+        {
+            if (blocks.Length < 4)
+                return blocks;
+            uint count = BitConverter.ToUInt32(blocks, 0);
+            var offsets = new List<int>();
+            uint minX = uint.MaxValue, minY = uint.MaxValue, minZ = uint.MaxValue;
+            int p = 4;
+            for (uint i = 0; i < count && p + 24 <= blocks.Length; i++)
+            {
+                (_, uint x, uint y, uint z) = TerrainStore.Decode(BitConverter.ToUInt64(blocks, p));
+                minX = Math.Min(minX, x); minY = Math.Min(minY, y); minZ = Math.Min(minZ, z);
+                offsets.Add(p);
+                uint type = BitConverter.ToUInt32(blocks, p + 16);
+                p += 24 + BitConverter.ToInt32(blocks, p + 20) + (type is 2 or 3 ? 4 : 0);
+            }
+            if (offsets.Count == 0 || (minX == 0 && minY == 0 && minZ == 0))
+                return blocks;
+            byte[] copy = (byte[])blocks.Clone();
+            foreach (int at in offsets)
+                for (int k = 0; k < 2; k++)   // both ids of the entry (cell, then the same cell again)
+                {
+                    (uint level, uint x, uint y, uint z) = TerrainStore.Decode(BitConverter.ToUInt64(copy, at + k * 8));
+                    BitConverter.GetBytes(TerrainStore.CellId(level, x - minX, y - minY, z - minZ)).CopyTo(copy, at + k * 8);
+                }
+            return copy;
+        }
+
         public static (Dictionary<(int X, int Y, int Z), BlockData> Cells, uint SizeX, uint SizeY, uint SizeZ)? VoxelsOf(WorldSession session, ulong guid)
         {
             TemplateModel design = Find(session.PlayerGuid, guid);
@@ -476,7 +532,7 @@ namespace LandmarkEmulator.WorldServer.Game
             writer.Write(VoxelDataResponseSub);
             writer.Write(first);
             WriteBasicData(writer, design);
-            writer.WriteBytes(design.Blocks);
+            writer.WriteBytes(Rebased(design.Blocks));
             // Screenshots only when asked for (tens of KB each): large/small pairs in index order (TEMPLATE_<n>).
             List<byte[]> shots = images ? Images(design.Id) : new List<byte[]>();
             writer.Write((uint)shots.Count);
@@ -498,6 +554,29 @@ namespace LandmarkEmulator.WorldServer.Game
             => System.IO.Directory.Exists(ImageFolder)
                 ? System.IO.Directory.GetFiles(ImageFolder, design + "_*.jpg")
                 : Array.Empty<string>();
+
+        /// <summary>A copy of a design keeps its screenshots (Player Studio copies).</summary>
+        public static void CopyImages(ulong from, ulong to)
+        {
+            foreach (string file in ImageFiles(from).ToList())
+            {
+                string name = System.IO.Path.GetFileName(file);
+                System.IO.File.Copy(file, System.IO.Path.Combine(ImageFolder, to + name[from.ToString().Length..]), true);
+            }
+        }
+
+        /// <summary>Does the design have a first screenshot?</summary>
+        public static bool HasImage(ulong design) => Image(design, 0, "small") != null;
+
+        /// <summary>
+        /// The web path of a design's screenshot as the client builds it (FUN_143ad69a0): the guid as 24 digits with a
+        /// "/" after every 3.
+        /// </summary>
+        public static string ImagePath(ulong design, string size = "small")
+        {
+            string digits = design.ToString("D24");
+            return $"/uploads/lm/images/templates/{size}/" + string.Join("/", Enumerable.Range(0, 8).Select(i => digits.Substring(i * 3, 3))) + ".jpg";
+        }
 
         /// <summary>One stored screenshot (null if there is none), for the web server.</summary>
         public static byte[] Image(ulong design, int index, string size)

@@ -175,6 +175,7 @@ namespace LandmarkEmulator.Gateway.Network
                 }
 
                 Account = account;
+                LoginTicket = request.ServerTicket ?? "";
                 EnqueueEvent(new TaskGenericEvent<List<CharacterModel>>(DatabaseManager.Instance.CharacterDatabase.GetCharacters(Account.Id),
                     characters =>
                 {
@@ -191,6 +192,13 @@ namespace LandmarkEmulator.Gateway.Network
                 }));
             }));
         }
+
+        /// <summary>
+        /// The server ticket this client logged in with. The login server starts it with "R" when the client signed in
+        /// with a relogin key (back from character select in the same running client); see
+        /// Game.Inventory.ItemDefinitionManager.SendLoginList.
+        /// </summary>
+        public string LoginTicket { get; private set; } = "";
 
         /// <summary>
         /// Called after a user's login has been authenticated to indiciate to inherited Classes which character is logging in.
