@@ -1,13 +1,12 @@
-# LandmarkEmu auth stack: the database server, the auth (login) server and the account website. It holds everything shared by all worlds:
-# accounts, the server list and the characters (one character travels to every world, as on live Landmark). Each world
-# server runs in its own container from docker/world and keeps its own world database here (lmemu_world_<name>).
+# LandmarkEmu auth stack: the database server, the auth (login) server and the account website. It holds everything
+# shared by all worlds: accounts, the server list and the characters (one character travels to every world, as on live
+# Landmark). Each world server runs in its own container (docker/world) and keeps its own world database here
+# (lmemu_world_<name>).
 #
-# start.bat (in the project folder) starts it, with the settings from network.env (addresses, ports) and .env here
-# (passwords and folders; start.bat makes it on its first run). Start this before any world. By hand, from docker/auth:
+# The project's docker-compose.yml (in the project folder) uses these service definitions: start everything from there
+# with "docker compose up -d". This file can also run the auth stack on its own, with the settings passed in:
 #
-#   docker compose --env-file ../../network.env --env-file .env up -d --build
-#   docker compose --env-file ../../network.env --env-file .env logs -f auth
-#   docker compose --env-file ../../network.env --env-file .env down      (data stays in the "db" volume)
+#   docker compose --env-file ../../.env -p landmarkemu-auth up -d --build
 name: landmarkemu-auth
 
 services:
@@ -15,9 +14,9 @@ services:
     image: mariadb:11.4
     restart: unless-stopped
     environment:
-      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Set DB_ROOT_PASSWORD in .env}
       MARIADB_USER: landmarkemu
-      MARIADB_PASSWORD: ${DB_PASSWORD}
+      MARIADB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
     volumes:
       - db:/var/lib/mysql
       - ../db-init:/docker-entrypoint-initdb.d:ro
@@ -57,13 +56,15 @@ services:
       WebApi__RegistrationOpen: ${REGISTRATION_OPEN:-true}
       WebApi__RegistrationsPerAddressPerHour: ${REGISTRATIONS_PER_ADDRESS_PER_HOUR:-3}
       WebApi__RegistrationsPerHour: ${REGISTRATIONS_PER_HOUR:-60}
-      # What LaunchPad shows for this server (docs/launchpad.md): name, website link, required game build, news.
+      # What LaunchPad shows for this server (docs/launchpad.md): name, website link (default: the account website on
+      # PUBLIC_HOST), required game build, news.
       WebApi__ServerName: ${SERVER_NAME:-LandmarkEmu}
-      WebApi__WebsiteUrl: ${WEBSITE_URL:-}
+      WebApi__WebsiteUrl: ${WEBSITE_URL:-http://${PUBLIC_HOST:-127.0.0.1}:${WEBSITE_PORT:-8080}/}
       WebApi__RequiredClientBuild: ${REQUIRED_CLIENT_BUILD:-}
       WebApi__NewsFile: /launcher/news.json
     volumes:
-      - ${GAME_DATA_DIR}:/gamedata:ro
+      # The server's game data: copied from your Landmark folder by the setup service (docker-compose.yml).
+      - ${GAME_DATA_DIR:-../../server-data/gamedata}:/gamedata:ro
       - ${LAUNCHER_DIR:-../launcher}:/launcher:ro
     ports:
       # The game login port is the same inside and outside the container.

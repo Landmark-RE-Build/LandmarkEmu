@@ -1,0 +1,64 @@
+# LandmarkEmu: every server, in Docker.
+#
+#   1. Copy .env.example to .env and fill it in (your Landmark folder, two passwords, the address players use).
+#   2. docker compose up -d --build
+#
+# That starts, in order:
+#   setup  copies the data tables the servers read from your Landmark folder into server-data/gamedata, then exits
+#          (your game folder is mounted read-only and never changed);
+#   db     MariaDB: accounts, characters and each world's own database;
+#   auth   the login server and the account service LaunchPad talks to;
+#   web    the account sign-up website;
+#   world  the first world server.
+#
+# Everyday use: "docker compose logs -f world" (the world's console), "docker compose down" (stop; all data stays),
+# "docker compose up -d --build" (after updating the code). More worlds and every setting: docs/docker.md.
+#
+# The service definitions live in docker/auth and docker/world; this file puts them together into one project.
+name: landmarkemu
+
+services:
+  setup:
+    image: alpine:3.20
+    network_mode: none
+    volumes:
+      - ${GAME_DIR:?Set GAME_DIR in .env to your Landmark folder}:/game:ro
+      # The project folder (read-only): the setup script, data/ and the optional terrain-heights zip.
+      - .:/project:ro
+      - ./server-data/gamedata:/gamedata
+    # The script is read through sed so a Windows (CRLF) checkout still runs.
+    command: ["sh", "-c", "sed 's/\\r$$//' /project/docker/setup.sh | sh"]
+
+  db:
+    extends: { file: docker/auth/docker-compose.yml, service: db }
+
+  auth:
+    extends: { file: docker/auth/docker-compose.yml, service: auth }
+    depends_on:
+      db: { condition: service_healthy }
+      setup: { condition: service_completed_successfully }
+
+  web:
+    extends: { file: docker/auth/docker-compose.yml, service: web }
+    depends_on: [auth]
+
+  world:
+    extends: { file: docker/world/docker-compose.yml, service: world }
+    depends_on:
+      db: { condition: service_healthy }
+      auth: { condition: service_started }
+      setup: { condition: service_completed_successfully }
+
+volumes:
+  db:
+
+networks:
+  # The servers and the database. Extra worlds (docker/world) join it by this name.
+  landmarkemu:
+    name: landmarkemu
+  # The website and the auth server only (fixed range: the auth server trusts the website's address).
+  landmarkemu-web:
+    name: landmarkemu-web
+    ipam:
+      config:
+        - subnet: 172.30.77.0/24

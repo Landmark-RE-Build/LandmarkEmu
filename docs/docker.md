@@ -1,42 +1,59 @@
 # Running LandmarkEmu in Docker
 
-Two kinds of container stacks, matching how live Landmark was organised:
-
-- **Auth stack** (`docker/auth`), one per installation:
-  - MariaDB holds the accounts and the server list (`lmemu_auth`), the shared characters (`lmemu_character`), and each world's own database (`lmemu_world_<key>`).
-  - The auth (login) server.
-- **World stacks** (`docker/world`, one per world). A world is a "server" in the game's list, such as Serenity or Liberation. Like on live, every world has the whole set of landscapes, and its build sites, props, chests, vendors, prop links and terrain are its own. Characters are shared, so one character can play on every world.
-
-Without a `Database:Zone` setting a world server keeps everything in the character database (the older way of running it directly on Windows).
-
-## Starting it
-
-`start.bat` (in the project folder) does everything; see the README. What it runs, for anyone working by hand:
+Everything runs from the project's `docker-compose.yml`, with the settings in one file, `.env`:
 
 ```
-docker compose --env-file network.env --env-file docker/auth/.env -p landmarkemu-auth -f docker/auth/docker-compose.yml up -d --build
-docker compose --env-file network.env --env-file docker/auth/.env --env-file docker/worlds/main.env -p landmarkemu-world-main -f docker/world/docker-compose.yml up -d --build
+copy .env.example .env        (then edit .env: GAME_DIR, the two passwords, PUBLIC_HOST)
+docker compose up -d --build
 ```
 
-The settings files are read in that order; a later file's value wins:
+`start.bat` is an optional Windows shortcut for the same thing: it fills in `.env` from a few questions (random
+passwords included), offers to open the firewall ports, runs `docker compose up` and waits until the world is up.
 
-| File | Holds |
+## The services
+
+The project, matching how live Landmark was organised:
+
+| Service | |
 |---|---|
-| `network.env` | The address players reach this PC on (`PUBLIC_HOST`) and every port: the one file to edit for networking |
-| `docker/auth/.env` | Database passwords (random), your game folder (`GAME_DIR`), the server's game data (`GAME_DATA_DIR`), the name and sign-up settings |
-| `docker/worlds/<name>.env` | One world: `WORLD_KEY`, `WORLD_ID`, `WORLD_NAME_ID`, `WORLD_DATA_DIR`, admins, and its own ports if it isn't the first world |
+| `setup` | Copies the data tables the servers read from your Landmark folder (`GAME_DIR`, mounted read-only) into `server-data/gamedata`, plus `data/` and the terrain heights if `LandmarkEmu-terrain-heights.zip` is in the project folder (`docker/setup.sh`). Runs on every start, then exits; the servers wait for it. |
+| `db` | MariaDB: the accounts and server list (`lmemu_auth`), the shared characters (`lmemu_character`), and each world's own database (`lmemu_world_<key>`) |
+| `auth` | The login server and the account service LaunchPad and the website talk to |
+| `web` | The account sign-up website (nginx; see below) |
+| `world` | The first world: a "server" in the game's list, such as Serenity. Like on live, every world has the whole set of landscapes, and its build sites, props, chests, vendors, prop links and terrain are its own. Characters are shared, so one character can play on every world. |
 
-The first run makes them from the `.example` files next to them.
+The service definitions are in `docker/auth/docker-compose.yml` and `docker/world/docker-compose.yml`; the project file
+puts them together (`extends`). Without a `Database:Zone` setting a world server keeps everything in the character
+database (the older way of running it directly on Windows).
+
+## Settings (.env)
+
+`.env.example` explains each one. In short:
+
+| Settings | |
+|---|---|
+| `PUBLIC_HOST`, `LOGIN_PORT`, `ACCOUNT_PORT`, `WORLD_PORT`, `WEB_PAGES_PORT`, `WEBSITE_PORT`, `DB_PORT` | The network: the address players reach this PC on, and every port (the same inside and outside the containers) |
+| `GAME_DIR` | Your Landmark folder |
+| `DB_ROOT_PASSWORD`, `DB_PASSWORD` | The database passwords, used only between the containers. Set them before the first start: the database keeps the ones it was created with. |
+| `WORLD_KEY`, `WORLD_ID`, `WORLD_NAME_ID`, `ADMIN_ACCOUNT`, `ADMIN_2`, `ADMIN_3` | The first world: its database and folder name, server-list id and name, and admins |
+| `SERVER_NAME`, `WEBSITE_URL`, `REQUIRED_CLIENT_BUILD` | What LaunchPad shows (docs/launchpad.md). News: `docker/launcher/news.json`. |
+| `REGISTRATION_OPEN`, `REGISTRATIONS_PER_ADDRESS_PER_HOUR`, `REGISTRATIONS_PER_HOUR` | Sign-ups |
+
+After changing `.env`, run `docker compose up -d` again: only the containers whose settings changed are recreated.
 
 ## More worlds
 
-1. Copy `docker/worlds/main.env` to e.g. `liberation.env` and change:
-   - `WORLD_KEY=liberation`, which gives the database `lmemu_world_liberation`.
+1. Copy `docker/worlds/extra-world.env.example` to e.g. `docker/worlds/liberation.env` and set:
+   - `WORLD_KEY=liberation`, which gives the database `lmemu_world_liberation` and the folder `server-data/worlds/liberation`.
    - `WORLD_ID=2`, unique and never reused.
-   - `WORLD_NAME_ID=560912`, which shows as "Liberation". The client's server names are listed in the file.
-   - `WORLD_DATA_DIR`, a folder of its own.
-   - `WORLD_PORT=19010` and `WEB_PAGES_PORT=19011`: free ports, which override network.env's for this world.
-2. Run `start.bat`: it starts every world in `docker/worlds`. Open the new ports in the firewall too.
+   - `WORLD_NAME_ID=560912`, which shows as "Liberation" (the client's server names are listed in `.env.example`).
+   - `WORLD_PORT=19010` and `WEB_PAGES_PORT=19011`: free ports of its own.
+2. With the project running, start it:
+   ```
+   docker compose --env-file .env --env-file docker/worlds/liberation.env -p landmarkemu-world-liberation -f docker/world/docker-compose.yml up -d
+   ```
+   It takes the address, passwords and game folder from `.env`. `start.bat` starts and stops every world in
+   `docker/worlds` along with the project. Open the new ports in the firewall too.
 
 On start a world writes its own entry in the server list: id, name and `PUBLIC_HOST:WORLD_PORT`. The auth server picks it up within a few seconds; players see it after logging in again.
 
@@ -65,30 +82,36 @@ For a public server, put HTTPS in front of port 8080, for example with Caddy or 
 
 ## Players on other PCs
 
-- Set `PUBLIC_HOST` in `network.env` to the address they reach this PC on: LAN IP, VPN IP (Tailscale / ZeroTier) or host
-  name, then run `start.bat`.
+- Set `PUBLIC_HOST` in `.env` to the address they reach this PC on: LAN IP, VPN IP (Tailscale / ZeroTier) or host
+  name, then run `docker compose up -d`.
 - Open the ports: UDP `LOGIN_PORT` and `WORLD_PORT`, TCP `ACCOUNT_PORT`, `WEB_PAGES_PORT` and `WEBSITE_PORT` (and each
   extra world's own two ports).
 
 ## Everyday commands
 
-- `start.bat -Logs`: follow the world's console. `start.bat -Stop`: stop everything; data stays.
-- `start.bat -Update`: rebuild after code changes.
-- By hand, add `logs -f`, `restart` or `down` to the compose commands above.
+| | |
+|---|---|
+| `docker compose up -d` | Start (or apply changed settings) |
+| `docker compose down` | Stop; all data stays |
+| `docker compose logs -f world` | The world's console (`auth` for the login server) |
+| `docker compose up -d --build` | Rebuild after updating the code |
+| `docker compose restart world` | Restart the world |
 
 Where the data lives:
-- `landmarkemu-auth_db` (a Docker volume) holds every database.
-- Each world's saved files are in its `WORLD_DATA_DIR`, a folder on this PC (`server-data\worlds\<name>` by
-  default). With it empty, they go in a Docker volume, `landmarkemu-world-<name>_data`.
-  - The folder holds the terrain edits, screenshots, contests, reports, felled trees and gathered nodes.
-  - It also holds the world's `console.log`, and `dev_commands.txt`: a line appended there runs as a dev command,
-    e.g. `shutdown 60 Restarting`.
+- The `landmarkemu_db` Docker volume holds every database.
+- `server-data/gamedata` holds the data the servers read (made by `setup`; safe to delete, it is made again).
+- `server-data/worlds/<WORLD_KEY>` holds each world's saved files (`WORLD_DATA_DIR` in a world's settings names
+  another folder):
+  - the terrain edits, screenshots, contests, reports, felled trees and gathered nodes;
+  - the world's `console.log`, and `dev_commands.txt`: a line appended there runs as a dev command, e.g.
+    `shutdown 60 Restarting`.
 
-`docker compose down -v` deletes the volumes. A `WORLD_DATA_DIR` folder stays.
+Back up the `server-data` folder and the database (`docker exec landmarkemu-db-1 mariadb-dump -uroot -p --all-databases`).
+`docker compose down -v` deletes the database volume; the `server-data` folder stays.
 
-The database is published on `127.0.0.1:DB_PORT` (3307) for tools like HeidiSQL. If Docker Desktop's forward of that
-port closes connections at the handshake (seen on one Windows PC), run the client inside the container instead:
-`docker exec -it landmarkemu-auth-db-1 mariadb -ulandmarkemu -p`.
+The database is published on `127.0.0.1:DB_PORT` (3307) for tools like HeidiSQL (user `landmarkemu`, `DB_PASSWORD`). If
+Docker Desktop's forward of that port closes connections at the handshake (seen on one Windows PC), run the client
+inside the container instead: `docker exec -it landmarkemu-db-1 mariadb -ulandmarkemu -p`.
 
 ## Moving from servers run directly on Windows
 
@@ -104,7 +127,8 @@ Earlier versions ran the servers directly on Windows with MariaDB installed. To 
 3. **Copy the world's own rows into `lmemu_world_<key>`,** after its first start (which creates the schema): `claim`,
    `claim_permission`, `claim_vendor_item`, `world_prop`, `world_prop_binding`, `world_prop_setting` and `chest_item`.
    The old servers kept them in the character database; a Docker world reads them from its own.
-4. **Unpack the world files into the world's data folder,** stop the old servers, and run `start.bat`.
+4. **Unpack the world files into the world's data folder** (`server-data/worlds/<WORLD_KEY>`), stop the old
+   servers, and run `docker compose up -d`.
 
 ## How the world split works (code)
 

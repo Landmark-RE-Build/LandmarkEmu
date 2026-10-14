@@ -7,3 +7,10 @@ docker/auth/.env
 export/
 docker/worlds/*.env
 publish/
+# Settings, server data and downloads never go into the images.
+.env
+network.env
+server-data/
+gameData/
+*.zip
+*.lmpatch

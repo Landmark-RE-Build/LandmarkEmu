@@ -14,46 +14,34 @@ in to LandmarkEmu servers.
 
 ---
 
-## Hosting a server (Windows)
+## Hosting a server
+
+The servers run with **Docker Compose**: a database, the login server, an account sign-up website and the world
+server, each in its own container.
 
 ### 1. What you need
 
-- **Windows 10 or 11**, about 10 GB free for Docker and the server's data, and 16 GB of RAM or more.
-- **[Docker Desktop](https://www.docker.com/products/docker-desktop/)**: install it, start it once, accept its terms.
-- **Landmark** from Steam (build 0.589.1.128895).
+- **[Docker](https://docs.docker.com/get-docker/)**: Docker Desktop on Windows or macOS (install it, start it once,
+  accept its terms), or Docker Engine with the compose plugin on Linux. About 10 GB free and 16 GB of RAM or more.
+- **Landmark** from Steam (build 0.589.1.128895), on the PC running the servers.
 - This project: **Code → Download ZIP** (or `git clone`), unpacked anywhere, e.g. `C:\LandmarkEmu`.
-- Recommended: **`LandmarkEmu-terrain-heights.zip`** from this project's [Releases](../../releases). Put it next to
-  `start.bat` before the first run. It holds a ground-height grid for each landscape, which the server uses for trees,
-  creature footing and starting build sites. Without it those stay off.
+- Recommended: **`LandmarkEmu-terrain-heights.zip`** from this project's [Releases](../../releases). Put it in the
+  project folder (next to `docker-compose.yml`), still zipped. It holds a ground-height grid for each landscape, which
+  the server uses for trees, creature footing and starting build sites. Without it those stay off.
 
-### 2. First start
+### 2. Settings: `.env`
 
-Double-click **`start.bat`**. The first run asks three things:
+Copy **`.env.example`** to **`.env`** in the project folder and open it in a text editor. Every setting is explained
+in the file; the ones to fill in are:
 
-1. **Your Landmark folder**, the one with `Landmark64.exe` (e.g. `C:\Program Files (x86)\Steam\steamapps\common\Landmark`).
-   The game's data tables are copied from it into `gameData\`. Nothing in your game folder is changed.
-2. **Your account name**, to be an admin on your world. You create the account itself in LaunchPad (below); leave it
-   empty for no admin.
-3. **The address players use to reach this PC.** Leave it empty if only you will play on this PC; see
-   [Playing with others](#4-playing-with-others) otherwise.
-
-Then it builds the servers (the first time takes several minutes) and starts them. When it says
-**"LandmarkEmu is running"**, the server is ready.
-
-Later, `start.bat` just starts the servers again. Everything is kept between runs: accounts, characters, builds.
-
-| Command | |
+| Setting | |
 |---|---|
-| `start.bat` | Start the servers |
-| `start.bat -Stop` | Stop them (all data is kept) |
-| `start.bat -Logs` | Watch the world server's console (Ctrl+C to leave) |
-| `start.bat -Update` | Rebuild the servers after downloading a new version of this project |
-| `start.bat -Setup` | Ask the first-run questions again |
+| `GAME_DIR` | Your Landmark folder, the one with `Landmark64.exe` (forward slashes, e.g. `C:/Program Files (x86)/Steam/steamapps/common/Landmark`). It is only read: nothing in it is changed. |
+| `DB_ROOT_PASSWORD`, `DB_PASSWORD` | Two long random passwords of your choice (letters and digits). Only the containers use them. |
+| `PUBLIC_HOST` | The address other players use to reach this PC. Empty: only this PC can play. See [Playing with others](#4-playing-with-others). |
+| `ADMIN_ACCOUNT` | Your account name, to be an admin on your world (you create the account in LaunchPad). |
 
-### 3. The settings: `network.env`
-
-All the network settings are in **one file, `network.env`**, next to `start.bat`. Edit it with Notepad, save it, and
-run `start.bat` again.
+The network settings are all together at the top of the file:
 
 | Setting | Default | What it is |
 |---|---|---|
@@ -65,27 +53,54 @@ run `start.bat` again.
 | `WEBSITE_PORT` | 8080 (TCP) | The account sign-up website |
 | `DB_PORT` | 3307 (TCP) | The database, for tools on this PC only |
 
-The other settings files (`docker\auth\.env` with the database passwords and folders, and `docker\worlds\main.env` for
-your world's name and admins) are made by the first run, and you rarely need to touch them.
+### 3. Start it
+
+In a terminal in the project folder:
+
+```
+docker compose up -d --build
+```
+
+The first time builds the servers and takes several minutes. A `setup` step copies the game's data tables from
+`GAME_DIR` into `server-data\gamedata` (and unpacks the terrain heights), then the servers start. The world is ready
+about a minute later: `docker compose logs -f world` shows its console (Ctrl+C leaves it).
+
+| Command | |
+|---|---|
+| `docker compose up -d` | Start the servers, or apply changed settings |
+| `docker compose down` | Stop them (all data is kept) |
+| `docker compose logs -f world` | Watch the world server's console |
+| `docker compose up -d --build` | Rebuild after downloading a new version of this project |
+
+Everything is kept between runs: accounts, characters and builds in the database, and each world's files in
+`server-data\worlds\`.
+
+**On Windows, `start.bat` does all of this for you** (optional): on its first run it asks for your Landmark folder,
+admin name and address, writes `.env` with random passwords, offers to open the firewall ports, then runs
+`docker compose up` and tells you when the world is up. Later: `start.bat`, `start.bat -Stop`, `start.bat -Logs`,
+`start.bat -Update`, `start.bat -Setup` (ask the questions again).
 
 ### 4. Playing with others
 
-1. **Choose the address** and put it in `network.env` as `PUBLIC_HOST`:
+1. **Choose the address** and put it in `.env` as `PUBLIC_HOST`:
    - **Same home network:** this PC's LAN address. `ipconfig` shows it as "IPv4 Address", e.g. `192.168.1.20`.
    - **Friends elsewhere:** the easiest and safest way is a VPN app such as [Tailscale](https://tailscale.com/) or
      [ZeroTier](https://www.zerotier.com/). Everyone joins your network, and you use the address it gives this PC.
      The other way is your public IP address with the ports forwarded on your router (see below).
-2. **Run `start.bat` again.** It offers to open the ports in Windows Firewall (Windows asks for permission).
-3. **Router (internet without a VPN only):** forward UDP `LOGIN_PORT` and `WORLD_PORT`, and TCP `ACCOUNT_PORT`,
-   `WEB_PAGES_PORT` and `WEBSITE_PORT`, to this PC.
-4. **Tell players the address.** They add it in LaunchPad.
+2. **Run `docker compose up -d` again.**
+3. **Open the ports** in the firewall: UDP `LOGIN_PORT` and `WORLD_PORT`, TCP `ACCOUNT_PORT`, `WEB_PAGES_PORT` and
+   `WEBSITE_PORT` (`start.bat` offers to do it on Windows).
+4. **Router (internet without a VPN only):** forward the same ports to this PC.
+5. **Tell players the address.** They add it in LaunchPad.
 
 ### 5. Admins
 
 Admins type **`/admin`** in chat to open the admin page: god mode, revive, coins and items, travel, claiming a site,
 time of day, creatures, a server shutdown countdown, and any developer command, for themselves, everyone or one player.
-Set admins in `docker\worlds\main.env` (`ADMIN_ACCOUNT`, `ADMIN_2`, `ADMIN_3`: account or character names), then run
-`start.bat` again.
+Set admins in `.env` (`ADMIN_ACCOUNT`, `ADMIN_2`, `ADMIN_3`: account or character names), then run
+`docker compose up -d` again.
+
+More worlds, the account website, backups and every detail: [docs/docker.md](docs/docker.md).
 
 ---
 
@@ -110,17 +125,18 @@ when the game closes or crashes. See [docs/launchpad.md](docs/launchpad.md).
 
 ## Troubleshooting
 
-- **"Docker Desktop is not installed / did not start":** start Docker Desktop by hand, wait until it says it is running,
-  then run `start.bat` again.
-- **"No world is up after 4 minutes":** run `start.bat -Logs` to see the world server's console; the error is usually
+- **`docker compose` can't connect to Docker:** start Docker Desktop, wait until it says it is running, and try again.
+- **"Set GAME_DIR / DB_PASSWORD in .env":** `.env` is missing or that setting is empty (see step 2).
+- **"GAME_DIR in .env is not your Landmark folder":** `docker compose logs setup` shows it; fix `GAME_DIR`.
+- **The world doesn't come up:** `docker compose logs world` shows the world server's console; the error is usually
   near the end.
 - **LaunchPad: "No answer from <address>":** the servers aren't running, the address is wrong, or TCP `ACCOUNT_PORT`
   is blocked (firewall, router).
 - **Another PC gets stuck on the loading screen:** `PUBLIC_HOST` is empty or wrong (it must be the address *they*
-  reach this PC on), or UDP `WORLD_PORT` is blocked. Run `start.bat` after changing `network.env`.
+  reach this PC on), or UDP `WORLD_PORT` is blocked. Run `docker compose up -d` after changing `.env`.
 - **The in-game Showcase / store pages are empty:** TCP `WEB_PAGES_PORT` is blocked for that player.
-- **Names missing in game:** the Landmark folder had no `Locale\en_us_data.dat`; check the game folder, then run
-  `start.bat -Setup`.
+- **Names missing in game:** the Landmark folder had no `Locale\en_us_data.dat`; check `GAME_DIR`, then run
+  `docker compose up -d` again.
 - The world server's console log and its saved files are in `server-data\worlds\main\`.
 
 ---
@@ -131,7 +147,7 @@ when the game closes or crashes. See [docs/launchpad.md](docs/launchpad.md).
 |---|---|
 | `LandmarkEmulator.AuthServer`, `LandmarkEmulator.WorldServer`, `LandmarkEmulator.Shared`, `LandmarkEmulator.Database.*`, `LandmarkEmulator.WebAPI`, `LandmarkEmulator.Gateway` | The servers |
 | `LandmarkEmulator.LaunchPad` | LaunchPad, the players' launcher |
-| `docker/` | How the servers run in Docker (database, login server, account website, worlds) |
+| `docker-compose.yml`, `.env.example`, `docker/` | How the servers run in Docker (setup, database, login server, account website, worlds) |
 | `docs/` | How the client and server talk (packet layouts), terrain formats, and how each system works |
 | `research/` | The reverse-engineering notes: each client message family with its reader / handler functions and field layouts, the client's Lua bindings, classes, data sources and rules, and the system specs the server follows |
 | `data/` | Small tables the server needs that were derived from the client |

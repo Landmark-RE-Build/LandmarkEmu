@@ -172,7 +172,7 @@ The account service exposes these to the launcher (`AuthWebAPI.cs`):
 
 In Docker (`docker/auth/docker-compose.yml`), `docker/launcher/` is mounted at `/launcher`; `news.json` there is the news.
 
-The `SERVER_NAME`, `WEBSITE_URL`, `REQUIRED_CLIENT_BUILD` and `LAUNCHER_DIR` variables go in `docker/auth/.env`.
+The `SERVER_NAME`, `WEBSITE_URL` and `REQUIRED_CLIENT_BUILD` settings go in the project's `.env`.
 
 ### What PLAY does
 

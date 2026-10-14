@@ -356,4 +356,6 @@ docker/worlds/*.env
 
 # Local settings and data of a running server (made by start.bat).
 network.env
+# The settings file (docker-compose.yml reads it; .env.example is the template)
+/.env
 server-data/

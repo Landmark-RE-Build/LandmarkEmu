@@ -1,60 +1,51 @@
-# LandmarkEmu servers, in Docker: run start.bat.
+# Optional Windows helper for the Docker setup: run start.bat. Everything it does can be done by hand with
+# docker compose (README, docs/docker.md); it only saves typing.
 #
-#   start.bat            first run: sets everything up, then starts the servers; later runs: starts them
-#   start.bat -Stop      stops the servers (all data stays)
+#   start.bat            first run: asks a few questions and writes .env; then (every run) docker compose up
+#   start.bat -Stop      docker compose down (all data stays)
 #   start.bat -Update    rebuilds the servers from this folder's code (after downloading a new version)
-#   start.bat -Logs      shows the world server's console (Ctrl+C to leave)
-#   start.bat -Setup     runs the first-time questions again
+#   start.bat -Logs      the world server's console (Ctrl+C to leave)
+#   start.bat -Setup     asks the first-run questions again
 #
-# Settings:
-#   network.env              addresses and ports: the one file to edit for networking (made from network.env.example)
-#   docker\auth\.env         passwords and folders (made on the first run; rarely edited)
-#   docker\worlds\*.env      one file per world (main.env is made on the first run)
-# Players use LaunchPad (docs\launchpad.md) and add this server by its address.
+# Settings: .env (made from .env.example). Extra worlds: docker\worlds\*.env (see extra-world.env.example).
 param([switch]$Stop, [switch]$Update, [switch]$Logs, [switch]$Setup)
 $ErrorActionPreference = 'Stop'
 
-$root     = $PSScriptRoot
-$docker   = Join-Path $root 'docker'
-$network  = Join-Path $root 'network.env'
-$authEnv  = Join-Path $docker 'auth\.env'
-$worlds   = Join-Path $docker 'worlds'
-$gameData = Join-Path $root 'gameData'
+$root   = $PSScriptRoot
+$envFile = Join-Path $root '.env'
+$worlds = Join-Path $root 'docker\worlds'
 
 function Say([string]$text, [string]$color = 'Gray') { Write-Host $text -ForegroundColor $color }
 
-# KEY=VALUE files (network.env, .env): read and change one value, keeping the notes.
-function Read-Env([string]$file) {
+# .env: read and change one value, keeping the notes.
+function Read-Env {
     $values = @{}
-    if (Test-Path $file) {
-        foreach ($line in Get-Content $file) {
+    if (Test-Path $envFile) {
+        foreach ($line in Get-Content $envFile) {
             if ($line -match '^\s*([A-Za-z_][A-Za-z0-9_]*)=(.*)$') { $values[$Matches[1]] = $Matches[2].Trim() }
         }
     }
     return $values
 }
-function Set-EnvValue([string]$file, [string]$key, [string]$value) {
-    $lines = @(Get-Content $file)
+function Set-EnvValue([string]$key, [string]$value) {
     $found = $false
-    $lines = $lines | ForEach-Object { if ($_ -match "^\s*$key=") { $found = $true; "$key=$value" } else { $_ } }
+    $lines = @(Get-Content $envFile) | ForEach-Object { if ($_ -match "^\s*$key=") { $found = $true; "$key=$value" } else { $_ } }
     if (-not $found) { $lines += "$key=$value" }
-    Set-Content $file $lines -Encoding ASCII
+    Set-Content $envFile $lines -Encoding ASCII
 }
-function Path-ForDocker([string]$path) { return ($path -replace '\\', '/') }
 
 function Test-GameFolder([string]$path) {
     return $path -and (Test-Path (Join-Path $path 'Landmark64.exe')) -and (Test-Path (Join-Path $path 'Resources'))
 }
-
 function New-Password { -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 24 | ForEach-Object { [char]$_ }) }
 
-# The compose command for the auth stack or one world, with the settings files in order (later ones win).
-function Compose-Auth { & docker compose --env-file $network --env-file $authEnv -p landmarkemu-auth -f (Join-Path $docker 'auth\docker-compose.yml') @args }
+# The project (docker-compose.yml), and each extra world in docker\worlds.
+function Compose { & docker compose --project-directory $root -f (Join-Path $root 'docker-compose.yml') @args }
 function Compose-World([string]$worldEnv) {
     $name = [IO.Path]::GetFileNameWithoutExtension($worldEnv)
-    & docker compose --env-file $network --env-file $authEnv --env-file $worldEnv -p "landmarkemu-world-$name" -f (Join-Path $docker 'world\docker-compose.yml') @args
+    & docker compose --env-file $envFile --env-file $worldEnv -p "landmarkemu-world-$name" -f (Join-Path $root 'docker\world\docker-compose.yml') @args
 }
-function World-Files { Get-ChildItem $worlds -Filter '*.env' | Where-Object { $_.Name -notlike '*.example' } }
+function Extra-Worlds { Get-ChildItem $worlds -Filter '*.env' -ErrorAction SilentlyContinue }
 
 # ---- Docker Desktop -------------------------------------------------------------------------------------------------
 function Start-Docker {
@@ -72,62 +63,34 @@ function Start-Docker {
     if ($LASTEXITCODE -ne 0) { throw 'Docker Desktop did not start within 5 minutes. Start it by hand, then run start.bat again.' }
 }
 
-# ---- First-time setup -----------------------------------------------------------------------------------------------
+# ---- First run: the questions .env needs ----------------------------------------------------------------------------
 function Invoke-Setup {
     Say "`n=== LandmarkEmu first-time setup ===`n" 'Cyan'
+    if (-not (Test-Path $envFile)) { Copy-Item (Join-Path $root '.env.example') $envFile }
+    $settings = Read-Env
 
-    # 1. The game (the servers read its data; nothing in it is changed).
-    $settings = Read-Env $authEnv
     $game = $settings['GAME_DIR'] -replace '/', '\'
     while (-not (Test-GameFolder $game)) {
         $game = (Read-Host 'Your Landmark folder (the one with Landmark64.exe, e.g. ...\steamapps\common\Landmark)').Trim('" ')
         if (-not (Test-GameFolder $game)) { Say 'Landmark64.exe and Resources were not found there.' 'Yellow' }
     }
+    Set-EnvValue 'GAME_DIR' ($game -replace '\\', '/')
 
-    # 2. gameData: the game's own data tables and English texts, copied from the install, plus the project's data.
-    New-Item -ItemType Directory -Force $gameData | Out-Null
-    Copy-Item (Join-Path $game 'Resources\*.txt') $gameData -Force
-    $locale = Join-Path $game 'Locale\en_us_data.dat'
-    if (Test-Path $locale) { Copy-Item $locale $gameData -Force } else { Say 'Locale\en_us_data.dat not found: names will be missing.' 'Yellow' }
-    Copy-Item (Join-Path $root 'data\*') $gameData -Force
-    # Ground heights (trees, creature footing, starting build sites): LandmarkEmu-terrain-heights.zip from the
-    # project's GitHub release, put next to start.bat. Without it those stay off.
-    $heights = Join-Path $root 'LandmarkEmu-terrain-heights.zip'
-    if (Test-Path $heights) {
-        Say 'Unpacking terrain heights...'
-        Expand-Archive $heights -DestinationPath $gameData -Force
-    } else {
-        Say 'No LandmarkEmu-terrain-heights.zip next to start.bat: trees, ground checks and starting build sites will be off (see README).' 'Yellow'
-    }
-    Say "gameData ready ($((Get-ChildItem $gameData).Count) files)." 'Green'
+    if (-not $settings['DB_ROOT_PASSWORD']) { Set-EnvValue 'DB_ROOT_PASSWORD' (New-Password) }
+    if (-not $settings['DB_PASSWORD']) { Set-EnvValue 'DB_PASSWORD' (New-Password) }
 
-    # 3. Settings files.
-    if (-not (Test-Path $network)) { Copy-Item (Join-Path $root 'network.env.example') $network }
-    if (-not (Test-Path $authEnv)) {
-        Copy-Item (Join-Path $docker 'auth\.env.example') $authEnv
-        Set-EnvValue $authEnv 'DB_ROOT_PASSWORD' (New-Password)
-        Set-EnvValue $authEnv 'DB_PASSWORD' (New-Password)
-    }
-    Set-EnvValue $authEnv 'GAME_DIR' (Path-ForDocker $game)
-    Set-EnvValue $authEnv 'GAME_DATA_DIR' (Path-ForDocker $gameData)
-    $main = Join-Path $worlds 'main.env'
-    if (-not (World-Files)) {
-        Copy-Item (Join-Path $worlds 'main.env.example') $main
-        Set-EnvValue $main 'WORLD_DATA_DIR' (Path-ForDocker (Join-Path $root 'server-data\worlds\main'))
-        $admin = (Read-Host 'Your account name, to be an admin on your world (empty: none; you create the account in LaunchPad)').Trim()
-        if ($admin) { Set-EnvValue $main 'ADMIN_ACCOUNT' $admin }
-    }
+    $admin = (Read-Host "Your account name, to be an admin on your world (empty: $(if ($settings['ADMIN_ACCOUNT']) { "keep $($settings['ADMIN_ACCOUNT'])" } else { 'none' }); you create the account in LaunchPad)").Trim()
+    if ($admin) { Set-EnvValue 'ADMIN_ACCOUNT' $admin }
 
-    # 4. Who can join.
     $addresses = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
         Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } |
         ForEach-Object { "$($_.IPAddress) ($($_.InterfaceAlias))" })
     Say "`nPlayers on other PCs need an address that reaches this PC. This PC has:" 'Cyan'
     $addresses | ForEach-Object { Say "  $_" }
-    $current = (Read-Env $network)['PUBLIC_HOST']
-    $answer = (Read-Host "Address for players (empty: this PC only$(if ($current) { "; now $current" }))").Trim()
-    if ($answer -or -not $current) { Set-EnvValue $network 'PUBLIC_HOST' $answer }
-    Say "Settings saved: network.env (addresses, ports), docker\auth\.env (passwords, folders), docker\worlds\main.env.`n" 'Green'
+    $current = $settings['PUBLIC_HOST']
+    $answer = (Read-Host "Address for players (empty: $(if ($current) { "keep $current" } else { 'this PC only' }))").Trim()
+    if ($answer) { Set-EnvValue 'PUBLIC_HOST' $answer }
+    Say "Settings saved in .env (edit it any time, then run start.bat again).`n" 'Green'
 }
 
 # ---- Firewall (only when hosting for other PCs) ---------------------------------------------------------------------
@@ -145,37 +108,31 @@ function Open-Firewall($net) {
 Start-Docker
 
 if ($Stop) {
-    foreach ($w in World-Files) { Compose-World $w.FullName down }
-    Compose-Auth down
+    foreach ($w in Extra-Worlds) { Compose-World $w.FullName down }
+    Compose down
     Say 'Servers stopped (all data kept).' 'Green'
     return
 }
-if ($Logs) {
-    $w = World-Files | Select-Object -First 1
-    Compose-World $w.FullName logs -f --tail 50
-    return
-}
+if ($Logs) { Compose logs -f --tail 50 world; return }
 
-$firstRun = $Setup -or -not (Test-Path $authEnv) -or -not (Test-Path $network) -or -not (World-Files)
+$firstRun = $Setup -or -not (Test-Path $envFile)
 if ($firstRun) { Invoke-Setup }
 
-$n = Read-Env $network
+$n = Read-Env
+function Port([string]$key, [string]$default) { if ($n[$key]) { $n[$key] } else { $default } }
 $net = @{
     Host = $(if ($n['PUBLIC_HOST']) { $n['PUBLIC_HOST'] } else { '127.0.0.1' })
-    Login = $(if ($n['LOGIN_PORT']) { $n['LOGIN_PORT'] } else { '20042' }); Account = $(if ($n['ACCOUNT_PORT']) { $n['ACCOUNT_PORT'] } else { '5000' })
-    World = $(if ($n['WORLD_PORT']) { $n['WORLD_PORT'] } else { '19000' }); WebPages = $(if ($n['WEB_PAGES_PORT']) { $n['WEB_PAGES_PORT'] } else { '19001' })
-    Website = $(if ($n['WEBSITE_PORT']) { $n['WEBSITE_PORT'] } else { '8080' })
+    Login = Port 'LOGIN_PORT' '20042'; Account = Port 'ACCOUNT_PORT' '5000'; World = Port 'WORLD_PORT' '19000'
+    WebPages = Port 'WEB_PAGES_PORT' '19001'; Website = Port 'WEBSITE_PORT' '8080'
 }
-# The account website link LaunchPad shows, unless set in docker\auth\.env.
-if (-not (Read-Env $authEnv)['WEBSITE_URL']) { $env:WEBSITE_URL = "http://$($net.Host):$($net.Website)/" }
 if ($n['PUBLIC_HOST']) { Open-Firewall $net }
 
-# Build (first run, or -Update) and start: the auth stack first, then every world.
+# docker compose up: builds the images the first time (or with -Update), then starts everything.
 $up = @('up', '-d') + $(if ($firstRun -or $Update) { @('--build') } else { @() })
 if ($firstRun -or $Update) { Say 'Building the servers (the first time takes several minutes)...' }
-Compose-Auth @up
-if ($LASTEXITCODE -ne 0) { throw 'The auth stack did not start (see the messages above).' }
-foreach ($w in World-Files) {
+Compose @up
+if ($LASTEXITCODE -ne 0) { throw 'The servers did not start (see the messages above).' }
+foreach ($w in Extra-Worlds) {
     Compose-World $w.FullName @up
     if ($LASTEXITCODE -ne 0) { throw "The world $($w.BaseName) did not start (see the messages above)." }
 }
@@ -193,4 +150,4 @@ while ($true) {
 Say "`nLandmarkEmu is running." 'Green'
 Say "  Players: in LaunchPad, Settings > Servers, add the address  $($net.Host)$(if ($net.Account -ne '5000') { ":$($net.Account)" })"
 Say "  Account website:  http://$($net.Host):$($net.Website)/"
-Say "  Stop: start.bat -Stop     Console: start.bat -Logs     Settings: network.env"
+Say "  Stop: start.bat -Stop     Console: start.bat -Logs     Settings: .env"
