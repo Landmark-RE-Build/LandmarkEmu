@@ -9,17 +9,20 @@ using System.Linq;
 namespace LandmarkEmulator.SocialServer
 {
     /// <summary>
-    /// Friends lists (one-way; social-service.md §5.1 item 2), moved out of the world server's Game/Friends.cs with
-    /// the same client behaviour, now across every world:
+    /// Friends lists (social-service.md §5.1 item 2; each character's own list, stored per direction; an accepted request
+    /// fills both lists, <see cref="Mutual"/>), moved out of the world server's Game/Friends.cs with the same client
+    /// behaviour, now across every world:
     /// <list type="bullet">
     /// <item>AddFriendRequest (Command 0x1E/0x10 {string name, u64 guid}; Ui.AddFriend / AddFriendByGuid FUN_14351d8b0 /
     /// FUN_14351da30): "/friend add Name" sends a name, the player menu a guid. Unknown or deleted → FriendMessage 0x0C;
     /// yourself → text 560744 FriendYourself; already listed → 560710 FriendAlreadyOnList; 200 friends → "Your friends
     /// list is full." (the limit is ours, as before). Otherwise the one asked gets ConfirmFriendRequest (0x1E/0x13, the
     /// client's "Friend Invite" popup) on whatever world they are, the asker FriendMessage 5; their ConfirmFriendResponse
-    /// (0x1E/0x14) adds the friend (FriendAdd 0x4D/6 + FriendMessage 1) or refuses (2); no answer in 2 minutes → 3; asked
+    /// (0x1E/0x14) adds the friend (FriendAdd 0x4D/6 + FriendMessage 1; mutual: the asker to theirs too, see
+    /// <see cref="HandleResponse"/>) or refuses (2); no answer in 2 minutes → 3; asked
     /// again meanwhile → 8; asked while offline → 3 at once [I]. Same rules as Game/Friends.cs (TASKS 5.4).</item>
-    /// <item>RemoveFriendRequest (0x1E/0x12 {name block}; FUN_14351df90): FriendRemove (0x4D/7) and text 560713 (the
+    /// <item>RemoveFriendRequest (0x1E/0x12 {identity, u64 guid}; Ui.RemoveFriend by name / Ui.RemoveFriendByGuid from the
+    /// player menu, <see cref="FriendRemoveRequest"/>): FriendRemove (0x4D/7) and text 560713 (the
     /// client's own "UI.FriendRemoved" key lookup finds nothing in this client's CodeStringMappings, see
     /// Game/Friends.cs).</item>
     /// <item>The friends list (0x4D/1) with each friend online when the service counts them online on any world.</item>
@@ -41,6 +44,13 @@ namespace LandmarkEmulator.SocialServer
         private static readonly TimeSpan RequestTimeout = TimeSpan.FromMinutes(2);
         /// <summary>Requests waiting for an answer: (asker, asked) → when they lapse (work loop only).</summary>
         private readonly Dictionary<(ulong From, ulong To), (DateTime Lapses, string ToName)> pending = new();
+
+        /// <summary>
+        /// An accepted request makes the friendship mutual (live; SocialServer.json FriendRequestsMutual, Docker
+        /// FRIEND_REQUESTS_MUTUAL, default true); false = the old one-way lists (only the asker's list changes). Rules in
+        /// <see cref="FriendAccept"/>.
+        /// </summary>
+        public bool Mutual { get; set; } = true;
 
         public FriendService(SocialHub hub) => this.hub = hub;
 
@@ -163,8 +173,10 @@ namespace LandmarkEmulator.SocialServer
 
         /// <summary>
         /// ConfirmFriendResponse (0x1E/0x14 {u64 asker, accept, string name}) from the one asked, handed on by their zone:
-        /// accepted → the asker's list gets them (FriendAdd + FriendMessage 1, the zones' friend-of lists refreshed);
-        /// refused → FriendMessage 2. An answer to no waiting request is ignored.
+        /// accepted → the asker's list gets them (FriendAdd + FriendMessage 1) and, mutual (<see cref="Mutual"/>, live),
+        /// their list gets the asker (FriendAdd with the asker's online state, wherever each of them is); every zone whose
+        /// character is newly listed gets its friend-of list again. Caps and ignores: <see cref="FriendAccept"/>.
+        /// Refused → FriendMessage 2. An answer to no waiting request is ignored.
         /// </summary>
         public void HandleResponse(WorldLink world, ClientRequestForward request)
         {
@@ -190,18 +202,42 @@ namespace LandmarkEmulator.SocialServer
                 log.Info($"{player} declined {askerGuid:X}'s friend request.");
                 return;
             }
-            if (hub.Store.GetFriends(askerGuid).Contains(player.Guid))
+            FriendAcceptPlan plan = FriendAccept.Decide(Mutual, askerGuid, player.Guid, hub.Store.GetFriends(askerGuid).ToList(),
+                hub.Store.GetFriends(player.Guid).ToList(), hub.Ignores.Ignoring(askerGuid, player.Guid), hub.Ignores.Ignoring(player.Guid, askerGuid));
+            if (plan.Blocked)
+            {
+                log.Info($"{player} accepted {askerGuid:X}'s friend request, but one of them ignores the other: nothing added.");
                 return;
-            hub.Store.AddFriend(askerGuid, player.Guid);
-            if (askerOnline)
+            }
+            // The asker's list gets the one who accepted (both modes); their zone learns who lists them now.
+            bool toAsker = plan.AddToAsker && hub.Store.AddFriend(askerGuid, player.Guid);
+            if (toAsker)
             {
                 SocialCharacterModel row = hub.Store.GetCharacter(player.Guid);
-                if (row != null)
+                if (askerOnline && row != null)
                     hub.SendTo(asker, ClientPackets.FriendAdd(ToFriend(row)));
-                hub.SendTo(asker, ClientPackets.FriendMessage(ClientPackets.FriendMessageAccepted, player.Guid, player.Name));
+                PushStateForZone(player.Guid);
             }
-            PushStateForZone(player.Guid);
-            log.Info($"{player} accepted {askerGuid:X}'s friend request.");
+            // Mutual (live): the accepter's list gets the asker, with the asker's online state, wherever the two are.
+            bool toAccepter = plan.AddToAccepter && hub.Store.AddFriend(player.Guid, askerGuid);
+            if (toAccepter)
+            {
+                pending.Remove((player.Guid, askerGuid));
+                SocialCharacterModel row = hub.Store.GetCharacter(askerGuid);
+                if (row != null)
+                    hub.SendTo(player, ClientPackets.FriendAdd(ToFriend(row)));
+                PushStateForZone(askerGuid);
+            }
+            if (plan.AskerFull && askerOnline)
+                hub.SendTo(asker, ClientPackets.SystemLine("Your friends list is full."));
+            if (plan.AccepterFull)
+                hub.SendTo(player, ClientPackets.SystemLine("Your friends list is full."));
+            if ((toAsker || toAccepter) && askerOnline)
+                hub.SendTo(asker, ClientPackets.FriendMessage(ClientPackets.FriendMessageAccepted, player.Guid, player.Name));
+            log.Info($"{player} accepted {askerGuid:X}'s friend request ({(Mutual ? "mutual" : "one-way")}: "
+                + $"{(toAsker ? "added to the asker's list" : plan.AskerFull ? "the asker's list is full" : "already on the asker's list")}"
+                + (Mutual ? $", {(toAccepter ? "the asker added to theirs" : plan.AccepterFull ? "their list is full" : "the asker already on theirs")}" : "")
+                + ").");
         }
 
         /// <summary>
@@ -231,7 +267,11 @@ namespace LandmarkEmulator.SocialServer
             return true;
         }
 
-        /// <summary>RemoveFriendRequest (body: the friend's name block {3 × u32, string first, string last}).</summary>
+        /// <summary>
+        /// RemoveFriendRequest (body: identity {3 × u32, string first, string last}, u64 guid): by name from the friends
+        /// window / "/friend remove", by guid from the player right-click menu (<see cref="FriendRemoveRequest"/>).
+        /// One-sided: only the remover's list loses the row [I].
+        /// </summary>
         public void HandleRemove(WorldLink world, ClientRequestForward request)
         {
             OnlineCharacter player = hub.Presence.FindConnected(world, request.CharacterGuid, request.ConnectionId);
@@ -240,25 +280,16 @@ namespace LandmarkEmulator.SocialServer
                 log.Warn($"RemoveFriendRequest for {request.CharacterGuid:X} on {world} without a current connection: dropped.");
                 return;
             }
-            string name;
-            try
-            {
-                var reader = new GamePacketReader(request.Body);
-                reader.ReadUInt();
-                reader.ReadUInt();
-                reader.ReadUInt();
-                name = reader.ReadString()?.Trim() ?? "";
-            }
-            catch (Exception)
+            if (!FriendRemoveRequest.TryRead(request.Body, out FriendRemoveRequest remove))
             {
                 log.Debug($"{player} removed an unknown friend: {BitConverter.ToString(request.Body)}");
                 return;
             }
-            SocialCharacterModel friend = hub.Store.GetCharacters(hub.Store.GetFriends(player.Guid).ToList())
-                .FirstOrDefault(f => string.Equals(f.Name, name, StringComparison.OrdinalIgnoreCase));
+            SocialCharacterModel friend = remove.Find(hub.Store.GetCharacters(hub.Store.GetFriends(player.Guid).ToList()),
+                f => f.Guid, f => f.Name);
             if (friend == null)
             {
-                log.Debug($"{player} removed \"{name}\", who is not on the friends list.");
+                log.Debug($"{player} removed \"{remove.Name}\" ({remove.Guid:X}), who is not on the friends list.");
                 return;
             }
 

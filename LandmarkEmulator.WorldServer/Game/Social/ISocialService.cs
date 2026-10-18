@@ -57,7 +57,7 @@ namespace LandmarkEmulator.WorldServer.Game.Social
         /// <summary>ConfirmFriendResponse (Command 0x1E sub 0x14 {u64 asker, accept, string name}): the answer to a request.</summary>
         void ConfirmFriend(WorldSession session, byte[] body);
 
-        /// <summary>RemoveFriendRequest (Command 0x1E sub 0x12 {name block}).</summary>
+        /// <summary>RemoveFriendRequest (Command 0x1E sub 0x12 {identity, u64 guid}: by name or, from the player menu, by guid).</summary>
         void RemoveFriend(WorldSession session, byte[] body);
 
         /// <summary>

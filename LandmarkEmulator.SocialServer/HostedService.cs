@@ -36,7 +36,9 @@ namespace LandmarkEmulator.SocialServer
             IPAddress address = IPAddress.TryParse(config.Network?.Host, out IPAddress a) ? a : IPAddress.Any;
             int port = config.Network?.Port is ushort p && p != 0 ? p : 20200;
             hub = new SocialHub(database, address, port, TimeSpan.FromSeconds(Math.Max(0, config.PresenceGraceSeconds)));
+            hub.Friends.Mutual = config.FriendRequestsMutual;
             hub.Start();
+            log.Info($"Friend requests: {(config.FriendRequestsMutual ? "mutual (an accept fills both lists, as live)" : "one-way (only the asker's list)")}.");
 
             log.Info("Service Started!");
             return Task.CompletedTask;

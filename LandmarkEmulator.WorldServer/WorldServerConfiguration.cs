@@ -261,6 +261,14 @@ namespace LandmarkEmulator.WorldServer
         public bool CavernGraveyardStamps { get; set; } = true;
 
         /// <summary>
+        /// The fall guard of the cavern trips (Game/CavernArrivalGuard): a player who falls through the world in the first
+        /// 30 s after an Underground Adventure's loading screen dropped (more than 12 m below the arrival, where no cave floor
+        /// is) is re-zoned back to the arrival, the second time to the landscape's shallowest graveyard open to trips.
+        /// Default on (ours: live's answer is not known). Read at each trip. Docker: CAVERN_ARRIVAL_RESCUE.
+        /// </summary>
+        public bool CavernArrivalRescue { get; set; } = true;
+
+        /// <summary>
         /// The island on the "Events" world of the Landscapes window (0.695 clients; Game/Landscapes.ActiveEventZone):
         /// auto (live's 2016 dates: Halloween Party 3 Oct - 20 Nov, Winter Holiday Party 21 Nov - 10 Jan), halloween,
         /// winter, judgement, or off. Read at start-up. Docker: EVENT_ISLAND. Default auto = live (event-islands-695.md,
@@ -618,6 +626,16 @@ namespace LandmarkEmulator.WorldServer
         /// Dev "friendtpcooldown" changes it while running. Docker: FRIEND_TELEPORT_COOLDOWN_SECONDS.
         /// </summary>
         public int FriendTeleportCooldownSeconds { get; set; }
+
+        /// <summary>
+        /// An accepted friend request makes the friendship mutual (Game/Friends.HandleResponse, rules in
+        /// Internal/Social/FriendAccept.cs): the asker's list gets the one who accepted and theirs gets the asker, both
+        /// told at once with FriendAdd. On (default) = live (wiki "Friends List": people "you either sent friend requests
+        /// to or from whom you accepted friend requests"); off = one-way lists, only the asker's list changes. Read at each
+        /// answer. With SOCIAL_ADDRESS set the social service's own FriendRequestsMutual counts (the same .env line).
+        /// Docker: FRIEND_REQUESTS_MUTUAL.
+        /// </summary>
+        public bool FriendRequestsMutual { get; set; } = true;
 
         /// <summary>
         /// Story creatures keep the mood and stance a Story Node gave them (Game/StoryTools KeepPose): saved with their

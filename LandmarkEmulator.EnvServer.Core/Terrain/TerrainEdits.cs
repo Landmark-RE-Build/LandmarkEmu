@@ -243,10 +243,10 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
             {
                 var overlay = Overlay.FromPack(pack, entry);
                 overlays[id] = overlay;
-                if (BlockData.KeepVertexOnly)
+                if (BlockData.KeepVertexOnly || LayerOf(id) == DigLayer)
                     continue;
                 // Vertex-only voxels: kept (clients send them with every smooth edit); stripped only when
-                // KeepVertexOnlyVoxels is off.
+                // KeepVertexOnlyVoxels is off. The dig layer's are the server's own (hole walls, SurfaceVertices): kept.
                 int stripped = 0;
                 for (int i = 0; i < BlockData.Count; i++)
                     if (overlay.Blocks.Flags[i] == 2)
@@ -521,10 +521,14 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
             List<HealQueue.Entry> due = HealQueue.TakeDue();
             if (due.Count > 0)
                 lock (sync)
+                {
                     foreach (HealQueue.Entry entry in due)
                         foreach (ulong cell in entry.Cells)
                             if (HealCell(entry, cell, claimsIn))
                                 regrown.Add((entry.Zone, cell));
+                    foreach ((uint zone, ulong cell) in RefreshOpenHoles(due, claimsIn))
+                        regrown.Add((zone, cell));
+                }
             HealQueue.Done(due);
             lock (sync)
                 foreach ((uint zone, var overlays) in stores)
@@ -608,7 +612,8 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                         if (!entry.Holds(x, y, z, cell, HealMargin)
                             || (!entry.Has(HealQueue.HealsInSites)
                                 && sites.Exists(s => x >= s.MinX && x <= s.MaxX && y >= s.MinY && y <= s.MaxY && z >= s.MinZ && z <= s.MaxZ))
-                            || (!entry.Has(HealQueue.IgnoresLater) && later.Exists(e => e.Holds(x, y, z, cell, HealMargin))))
+                            || (!entry.Has(HealQueue.IgnoresLater)
+                                && later.Exists(e => KeepsFor(e, blocks.Flags[index], ox + ix * VoxelSize, oy + iy * VoxelSize, oz + iz * VoxelSize, cell))))
                             continue;
                         blocks.Flags[index] = 0;
                         blocks.Materials[index] = 0;
@@ -626,8 +631,36 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         }
 
         /// <summary>
-        /// Sets every voxel whose centre lies within <paramref name="radius"/> (world units) of a global point to air
-        /// (material 0) or to <paramref name="material"/>. Returns the cells changed and how many voxels changed.
+        /// Does a still-pending destruction keep a voxel when an earlier one heals (global dm corner of the voxel)? A carved
+        /// or filled voxel: when that destruction's sphere holds it (its corner, as the dig tests it; its centre too in the
+        /// old dig modes). A vertex: when a corner of its cube lies in that sphere, so the open hole's surface is redone
+        /// there (<see cref="RefreshOpenHoles"/>); a vertex of the healed hole anywhere else would bend the ground that
+        /// came back. Cylinders and whole cells keep everything within the dig margin, as before.
+        /// </summary>
+        private static bool KeepsFor(HealQueue.Entry later, byte flags, double x, double y, double z, ulong cell)
+        {
+            double half = VoxelSize / 2;
+            if (later.WholeCells || later.HalfHeight >= 0)
+                return later.Holds(x + half, y + half, z + half, cell, HealMargin);
+            if ((flags & 1) != 0)
+                return later.Holds(x, y, z, cell, 0) || OffsetMode < SurfaceMode && later.Holds(x + half, y + half, z + half, cell, 0);
+            for (int d = 0; d < 8; d++)
+                if (later.Holds(x + (d & 1) * VoxelSize, y + (d >> 1 & 1) * VoxelSize, z + (d >> 2) * VoxelSize, cell, 0))
+                    return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Sets every voxel within <paramref name="radius"/> (world units) of a global point to air (material 0) or to
+        /// <paramref name="material"/>, then gives the new surface its vertices (<see cref="SurfaceVertices"/>). Returns the
+        /// cells changed and how many voxels changed.
+        /// <para>
+        /// Where a voxel is: the client samples its generated ground at the voxel's CORNER (cell corner + index × 0.4 m,
+        /// ContinentMapHeightmapTerrain::getContourDataRegular FUN_1440873e0) and puts the cube [i, i+1]³'s surface vertex
+        /// at i + offset (ContourEx FUN_142ac4590), so a voxel is inside the sphere when its corner is (<see cref="OffsetMode"/>
+        /// <see cref="SurfaceMode"/>, the default). The old modes tested the voxel's centre, half a voxel off the frame the
+        /// vertices are drawn in (docs/terrain.md "How the client draws a dig").
+        /// </para>
         /// <para>
         /// Temporary destruction on build sites (0.695 Play Mode; TASKS 2.1 / 2.6):
         /// <paramref name="allowed"/> (global dm voxel centre → may this voxel be destroyed?) keeps the sphere out of
@@ -649,18 +682,23 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
             var touched = new Dictionary<ulong, List<int>>();
             int changed = 0;
             double r2 = radius * radius;
+            bool corners = OffsetMode >= SurfaceMode;
+            // The point of a voxel the sphere tests: its corner (the client's sample), or its centre in the old modes.
+            double at = corners ? 0 : 0.5;
+            long x0 = (long)Math.Floor((gx - radius) / VoxelSize) - 1, x1 = (long)Math.Floor((gx + radius) / VoxelSize) + 1;
+            long y0 = (long)Math.Floor((gy - radius) / VoxelSize) - 1, y1 = (long)Math.Floor((gy + radius) / VoxelSize) + 1;
+            long z0 = (long)Math.Floor((gz - radius) / VoxelSize) - 1, z1 = (long)Math.Floor((gz + radius) / VoxelSize) + 1;
             lock (sync)
             {
-                for (double x = gx - radius; x <= gx + radius; x += VoxelSize)
-                    for (double y = gy - radius; y <= gy + radius; y += VoxelSize)
-                        for (double z = gz - radius; z <= gz + radius; z += VoxelSize)
+                for (long vx = x0; vx <= x1; vx++)
+                    for (long vy = y0; vy <= y1; vy++)
+                        for (long vz = z0; vz <= z1; vz++)
                         {
-                            long vx = (long)Math.Floor(x / VoxelSize), vy = (long)Math.Floor(y / VoxelSize),
-                                vz = (long)Math.Floor(z / VoxelSize);
-                            double cx = (vx + 0.5) * VoxelSize - gx, cy = (vy + 0.5) * VoxelSize - gy,
-                                cz = (vz + 0.5) * VoxelSize - gz;
+                            double cx = (vx + at) * VoxelSize - gx, cy = (vy + at) * VoxelSize - gy,
+                                cz = (vz + at) * VoxelSize - gz;
                             if (cx * cx + cy * cy + cz * cz > r2)
                                 continue;
+                            // Site rules (and every other permission test) look at the voxel's centre, as for building.
                             if (allowed != null && !allowed((vx + 0.5) * VoxelSize, (vy + 0.5) * VoxelSize, (vz + 0.5) * VoxelSize))
                                 continue;
                             long cellX = Math.DivRem(vx, BlockData.Size, out long ix),
@@ -675,7 +713,8 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                             bool building = carveBuilds && layer == DigLayer && BuildSolid(zone, id, index);
                             if (!Of(zone).TryGetValue(Key(id, layer), out Overlay overlay))
                                 Of(zone)[Key(id, layer)] = overlay = new Overlay();
-                            if (overlay.Blocks.Flags[index] != 0 && overlay.Blocks.Materials[index] == material)
+                            // Already this material (a vertex-only voxel, flag 2, is still the generated ground).
+                            if ((overlay.Blocks.Flags[index] & 1) != 0 && overlay.Blocks.Materials[index] == material)
                                 continue;
                             // Carving only touches ground: voxels clearly in open air (well above the generated surface)
                             // stay unset, so less is sent. Near the surface everything is carved explicitly: the baked
@@ -683,16 +722,24 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                             // solid left fragments of the old surface floating over the hole (and hid the mining ring).
                             // A building voxel standing in the open air is carved all the same (site destruction).
                             if (material == 0 && !building && (overlay.Blocks.Flags[index] & 1) == 0
-                                && AboveGround(vx, vy, vz, zone, OpenAirMargin))
+                                && AboveGround(vx, vy, vz, zone, OpenAirMargin, at))
                                 continue;
                             // Carving an untouched voxel of an ore vein: that ore is what the swing digs out.
-                            if (material == 0 && oreMined != null && overlay.Blocks.Flags[index] == 0
+                            if (material == 0 && oreMined != null && (overlay.Blocks.Flags[index] & 1) == 0
                                 && OreVeins.OreAt(id, index, zone) is ushort ore and not 0)
                             {
                                 oreMined[ore] = oreMined.GetValueOrDefault(ore) + 1;
                                 oreCells?.Add(id);
                             }
-                            overlay.Blocks.SetSolid(index, material);
+                            if (corners && material == 0)
+                            {
+                                // Air without a vertex of its own: SurfaceVertices gives one to every voxel whose cube
+                                // the new surface runs through (a centre vertex here would be a 0.4 m step).
+                                overlay.Blocks.Flags[index] = 1;
+                                overlay.Blocks.Materials[index] = 0;
+                            }
+                            else
+                                overlay.Blocks.SetSolid(index, material);
                             cells.Add(id);
                             changed++;
                             // The owner keeps their building voxels (Voxel Vision): only the ground is nobody's.
@@ -702,7 +749,16 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                                 touched[id] = list = new List<int>();
                             list.Add(index);
                         }
-                SmoothOffsets(gx, gy, gz, radius, cells, zone, layer, allowed);
+                if (corners)
+                {
+                    // The other holes still open around this one (pending heals) shape the surface too.
+                    var holes = layer == DigLayer ? HealQueue.SpheresNear(zone, (gx, gy, gz), radius, 2 * VoxelSize)
+                        : new List<(double X, double Y, double Z, double Radius)>();
+                    holes.Add((gx, gy, gz, radius));
+                    SurfaceVertices((gx, gy, gz), radius, holes, cells, zone, layer, allowed);
+                }
+                else
+                    SmoothOffsets(gx, gy, gz, radius, cells, zone, layer, allowed);
                 foreach (ulong id in cells)
                 {
                     Of(zone)[Key(id, layer)].Version++;
@@ -722,14 +778,15 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         private const float OpenAirMargin = 2f;
 
         /// <summary>
-        /// Is a voxel's centre above the generated ground (baked height grid) by more than <paramref name="margin"/>
-        /// metres (default: one voxel), i.e. already air?
+        /// Is a voxel's point (<paramref name="at"/> 0.5 = its centre, 0 = its corner, the client's sample) above the
+        /// generated ground (baked height grid) by more than <paramref name="margin"/> metres (default: one voxel), i.e.
+        /// already air?
         /// </summary>
-        private static bool AboveGround(long vx, long vy, long vz, uint zone, float margin = -1f)
+        private static bool AboveGround(long vx, long vy, long vz, uint zone, float margin = -1f, double at = 0.5)
         {
-            float lx = (float)(((vx + 0.5) * VoxelSize - TerrainStore.ZoneOrigin.X) / 10),
-                ly = (float)(((vy + 0.5) * VoxelSize - TerrainStore.ZoneOrigin.Y) / 10),
-                lz = (float)(((vz + 0.5) * VoxelSize - TerrainStore.ZoneOrigin.Z) / 10);
+            float lx = (float)(((vx + at) * VoxelSize - TerrainStore.ZoneOrigin.X) / 10),
+                ly = (float)(((vy + at) * VoxelSize - TerrainStore.ZoneOrigin.Y) / 10),
+                lz = (float)(((vz + at) * VoxelSize - TerrainStore.ZoneOrigin.Z) / 10);
             if (margin < 0)
                 margin = (float)(VoxelSize / 10);
             return TerrainHeights.HeightAt(lx, lz, zone) is float ground && ly > ground + margin;
@@ -798,8 +855,15 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         /// </summary>
         public static int RimMode = 1;
 
-        /// <summary>Test switch for <see cref="SmoothOffsets"/>: 0 = off, 1.. = offset byte orders (dev "digmode").</summary>
-        public static int OffsetMode = 5;
+        /// <summary>
+        /// How a dig's surface is written (dev "digmode"): <see cref="SurfaceMode"/> (8, the default) = the client's own
+        /// surface (<see cref="SurfaceVertices"/>); 5 = the old solid shell of guessed material (<see cref="SmoothOffsets"/>,
+        /// 6 / 7 its variants, 1-4 its offset byte orders); 0 = no vertices (plain voxel steps). Kept for side-by-side checks.
+        /// </summary>
+        public static int OffsetMode = SurfaceMode;
+
+        /// <summary><see cref="OffsetMode"/> of the client-surface dig (corner samples, vertex-only walls).</summary>
+        public const int SurfaceMode = 8;
 
         /// <summary>
         /// A voxel's surface-vertex coordinate (voxel units from its corner, -1..2) as stored: round((u + 1) × 85)
@@ -944,6 +1008,337 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                         overlay.Blocks.Offsets[index * 3 + 2] = c;
                         cells.Add(id);
                     }
+        }
+
+        /// <summary>
+        /// The surface of a dig the way the client draws the unmodified world (docs/terrain.md "How the client draws a
+        /// dig"): every cube [i, i+1]³ that has a corner inside the dug sphere and solid / air corners both gets, at its
+        /// corner voxel i, the mass point of the crossings on its 12 edges as its vertex — what the client's own generator
+        /// writes for its ground (ContinentMapHeightmapTerrain::SmoothContourData FUN_144086430: linear crossing of the
+        /// density on each edge whose ends differ, averaged, flag 2 + offset byte). The mesher (ContourEx FUN_142ac4590)
+        /// joins the vertices of the four cubes around every edge whose two voxels differ, so a cube left without one
+        /// is drawn at its centre: the 0.4 m stair steps players saw in pick holes (2026-10-18).
+        /// <para>
+        /// The density along an edge is the ground minus every open hole: min(ground height − y, distance to each sphere
+        /// centre − its radius) (dm; the baked height grid for the ground, cave air as air), so overlapping swings make
+        /// one smooth shaft and the rim meets the ground. Corners whose state comes from the block layers (carved air,
+        /// building, stamps) take the holes' distance only; where the estimate disagrees with the corner's state the
+        /// crossing falls in the middle of the edge.
+        /// </para>
+        /// <para>
+        /// Voxels on the solid side get a <b>vertex-only</b> voxel (flag 2, no material): the client keeps its own
+        /// generated material there and only moves the vertex (getBlockContourData FUN_142aa8830; layers merge per bit,
+        /// FUN_1440498d0), as its own smooth brushes (spheres, lines, fills) send them (docs/terrain.md "Vertex-only voxels").
+        /// So no rock is ever added and the hole's walls keep the ground's own materials. Cubes the sphere cleared
+        /// completely lose a vertex an earlier swing gave them (less to send). Voxels <paramref name="allowed"/> refuses
+        /// and voxels where the build layer has anything are left alone.
+        /// </para>
+        /// Callers hold <see cref="sync"/>. Returns the vertices written.
+        /// </summary>
+        private static int SurfaceVertices((double X, double Y, double Z) centre, double radius,
+            List<(double X, double Y, double Z, double Radius)> holes, HashSet<ulong> cells, uint zone, uint layer,
+            Func<double, double, double, bool> allowed)
+        {
+            // Cubes with a corner that can be inside the sphere, and their corner samples (one more along each axis).
+            long x0 = (long)Math.Floor((centre.X - radius) / VoxelSize) - 1, x1 = (long)Math.Floor((centre.X + radius) / VoxelSize);
+            long y0 = (long)Math.Floor((centre.Y - radius) / VoxelSize) - 1, y1 = (long)Math.Floor((centre.Y + radius) / VoxelSize);
+            long z0 = (long)Math.Floor((centre.Z - radius) / VoxelSize) - 1, z1 = (long)Math.Floor((centre.Z + radius) / VoxelSize);
+            int nx = (int)(x1 - x0 + 2), ny = (int)(y1 - y0 + 2), nz = (int)(z1 - z0 + 2);
+            var solid = new bool[nx * ny * nz];
+            var density = new double[nx * ny * nz];
+            var inside = new bool[nx * ny * nz];
+            // A corner whose state the density estimate did not explain (its crossing goes mid-edge, with no plane).
+            var guessed = new bool[nx * ny * nz];
+            int At(int i, int j, int k) => i + nx * (j + ny * k);
+
+            var overlays = new Dictionary<ulong, Overlay>();
+            Overlay Get(ulong id, uint l)
+            {
+                ulong key = Key(id, l);
+                if (!overlays.TryGetValue(key, out Overlay o))
+                {
+                    Of(zone).TryGetValue(key, out o);
+                    overlays[key] = o;
+                }
+                return o;
+            }
+            var ground = new Dictionary<(long, long), double>();
+            double GroundY(long sx, long sz)
+            {
+                if (!ground.TryGetValue((sx, sz), out double y))
+                {
+                    float lx = (float)((sx * VoxelSize - TerrainStore.ZoneOrigin.X) / 10), lz = (float)((sz * VoxelSize - TerrainStore.ZoneOrigin.Z) / 10);
+                    ground[(sx, sz)] = y = TerrainHeights.HeightAt(lx, lz, zone) is float h ? h * 10.0 + TerrainStore.ZoneOrigin.Y : double.NaN;
+                }
+                return y;
+            }
+
+            for (int k = 0; k < nz; k++)
+                for (int j = 0; j < ny; j++)
+                    for (int i = 0; i < nx; i++)
+                    {
+                        long sx = x0 + i, sy = y0 + j, sz = z0 + k;
+                        double px = sx * VoxelSize, py = sy * VoxelSize, pz = sz * VoxelSize;
+                        (ulong id, int index) = Locate(sx, sy, sz);
+                        // The block layers as the client merges them: the highest layer with a material decides.
+                        bool? set = null;
+                        for (uint l = LayerCount; l-- > 0;)
+                            if (Get(id, l) is Overlay o && (o.Blocks.Flags[index] & 1) != 0)
+                            {
+                                ushort m = o.Blocks.Materials[index];
+                                set = m != 0 && m != VoxelTemplate.InteriorAir;
+                                break;
+                            }
+                        double hole = double.PositiveInfinity;
+                        foreach (var h in holes)
+                            hole = Math.Min(hole, Math.Sqrt((px - h.X) * (px - h.X) + (py - h.Y) * (py - h.Y) + (pz - h.Z) * (pz - h.Z)) - h.Radius);
+                        double own = Math.Sqrt((px - centre.X) * (px - centre.X) + (py - centre.Y) * (py - centre.Y) + (pz - centre.Z) * (pz - centre.Z));
+                        int a = At(i, j, k);
+                        inside[a] = own <= radius;
+                        bool isSolid;
+                        double value;
+                        if (set is bool blockSolid)
+                        {
+                            isSolid = blockSolid;
+                            value = hole;
+                        }
+                        else
+                        {
+                            // The generated world: solid up to the ground (the client's sample rule), except cave air.
+                            double groundY = GroundY(sx, sz);
+                            double g = double.IsNaN(groundY) ? double.PositiveInfinity : groundY - py;
+                            bool cave = g >= 0 && CavePieces.IsAir(px, py, pz, zone);
+                            isSolid = g >= 0 && !cave;
+                            value = Math.Min(hole, cave ? -VoxelSize / 2 : g);
+                        }
+                        if (isSolid && value <= 0 || !isSolid && value > 0)
+                        {
+                            value = isSolid ? VoxelSize / 2 : -VoxelSize / 2;
+                            guessed[a] = true;
+                        }
+                        solid[a] = isSolid;
+                        density[a] = value;
+                    }
+
+            var crossings = new Vector3[12];
+            var planePoints = new Vector3[12];
+            var planeNormals = new Vector3[12];
+            int written = 0;
+            for (int k = 0; k < nz - 1; k++)
+                for (int j = 0; j < ny - 1; j++)
+                    for (int i = 0; i < nx - 1; i++)
+                    {
+                        bool touches = false;
+                        int solids = 0;
+                        for (int d = 0; d < 8; d++)
+                        {
+                            int c = At(i + (d & 1), j + (d >> 1 & 1), k + (d >> 2));
+                            touches |= inside[c];
+                            if (solid[c])
+                                solids++;
+                        }
+                        if (!touches)
+                            continue;
+                        long sx = x0 + i, sy = y0 + j, sz = z0 + k;
+                        if (allowed != null && !allowed((sx + 0.5) * VoxelSize, (sy + 0.5) * VoxelSize, (sz + 0.5) * VoxelSize))
+                            continue;
+                        (ulong id, int index) = Locate(sx, sy, sz);
+                        // The owner's building or digging (layer 1) at this voxel keeps its own vertex.
+                        if (layer == DigLayer && BuildHas(zone, id, index))
+                            continue;
+                        Of(zone).TryGetValue(Key(id, layer), out Overlay overlay);
+                        if (solids == 0 || solids == 8)
+                        {
+                            // No surface in this cube any more: a vertex an earlier swing left here is not needed.
+                            if (overlay != null && (overlay.Blocks.Flags[index] & 2) != 0)
+                            {
+                                overlay.Blocks.Flags[index] &= 1;
+                                cells.Add(id);
+                            }
+                            continue;
+                        }
+                        // The crossings: linear in the density on each edge whose corners differ (the generator's rule).
+                        int n = 0, planes = 0;
+                        bool trusted = true;
+                        for (int d = 0; d < 8; d++)
+                            for (int bit = 1; bit <= 4; bit <<= 1)
+                            {
+                                if ((d & bit) != 0)
+                                    continue;
+                                int e = d | bit;
+                                int ca = At(i + (d & 1), j + (d >> 1 & 1), k + (d >> 2)), cb = At(i + (e & 1), j + (e >> 1 & 1), k + (e >> 2));
+                                if (solid[ca] == solid[cb])
+                                    continue;
+                                double t = Math.Clamp(density[ca] / (density[ca] - density[cb]), 0, 1);
+                                var q = new Vector3((float)((d & 1) + ((e & 1) - (d & 1)) * t), (float)((d >> 1 & 1) + ((e >> 1 & 1) - (d >> 1 & 1)) * t),
+                                    (float)((d >> 2) + ((e >> 2) - (d >> 2)) * t));
+                                crossings[n++] = q;
+                                trusted &= !guessed[ca] && !guessed[cb];
+                                if (Field((sx + (double)q.X) * VoxelSize, (sy + (double)q.Y) * VoxelSize, (sz + (double)q.Z) * VoxelSize, holes, zone) is { } at
+                                    && at.Gradient.LengthSquared() > 1e-12)
+                                {
+                                    planePoints[planes] = q;
+                                    planeNormals[planes++] = Vector3.Normalize(at.Gradient);
+                                }
+                            }
+                        long ox = sx, oy = sy, oz = sz;
+                        Vector3 u = PlaceVertex(crossings, n, planePoints, planeNormals, trusted ? planes : 0,
+                            c => Field((ox + (double)c.X) * VoxelSize, (oy + (double)c.Y) * VoxelSize, (oz + (double)c.Z) * VoxelSize, holes, zone));
+                        byte bx = OffsetByte(u.X), by = OffsetByte(u.Y), bz = OffsetByte(u.Z);
+                        if (overlay == null)
+                            Of(zone)[Key(id, layer)] = overlay = new Overlay();
+                        BlockData blocks = overlay.Blocks;
+                        if ((blocks.Flags[index] & 2) != 0 && blocks.Offsets[index * 3] == bx && blocks.Offsets[index * 3 + 1] == by
+                            && blocks.Offsets[index * 3 + 2] == bz)
+                            continue;
+                        blocks.Flags[index] |= 2;
+                        blocks.Offsets[index * 3] = bx;
+                        blocks.Offsets[index * 3 + 1] = by;
+                        blocks.Offsets[index * 3 + 2] = bz;
+                        cells.Add(id);
+                        written++;
+                    }
+            return written;
+        }
+
+        /// <summary>
+        /// A cube's vertex (cube-local voxel units) from its edge crossings. The mass point of the crossings is what the
+        /// client's generator uses (SmoothContourData); on the small spheres of a pick (2.5 voxels) it sits a third of a
+        /// voxel inside the curve. So, where the density is known (<paramref name="planes"/> &gt; 0), the vertex is moved
+        /// onto the surface: first onto the tangent planes at the crossings (their least-squares point, reached from the
+        /// mass point by averaged projections, as VoxelFarm's own QEF places vertices where block data meets the generated
+        /// ground: getBlockContourData FUN_142aa8830 → FUN_142aa2900 … FUN_142aa5700), which gives a rim its edge where a
+        /// wall meets the ground; if that point is not on the surface (thin tips, near-parallel planes), the mass point
+        /// projected onto the nearest surface along the density's gradient; the mass point itself if neither is nearer.
+        /// Kept within half a voxel of the cube.
+        /// </summary>
+        private static Vector3 PlaceVertex(Vector3[] crossings, int n, Vector3[] points, Vector3[] normals, int planes,
+            Func<Vector3, (double Value, Vector3 Gradient)?> field)
+        {
+            var low = new Vector3(-0.5f);
+            var high = new Vector3(1.5f);
+            Vector3 mass = Vector3.Zero;
+            for (int c = 0; c < n; c++)
+                mass += crossings[c];
+            mass /= n;
+            if (planes == 0)
+                return mass;
+            // Distance to the surface (voxels) by the density and its gradient.
+            double Off(Vector3 v) => field(v) is { } f && f.Gradient.Length() > 1e-6
+                ? Math.Abs(f.Value) / VoxelSize / f.Gradient.Length() : double.PositiveInfinity;
+
+            Vector3 planar = mass;
+            for (int iteration = 0; iteration < 32; iteration++)
+            {
+                Vector3 step = Vector3.Zero;
+                for (int p = 0; p < planes; p++)
+                    step += normals[p] * Vector3.Dot(normals[p], planar - points[p]);
+                planar -= step / planes;
+            }
+            planar = Vector3.Clamp(planar, low, high);
+            if (Off(planar) <= 0.05)
+                return planar;
+
+            Vector3 projected = mass;
+            for (int iteration = 0; iteration < 4; iteration++)
+            {
+                if (field(projected) is not { } f || f.Gradient.LengthSquared() < 1e-9)
+                    break;
+                projected -= f.Gradient * (float)(f.Value / VoxelSize / f.Gradient.LengthSquared());
+            }
+            projected = Vector3.Clamp(projected, low, high);
+            Vector3 best = mass;
+            double bestOff = Off(mass);
+            foreach (Vector3 candidate in new[] { planar, projected })
+                if (Off(candidate) < bestOff)
+                {
+                    best = candidate;
+                    bestOff = Off(candidate);
+                }
+            return best;
+        }
+
+        /// <summary>
+        /// The ground-minus-holes density at a global point (dm, positive in the ground) and the gradient of the term that
+        /// makes it there: a hole's sphere (distance to its centre − its radius; radial, unit length) or the generated
+        /// ground (height − y; (∂h/∂x, −1, ∂h/∂z) from the baked heights). Null when nothing is known there.
+        /// </summary>
+        private static (double Value, Vector3 Gradient)? Field(double x, double y, double z, List<(double X, double Y, double Z, double Radius)> holes, uint zone)
+        {
+            double best = double.PositiveInfinity;
+            Vector3 gradient = Vector3.Zero;
+            foreach (var h in holes)
+            {
+                double dx = x - h.X, dy = y - h.Y, dz = z - h.Z, length = Math.Sqrt(dx * dx + dy * dy + dz * dz);
+                if (length - h.Radius < best && length > 1e-6)
+                {
+                    best = length - h.Radius;
+                    gradient = new Vector3((float)(dx / length), (float)(dy / length), (float)(dz / length));
+                }
+            }
+            float lx = (float)((x - TerrainStore.ZoneOrigin.X) / 10), lz = (float)((z - TerrainStore.ZoneOrigin.Z) / 10);
+            if (TerrainHeights.HeightAt(lx, lz, zone) is float h0 && h0 * 10.0 + TerrainStore.ZoneOrigin.Y - y < best)
+            {
+                const float d = 0.2f;
+                if (TerrainHeights.HeightAt(lx + d, lz, zone) is float hx1 && TerrainHeights.HeightAt(lx - d, lz, zone) is float hx0
+                    && TerrainHeights.HeightAt(lx, lz + d, zone) is float hz1 && TerrainHeights.HeightAt(lx, lz - d, zone) is float hz0)
+                {
+                    best = h0 * 10.0 + TerrainStore.ZoneOrigin.Y - y;
+                    gradient = new Vector3((hx1 - hx0) / (2 * d), -1f, (hz1 - hz0) / (2 * d));
+                }
+            }
+            return double.IsPositiveInfinity(best) ? null : (best, gradient);
+        }
+
+        /// <summary>A global voxel's level-2 cell and its index there.</summary>
+        private static (ulong Cell, int Index) Locate(long vx, long vy, long vz)
+        {
+            long cellX = Math.DivRem(vx, BlockData.Size, out long ix), cellY = Math.DivRem(vy, BlockData.Size, out long iy),
+                cellZ = Math.DivRem(vz, BlockData.Size, out long iz);
+            if (ix < 0) { ix += BlockData.Size; cellX--; }
+            if (iy < 0) { iy += BlockData.Size; cellY--; }
+            if (iz < 0) { iz += BlockData.Size; cellZ--; }
+            return (TerrainStore.CellId(Level, (uint)cellX, (uint)cellY, (uint)cellZ), VoxelIndex((int)ix, (int)iy, (int)iz));
+        }
+
+        /// <summary>
+        /// After heals: the holes still open next to a healed one get their surface again (<see cref="SurfaceVertices"/>
+        /// against the holes that are left), so where the ground came back their walls close cleanly instead of keeping
+        /// vertices that leaned on the healed hole. Outside build sites only. Callers hold <see cref="sync"/>. Returns the
+        /// cells changed.
+        /// </summary>
+        private static List<(uint Zone, ulong Cell)> RefreshOpenHoles(List<HealQueue.Entry> healed,
+            Func<uint, (double, double, double), (double, double, double), List<(double MinX, double MinY, double MinZ, double MaxX, double MaxY, double MaxZ)>> claimsIn)
+        {
+            var changed = new List<(uint, ulong)>();
+            if (OffsetMode < SurfaceMode)
+                return changed;
+            var done = new HashSet<(uint, double, double, double, double)>();
+            foreach (HealQueue.Entry entry in healed)
+            {
+                if (entry.WholeCells || entry.HalfHeight >= 0)
+                    continue;
+                foreach (var open in HealQueue.SpheresNear(entry.Zone, (entry.X, entry.Y, entry.Z), entry.Radius, 2 * VoxelSize))
+                {
+                    if (!done.Add((entry.Zone, open.X, open.Y, open.Z, open.Radius)))
+                        continue;
+                    double reach = open.Radius + 2 * VoxelSize;
+                    var sites = claimsIn(entry.Zone, (open.X - reach, open.Y - reach, open.Z - reach), (open.X + reach, open.Y + reach, open.Z + reach));
+                    Func<double, double, double, bool> allowed = sites.Count == 0 ? null
+                        : (x, y, z) => !sites.Exists(s => x >= s.MinX && x <= s.MaxX && y >= s.MinY && y <= s.MaxY && z >= s.MinZ && z <= s.MaxZ);
+                    var cells = new HashSet<ulong>();
+                    SurfaceVertices((open.X, open.Y, open.Z), open.Radius,
+                        HealQueue.SpheresNear(entry.Zone, (open.X, open.Y, open.Z), open.Radius, 2 * VoxelSize), cells, entry.Zone, DigLayer, allowed);
+                    foreach (ulong id in cells)
+                    {
+                        Overlay overlay = Of(entry.Zone)[Key(id, DigLayer)];
+                        overlay.Version++;
+                        overlay.Dirty = true;
+                        changed.Add((entry.Zone, id));
+                    }
+                }
+            }
+            return changed;
         }
 
         /// <summary>

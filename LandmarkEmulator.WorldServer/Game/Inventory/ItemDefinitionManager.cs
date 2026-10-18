@@ -28,6 +28,13 @@ namespace LandmarkEmulator.WorldServer.Game.Inventory
             public uint EquipSlotId { get; init; }
             public uint MaxStack { get; init; }
             /// <summary>
+            /// The record's u59 list (client definition +0x1d0, FUN_142c34a10 at the end of FUN_142c176d0) [P]: the item's
+            /// DynamicInputActionSystems ids. A weapon's input chain starts here (Combat.WeaponInputs: system → state
+            /// machine → input action groups → the cast id each mouse button sends), a boot's too (BootAbilities). Empty for
+            /// items without one (tools, armour, materials).
+            /// </summary>
+            public IReadOnlyList<uint> InputSystems { get; init; } = Array.Empty<uint>();
+            /// <summary>
             /// May the item's auto-resupply switch be turned on? The client's own check before it sends Inventory 0x2D
             /// sub 0x0D (FUN_142f1d360, called by the sender FUN_142f261b0) [P]: the definition's u32 at +0x100 and at
             /// +0x28 above 0, its u32 at +0xfc above 0 and its stack size (+0xe4) above 1, the last two through the
@@ -388,6 +395,7 @@ namespace LandmarkEmulator.WorldServer.Game.Inventory
             // +0x184, u32 list → +0x1d0 (FUN_142c34a10); then the LZ4 wrapper FUN_142c19850 reads u32 → +0x238 (grant),
             // +0x23c, +0x240, +0xf8 and a list → +0x248). Read defensively: a short record keeps grant 0.
             uint grantId = 0, grantAmount = 0;
+            var inputSystems = new List<uint>();
             try
             {
                 reader.ReadString();
@@ -395,7 +403,7 @@ namespace LandmarkEmulator.WorldServer.Game.Inventory
                 reader.ReadString();
                 reader.ReadUInt();
                 uint u59 = reader.ReadUInt();
-                for (uint i = 0; i < u59; i++) reader.ReadUInt();
+                for (uint i = 0; i < u59; i++) inputSystems.Add(reader.ReadUInt());
                 grantId = reader.ReadUInt();
                 grantAmount = reader.ReadUInt();
             }
@@ -409,7 +417,7 @@ namespace LandmarkEmulator.WorldServer.Game.Inventory
                 ModelFile = model, TintAlias = tintAlias, Abilities = abilities, PropId = u35[3],
                 DurabilitySet = afterQuality[4], Quality = quality, AmbientEffect = u14[3], NoTrade = (flags0 & 0x80) != 0,
                 UniqueEquip = (flags2 & 0x80) != 0,
-                TypeId = u14[1], GrantId = grantId, GrantAmount = grantAmount,
+                TypeId = u14[1], GrantId = grantId, GrantAmount = grantAmount, InputSystems = inputSystems,
                 // FUN_142f1d360: +0x100 > 0, +0x28 > 0, +0xfc > 0, stack size > 1.
                 AutoResupplyAllowed = ue8[6] > 0 && u20[1] > 0 && ue8[5] > 0 && maxStack > 1
             };

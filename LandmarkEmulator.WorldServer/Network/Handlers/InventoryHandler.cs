@@ -361,7 +361,30 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
             foreach (CharacterItemModel changed in moved)
                 session.SendItem(changed, replace: true);
             session.SendEquipmentChanges(equipmentBefore);
+            // A right-clicked tool also goes on the action bar (loading tip 351, still in the 0.695 Tips.txt: "Right-
+            // Clicking a tool in your Inventory will send it directly to your hotbar for use.").
+            if (moved.Count > 0 && IsRightClickEquip(request) && wanted?.Container == Game.Inventory.Inventory.EquippedContainer)
+                session.PlaceOnActionBar(wanted);
             return moved.Count > 0;
         }
+
+        /// <summary>
+        /// The TransferItem a right-click on a bag item sends when the item is a main-hand item (definition +0x34 = 2:
+        /// pick, axe, extractor, the other gathering tools, weapons) or matches the active tool (+0x16c): Lua
+        /// ClientInventory.ActivateItem (ItemContainerBase.as:303-316, button 1) → FUN_1435dd400 → FUN_143457220 →
+        /// FUN_142f24db0(inventory, guid, in bag, -1) = destination {equipped, any slot}, source {bag, any slot}, the
+        /// guid, quantity -1, no swap [P]. The hotbar's own tool use (FUN_14345af10 → FUN_14345afe0) and an armour
+        /// right-click name the main-hand slot and swap instead, a drag names both slots: none of them is this.
+        /// In 0.589 the same branch put the item on the action bar on the client (FUN_1433aa0c0 → FUN_1433a0b80);
+        /// 0.695 replaced that call with this equip, so the action bar slot is the server's part (<see
+        /// cref="WorldSession.PlaceOnActionBar"/>) [I: live's reply is not captured; the tip and the 0.589 client say what
+        /// the player saw].
+        /// </summary>
+        internal static bool IsRightClickEquip(TransferItemRequest request)
+            => request.Destination.Container == Game.Inventory.Inventory.EquippedContainer
+               && request.Destination.Slot == TransferItemRequest.AnySlot
+               && request.Source.Container == Game.Inventory.Inventory.BagContainer
+               && request.Source.Slot == TransferItemRequest.AnySlot
+               && !request.Swap;
     }
 }

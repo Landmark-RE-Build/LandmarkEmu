@@ -209,7 +209,7 @@ namespace LandmarkEmulator.WorldServer.Game
             ["terminal"] = "terminal <hub|c<index>|hex node> [open 0|1]",
             ["grantaccess"] = "grantaccess <player> <hex mask>",
             ["ownblock"] = "ownblock [material] [edge voxels]",
-            ["cavecheck"] = "cavecheck [zone]",
+            ["cavecheck"] = "cavecheck [zone|all]",
             ["cellstats"] = "cellstats [x y z]",
             ["clearcell"] = "clearcell <hex cell id>",
             ["weapons"] = "weapons",

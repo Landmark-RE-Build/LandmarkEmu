@@ -154,15 +154,21 @@ namespace LandmarkEmulator.WorldServer.Game
                     var facing = ray is var (o, d) ? o + d * 10f : new System.Numerics.Vector3(attempt.TargetX, attempt.TargetY, attempt.TargetZ);
                     int stage = WeaponAttacks.NextStage(session, attempt.AbilityId);
                     WeaponAttacks.Animation? swing = WeaponAttacks.AttackAnimation(HeldWeapon(session), attempt.AbilityId, stage);
-                    if (swing is { } a)
-                        Emotes.ShowWeaponAttack(session, a.Enter, a.Release, a.ReleaseMs, facing);
-                    else
-                        Emotes.ShowAttack(session, facing);
                     var aimPoint = new System.Numerics.Vector3(attempt.TargetX, attempt.TargetY, attempt.TargetZ);
                     // A charged attack ("Charge a powerful …"): the client charges until the button is let go, then
                     // sends FinishChargedCast; the attack and the cast's answer wait for that (an answer now would end
-                    // the charge: CastSuccess clears the client's charging state, FUN_142d7a370).
-                    if (Combat.WeaponCombat.BeginCharge(session, attempt, HeldWeapon(session), damage, swing, facing))
+                    // the charge: CastSuccess clears the client's charging state, FUN_142d7a370). The others see the
+                    // wind-up now and the strike at the let-go (WeaponCombat.BeginCharge / FinishCharge), as the
+                    // caster's own client gets its strike only with the answer. Until 2026-10-18 the uncharged pair below
+                    // went out first as well, so the others saw the strike ReleaseMs after the press while the caster was
+                    // still charging, then a second strike at the let-go.
+                    bool charged = Combat.WeaponCombat.BeginCharge(session, attempt, HeldWeapon(session), damage, swing, facing);
+                    PressLook look = LookAtPress(charged, swing);
+                    if (look == PressLook.Pair && swing is { } a)
+                        Emotes.ShowWeaponAttack(session, a.Enter, a.Release, a.ReleaseMs, facing);
+                    else if (look == PressLook.Gun)
+                        Emotes.ShowAttack(session, facing);
+                    if (charged)
                         return;
                     // Site games and encounters (players as targets) first; then the held weapon's own attack
                     // (Combat.WeaponCombat: its shape, affinity properties and armour effects); a creature under the
@@ -190,6 +196,14 @@ namespace LandmarkEmulator.WorldServer.Game
                         log.Error(e, $"{session.CharacterName} weapon cast {attempt.AbilityId}: the attack failed; the cast is still answered.");
                     }
                     log.Info($"{session.CharacterName} weapon cast {attempt.AbilityId} ({WeaponAttacks.KindOf(attempt.AbilityId)} stage {stage}, {damage}, animation {swing?.Enter ?? 0}/{swing?.Release ?? 0}) at 0x{target:X}: {(hit ? "hit" : Combat.WeaponCombat.AwaitingSweep(session, attempt) ? "waiting for the client's sweep" : "missed")}.");
+                    // A held channel ("Channel…": Unload, Torrent, Dark Embrace, Consecrate, the Recon volley, the blocking
+                    // stances): confirmed with CastContinue and answered when the button is let go or the channel ends
+                    // (Combat.WeaponCombat channel section); a CastSuccess now would end the client's channel.
+                    if (Combat.WeaponCombat.ChannelOpened(session, attempt))
+                    {
+                        Combat.WeaponCombat.ContinueChannel(session, attempt, swing);
+                        return;
+                    }
                     Answer(session, attempt, animation: swing);
                     return;
                 }
@@ -239,7 +253,13 @@ namespace LandmarkEmulator.WorldServer.Game
                     return;
                 }
                 uint damage = AttackDamage(session, attempt.AbilityId);
-                Emotes.ShowAttack(session, attempt.AimRay(session.Position) is var (ao, ad) ? ao + ad * 10f : aim);
+                // What others see is what the caster's own client is sent (audit 2026-10-18): this cast's answer carries no
+                // animation, so the others get the six-shooters' aim and shot only when the caster holds a weapon of no
+                // animation class (the Gunslinger's Six-Shooters, whose own 1067 comes here: the same look the weapon cast
+                // above gives it); an armour or accessory ability with another weapon or none in hand showed the gun aim
+                // to everyone else while the caster's own screen showed nothing.
+                if (GearAttackLook(HeldWeapon(session)))
+                    Emotes.ShowAttack(session, attempt.AimRay(session.Position) is var (ao, ad) ? ao + ad * 10f : aim);
                 bool hit = InstancedGames.Hit(session, target, attempt.AimRay(session.Position), aim, damage, CombatRange)
                     || Encounters.Hit(session, target, attempt.AimRay(session.Position), aim, damage, CombatRange)
                     || (target != 0 && target != session.PlayerGuid && Creatures.Strike(session, target, damage, CombatRange))
@@ -714,6 +734,26 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <summary>Is the player wielding something that isn't a gathering tool (pick, axe, sickle)?</summary>
         private static bool HoldsWeapon(WorldSession session) => HeldWeapon(session) != null;
 
+        /// <summary>What the others are shown when a weapon cast is pressed (<see cref="LookAtPress"/>).</summary>
+        internal enum PressLook { Nothing, Pair, Gun }
+
+        /// <summary>
+        /// The others' view of a weapon cast at the press: the weapon's Enter / Release pair for an attack that runs at once;
+        /// nothing for a charged one with an animation (WeaponCombat.BeginCharge shows its wind-up, FinishCharge its strike
+        /// at the let-go); the six-shooters' aim and shot (<see cref="Emotes.ShowAttack"/>) for a weapon with no animation
+        /// class, charged or not.
+        /// </summary>
+        internal static PressLook LookAtPress(bool charged, WeaponAttacks.Animation? swing)
+            => swing == null ? PressLook.Gun : charged ? PressLook.Nothing : PressLook.Pair;
+
+        /// <summary>
+        /// Whether a combat-gear ability (an ability listed on the equipped item) shows the six-shooters' aim and shot
+        /// (<see cref="Emotes.ShowAttack"/>) to the others: only with a held weapon that has no animation class
+        /// (WeaponAnimationClasses class 0 / not listed: the Gunslinger's Six-Shooters), as a weapon cast with it does.
+        /// </summary>
+        internal static bool GearAttackLook(ItemDefinitionManager.ItemDefinition held)
+            => held != null && WeaponAttacks.ClassOf(held) == 0;
+
         /// <summary>
         /// The held item if it is a weapon: in the main hand (equipment slot 2) and not a gathering tool. Many weapons
         /// list no abilities of their own (their attacks come from the input table), so the slot decides; chest armour
@@ -961,7 +1001,8 @@ namespace LandmarkEmulator.WorldServer.Game
                 : VoxelDestruction.OutsideSites(zone, near, far);
             uint expected = Terrain.TerrainMaterials.YieldAt(target, session.Position, random, zone);
             // Hole walls in the local biome's material for what is dug (its sand, dirt or rock); the forest set
-            // where the biome tables have none.
+            // where the biome tables have none. Only the old solid-shell dig (dev "digmode 5") uses it: the default
+            // dig leaves the walls the client's own ground (TerrainEdits.SurfaceVertices).
             ushort shell = Terrain.TerrainMaterials.WallMaterialAt(target, expected, zone)
                 ?? (ushort)(expected switch { 46 => 289, 45 => 287, _ => 297 });
             var oreMined = new Dictionary<ushort, int>();

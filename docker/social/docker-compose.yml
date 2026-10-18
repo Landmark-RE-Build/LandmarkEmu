@@ -31,6 +31,8 @@ services:
       ImportFrom: ${SOCIAL_IMPORT_FROM-lmemu_character}
       # Seconds a character who left still counts as online, so a change of world shows no offline / online note.
       PresenceGraceSeconds: ${SOCIAL_PRESENCE_GRACE_SECONDS:-30}
+      # An accepted friend request fills both friends lists (true = live); false = one-way lists. Same line as the worlds.
+      FriendRequestsMutual: ${FRIEND_REQUESTS_MUTUAL:-true}
     expose:
       - "20200"
     networks:

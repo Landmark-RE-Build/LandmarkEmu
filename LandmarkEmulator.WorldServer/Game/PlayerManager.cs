@@ -509,6 +509,7 @@ namespace LandmarkEmulator.WorldServer.Game
             LandmarksOfLandmark.Forget(session);
             LootChests.Forget(session);
             Graveyards.Forget(session);
+            CavernArrivalGuard.Forget(session);
             DailyGoals.Forget(session);
             Combat.WeaponCombat.Forget(session);
             Vaults.Forget(session);
@@ -558,6 +559,7 @@ namespace LandmarkEmulator.WorldServer.Game
             LandmarksOfLandmark.Forget(session);
             LootChests.Forget(session);
             Graveyards.Forget(session);
+            CavernArrivalGuard.Forget(session);
             DailyGoals.Forget(session);
             Combat.WeaponCombat.Forget(session);
             Vaults.Forget(session);

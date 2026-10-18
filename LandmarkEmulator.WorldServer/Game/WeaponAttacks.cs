@@ -313,9 +313,10 @@ namespace LandmarkEmulator.WorldServer.Game
             // 0.81 [N][I]. Cost 70 [W] (26 Apr energy cost down, 25 May energy cost down).
             Add(new Balance(Up2, Down2, new uint[] { 70 }), 3763, 1503);
             // Overcharged Recon Blaster: 25 May basic attack damage up, power attack damage down [N];
-            // Shock and Awe 30 [W]. energy cost over time down is for the follow-up channelled volley, which our
-            // kit doesn't have (open).
-            Add(new Balance(Up, Down, new uint[] { 30 }), 3033);
+            // Shock and Awe 30 [W]. energy cost over time down is for the follow-up channelled volley (the right
+            // mouse's follow-up 1077, Combat.WeaponCombat's PowerFollow): 6 per further shot [I], as Dark Embrace /
+            // Consecrate after their own "over time" decreases.
+            Add(new Balance(Up, Down, new uint[] { 30 }, TickEnergy: 6), 3033);
             // Armored Brawler's Blade: 25 May damage down [N]; Overrun 68 [W] (energy cost up).
             Add(new Balance(Down, Down, new uint[] { 68 }), 3764, 1293);
             // Gunslinger's Six-Shooters: 25 May damage up [N]. Trick Shot 55 [W]; 26 Apr energy cost up, then 25 May first use

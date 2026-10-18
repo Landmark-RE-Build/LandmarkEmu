@@ -1,4 +1,5 @@
 using LandmarkEmulator.WorldServer.Storage;
+using LandmarkEmulator.Internal.Social;
 using LandmarkEmulator.Database.Character.Model;
 using LandmarkEmulator.Shared.Database;
 using LandmarkEmulator.Shared.Network;
@@ -373,9 +374,10 @@ namespace LandmarkEmulator.WorldServer.Game
                         Create(session, reader.ReadString()?.Trim() ?? "");
                         break;
                     case InviteSub:
-                        reader.ReadULong();
-                        reader.ReadULong();
-                        Invite(session, reader.ReadString()?.Trim() ?? "");
+                        if (GuildInvites.TryRead(body, out GuildInvites.Request invite))
+                            Invite(session, invite);
+                        else
+                            log.Debug($"Unreadable guild invite from {session.CharacterName}: {BitConverter.ToString(body)}");
                         break;
                     case InviteReplySub:
                         log.Debug($"Guild invite reply from {session.CharacterName}: {BitConverter.ToString(body)}");
@@ -476,22 +478,29 @@ namespace LandmarkEmulator.WorldServer.Game
 
         /// <summary>
         /// Invites an online player (needs the inviter's CreateGuildInvite permission): the target gets UpdateInvitation,
-        /// and accepts with "/guild_debug accept invite" (or the InviteReply packet).
+        /// and accepts with "/guild_debug accept invite" (or the InviteReply packet). The invitee is found by guid when
+        /// the request carries one (the right-click menu's Guild.Invite: {guild, target guid, ""}) and by name otherwise
+        /// (the Guild window: {guild, 0, typed name}; Internal/Social/GuildInvites.cs).
         /// </summary>
-        private static void Invite(WorldSession session, string name)
+        private static void Invite(WorldSession session, GuildInvites.Request request)
         {
-            WorldSession target = PlayerManager.Snapshot()
-                .FirstOrDefault(p => string.Equals(p.CharacterName, name, StringComparison.OrdinalIgnoreCase));
+            WorldSession target = GuildInvites.Resolve(request, PlayerManager.FindByGuid,
+                n => PlayerManager.Snapshot().FirstOrDefault(p => string.Equals(p.CharacterName, n, StringComparison.OrdinalIgnoreCase)));
+            string name = GuildInvites.ShownName(request, target?.CharacterName);
             Guild guild;
             (ulong Id, ulong Guild, string From, ulong FromGuid, DateTime At) invite;
             lock (sync)
             {
                 guild = GuildOf(session.PlayerGuid);
                 if (guild == null || !Has(guild, session.PlayerGuid, "CreateGuildInvite"))
+                {
+                    log.Debug($"{session.CharacterName}: guild invite ({request.Describe()}) without a guild or CreateGuildInvite: ignored.");
                     return;
+                }
                 if (target == null)
                 {
                     Notify(session, NotifyPlayerNotFound, guild.Model.Name, name);
+                    log.Info($"{session.CharacterName}: guild invite ({request.Describe()}): no such player online.");
                     return;
                 }
                 if (guildOf.ContainsKey(target.PlayerGuid))

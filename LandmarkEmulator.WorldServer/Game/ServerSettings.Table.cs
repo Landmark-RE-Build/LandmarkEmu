@@ -75,6 +75,7 @@ namespace LandmarkEmulator.WorldServer.Game
         private const string SharedNote = "Read by the world and the Environment Server alike from one .env line, so the two always agree: "
             + "change it in .env (an override here would make them disagree).";
         private const string CommerceNote = "With COMMERCE_ADDRESS set, the shared commerce service's own value counts (set it in .env).";
+        private const string SocialNote = "With SOCIAL_ADDRESS set, the shared social service's own value counts (set it in .env).";
         private const string StoreCacheNote = "The store's catalogue and prices are built once, at the first store visit after a start.";
 
         private static readonly Regex Ids = new(@"^\d+(\s*,\s*\d+)*$");
@@ -195,6 +196,7 @@ namespace LandmarkEmulator.WorldServer.Game
             Edit("CreatureWeapons", SettingApply.Now, "true") with { Note = "Read each time a creature is sent to a player (CreatureWeapons.Enabled): creatures already seen keep theirs." },
             Edit("SurfaceGraveyards", SettingApply.Restart, "true"),
             Edit("CavernGraveyardStamps", SettingApply.Restart, "true"),
+            Edit("CavernArrivalRescue", SettingApply.Now, "true") with { Note = "Read at each cavern trip (CavernArrivalGuard.Enabled)." },
             Edit("ProceduralRespawn", SettingApply.Restart, "minmax") with { Choices = new[] { "minmax", "inplace" }, RawType = typeof(string), RawDefault = "minmax" },
             Edit("ProceduralRespawnMinShare", SettingApply.Restart) with { Min = 0, Max = 1, RawType = typeof(double), RawDefault = "0.67" },
             Edit("ProceduralPlacement", SettingApply.Restart) with { RawType = typeof(bool), RawDefault = "false" },
@@ -251,6 +253,8 @@ namespace LandmarkEmulator.WorldServer.Game
             Edit("BuildMenuPropName", SettingApply.Now) with { Note = "No source shows live doing it; on is this server's choice." },
             Edit("ChestAccountCap", SettingApply.Now, "0") with { Min = 0, Max = 100000 },
             Edit("FriendTeleportCooldownSeconds", SettingApply.Now, "0") with { Min = 0, Max = 86400 },
+            Edit("FriendRequestsMutual", SettingApply.Now, "true") with { Note = SocialNote + " Read at each accepted request (Friends.HandleResponse); "
+                + "friends already made stay as they are." },
             Edit("StoryPosePersists", SettingApply.Now, "true"),
             Edit("PlaceOpensBuildMode", SettingApply.Now, "false") with { Note = "On is this server's choice (asked for by the user); live never opened Build Mode for it." },
             Edit("DayCycleSpeed", SettingApply.Restart, "8") with { Min = 0.01, Max = 10000, Note = "Read at start-up (WorldClock.DefaultCycleSpeed)." },

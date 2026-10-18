@@ -10,7 +10,7 @@ Run from `dev_commands.txt` or the admin menu's *Any command* (see [Running dev 
 |---|---|---|---|
 | `carve` | `carve <dx> <dz> <radius dm> [dy]` | Console / admins | Carve a sphere at the ground next to the first player. |
 | `carvefwd` | `carvefwd <ahead m> <right m> <radius dm>` | Console / admins | Carve in front of the player (as they face), for screenshots of holes from the default camera. |
-| `cavecheck` | `cavecheck [zone]` | Console / admins | Does every cavern entry point of the landscape have a floor (Caves.CheckFloors)? |
+| `cavecheck` | `cavecheck [zone\|all]` | Console / admins | Does every cavern entry point of the landscape have a floor (Caves.CheckFloors), and where do its cavern graveyards' arrivals stand: on the plinth, the client's own floor under them, their depth below the ground, how many random trips may use (Graveyards.CheckReport). all = every landscape with cavern graveyards, in the background. |
 | `cavelands` | `cavelands [zone]` | Console / admins | Every landscape with Chaos Caverns and where its outposts stand; with a zone, its outposts are queued for placement now (background, one at a time). |
 | `cellstats` | `cellstats [x y z]` | Console / admins | What the stored layers of the cell at the player (or a local point) hold. |
 | `clearcell` | `clearcell <hex cell id>` | Console / admins | Drop every override in one terrain cell on the player's landscape. |

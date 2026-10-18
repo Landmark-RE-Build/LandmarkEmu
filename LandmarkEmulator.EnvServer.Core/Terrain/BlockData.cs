@@ -179,7 +179,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 // of a surface, which is what keeps a sphere round and a line's slope smooth; without them the server's
                 // copy of the cell comes back blocky / saw-toothed. The client meshes its own (its cache holds them), so
                 // they are kept (WorldServer.json KeepVertexOnlyVoxels, default on; dev "vertexonly"). The server
-                // never writes ones of its own.
+                // writes its own only on the walls of dug holes (dig layer, TerrainEdits.SurfaceVertices).
                 if ((flag & 1) == 0 && (flag & 2) != 0)
                 {
                     System.Threading.Interlocked.Increment(ref VertexOnlySeen);

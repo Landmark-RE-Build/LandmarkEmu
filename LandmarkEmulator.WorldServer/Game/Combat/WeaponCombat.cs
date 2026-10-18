@@ -13,9 +13,10 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
     /// Launch weapon combat (wiki "Combat", "Weapons", "Affinity", the weapon pages; the client's own texts): every
     /// weapon has an affinity and two named attacks — Basic (left mouse) and Power (right mouse) — whose descriptions
     /// say what they hit and which affinity property they trigger, e.g. Staff of Frozen Sorrow "Basic Attack: Shatter"
-    /// (574445/574446) and "Power Attack: Blizzard" (574447/574448). The cast ids are the same for every weapon (the
-    /// client's input table: 760 basic, 761 power …, see <see cref="WeaponAttacks"/>), so the live server applied the
-    /// held weapon's attack; this class does the same from <see cref="Kits"/>. A kit may also have a Special attack
+    /// (574445/574446) and "Power Attack: Blizzard" (574447/574448). Each weapon's buttons send its own cast ids (the
+    /// client's input chain, <see cref="WeaponInputs"/>: e.g. 1043 / 1045 left, 1044 right for that staff), which name
+    /// no attack, so the live server applied the held weapon's attack by button; this class does the same from
+    /// <see cref="Kits"/> (<see cref="Kit"/> for the proof of left = Basic, right = Power). A kit may also have a Special attack
     /// (E, input trigger 11): only the four never-live weapons have an E cast in the client's input table (OPEN-LEADS
     /// L163); Desperado's Deadly Arsenal has three named attacks for its three casts (see <see cref="Kit"/>).
     /// <para>
@@ -23,8 +24,10 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
     /// server-side and is lost): shapes (reach, arc), damage split, durations and chances — kept as named numbers here
     /// and in <see cref="Statuses.Defs"/>. Charged attacks ("Charge a powerful …") get the charged kind in their caster
     /// info, so the client charges while the button is held and sends FinishChargedCast on release; the server times the
-    /// hold (damage 60-100 %, "fully charged" from <see cref="MaxChargeSeconds"/>). Channels are a few timed hits. Frenzy ("attacks faster") and Supercharge ("cost
-    /// more energy") change the attacks' cast time and Energy cost in the caster info the client paces itself by.
+    /// hold (damage 60-100 %, "fully charged" from <see cref="MaxChargeSeconds"/>). Channels ("Channel …") get the
+    /// channelled kind: they last while the button is held, a few timed hits at most (the channel section). Frenzy
+    /// ("attacks faster") and Supercharge ("cost more energy") change the attacks' cast time and Energy cost in the
+    /// caster info the client paces itself by.
     /// </para>
     /// </summary>
     public static partial class WeaponCombat
@@ -61,27 +64,45 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
         /// base weapon damage × the kind's multiplier; 0 = the usual damage. <paramref name="Primer"/>: a state on the
         /// player that makes this use the attack's stronger form (<see cref="Swing.Primed"/>; Dirty Fighting), whose hit
         /// is <paramref name="PrimedRow"/> when that is another row (0 = <paramref name="DamageRow"/>).
+        /// <paramref name="Channel"/>: a held channel (the attack's text begins "Channel…" / "Chanel…" [P text_695]): the
+        /// caster info carries the channelled kind, so the client keeps the cast open while the button is held and sends
+        /// CancelCast when it is let go (<see cref="WeaponInputs"/>); the hits (<paramref name="Ticks"/> at most) come
+        /// while it is held, and a blocking stance lasts while it is held (see the channel section below).
         /// </summary>
         public sealed record Attack(uint Name, uint Description, Shape Shape, float Range, float Size, bool Charged = false,
             int Ticks = 1, int TickMs = 400, Action<Hit> OnHit = null, Action<Swing> After = null, Status? Counter = null,
             int MaxTargets = 0, uint Effect = 0, float ChargeSeconds = 0f, bool Immune = false, bool Series = false,
-            uint DamageRow = 0, Status? Primer = null, uint PrimedRow = 0);
+            uint DamageRow = 0, Status? Primer = null, uint PrimedRow = 0, bool Channel = false);
 
         /// <summary>
-        /// A weapon's affinity and its attacks: Basic (left mouse), Power (right mouse) and, for a weapon whose input
-        /// group has an E cast (trigger 11), an optional <paramref name="Special"/>. Without one, an E cast runs the
-        /// Power attack (<see cref="AttackFor"/>).
+        /// A weapon's affinity and its attacks: Basic (left mouse and its combo follow-up), Power (right mouse) and, for a
+        /// weapon whose input group has an E cast (trigger 11), an optional <paramref name="Special"/>. Without one, an E
+        /// cast runs the Power attack (<see cref="AttackFor"/>). <paramref name="PowerFollow"/>: what the right mouse's
+        /// follow-up cast (the second press while its follow-up state is open, WeaponInputs step 1, e.g. Overcharged Recon
+        /// Blaster 779 → 1077) runs when that is another attack than the first; null = the Power attack again.
+        /// <para>
+        /// Which button is which is the client's [P]: every weapon entry's DISPLAY_ORDER is 1 for Primary (left) and 2 for
+        /// Secondary (right); the seven weapons whose "Basic Attack" text begins "Charge…" are exactly the seven whose
+        /// left-click follow-up state stays open longer (1.9-2.45 s, room for a second charge; every other weapon 1.4 s);
+        /// the three "Power Attack" texts that speak of using it again (Trick Shot "Dashing again", Shock and Awe
+        /// "activate this attack again", Rolling Thunder "a series of leaping attacks") are exactly the three weapons whose
+        /// right click has follow-up states (InputActionGroupEntries 423, 419, 443-444). Wiki Weapons: "Primary (default:
+        /// Left mouse button), Secondary (default: Right mouse button)"; the weapon pages list Basic then Power.
+        /// </para>
         /// </summary>
-        public sealed record Kit(Affinity Affinity, Attack Basic, Attack Power, uint Icon, Attack Special = null);
+        public sealed record Kit(Affinity Affinity, Attack Basic, Attack Power, uint Icon, Attack Special = null,
+            Attack PowerFollow = null);
 
         /// <summary>
         /// The attack of a kit that a cast kind runs: Special (E) the kit's own Special when it has one, else its Power
-        /// attack; Power and its combo stages the Power attack; everything else the Basic attack.
+        /// attack; Power the Power attack; the right mouse's follow-up the kit's <see cref="Kit.PowerFollow"/> (else the
+        /// Power attack); everything else (left mouse, its follow-up) the Basic attack.
         /// </summary>
         public static Attack AttackFor(Kit kit, WeaponAttacks.Kind kind) => kind switch
         {
             WeaponAttacks.Kind.Special => kit.Special ?? kit.Power,
-            WeaponAttacks.Kind.Power or WeaponAttacks.Kind.PowerCombo => kit.Power,
+            WeaponAttacks.Kind.PowerCombo => kit.PowerFollow ?? kit.Power,
+            WeaponAttacks.Kind.Power => kit.Power,
             _ => kit.Basic
         };
 
@@ -179,7 +200,7 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             Add(new Kit(Affinity.Fire,
                 new Attack(573122, 573124, Shape.Cone, 5f, 60f,                                       // Cinder Strike
                     OnHit: h => { if (Statuses.Has(h.Target, Status.Burn)) Grant(h.Swing, Status.Frenzy); }),
-                new Attack(573125, 573126, Shape.Block, 4f, 60f, Counter: Status.Burn), 12211), 3030); // Molten Rebuke
+                new Attack(573125, 573126, Shape.Block, 4f, 60f, Counter: Status.Burn, Channel: true), 12211), 3030); // Molten Rebuke
 
             // Water — Flow, Surge, Freeze.
             Add(new Kit(Affinity.Water,
@@ -203,7 +224,7 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                         foreach (ulong t in Pierce(s, 35f, 1.5f).Where(t => !s.Hits.Contains(t)))
                             Strike(s, t, s.Damage, then: TidalBurstHit);
                     }),
-                new Attack(574719, 574720, Shape.Cone, 15f, 25f, Ticks: 4, TickMs: 300,              // Torrent
+                new Attack(574719, 574720, Shape.Cone, 15f, 25f, Ticks: 4, TickMs: 300, Channel: true, // Torrent
                     OnHit: h => { if (h.InARow >= 2) Apply(h, Status.Freeze); }), 12207), 3036);
             Add(new Kit(Affinity.Water,
                 new Attack(576334, 576335, Shape.Cone, 6f, 45f,                                       // Fracture
@@ -235,7 +256,14 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                 // Shock and Awe: 25 May 2016, the first shot reaches as far as the later ones, but its area is
                 // narrower: 15 m (the volley's reach) and ±30° instead of 10 m / ±50° [I].
                 new Attack(574723, 574724, Shape.Cone, 15f, 30f,                                      // Shock and Awe
-                    OnHit: h => { if (Statuses.Has(h.Target, Status.Electrocute)) Grant(h.Swing, Status.Supercharge); }), 12209), 3033);
+                    OnHit: h => { if (Statuses.Has(h.Target, Status.Electrocute)) Grant(h.Swing, Status.Supercharge); }), 12209,
+                // "For a short time after leaping you can activate this attack again to channel a rapid volley of shots at
+                // your opponents" (574724): the right mouse's follow-up 1077 (InputActionGroupEntries 419, state 128 open
+                // from 0.45 s for 1.85 s after 779) [P]. A held channel; 25 May 2016 "Decreased energy cost over time"
+                // (P5582) is its per-shot cost (WeaponAttacks.Balance). Reach / arc / five shots 0.2 s apart are ours [I];
+                // the volley keeps Shock and Awe's Supercharge rule.
+                PowerFollow: new Attack(574723, 574724, Shape.Cone, 15f, 20f, Ticks: 5, TickMs: 200, Channel: true,  // the volley
+                    OnHit: h => { if (Statuses.Has(h.Target, Status.Electrocute)) Grant(h.Swing, Status.Supercharge); })), 3033);
             Add(new Kit(Affinity.Lightning,
                 new Attack(576330, 576331, Shape.FirstHit, 35f, 0f, Charged: true,                    // Crackling Orb
                     OnHit: h => { if (h.Swing.Charged) Grant(h.Swing, Status.Supercharge); }),
@@ -258,7 +286,7 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                 new Attack(574454, 574455, Shape.Path, 8f, 3f, Charged: true,                         // Overrun
                     OnHit: h => { if (h.Swing.Charged && h.Swing.Hits.Count == 1) Apply(h, Status.Crush); }), 12213), 3764, 1293);
             Add(new Kit(Affinity.Earth,
-                new Attack(574876, 574877, Shape.Cone, 20f, 20f, Ticks: 3, TickMs: 250,               // Unload
+                new Attack(574876, 574877, Shape.Cone, 20f, 20f, Ticks: 3, TickMs: 250, Channel: true, // Unload
                     OnHit: h => Apply(h, Status.Exposed)),
                 // Trick Shot, 26 Apr 2016: its projectiles pass through several opponents — no 3-target cap any more;
                 // it crushes opponents Unload hit recently, and a second use after a hit grants Harden (kept below).
@@ -291,7 +319,7 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             Add(new Kit(Affinity.Affliction,
                 new Attack(576304, 576305, Shape.Cone, 5f, 60f,                                       // Enfeeble
                     OnHit: h => { if (Statuses.Has(h.Target, Status.Rot)) Apply(h, Status.Cripple); }),
-                new Attack(576306, 576307, Shape.Block, 4f, 60f, Counter: Status.Rot), 12205), 4091); // Corrupting Revenge
+                new Attack(576306, 576307, Shape.Block, 4f, 60f, Counter: Status.Rot, Channel: true), 12205), 4091); // Corrupting Revenge
             // Diabolical Scientist's Raygun. The two attacks' rules were swapped: the wiki page gives "Ooze Bolt: Lob a
             // bolt of contaminated ooze … explodes on impact dealing damage and inflicting Rot on all opponents in the
             // area" (client text 573035) and "Sludge Storm: Charge a powerful attack … When fully charged this attack
@@ -316,7 +344,7 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             Add(new Kit(Affinity.Shadow,
                 new Attack(574460, 574461, Shape.Cone, 6f, 50f, Charged: true,                        // Shadow Rend
                     OnHit: h => { if (h.Swing.Charged) Condemn(h); }),
-                new Attack(574462, 574463, Shape.Cone, 6f, 50f, Ticks: 4, TickMs: 400,                // Dark Embrace
+                new Attack(574462, 574463, Shape.Cone, 6f, 50f, Ticks: 4, TickMs: 400, Channel: true, // Dark Embrace
                     OnHit: h => { if (Statuses.Has(h.Target, Status.Condemn)) Apply(h, Status.Torment); }), 12217), 3766, 1528);
             Add(new Kit(Affinity.Shadow,
                 new Attack(574880, 574882, Shape.Path, 8f, 3f,                                        // Hateseeker
@@ -353,7 +381,7 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             Add(new Kit(Affinity.Radiance,
                 new Attack(574884, 574885, Shape.Cone, 5f, 60f, Charged: true,                        // Smite
                     After: s => { if (s.Charged && s.Hits.Count > 0) Grant(s, Status.Exalt); }),
-                new Attack(574886, 574887, Shape.Around, 6f, 0f, Ticks: 5, TickMs: 400, Effect: 10300, // Consecrate
+                new Attack(574886, 574887, Shape.Around, 6f, 0f, Ticks: 5, TickMs: 400, Effect: 10300, Channel: true, // Consecrate
                     After: s => Consecrate(s)), 12215), 3037);
             Add(new Kit(Affinity.Radiance,
                 new Attack(576314, 576315, Shape.Cone, 5f, 60f,                                       // Sanctify
@@ -854,6 +882,180 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                     FinishCharge(p, null);
         }
 
+        // ---- Held channels (Unload, Torrent, Dark Embrace, Consecrate, the Recon volley, the blocking stances) ----------
+        //
+        // The client's side [P, 0.695]: the caster info's channelled kind (MovementEffects.ChannelledKind 0x216b5dcb) makes
+        // the cast start (FUN_142e0f810) set the cast mode +0x2b0 = 2 and the input manager (UpdateCastState
+        // FUN_1434793b0) its state 3; while the button stays down nothing is needed from the server (CastContinue,
+        // FUN_142e17b90, confirms without resetting the cast; a CastSuccess would end it). When the button comes up,
+        // GiveTime (FUN_1434783f0, "GiveTime: Channel: end ability") calls CancelCast FUN_142e0f5a0(manager, 0), which sends
+        // CancelCast 0x27/0x0F {bool 0}. A weapon channel runs no client-executed effect (+0x2b8 empty), so that CancelCast
+        // leaves the current ability (+0x2a0) set and the client refuses every cast until the server answers: the release
+        // is answered at once with CastSuccess (Force off: it acts only while the ability is still the current one) and
+        // AbilityEnd. Ending it from the server (last hit, out of Energy, death, the block used up) is the same answer;
+        // the client's input manager then finds the cast mode back at 0 and sends nothing more.
+        // 11 May 2016 hotfix notes (P5273): "Secondary channeled abilities should now show a cast bar" — the right mouse's
+        // channels were channelled casts on live [P]. The number of hits (Attack.Ticks) and the stance's length
+        // (Status.Block) are ours and act as the channel's longest hold [I].
+
+        private sealed class WeaponChannel
+        {
+            public AbilityCastAttempt Cast;
+            public Swing Swing;
+            public bool Block;
+            public DateTime Started;
+            public int LongestMs;
+        }
+
+        private static readonly Dictionary<WorldSession, WeaponChannel> channels = new();
+        /// <summary>The cast guid of each player's last channel opened (kept after it ends: the cast's own handler asks).</summary>
+        private static readonly Dictionary<WorldSession, ulong> lastChannelCast = new();
+
+        /// <summary>Is this cast id a held channel of this weapon (the channelled kind in its caster info)?</summary>
+        public static bool IsChannel(ItemDefinitionManager.ItemDefinition weapon, uint ability)
+            => AttackOf(weapon, ability)?.Channel == true;
+
+        private static void OpenChannel(WorldSession p, AbilityCastAttempt cast, Swing swing, bool block)
+        {
+            Attack a = swing.Attack;
+            int longest = block ? (int)(Statuses.Defs[Status.Block].Seconds * 1000) : a.TickMs * Math.Max(1, a.Ticks);
+            WeaponChannel old;
+            lock (sync)
+            {
+                channels.Remove(p, out old);
+                channels[p] = new WeaponChannel { Cast = cast, Swing = swing, Block = block, Started = DateTime.UtcNow, LongestMs = longest };
+                lastChannelCast[p] = cast.CastGuid;
+            }
+            // An older channel still on record (its CancelCast lost): the client replaced it with this cast.
+            if (old != null)
+                old.Swing.Stopped = true;
+            log.Debug($"{p.CharacterName} channels {cast.AbilityId}{(block ? " (stance)" : "")}.");
+        }
+
+        /// <summary>
+        /// Was this cast taken as a held channel? Then the cast's handler confirms it (<see cref="ContinueChannel"/>) instead
+        /// of answering: an answer would end the client's channel.
+        /// </summary>
+        public static bool ChannelOpened(WorldSession p, AbilityCastAttempt cast)
+        {
+            lock (sync)
+                return lastChannelCast.TryGetValue(p, out ulong guid) && guid == cast.CastGuid;
+        }
+
+        /// <summary>
+        /// Confirms a held channel to the caster's client: CastContinue (it never resets the cast) carrying the attack's
+        /// Enter selection, then its Release after the attack time, as the two CastSuccess of an instant attack do
+        /// (Abilities.Answer). Nothing goes out once the channel has ended.
+        /// </summary>
+        public static void ContinueChannel(WorldSession p, AbilityCastAttempt cast, WeaponAttacks.Animation? animation)
+        {
+            if (!ChannelStillOpen(p, cast))
+                return;
+            p.EnqueueMessage(Continue(p, cast, animation?.Enter ?? 0));
+            if (animation is { Release: not 0 } a)
+                Later(a.ReleaseMs, () =>
+                {
+                    if (!p.Disconnected && ChannelStillOpen(p, cast))
+                        p.EnqueueMessage(Continue(p, cast, a.Release));
+                });
+        }
+
+        private static bool ChannelStillOpen(WorldSession p, AbilityCastAttempt cast)
+        {
+            lock (sync)
+                return channels.TryGetValue(p, out WeaponChannel c) && c.Cast.CastGuid == cast.CastGuid;
+        }
+
+        private static AbilityCastContinue Continue(WorldSession p, AbilityCastAttempt cast, uint animation) => new()
+        {
+            CasterGuid = p.PlayerGuid,
+            CastGuid = cast.CastGuid,
+            CastHash = cast.CastHash,
+            AbilityId = cast.AbilityId,
+            AnimationId = animation
+        };
+
+        /// <summary>
+        /// CancelCast with a weapon channel open: the button was let go (or another input interrupted it). The remaining
+        /// hits are dropped, a stance comes down, and the cast is answered now. False when no channel was open.
+        /// </summary>
+        public static bool ReleaseChannel(WorldSession p)
+        {
+            WeaponChannel c;
+            lock (sync)
+                if (!channels.Remove(p, out c))
+                    return false;
+            c.Swing.Stopped = true;
+            if (c.Block)
+                Statuses.Remove(p.PlayerGuid, Status.Block);
+            AnswerChannel(p, c.Cast);
+            log.Info($"{p.CharacterName} channel {c.Cast.AbilityId} released after {(DateTime.UtcNow - c.Started).TotalSeconds:0.00} s.");
+            return true;
+        }
+
+        /// <summary>The server ends a player's channel (only the one this swing belongs to): the cast's answer.</summary>
+        private static void EndChannel(WorldSession p, Swing swing, string why)
+        {
+            WeaponChannel c;
+            lock (sync)
+            {
+                if (!channels.TryGetValue(p, out c) || !ReferenceEquals(c.Swing, swing))
+                    return;
+                channels.Remove(p);
+            }
+            swing.Stopped = true;
+            if (!p.Disconnected)
+                AnswerChannel(p, c.Cast);
+            log.Info($"{p.CharacterName} channel {c.Cast.AbilityId} ended: {why}.");
+        }
+
+        /// <summary>A blocking stance came down on its own (it caught a hit, it ran out, death): its channel ends.</summary>
+        private static void StanceEnded(WorldSession p)
+        {
+            Swing swing;
+            lock (sync)
+                swing = channels.TryGetValue(p, out WeaponChannel c) && c.Block ? c.Swing : null;
+            if (swing != null)
+                EndChannel(p, swing, "the stance came down");
+        }
+
+        /// <summary>
+        /// A channel's final answer: CastSuccess with Force off (ends the client's channel and its casting state only while
+        /// the ability is still its current cast, FUN_142e18340), then AbilityEnd — as MovementEffects ends Shift's sprint.
+        /// </summary>
+        private static void AnswerChannel(WorldSession p, AbilityCastAttempt cast)
+        {
+            p.EnqueueMessage(new AbilityCastSuccess
+            {
+                CasterGuid = p.PlayerGuid,
+                CastGuid = cast.CastGuid,
+                CastHash = cast.CastHash,
+                AbilityId = cast.AbilityId,
+                Force = false
+            });
+            Abilities.SendAbilityEnd(p, cast.CastGuid, cast.CastHash, cast.AbilityId);
+        }
+
+        /// <summary>A channel nobody ended (a lost CancelCast, a rule that threw): ended 3 s after its longest hold.</summary>
+        private static void ExpireChannels(DateTime now)
+        {
+            List<(WorldSession P, Swing S)> stale;
+            lock (sync)
+                stale = channels.Where(c => (now - c.Value.Started).TotalMilliseconds > c.Value.LongestMs + 3000)
+                    .Select(c => (c.Key, c.Value.Swing)).ToList();
+            foreach (var (p, swing) in stale)
+                EndChannel(p, swing, "expired");
+        }
+
+        /// <summary>Dev: the player's open weapon channel, or null.</summary>
+        public static string DevChannel(WorldSession p)
+        {
+            lock (sync)
+                return channels.TryGetValue(p, out WeaponChannel c)
+                    ? $"weapon channel {c.Cast.AbilityId}{(c.Block ? " (stance)" : "")} for {(DateTime.UtcNow - c.Started).TotalSeconds:0.0} s"
+                    : null;
+        }
+
         /// <summary>
         /// Dev / test: an attack aimed at the nearest creature within 20 m (or straight ahead); <paramref name="special"/>
         /// runs an E cast (the kit's Special attack, else its Power attack).
@@ -862,7 +1064,11 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
         {
             var weapon = Abilities.HeldWeapon(player);
             WeaponAttacks.Kind wanted = special ? WeaponAttacks.Kind.Special : power ? WeaponAttacks.Kind.Power : WeaponAttacks.Kind.Basic;
-            uint ability = WeaponAttacks.CastIds.FirstOrDefault(id => WeaponAttacks.KindOf(id) == wanted);
+            // The held weapon's own cast for that button (WeaponInputs), else the first id of that kind in the table.
+            uint ability = WeaponInputs.CastOf(weapon, special ? WeaponInputs.Button.Tertiary : power ? WeaponInputs.Button.Secondary
+                : WeaponInputs.Button.Primary);
+            if (ability == 0)
+                ability = WeaponAttacks.CastIds.FirstOrDefault(id => WeaponAttacks.KindOf(id) == wanted);
             Vector3 eye = player.Position + new Vector3(0f, 1.6f, 0f);
             ulong near = Creatures.InSight(player.ZoneId, player.Position, 20f).FirstOrDefault();
             Vector3 dir = near != 0 && Creatures.PositionOfGuid(near) is Vector3 at ? Vector3.Normalize(at + new Vector3(0f, 1f, 0f) - eye) : Facing(player);
@@ -880,6 +1086,8 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             string Of(ulong g) => string.Join(",", Enum.GetValues<Status>().Where(s => Statuses.Has(g, s))
                 .Select(s => Statuses.Stacks(g, s) > 1 ? $"{s}x{Statuses.Stacks(g, s)}" : s.ToString()));
             parts.Add($"self [{Of(player.PlayerGuid)}] Energy {WeaponAttacks.EnergyOf(player)}/{WeaponAttacks.EnergyCap(player):0}");
+            if (DevChannel(player) is string held)
+                parts.Add(held);
             foreach (ulong c in Creatures.InSight(player.ZoneId, player.Position, 25f))
                 parts.Add($"0x{c:X} {Creatures.HealthFraction(c):P0} [{Of(c)}]");
             return string.Join("; ", parts);
@@ -938,9 +1146,14 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                 Run = run,
                 Primed = primed
             };
+            // A held channel (cast by the client with the channelled kind): open until the button is let go, the last hit,
+            // the Energy running out or (a stance) the block being used up. Dev and test uses (no cast) run as before.
+            bool channel = cast != null && attack.Channel;
             if (attack.Shape == Shape.Block)
             {
                 Statuses.Apply(player.PlayerGuid, Status.Block, player);
+                if (channel)
+                    OpenChannel(player, cast, swing, block: true);
                 return false;
             }
             // Nightfall, Terminal Voltage: immune during the leap; Rolling Thunder's third leap "briefly makes you immune".
@@ -951,6 +1164,8 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             // WeaponCombat.Targeters.cs. Dev swings and casts without a client targeter are resolved here, as before.
             if (cast != null && DeferToSweep(swing, ray, weapon, ability, cast))
                 return false;
+            if (channel)
+                OpenChannel(player, cast, swing, block: false);
             Resolve(swing, ray);
             // Channels: every further hit costs the weapon's "energy cost over time" (WeaponAttacks.Balance, 26 Apr /
             // 25 May 2016 notes); the channel stops when the Energy runs out.
@@ -961,10 +1176,16 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                 Later(attack.TickMs * tick, () =>
                 {
                     if (player.Disconnected || Health.IsDead(player) || swing.Stopped)
+                    {
+                        if (channel)
+                            EndChannel(player, swing, swing.Stopped ? "stopped" : "died or left");
                         return;
+                    }
                     if (!WeaponAttacks.TrySpendEnergy(player, tickEnergy))
                     {
                         swing.Stopped = true;
+                        if (channel)
+                            EndChannel(player, swing, "out of Energy");
                         return;
                     }
                     var again = new Swing
@@ -974,8 +1195,13 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                         Ranged = swing.Ranged, Projectile = swing.Projectile, Run = run, Primed = swing.Primed
                     };
                     Resolve(again, ray);
+                    // The channel's last hit: the server ends it even while the button is still held [I: Ticks is our cap].
+                    if (channel && tick == attack.Ticks - 1)
+                        EndChannel(player, swing, "last hit");
                 });
             }
+            if (channel && attack.Ticks <= 1)
+                EndChannel(player, swing, "one hit");
             return swing.Hits.Count > 0;
         }
 
@@ -1395,6 +1621,7 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
         public static void Update(DateTime now)
         {
             ExpireCharges(now);
+            ExpireChannels(now);
             List<Action> due;
             List<Area> ticking;
             lock (sync)
@@ -1594,6 +1821,9 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             // Flow over (expired, death): the Energy maximum drops back to the table's (WeaponAttacks.EnergyCap).
             if (!started && s == Status.Flow)
                 WeaponAttacks.EnergyCapChanged(p);
+            // A held blocking stance that came down by itself (the block caught a hit, it ran out): its channel ends.
+            if (!started && s == Status.Block)
+                StanceEnded(p);
         }
 
         /// <summary>Is this the player's first Power Attack since Exalt started (Lightbringer's Oath)?</summary>
@@ -1643,18 +1873,27 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                 reply.MaxCharge = full;
                 reply.MinCharge = MinChargeSeconds * full / MaxChargeSeconds;
             }
+            else if (a.Channel)
+                // Held while the button is down, CancelCast on release (see the channel section).
+                reply.KindHash = MovementEffects.ChannelledKind;
             // A melee swing: the client runs it as a Sweep targeter and reports the opponents it hits (L170).
             if (SweepOf(weapon, ability) is ClientExecutedTargeter sweep)
                 reply.ExecutedTargeters.Add(sweep);
         }
 
-        /// <summary>Sends the caster info of every weapon cast id again (weapon changed, Frenzy / Supercharge started or ended).</summary>
+        /// <summary>
+        /// Sends the caster info of the held weapon's casts again (weapon changed, Frenzy / Supercharge / Energize started or
+        /// ended): only the ids its own buttons send (<see cref="WeaponInputs"/>: 2-4 replies, e.g. 1043 / 1044 / 1045 for
+        /// the Staff of Frozen Sorrow), not every weapon cast id in the input table (≈120 replies of ~300 bytes before
+        /// 2026-10-18). Every id in the table only when the weapon's chain can't be read (missing tables).
+        /// </summary>
         public static void SendAttackInfo(WorldSession p)
         {
             var weapon = Abilities.HeldWeapon(p);
             if (weapon == null)
                 return;
-            foreach (uint id in WeaponAttacks.CastIds)
+            var ids = WeaponInputs.CastIdsOf(weapon).ToList();
+            foreach (uint id in ids.Count > 0 ? ids : WeaponAttacks.CastIds)
                 p.EnqueueMessage(Network.Handlers.MiscHandler.WeaponAttackInfo(p, weapon, id));
             lock (sync)
                 PaceOf(p).InfoFor = weapon;
@@ -1680,6 +1919,8 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                 paces.Remove(p);
                 areas.RemoveAll(a => a.Source == p);
                 charging.Remove(p);
+                channels.Remove(p);
+                lastChannelCast.Remove(p);
             }
             // The six-shooters' hand (a concurrent map): kept the whole session alive after logout (bughunt-combat.md B9).
             leftHandNext.TryRemove(p, out _);

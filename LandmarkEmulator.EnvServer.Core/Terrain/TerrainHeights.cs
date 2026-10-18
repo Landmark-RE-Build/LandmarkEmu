@@ -121,9 +121,17 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 }
         }
 
+        /// <summary>
+        /// Tests only: a ground of their own (local x, z, landscape → height, or null to use the baked grid), so the dig's
+        /// voxel output can be checked against a known surface (Tests/Rules/DigShapeTests.cs). Never set by the servers.
+        /// </summary>
+        internal static Func<float, float, uint, float?> TestGround;
+
         /// <summary>Ground height at a local x/z (bilinear between samples), or null outside the grid or without one.</summary>
         public static float? HeightAt(float x, float z, uint zone = 0)
         {
+            if (TestGround?.Invoke(x, z, zone) is float test)
+                return test;
             Grid g = GridOf(zone == 0 ? Home : zone);
             if (g == null)
                 return null;

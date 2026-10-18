@@ -145,7 +145,8 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         /// Digs (material 0) or fills a sphere around a local point in the dig layer; returns the cells changed and the
         /// voxels changed. Ore voxels carved are counted in <paramref name="oreMined"/> (their cells in
         /// <paramref name="oreCells"/>). <paramref name="shellMaterial"/>, when given, becomes the material of the hole's
-        /// walls (it stays for later digs).
+        /// walls in the old solid-shell dig (dev "digmode 5"; it stays for later digs); the default dig keeps the ground's
+        /// own material on the walls (vertex-only voxels, TerrainEdits.SurfaceVertices).
         /// <para>
         /// Temporary destruction (0.695 Play Mode sites, TASKS 2.1 / 2.6): <paramref name="allowed"/> (global dm voxel
         /// centre) leaves out voxels where destruction is not allowed; <paramref name="carveBuilds"/> carves building

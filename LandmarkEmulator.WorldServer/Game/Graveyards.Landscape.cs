@@ -159,6 +159,8 @@ namespace LandmarkEmulator.WorldServer.Game
             public int Turns;
             /// <summary>Written into the terrain (now or in an earlier run).</summary>
             public volatile bool Stamped;
+            /// <summary>A cavern graveyard a random trip leaves out, and why (Graveyards.TripProblem); null: trips may use it.</summary>
+            public string TripProblem;
             public ulong Guid => GuidBase | ((ulong)Index << 8);
         }
 
@@ -375,23 +377,11 @@ namespace LandmarkEmulator.WorldServer.Game
             var done = stamped.GetValueOrDefault(zone) ?? new Dictionary<int, ((long X, long Y, long Z) Corner, int Turns)>();
             VoxelTemplate template = StampsEnabled || done.Count > 0 ? CavernTemplateOrNull() : null;
             (uint X, uint Y, uint Z) size = template?.Size ?? SizeOrZero();
-            // The graveyard placements: template 76 whose box is the template's turned size (83 × 22 × 83 voxels =
-            // 332 × 88 × 332 dm on every island; the old continents' 76 is another, smaller graveyard and fails this test).
-            double voxel = TerrainEdits.VoxelSize;
-            var placements = new List<(int Index, RuinSlots.Box Box, int Turns)>();
-            foreach (RuinSlots.ManualTemplate m in RuinSlots.ManualTemplates(path))
-            {
-                int turns = (int)(m.A % 4);
-                (uint X, uint Y, uint Z) turned = VoxelTemplate.TurnedSize(size, turns);
-                if (m.C == CavernTemplateId && size.X > 0 && Math.Abs(m.Box.MaxX - m.Box.MinX - turned.X * voxel) < 1
-                    && Math.Abs(m.Box.MaxY - m.Box.MinY - turned.Y * voxel) < 1 && Math.Abs(m.Box.MaxZ - m.Box.MinZ - turned.Z * voxel) < 1)
-                    placements.Add((m.Index, m.Box, turns));
-            }
+            List<(int Index, RuinSlots.Box Box, int Turns)> placements = GraveyardPlacements(path, size);
             var pieces = new List<Vector3>();
             if (placements.Count > 0)
                 foreach ((_, RuinSlots.Box box, _) in placements)
-                    pieces.Add(new Vector3((float)((box.MinX + PieceFromBox.X - origin.X) / 10), (float)((box.MinY + PieceFromBox.Y - origin.Y) / 10),
-                        (float)((box.MinZ + PieceFromBox.Z - origin.Z) / 10)));
+                    pieces.Add(PieceOf(box));
             else
             {
                 // No placements read (or no template to size them): each Graveyard01 piece, as before.
@@ -410,12 +400,11 @@ namespace LandmarkEmulator.WorldServer.Game
                     (int index, RuinSlots.Box box, int turns) = placements[k];
                     // The template's corner: one voxel below and outside the box minimum (its vertex-only border; the
                     // outposts' rule). A placement stamped before keeps the corner and turn it was stamped with.
-                    (long X, long Y, long Z) corner = ((long)Math.Round(box.MinX / voxel) - 1, (long)Math.Round(box.MinY / voxel) - 1,
-                        (long)Math.Round(box.MinZ / voxel) - 1);
+                    (long X, long Y, long Z) corner = CornerOf(box);
                     bool already = done.TryGetValue(index, out var was);
                     if (already)
                         (corner, turns) = was;
-                    if (PlaceTemplated(zone, template, index, corner, turns, already) is Yard t)
+                    if (PlaceTemplated(zone, template, index, pieces[k], corner, turns, already) is Yard t)
                     {
                         t.Piece = pieces[k];
                         yards.Add(t);
@@ -425,10 +414,15 @@ namespace LandmarkEmulator.WorldServer.Game
                 }
                 Yard onFloor = PlaceOnFloor(zone, pieces[k]);
                 onFloor.Piece = pieces[k];
+                onFloor.TripProblem = EvaluateFloor(k < placements.Count ? placements[k].Index : -1, pieces[k], onFloor.Centre, onFloor.Arrival, zone).Problem;
                 yards.Add(onFloor);
             }
             int stampedCount = yards.Count(y => y.Stamped);
-            log.Info($"Graveyards: {yards.Count} cavern graveyards on landscape {zone} ({templated} from {CavernTemplate}, {stampedCount} stamped before).");
+            var leftOut = yards.Where(y => y.TripProblem != null).GroupBy(y => ProblemKind(y.TripProblem))
+                .Select(g => $"{g.Count()} {g.Key}").ToList();
+            log.Info($"Graveyards: {yards.Count} cavern graveyards on landscape {zone} ({templated} from {CavernTemplate}, {stampedCount} stamped before); "
+                + $"{yards.Count(y => y.TripProblem == null)} open to Underground Adventure trips"
+                + (leftOut.Count > 0 ? $" (left out: {string.Join(", ", leftOut)})." : "."));
             return yards;
         }
 
@@ -467,32 +461,32 @@ namespace LandmarkEmulator.WorldServer.Game
         /// + turned position, its own rotation then the turn; the outposts' rule, without any ground snap: the stamped plinth
         /// is what they stand on), the Graveyard Centerpiece 1518 first and carrying the graveyard area (so it is the
         /// template's own centrepiece, never a second one). The arrival is the area's offset (0, ·, 6) turned with the
-        /// template [I], on the first standable voxel of the stamped result in that column. Null without a centrepiece.
+        /// template [I], <see cref="ArrivalAboveSurface"/> above the first standable voxel of the stamped result in that
+        /// column (<see cref="EvaluateTemplated"/>, which also decides whether random trips use it). Null without a
+        /// centrepiece.
         /// </summary>
-        private static Yard PlaceTemplated(uint zone, VoxelTemplate template, int placement, (long X, long Y, long Z) corner, int turns, bool stampedBefore)
+        private static Yard PlaceTemplated(uint zone, VoxelTemplate template, int placement, Vector3 piece, (long X, long Y, long Z) corner,
+            int turns, bool stampedBefore)
         {
             VoxelTemplate.Prop centre = template.Props.FirstOrDefault(p => p.PropId == CentrepieceProp);
             if (centre == null)
                 return null;
-            double voxel = TerrainEdits.VoxelSize;
-            float metre = (float)(voxel / 10);
-            var origin = TerrainStore.ZoneOrigin;
-            var cornerLocal = new Vector3((float)((corner.X * voxel - origin.X) / 10), (float)((corner.Y * voxel - origin.Y) / 10),
-                (float)((corner.Z * voxel - origin.Z) / 10));
+            float metre = (float)(TerrainEdits.VoxelSize / 10);
+            Vector3 cornerLocal = CornerLocal(corner);
             Quaternion turn = VoxelTemplate.Turn(turns);
             Vector3 At(Vector3 local)
             {
                 (double x, double z) = template.TurnPoint(local.X / metre, local.Z / metre, turns);
                 return cornerLocal + new Vector3((float)(x * metre), local.Y, (float)(z * metre));
             }
+            ArrivalCheck check = EvaluateTemplated(template, centre, placement, piece, corner, turns, zone);
             var yard = new Yard
             {
                 Zone = zone, Cavern = true, Templated = true, Placement = placement, Corner = corner, Turns = turns, Stamped = stampedBefore,
-                Centre = At(centre.Position)
+                Centre = check.Centre, TripProblem = check.Problem
             };
             Register(yard);
-            Vector3 aim = yard.Centre + Vector3.Transform(ArrivalOffset, turn);
-            yard.Arrival = StandingAt(template, corner, cornerLocal, turns, aim, zone) ?? yard.Centre + new Vector3(0f, 1.5f, 0f);
+            yard.Arrival = check.Arrival ?? yard.Centre + new Vector3(0f, 1.5f, 0f);
             yard.Props.Add(Spawn(yard, 0, CentrepieceProp, centre.ModelId, yard.Centre,
                 Quaternion.Normalize(Quaternion.Concatenate(centre.Rotation, turn)), centre.Scale, GraveyardArea));
             int n = 1;
@@ -517,10 +511,8 @@ namespace LandmarkEmulator.WorldServer.Game
                 int s = template.SampleAt(dx, dy, dz, turns);
                 return s >= 0 ? s : CavePieces.IsAir((corner.X + dx + 0.5) * voxel, (corner.Y + dy + 0.5) * voxel, (corner.Z + dz + 0.5) * voxel, zone) ? 0 : 1;
             }
-            for (long y = 1; y < template.Size.Y + 10; y++)
-                if (State(y - 1) == 1 && State(y) == 0 && State(y + 2) == 0 && State(y + 4) == 0)
-                    return new Vector3(cornerLocal.X + dx * metre, cornerLocal.Y + y * metre, cornerLocal.Z + dz * metre);
-            return null;
+            return StandableIndex(y => State(y) == 1, 1, template.Size.Y + 10) is long y
+                ? new Vector3(cornerLocal.X + dx * metre, cornerLocal.Y + y * metre, cornerLocal.Z + dz * metre) : null;
         }
 
         private static VoxelTemplate CavernTemplateOrNull()

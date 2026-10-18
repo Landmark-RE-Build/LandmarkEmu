@@ -417,10 +417,21 @@ namespace LandmarkEmulator.WorldServer.Network
                 return;
             // Tool stats (harvesting area = the mining ring, harvest damage, tier) follow the held tool.
             SendCalculatedStats();
-            foreach (WorldSession session in Game.PlayerManager.Snapshot().Append(this).Distinct())
+            foreach (WorldSession session in EquipmentAudience(Game.PlayerManager.Snapshot()))
                 foreach (IWritable message in messages)
                     session.EnqueueMessage(message);
         }
+
+        /// <summary>
+        /// Who gets this character's equipment changes: the player and the players on the same landscape — every one of
+        /// them has the character as an entity (PlayerManager.Introduce shows each player to the whole landscape, with
+        /// its equipment), and the client's slot handler (0.695 FUN_142e42da0) only finds the character among its own
+        /// entities (FUN_142cd1cb0). Until 2026-10-18 the change went to every player in the world, on every landscape,
+        /// whose clients have no such entity and dropped it; a player who comes onto this landscape later gets the
+        /// current equipment with the introduction.
+        /// </summary>
+        internal IEnumerable<WorldSession> EquipmentAudience(IEnumerable<WorldSession> players)
+            => players.Where(p => p != this && p.ZoneId == ZoneId).Append(this);
 
         /// <summary>
         /// The packet that shows this player to other clients, at their latest known position.
@@ -938,6 +949,37 @@ namespace LandmarkEmulator.WorldServer.Network
         }
 
         /// <summary>
+        /// The action bars as this client has them: (bar, slot) → (type, value), filled when SendSelfToClient is built
+        /// (<see cref="BuildHotbars"/>) and kept current by every slot change the server confirms. The server needs it
+        /// to find a free slot on its own (<see cref="PlaceOnActionBar"/>) without reading the database back while
+        /// earlier slot saves may still be on their way. Null before the bars are first sent.
+        /// </summary>
+        private Dictionary<(uint Bar, uint Slot), (uint Type, ulong Value)> actionSlots;
+        private readonly object actionSlotsLock = new();
+
+        /// <summary>ActionSlotDefinitions' default for one slot (empty when the table has no row for it).</summary>
+        private static (uint Type, ulong Value) DefaultActionSlot(uint bar, uint slot)
+        {
+            ActionSlotDefinitionEntry entry = GameTableManager.Instance.ActionSlotDefinitions?.Entries
+                .FirstOrDefault(e => e.BarId == bar && e.SlotId == slot);
+            return entry == null ? (ActionSlotEmpty, 0ul) : (entry.DefaultType, entry.DefaultValue);
+        }
+
+        /// <summary>One slot as the client shows it (empty before the bars are sent).</summary>
+        internal (uint Type, ulong Value) ActionSlot(uint bar, uint slot)
+        {
+            lock (actionSlotsLock)
+                return actionSlots != null && actionSlots.TryGetValue((bar, slot), out var value) ? value : (ActionSlotEmpty, 0ul);
+        }
+
+        /// <summary>Sets the server's copy of the client's bars: what SendSelfToClient carried (tests seed it here).</summary>
+        internal void SetActionSlotsSent(IEnumerable<((uint Bar, uint Slot) Key, (uint Type, ulong Value) Slot)> slots)
+        {
+            lock (actionSlotsLock)
+                actionSlots = slots.ToDictionary(s => s.Key, s => s.Slot);
+        }
+
+        /// <summary>
         /// Sets an action bar slot the player chose (ActionManager sub 2): checked, saved, and confirmed to the client
         /// with ActionManagerUpdateSlot. An item slot must name one of the player's own items.
         /// </summary>
@@ -955,6 +997,9 @@ namespace LandmarkEmulator.WorldServer.Network
                 log.Debug($"{CharacterName} asked for action slot {bar}/{slot} = {type}:{value:X}, refused.");
                 return;
             }
+            lock (actionSlotsLock)
+                if (actionSlots != null)
+                    actionSlots[(bar, slot)] = (type, value);
             ulong characterId = currentCharacter.Id;
             DatabaseManager.Instance.CharacterDatabase.Save(c =>
             {
@@ -973,16 +1018,66 @@ namespace LandmarkEmulator.WorldServer.Network
             EnqueueMessage(new ActionManagerUpdateSlot { BarId = bar, SlotId = slot, Type = type, Value = value });
         }
 
+        /// <summary>
+        /// Puts an item on the action bar the way the 0.589 client did itself for a right-clicked tool (FUN_1433a0b80).
+        /// The 0.695 copy of that routine (FUN_14344e300) is never called: re/tools/refscan.py finds no call, jump or
+        /// pointer to it, and the 0.695 right-click sends only the equip (TransferItem bag → main hand), so the slot
+        /// comes from the server. Same rule as the client's: nothing when a slot already holds the item (by guid, or by
+        /// definition: a type-1 default slot the client binds to that item, FUN_14344daa0), else the first empty slot,
+        /// bar by bar, slot by slot. The client preferred its active bar (+0x78); the server is not told which bar is
+        /// shown (Ui.SetActiveActionBar FUN_1435c8290 sends nothing), so bar 0 comes first. The slot is saved and sent as
+        /// a slot the player set (<see cref="SetActionSlot"/>; the client applies an unrequested ActionManagerUpdateSlot
+        /// at once, FUN_142cd9040 → FUN_143458f00). Returns whether the item is on a bar afterwards.
+        /// </summary>
+        public bool PlaceOnActionBar(CharacterItemModel item)
+        {
+            if (item == null || Inventory?.Get(item.Id) == null)
+                return false;
+            (uint Bar, uint Slot)? free = null;
+            lock (actionSlotsLock)
+            {
+                if (actionSlots == null)
+                    return false;
+                for (uint bar = 0; bar < ActionBarCount; bar++)
+                    for (uint slot = 0; slot < ActionSlotsPerBar; slot++)
+                    {
+                        (uint type, ulong value) = actionSlots.TryGetValue((bar, slot), out var held) ? held : (ActionSlotEmpty, 0ul);
+                        if ((type == ActionSlotItem && value == item.Id) || (type == ActionSlotItemDefinition && value == item.ItemDefinitionId))
+                            return true;
+                        if (type == ActionSlotEmpty && free == null)
+                            free = (bar, slot);
+                    }
+            }
+            if (free == null)
+            {
+                log.Debug($"{CharacterName}: no free action slot for item {item.ItemDefinitionId}.");
+                return false;
+            }
+            SetActionSlot(free.Value.Bar, free.Value.Slot, ActionSlotItem, item.Id);
+            log.Debug($"{CharacterName}: item {item.ItemDefinitionId} put on action slot {free.Value.Bar}/{free.Value.Slot}.");
+            return true;
+        }
+
         /// <summary>Drops the saved choice for one slot (or every slot) so it shows its default again.</summary>
         public void ForgetActionSlots(uint? bar = null, uint? slot = null)
         {
+            // The client already put the slot(s) back to the default (FUN_14339f280 / FUN_14339f180): so does our copy.
+            lock (actionSlotsLock)
+                if (actionSlots != null)
+                    foreach ((uint Bar, uint Slot) key in actionSlots.Keys.ToList())
+                        if (bar == null || (key.Bar == bar && key.Slot == slot))
+                            actionSlots[key] = DefaultActionSlot(key.Bar, key.Slot);
             ulong characterId = currentCharacter.Id;
             DatabaseManager.Instance.CharacterDatabase.Save(c => c.CharacterActionSlot.RemoveRange(c.CharacterActionSlot.Where(s =>
                 s.CharacterId == characterId && (bar == null || (s.BarId == bar && s.SlotId == slot)))));
             log.Debug($"{CharacterName} reset action slot{(bar == null ? "s" : $" {bar}/{slot}")} to default.");
         }
 
-        private IEnumerable<SendSelfToClient.Hotbar> BuildHotbars()
+        /// <summary>
+        /// The action bars for SendSelfToClient: each slot's saved choice (an item slot only while the item is still
+        /// owned), else its ActionSlotDefinitions default. What is sent becomes the server's copy (<see cref="actionSlots"/>).
+        /// </summary>
+        private List<SendSelfToClient.Hotbar> BuildHotbars()
         {
             const uint barCount = ActionBarCount;
             const uint slotsPerBar = ActionSlotsPerBar;
@@ -991,33 +1086,35 @@ namespace LandmarkEmulator.WorldServer.Network
             foreach (CharacterActionSlotModel saved in DatabaseManager.Instance.CharacterDatabase.GetActionSlots(currentCharacter.Id))
                 chosen[(saved.BarId, saved.SlotId)] = saved;
             var defaults = GameTableManager.Instance.ActionSlotDefinitions.Entries.ToDictionary(e => (e.BarId, e.SlotId));
+            var hotbars = new List<SendSelfToClient.Hotbar>();
+            var sent = new List<((uint, uint), (uint, ulong))>();
             for (uint bar = 0; bar < barCount; bar++)
             {
                 var hotbar = new SendSelfToClient.Hotbar { HotbarId = bar };
                 for (uint slot = 0; slot < slotsPerBar; slot++)
                 {
                     defaults.TryGetValue((bar, slot), out var entry);
+                    uint type;
+                    ulong value;
                     if (chosen.TryGetValue((bar, slot), out CharacterActionSlotModel mine)
                         && (mine.Type != ActionSlotItem || Inventory.Get(mine.Value) != null))
-                        hotbar.HotbarButtons.Add(new SendSelfToClient.Hotbar.HotbarButton
-                        {
-                            HotbarId = bar, SlotId = slot, ButtonType = mine.Type, ItemId = mine.Value
-                        });
+                        (type, value) = (mine.Type, mine.Value);
                     else
                     {
                         if (mine != null)
                             log.Debug($"{CharacterName}: saved action slot {bar}/{slot} names item {mine.Value:X}, which is gone; using the default.");
-                        hotbar.HotbarButtons.Add(new SendSelfToClient.Hotbar.HotbarButton
-                        {
-                            HotbarId   = bar,
-                            SlotId     = slot,
-                            ButtonType = entry?.DefaultType ?? 0,
-                            ItemId     = entry?.DefaultValue ?? 0
-                        });
+                        (type, value) = (entry?.DefaultType ?? 0, entry?.DefaultValue ?? 0);
                     }
+                    hotbar.HotbarButtons.Add(new SendSelfToClient.Hotbar.HotbarButton
+                    {
+                        HotbarId = bar, SlotId = slot, ButtonType = type, ItemId = value
+                    });
+                    sent.Add(((bar, slot), (type, value)));
                 }
-                yield return hotbar;
+                hotbars.Add(hotbar);
             }
+            SetActionSlotsSent(sent);
+            return hotbars;
         }
 
         /// <summary>
@@ -1662,6 +1759,8 @@ namespace LandmarkEmulator.WorldServer.Network
                         lastPosition = position;
                         Game.Achievements.Moved(this, position.Value);
                         Game.Emotes.Moved(this, position.Value);
+                        // The first seconds after a cavern trip: a fall through the world is brought back (bug 2026-10-18).
+                        Game.CavernArrivalGuard.Moved(this, position.Value);
                     }
                     if (rotation.HasValue)
                         lastRotation = rotation;

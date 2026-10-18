@@ -404,7 +404,7 @@ namespace LandmarkEmulator.WorldServer.Game
 
         /// <summary>Emote AnimationSelection ids (Emotes.cs word table).</summary>
         private const uint EmoteBow = 229, EmoteCry = 231, EmoteFlirt = 233, EmoteGroan = 234, EmoteSob = 240,
-            EmoteTalk = 241, EmoteDance = 246, EmoteDrunk = 250, MoodAngry = 219;
+            EmoteTalk = 241, EmoteDance = 246, EmoteDrunk = 250, MoodAngry = 219, MoodSad = 221;
 
         /// <summary>
         /// The 12 secret emote goals 492-503 (So Emote-tional Right Now's children). A player emoted (Emotes.HandleCommand,
@@ -417,10 +417,10 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <item>851 Weeping Willow: /cry in an old growth forest;</item>
         /// <item>852 Water Cooler: /talk in a group; 857 Well-Mannered: /bow in a group; 854 PUG Troubles: /groan in a group;</item>
         /// <item>853 Casanova: /flirt in a group; 858 All By Myself: /flirt not in a group;</item>
-        /// <item>855 To Me, Gunter!: the wiki hint: /sad in a tundra, perhaps in a group. The client has no /sad word
-        /// (its emote
-        ///   words 559123-559192 have sob and cry): INFERRED /sob or /cry in a tundra, grouped or not (the description
-        ///   "…I must emote the sorrow because I am alone" contradicts the wiki's guess of a group).</item>
+        /// <item>855 To Me, Gunter!: the wiki hint: /sad in a tundra, perhaps in a group. /sad is a word since
+        ///   2026-10-18 (wiki Commands List mood /sad "You feel sad.", selection 221); /sob and /cry (INFERRED before
+        ///   /sad existed) still count, grouped or not (the description "…I must emote the sorrow because I am alone"
+        ///   contradicts the wiki's guess of a group).</item>
         /// </list>
         /// </summary>
         public static void Emoted(WorldSession session, uint selection)
@@ -448,6 +448,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     break;
                 case EmoteCry:
                 case EmoteSob:
+                case MoodSad:
                     if (selection == EmoteCry && biome == BiomeFamily.OldGrowth)
                         Progress(session, 851);
                     if (biome == BiomeFamily.Tundra)

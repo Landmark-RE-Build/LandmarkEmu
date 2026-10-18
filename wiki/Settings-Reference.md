@@ -371,6 +371,14 @@ The Chaos Caverns' graveyards built into the terrain as on live: the client's gr
 |---|---|---|---|
 | `CAVERN_GRAVEYARD_STAMPS` | world: `CavernGraveyardStamps` | `true` | true |
 
+### `CAVERN_ARRIVAL_RESCUE`
+
+A player who falls through the world in the first 30 seconds after an Underground Adventure (more than 12 m below the graveyard they arrived on, where no cave floor is) is put back on that graveyard behind a loading screen; a second fall goes to the landscape's shallowest graveyard. Ours (what live did is not known); false = they are left where they fell.
+
+| `.env` | Service setting | Default | Live |
+|---|---|---|---|
+| `CAVERN_ARRIVAL_RESCUE` | world: `CavernArrivalRescue` | `true` | not known |
+
 ### `OUTPOST_ROTATION_HOURS`, `OUTPOST_ROTATION_SHARE`
 
 Outposts change caverns (the client's help page): every OUTPOST_ROTATION_HOURS hours per landscape, OUTPOST_ROTATION_SHARE of its outposts (0.25 = a quarter) get another ruin in their own cavern, built in the background; an outpost a player is near is left for the next time. Live's period is not known: 0 = never (the default), e.g. 84 = about twice a week.
@@ -584,6 +592,14 @@ Seconds a character waits between two Teleport to Friend trips. 0 = none, as liv
 | `.env` | Service setting | Default | Live |
 |---|---|---|---|
 | `FRIEND_TELEPORT_COOLDOWN_SECONDS` | world: `FriendTeleportCooldownSeconds` | `0` | 0 |
+
+### `FRIEND_REQUESTS_MUTUAL`
+
+Accepting a friend request makes the two friends both ways: each gets the other on their friends list at once. true = as live (the wiki's Friends List holds the people you sent friend requests to and those whose requests you accepted); false = one-way lists, only the one who asked gets a new friend. Read by the world and the social service.
+
+| `.env` | Service setting | Default | Live |
+|---|---|---|---|
+| `FRIEND_REQUESTS_MUTUAL` | social: `FriendRequestsMutual`<br>world: `FriendRequestsMutual` | `true` | true |
 
 ### `STORY_POSE_PERSISTS`
 
@@ -991,6 +1007,7 @@ Class `WorldServerConfiguration` (`LandmarkEmulator.WorldServer/WorldServerConfi
 | `CreatureWeapons` | `bool` | `true` | `CREATURE_WEAPONS` |
 | `SurfaceGraveyards` | `bool` | `true` | `SURFACE_GRAVEYARDS` |
 | `CavernGraveyardStamps` | `bool` | `true` | `CAVERN_GRAVEYARD_STAMPS` |
+| `CavernArrivalRescue` | `bool` | `true` | `CAVERN_ARRIVAL_RESCUE` |
 | `EventIsland` | `string` | `auto` | `EVENT_ISLAND` |
 | `EventIslandExpireOnClose` | `bool` | `true` | `EVENT_ISLAND_EXPIRE_ON_CLOSE` |
 | `MoveOldPioneerSites` | `bool` | `true` | `MOVE_OLD_PIONEER_SITES` |
@@ -1037,6 +1054,7 @@ Class `WorldServerConfiguration` (`LandmarkEmulator.WorldServer/WorldServerConfi
 | `BuildMenuPropName` | `bool` | `true` | `BUILD_MENU_PROP_NAME` |
 | `ChestAccountCap` | `int` | `0` | `CHEST_ACCOUNT_CAP` |
 | `FriendTeleportCooldownSeconds` | `int` | `0` | `FRIEND_TELEPORT_COOLDOWN_SECONDS` |
+| `FriendRequestsMutual` | `bool` | `true` | `FRIEND_REQUESTS_MUTUAL` |
 | `StoryPosePersists` | `bool` | `true` | `STORY_POSE_PERSISTS` |
 | `PlaceOpensBuildMode` | `bool` | `true` | `PLACE_OPENS_BUILD_MODE` |
 | `DayCycleSpeed` | `float` | `8` | `DAY_CYCLE_SPEED` |
@@ -1119,6 +1137,7 @@ Class `SocialServerConfiguration` (`LandmarkEmulator.SocialServer/SocialServerCo
 | `Database__Social__Provider` | `enum` | `MySql` | fixed: `MySql` |
 | `ImportFrom` | `string` | `lmemu_character (example file)` | `SOCIAL_IMPORT_FROM` |
 | `PresenceGraceSeconds` | `double` | `30` | `SOCIAL_PRESENCE_GRACE_SECONDS` |
+| `FriendRequestsMutual` | `bool` | `true` | `FRIEND_REQUESTS_MUTUAL` |
 
 ### CommerceServer.json
 

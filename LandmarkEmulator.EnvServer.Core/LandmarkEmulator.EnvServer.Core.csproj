@@ -11,6 +11,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- TerrainHeights.TestGround (the dig shape tests). -->
+    <InternalsVisibleTo Include="LandmarkEmulator.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\LandmarkEmulator.Shared\LandmarkEmulator.Shared.csproj" />
     <!-- The Environment Server messages (EnvironmentWire converts the stores' types to and from them). -->
     <ProjectReference Include="..\LandmarkEmulator.Internal\LandmarkEmulator.Internal.csproj" />

@@ -43,7 +43,7 @@ namespace LandmarkEmulator.WorldServer.Game
         /// Code naming a desktop-browser native (<see cref="ClientLua.ExternalBrowserCall"/>; for send, the packet's bytes
         /// read as text) is refused for everyone unless the setting is on. Every use is logged with caller, target and the
         /// start of the code; refusals are replied to the caller. The test harness drives its own characters this way
-        /// (TestPlayer, TestPlayer2: both admins on the dev world), so it keeps working with the default.
+        /// (its two test characters are admins on the dev world), so it keeps working with the default.
         /// </summary>
         internal static List<WorldSession> ClientCodeTargets(string command, string arguments, List<WorldSession> targets, Source from,
             List<string> replies)

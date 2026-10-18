@@ -23,8 +23,9 @@ namespace LandmarkEmulator.Internal.Social
     /// The client has no reply for either sub (trace/families/001E_Command.md lists only the two C→S request classes; the
     /// only "case 0x4cf / 0x4d0" in the 0.695 decompile is an HRESULT switch, FUN_1406a2014), so what the players see is the friends-list traffic of a normal add / remove: the source's list
     /// gets FriendBase 0x4D sub 6 Add (the friend's row with its online state) or sub 7 Remove + text 560713, and the
-    /// zone of the one listed learns who lists them (friend online / offline notes). Lists are one-way, so the target's
-    /// own list does not change, exactly as when they accept a normal request. The admin gets one line with the outcome.
+    /// zone of the one listed learns who lists them (friend online / offline notes). Force-add stays one-way (an admin
+    /// tool; an accepted normal request fills both lists, FriendAccept): the target's own list does not change. The
+    /// admin gets one line with the outcome.
     /// </para>
     /// Live ran these in the shared social service (social-service.md §5.1 item 6, §5.3: World-channel Command subs
     /// 0x4CF-0x4D2 routed to `social`).

@@ -140,8 +140,11 @@ The client names them (FUN_143bb4ef0 — the Environment Server's job-type namer
 
 **Heals (layer 2).** Every destruction (a dig, a mining swing, an explosion) adds one pending heal to the heal queue
 (`EnvServer.Core/Terrain/HealQueue.cs`): its sphere, the cells it touched, and a due time (now + 20 minutes, dev
-command `regendelay` for tests). When it is due, the layer-2 voxels inside that sphere (plus the 1.5-voxel smoothed rim)
-go back to the generated ground — except voxels a later, still pending destruction also covers. Entries made since
+command `regendelay` for tests). When it is due, the layer-2 voxels inside that sphere (plus the 1.5-voxel rim where
+the hole's wall vertices are) go back to the generated ground — except voxels a later, still pending destruction also
+covers (its carved voxels; a vertex where a corner of its cube lies in that sphere), and the holes still open next to it
+get their surface redone against the holes that are left (`TerrainEdits.RefreshOpenHoles`), so their walls close cleanly
+where the ground came back. Entries made since
 2026-10-16 heal inside build sites too (older log entries keep their old rule: site voxels kept): destruction on a site
 in Play Mode (dynamite, 100 s; a Linking Area's "Destroy Voxels", 10000 s) carves the owner's build only in this layer,
 so it comes back (`Game/VoxelDestruction.cs`; the log line gained two fields, the heal delay and the site flag). A new dig never postpones an older one's heal (a developer, 27 Jul 2016: each destruction is a volume
@@ -200,9 +203,63 @@ The layer blob is the client block codec (`A1 B2 C3 D4`, big-endian size, zlib) 
 - **Vertex-only voxels** (offset flag, no material) carry the surface position on the generated side of an edit.
   Clients send them with every smooth edit (line slopes, spheres, fills) and keep them in their own cache (one
   player's cache held 67,662 in 45 cells), so the server stores them as sent (`KeepVertexOnlyVoxels`, default on).
-  Dropping them made lines saw-toothed and fills stair-stepped once the cell came back from the server. The server
-  never generates such voxels itself: a 2026-10-09 test mode that did was blamed for a client freeze (the same day's
-  browser reload was the likelier cause, but server-made ones stay off).
+  Dropping them made lines saw-toothed and fills stair-stepped once the cell came back from the server. Since
+  2026-10-18 the server writes its own on the walls of dug holes (dig layer only; "How the client draws a dig" below).
+  (A 2026-10-09 test mode that wrote some was blamed for a client freeze; the same day's embedded-browser reloads were
+  the cause found for all three freezes, and client-made vertex-only voxels have gone back to clients from the server
+  since 2026-10-14 without trouble.)
+
+### How the client draws a dig (`TerrainEdits.Sphere` / `SurfaceVertices`)
+
+Traced 2026-10-18 after "pickaxe digging looks too blocky" (0.695 addresses):
+
+- **Samples sit at voxel corners.** The generator samples the ground at cell corner + index × 0.4 m (including a 2-voxel
+  border: `ContinentMapHeightmapTerrain::getContourDataRegular` FUN_1440873e0 — x of padded index i = cell x − 2 voxels
+  + i voxels; a column is solid from the bottom up to the height, and it keeps the density height − y per voxel).
+- **Every cube with a sign change gets the mass point of its crossings.** `ContinentMapHeightmapTerrain::SmoothContourData`
+  FUN_144086430: for the cube [i, i+1]³ (stored at voxel i), the 12 edges (corner table DAT_144a60ac0, edge pairs
+  DAT_144a60a50), on each edge whose densities differ in sign the linear crossing d₀ / (d₀ − d₁), averaged, clamped to
+  −1..2, offset byte = (u + 1) × 85, flag 2. That is the shipped ground's smooth encoding.
+- **The mesher joins those vertices.** `ContourEx` FUN_142ac4590 (VoxelFarm contour.cpp): for every voxel and axis where
+  the two voxels differ (material ≠ 0 and ≠ 0xFFFC = solid), one quad from the vertices of the four cubes around that
+  edge (table DAT_144a608f0: (0,0,0), (0,0,−1), (0,−1,−1), (0,−1,0) across the other two axes); a vertex is cube + offset
+  when the voxel has flag 2, else **cube + 0.5 — the centre, i.e. a 0.4 m stair step**. Position in the cell
+  = (index + offset − 2) × 0.025 (constants DAT_144c411a8 2.0, DAT_144c41110 0.025, DAT_144c41158 0.5, DAT_144c401b8 85).
+- **Block layers replace per bit.** Layers merge with flags OR'd, the material where bit 0 is set and the offset where
+  bit 1 is set (FUN_1440498d0); the composite overrides the generated grid the same way (getBlockContourData
+  FUN_142aa8830). A vertex-only voxel therefore keeps the generated material and moves only the vertex. Where block
+  voxels meet generated ones inside a cube and the generated cube has a vertex, the client blends the two by a QEF of
+  the nearby triangles' planes (FUN_142aa6030 → FUN_142aa6930 / FUN_142aa6290 → FUN_142aa2900 … FUN_142aa5700).
+
+**Why pick holes were stepped (before 2026-10-18).** The server tested the voxel's centre against the sphere (half a
+voxel off the client's samples), so the vertices it set were not the ones the client's quads used; it put vertices only
+within 1.2 voxels of the sphere by the centre, and on the ground side only as solid "shell" voxels of a guessed
+material from 0.6 m under the baked ground down (so as not to add rock above the real surface). Every cube of the top
+0.6 m of the wall and the rim whose corner voxel was ground kept no vertex and was drawn at its centre; every carved
+voxel also carried an explicit centre vertex. Measured with a copy of the client's pipeline (tests
+`Rules/DigShapeTests.cs`, a 1 m pick swing on flat ground): 17 cubes at their centre, vertices up to 1.35 voxels
+(0.54 m) off the ideal hole, 35 voxels of guessed rock written.
+
+**What a dig writes now** (dev `digmode 8`, the default; `digmode 5` = the old shell, `0` = no vertices):
+1. Air (material 0, no vertex) in every voxel whose corner is in the sphere (open air more than 2 m above the baked
+   ground is left out, as before; ore under carved voxels is still counted).
+2. For every cube with a corner in the sphere and both solid and air corners: the vertex at its corner voxel — on the
+   ground side a vertex-only voxel. The density is the ground minus every open hole: min(ground height − y, distance
+   to each pending dug sphere − its radius) (the baked height grid; cave air and block-layer states as the client has
+   them; a corner the estimate can't explain puts its crossing mid-edge). The vertex starts at the mass point of the
+   linear crossings (the generator's rule) and is moved onto the surfaces' tangent planes at the crossings (a QEF by
+   averaged projections, as VoxelFarm places vertices where block data meets the ground), or projected onto the
+   nearest surface when the planes don't meet on it; on a 2.5-voxel pick sphere the plain mass point sits a third of a
+   voxel inside the curve.
+3. Cubes the sphere cleared completely drop a vertex an earlier swing left; nothing is written where the build layer
+   has voxels or a site's rules refuse destruction.
+
+Same swing, same test: no cube at its centre, every vertex within 0.04 voxel (1.6 cm) of the ideal hole, no rock
+added, and the cell update is a little smaller (496 vs 565 bytes for the touched cells). Overlapping held-button swings
+make one shaft (max 0.05 voxel), and the walls show the ground's own strata instead of a guessed wall material.
+Not proven yet: the exact vertices live's server wrote for a swing (no live dig cell has been captured; open lead).
+Live sent VoxelFarm block data through this same client pipeline, and the client's own smooth brushes (spheres,
+lines, fills) send air plus vertex-only voxels the same way.
 
 ### Building diffs
 
@@ -277,7 +334,8 @@ The server only uses this for the `testcell` developer command.
   - `VoxelBiomeMaterials` gives the biome's procedural material names.
   - Keywords map those to items: Dirt 44, Sand 45, Stone 46, Ice 76.
   - Deeper than 4 m below the swinger always gives Stone.
-  - The hole's shell uses the biome's dirt/rock/sand material (297/289/287), only from 0.6 m below the ground.
+  - A hole's walls keep the client's own generated material (vertex-only voxels, "How the client draws a dig"). The old
+    solid shell (dev `digmode 5`) used the biome's dirt/rock/sand material (297/289/287), only from 0.6 m below the ground.
 
 ## Ore veins (`OreVeins.cs`)
 
@@ -411,7 +469,8 @@ The client builds caves itself from pre-made pieces; the server reads the same f
 - **Combining:** the cave layer runs after the terrain generator: a voxel is air when any covering piece has type 0
   there. No noise or blending; DRAW_OUTER_SHELL is 0 for every tile. Continent 406: 5,817 placed pieces, 34 shapes,
   about 35 MB of LOD 0 data.
-- **Server use:** the dig smoothing shell never adds rock where `CavePieces.IsAir` is true; Travel → "An Underground
+- **Server use:** a dig's wall vertices treat cave air as air (a dig adds no rock; the old solid shell never added rock
+  where `CavePieces.IsAir` is true); Travel → "An Underground
   Adventure" lands on the floor of a random cavern (piece 104: air from about −76 m to +75 m around the origin; arrival
   scans down from origin + 10 m) on any landscape with an Underground `.cpa` (391, 393-408, 410-416; setting
   `CavernLandscapes`), re-zoning there when it is another landscape. `CavePieces.IsAir` and `Caves.Floor` /

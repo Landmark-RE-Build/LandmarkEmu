@@ -6,10 +6,11 @@ using System;
 namespace LandmarkEmulator.WorldServer.Network.Handlers
 {
     /// <summary>
-    /// Hotbar (ActionManager 0x9A) requests. Sub 1 clears a slot {u32 bar, u32 slot}; sub 2 (right-click a bag tool) and
-    /// sub 5 set a slot {u32 bar, u32 slot, u32 type, u64 value}, where type 0 = empty, 1 = item definition id,
+    /// Hotbar (ActionManager 0x9A) requests. Sub 1 clears a slot {u32 bar, u32 slot}; sub 2 (a drag onto the bar, Lua
+    /// Ui.SetSlot) sets a slot {u32 bar, u32 slot, u32 type, u64 value}, where type 0 = empty, 1 = item definition id,
     /// 2 = item guid. Slots are validated, saved per character and echoed back by <see cref="WorldSession.SetActionSlot"/>;
-    /// sub 3 / 4 put one slot / every slot back to its default.
+    /// sub 3 / 4 put one slot / every slot back to its default. A right-clicked bag tool no longer arrives here on 0.695
+    /// (the 0.589 client sent sub 2 for it; 0.695 sends an equip): the server places it, InventoryHandler.IsRightClickEquip.
     /// </summary>
     public static class ActionBarHandler
     {

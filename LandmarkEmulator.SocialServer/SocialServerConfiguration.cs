@@ -31,5 +31,13 @@ namespace LandmarkEmulator.SocialServer
         /// (social-service.md §5.5, ours: 30 s), so a change of world (left on one, entered on another) shows nothing.
         /// </summary>
         public double PresenceGraceSeconds { get; set; } = 30;
+
+        /// <summary>
+        /// An accepted friend request makes the friendship mutual: the asker's list gets the one who accepted and theirs
+        /// gets the asker (true = live; wiki "Friends List": people "you either sent friend requests to or from whom you
+        /// accepted friend requests"). false = one-way lists (only the asker's list changes). Docker:
+        /// FRIEND_REQUESTS_MUTUAL, the same .env line the worlds read for their in-process friends code.
+        /// </summary>
+        public bool FriendRequestsMutual { get; set; } = true;
     }
 }

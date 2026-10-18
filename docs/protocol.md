@@ -460,7 +460,25 @@ The sitting client clears it itself when the player moves or jumps; a server sta
 `PlayerUpdate 0x65 RequestAnimationSelection {u64 entity, u32 selection, bool clear sit, u8 seated}` — an
 AbilityPlayAnim only plays the animation, so the flag (and the word) stayed "sitting" and later observers sat the
 character down again. The server sends every stance and "stand" that way (Game/Emotes.cs) and shows a stance to players
-who meet the player later; a sit reaches them in the last full movement.
+who meet the player later; a sit reaches them in the last full movement. Emotes and moods use the same packet with the
+clear-sit bool off (see "Emotes" below).
+
+**No sit or stance while a tool or weapon is held (client rule, live behaviour).** With a pick (or any Wield_* item) in
+the main hand, /sit still prints "You sit down.", sends the chat line and sets the flag, but the character keeps
+standing — on the player's own screen and on everyone else's (seen 2026-10-18; without the pick the same /sit works).
+The cause is the player animation network, not a packet [P, 0.695 client]: the held item's actor
+(`Wield_Pick_*.adr`, as every `Wield_*`) carries the AnimationEnumerations `WeaponIdle = 1`, `Class = 1001`,
+`Weapon = 1` (hashes −1452685539 / −775574123 / 2090366532), which the holder's network takes on; in
+PlayerAnimationNetwork64.mrn (Assets_153.pack) the switch `StandPoses|Idle_Stand_2` (node 10129) reads
+`ControlParameters|WeaponIdle` and picks child 0 `Stand` or child 1 `Weapon1` (the weapon / tool idles, the Poses switch
+with Pick, Axe, Sickle, ...); every Stance_Index switch (`Stances|StanceSwitch` 14524 / 14514 with Sit_Chair = 4,
+Kneel, Dance, PlayDead, ...) is inside `Stand`. The sit itself is entered normally (movement mode 6 in FUN_142ecd1d0
+needs only the flag, the voxel manager idle and no knocked-out state bit 7 → FUN_142ea4a70 plays selection 351 =
+Stance_Index 4), so the stance is set but not visible. FUN_1433b4e90 (/sit) checks nothing about held items and the
+client has no "put your tool away" text (Emote.SitSelf / SitOther are its only emote strings), nor does anything
+holster the item for it, so live behaved the same: the player puts the tool away first (hotbar key / Tab). Observers
+attach the same item and agree with the player's own screen, so the server relays the sit bit as it is. The same holds
+for the server's stances (/kneel, /dance, /playdead ...).
 
 **Relay order (OPEN-LEADS L179):** the server keeps the newest body of each (mover, type) between ticks and sends each
 mover's bodies oldest first by their u32 timestamp (`MovementFanout.InTimeOrder`, both the gateway fan-out and the
@@ -501,6 +519,13 @@ research/trace/0695/agent-leadsB.md §4]; the relay forwards it unchanged.
 | 1 | SetCharacterEquipment | Full set. |
 | 2 | SetCharacterEquipmentSlot | `u32 profile, u64 character guid, u32 equip slot, u64 item guid`, 2 strings, attachment `{model .adr, texture alias, tint alias, decal, u32 tint, u32 composite effect, u32 slot, u32, bool}` |
 | 3 | UnsetCharacterEquipmentSlot | `u32 profile, u64 guid, u32 slot` |
+
+Other players' equipment: the server sends each player's slots right after AddLightweightPc when it shows the player
+to someone (PlayerManager.Introduce: login, re-zone, coming onto the landscape) and each change to the player and the
+players on the same landscape (WorldSession.EquipmentAudience; until 2026-10-18 to the whole world). LightweightToFullPc's
+own attachment list (blob +0x20, records FUN_142c185c0) goes out empty: the 0.695 handler adds it only when it has
+entries (FUN_142e95ae0 into the entity's attachment map +0x748), and the slot handler (FUN_142e42da0 → FUN_142ebd620)
+already put each slot in that same map, so the weapon stays when the character turns full.
 
 ## 5. Inventory and items
 
@@ -633,6 +658,9 @@ research/trace/0695/agent-leadsB.md §4]; the relay forwards it unchanged.
   answers each release with CastSuccess (`Force` off) a moment later, unless the client casts again first (CastSuccess
   matches the current cast by ability id only, so an early answer would end a fresh press of the same key). The server
   ends a channel itself (out of Energy, death, zone change) with the same CastSuccess.
+  **Weapon channels** (Game/Combat/WeaponCombat, the "Channel …" attacks) use the same kind with no client-executed
+  effect, so a release's CancelCast never clears the current cast (FUN_142e0f5a0 clears +0x2a0 only for `bool 1` or a
+  running effect): the server answers every weapon-channel release at once.
 - **Movement costs and cooldowns:** reply +0x20 / +0x24 / +0x28 cost resource / amount / ignore-pool (record +8 / +0xc /
   +0x10), +0x70 cooldown seconds (record +0x14c), +0xa0 cooldown group (record +0x7c), +0xa4 start the group's timer at
   CastSuccess (record +0x80) — copied by FUN_142e187a0; the can-cast check refuses with error 3 (cost) / 5 (cooldown)
@@ -1196,8 +1224,14 @@ Client dispatcher FUN_142dad120; all readers re-read the u16 opcode and u32 sub 
 - **EncounterBase 0x2C:** death window: 0x7D shows "You have died.", 0x7E hides it. The whole family (duels, both clients' dispatch, the 0.695 jump table) is in [encounters.md](encounters.md).
 - **ActionManager 0x9A:**
   - 1 ClearSlot.
-  - 2 (right-click a bag tool) and 5 UpdateSlot share the layout `{u32 bar, u32 slot, u32 type (0 empty,
-    1 item definition, 2 item guid), u64 value}`.
+  - 2 SetSlot (a drag onto the bar, Lua Ui.SetSlot; on 0.589 also a right-clicked bag tool) and 5 UpdateSlot share
+    the layout `{u32 bar, u32 slot, u32 type (0 empty, 1 item definition, 2 item guid), u64 value}`. The client
+    applies an UpdateSlot it did not ask for at once (FUN_142cd9040 -> FUN_143458f00).
+  - A right-clicked main-hand bag item on 0.695 (Lua ClientInventory.ActivateItem -> FUN_143457220 -> FUN_142f24db0)
+    sends only Inventory TransferItem `{to equipped / any slot, from bag / any slot, guid, -1, no swap}`; the 0.589
+    client put the item on its first free slot itself (FUN_1433a0b80), the 0.695 copy (FUN_14344e300) is never
+    called. The server equips it and sends the UpdateSlot for the first free slot (bar 0 first), unless a slot holds
+    the item already (by guid, or a type-1 slot of its definition).
   - Hotbars are sized only by the SendSelf hotbar list; a bar sent with 0 slots rejects every update.
 - **Server commands (CommandBase 0x1E):**
   - 0x44 (S→C) dynamic command list `{u32 n, n × string name, u32 source (1 = zone)}`: each becomes a "/name" the
@@ -1210,10 +1244,30 @@ Client dispatcher FUN_142dad120; all readers re-read the u16 opcode and u32 sub 
     (Emotes), the world / zone commands added one by one (DynamicCommands) and the gateway's list
     (GatewaySession.GatewayCommands) must not share a name: the world server checks this at start-up and logs an error
     for each duplicate (DynamicCommands.CheckUniqueNames).
-- **Emotes:** played with Abilities 0x27 sub 0x12 PlayAnim on the player's guid. AnimationSelection.txt
-  "EmoteSingle" rows select a clip through Emote_Index (AnimationSelectionVariables.txt); "EmoteLoop" rows repeat
-  until selection 253; stance rows (Stance_Index) persist until 223. A selection that arrives while the character
-  is moving is ignored.
+- **Emotes** (Game/Emotes.cs; audit 2026-10-18). AnimationSelection.txt "EmoteSingle" rows select a clip through
+  Emote_Index (AnimationSelectionVariables.txt; the 0.695 network's single-shot switches give 1-33: … Wave 17, No 18,
+  Yes 19, Dance 20, Onod 21, UsePotion 22, Call 23, Cough 24, Flex 25, Give 26, Sneeze 27, Thanks 28, Welcome 29,
+  Yawn 30, Come_Here 31, Stretch 32, Hug 33); "EmoteLoop" rows repeat until selection 253; stance rows
+  (Stance_Index) persist until 223; mood rows 218-221 set Emote_Emotion (calm, angry, happy, sad), which lasts until
+  the next mood. A selection that arrives while the character is moving is ignored.
+  - Every emote, mood and stance goes out as `PlayerUpdate 0x65 RequestAnimationSelection {u64 entity, u32
+    selection, bool clear sit, u8 seated}` to the player and the players within 80 m — clear sit only for stances and
+    "stand". Not as AbilityPlayAnim (0x27/0x12): its handler (0.695 FUN_142e1b9d0) always turns the character towards
+    the packet's point, and with the point on the character the heading came from each client's position rounding,
+    so emotes turned the player to a different random heading on every screen. AbilityPlayAnim is kept for swings and
+    attacks aimed at a target (to the others; the swinger's own client gets 0x65).
+  - Stances and moods are remembered: shown to a player who gets the character's full data later
+    (FullCharacterDataRequest: a login, a re-zone, coming near), to a player who walks within 80 m, and — for a player
+    who moves in a mood or a walk stance — to the players they come near (checked once a second); "stand" / "calm"
+    reach everyone who was shown the pose. Walking half a metre ends kneel, lie, dance and play dead (the stand is sent
+    when the player stops); the walk stances skip, drunk and sneak last while walking ("Use /stand to stop skipping").
+  - Chat lines: each word's own line to the player ("You wave.") and the others' line to the players within 80 m who
+    don't ignore the player ("[*speaker*] waves."), the "[*target*]" forms when the player has a target, as
+    ChatPacketFromStringId (ChatBase sub 4, emote flag; the client fills the names and checks its own emote range).
+  - Words (wiki Commands List 2016 + the client's emote texts): moods angry, happy, sad, calm; poses dance, drunk,
+    kneel, lie, playdead, skip, sneak, stand (sit is the client's own command); gestures beckon, beg, bow, cheer,
+    congratulate, cough, cry, flex, flirt, giggle, groan, hug, laugh, no, nod, point, shoo, shrug, sneeze, sob, stretch,
+    talk, talking (loop) / stop, taunt, wave, welcome, yawn. /yell is the client's shout and is not registered.
 - **HeroicMovement 0x0105 (wire 05 01, u8 sub):** `{u8 sub, u64 entity, body}`, the entity being the sender's own
   guid (0.695 header reader FUN_142c1fd70 / writer FUN_142e5eaf0): 1 FireGrapplingHook `{f32 x4, f32 x4, u32, u32,
   bool}`, 2 SetHeroicMovement `{bool}`, 3 SwimmingUpdate `{u8 flags, f32 depth, [flags & 0x40: f32, f32]}` (writer

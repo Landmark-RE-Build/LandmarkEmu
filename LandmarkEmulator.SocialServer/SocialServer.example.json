@@ -10,5 +10,6 @@
     }
   },
   "ImportFrom": "lmemu_character",
-  "PresenceGraceSeconds": 30
+  "PresenceGraceSeconds": 30,
+  "FriendRequestsMutual": true
 }

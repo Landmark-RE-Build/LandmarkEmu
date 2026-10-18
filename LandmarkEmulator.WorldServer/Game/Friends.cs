@@ -12,7 +12,8 @@ using System.Linq;
 namespace LandmarkEmulator.WorldServer.Game
 {
     /// <summary>
-    /// Friends lists (one-way, stored in character_friend). FriendBase 0x4D, u8 sub (client dispatcher in
+    /// Friends lists (stored per direction in character_friend; an accepted request fills both lists, <see cref="Mutual"/>).
+    /// FriendBase 0x4D, u8 sub (client dispatcher in
     /// ClientFriendsDataManager):
     /// - 1 List {u32 count, FriendData × count} (FUN_14348cf60), sent once on world entry.
     /// - 2 Online {string name, u64 guid, bool} / 3 Offline {u64 guid}: sent only to players who list the one who
@@ -21,7 +22,7 @@ namespace LandmarkEmulator.WorldServer.Game
     /// FriendData (FUN_14348c040): name {3 × u32, string first, string last}, u64 guid, bool online; offline: u64
     /// last online (unix seconds); online: 4 × u32, bool (true skips 3 × u32), u32, bool, 5 × u32; then a string.
     /// Requests are Command 0x1E subs: 0x10 AddFriendRequest {string name, u64 guid} (by name from "/friend add Name",
-    /// or empty name + guid from a player's menu), 0x12 RemoveFriendRequest {name}, and the confirmation round trip
+    /// or empty name + guid from a player's menu), 0x12 RemoveFriendRequest {identity, u64 guid} (by name, or by guid from the menu), and the confirmation round trip
     /// 0x13 ConfirmFriendRequest (to the one asked) / 0x14 ConfirmFriendResponse (their answer), see
     /// <see cref="HandleAdd"/>.
     /// Part of the social service: callers outside it use <see cref="Social.SocialServices"/> (LocalSocialService runs
@@ -184,8 +185,10 @@ namespace LandmarkEmulator.WorldServer.Game
 
         /// <summary>
         /// ConfirmFriendResponse (Command 0x14, from the one asked; packet ctor FUN_1433d7500: u64 asker (+0x20), u32 accept
-        /// (+0x28; 1 Accept / 0 Refuse), the asker's name block (+0x30)). Accepted: the asker's list gets them (lists stay one-way,
-        /// as asked) and FriendMessage 1; refused: FriendMessage 2. An answer to no waiting request (lapsed) is ignored.
+        /// (+0x28; 1 Accept / 0 Refuse), the asker's name block (+0x30)). Accepted: the asker's list gets them (FriendAdd) and
+        /// FriendMessage 1, and, mutual (<see cref="Mutual"/>, live), their list gets the asker (FriendAdd with the asker's
+        /// online state; the client shows "[asker] has been added as a friend."); caps and ignores as
+        /// Internal/Social/FriendAccept.cs. Refused: FriendMessage 2. An answer to no waiting request (lapsed) is ignored.
         /// </summary>
         public static void HandleResponse(WorldSession session, byte[] body)
         {
@@ -208,19 +211,70 @@ namespace LandmarkEmulator.WorldServer.Game
                 log.Info($"{session.CharacterName} declined {askerId:X}'s friend request.");
                 return;
             }
+            bool mutual = Mutual;
+            ulong accepterId = session.PlayerGuid;
             var database = DatabaseManager.Instance.CharacterDatabase;
-            if (database.GetFriends(askerId).Any(f => f.Id == session.PlayerGuid))
-                return;
-            ulong friendId = session.PlayerGuid;
-            database.Save(c => c.CharacterFriend.Add(new CharacterFriendModel { CharacterId = askerId, FriendId = friendId }));
-            if (asker != null)
+            FriendAcceptPlan plan;
+            CharacterModel askerRow;
+            try
             {
-                asker.EnqueueMessage(ZoneMessageOpcode.FriendBase,
-                    Build(w => { w.Write(AddSub); WriteFriend(w, session.PlayerGuid, session.CharacterName, true, null); }));
-                asker.EnqueueMessage(ZoneMessageOpcode.FriendBase, Message(MessageAccepted, session.PlayerGuid, session.CharacterName));
+                askerRow = database.GetCharacterById(askerId).GetAwaiter().GetResult();
+                bool askerIgnores, accepterIgnores;
+                using (var context = database.NewContext())
+                {
+                    askerIgnores = context.CharacterIgnore.Any(i => i.CharacterId == askerId && i.IgnoredId == accepterId);
+                    accepterIgnores = context.CharacterIgnore.Any(i => i.CharacterId == accepterId && i.IgnoredId == askerId);
+                }
+                plan = FriendAccept.Decide(mutual, askerId, accepterId, database.GetFriends(askerId).Select(f => f.Id).ToList(),
+                    database.GetFriends(accepterId).Select(f => f.Id).ToList(), askerIgnores, accepterIgnores);
+                if (plan.Blocked)
+                {
+                    log.Info($"{session.CharacterName} accepted {askerId:X}'s friend request, but one of them ignores the other: nothing added.");
+                    return;
+                }
+                if (plan.AddToAccepter && askerRow == null)
+                    plan = plan with { AddToAccepter = false };
+                // Both rows in one save: the asker lists the one who accepted; mutual (live), they list the asker too.
+                if (plan.Changes)
+                    database.Save(c =>
+                    {
+                        if (plan.AddToAsker)
+                            c.CharacterFriend.Add(new CharacterFriendModel { CharacterId = askerId, FriendId = accepterId });
+                        if (plan.AddToAccepter)
+                            c.CharacterFriend.Add(new CharacterFriendModel { CharacterId = accepterId, FriendId = askerId });
+                    }).GetAwaiter().GetResult();
             }
-            log.Info($"{session.CharacterName} accepted {askerId:X}'s friend request.");
+            catch (Exception e)
+            {
+                log.Error(e, $"{session.CharacterName} accepted {askerId:X}'s friend request: reading or saving the friends lists failed.");
+                return;
+            }
+            if (plan.AddToAsker)
+                asker?.EnqueueMessage(ZoneMessageOpcode.FriendBase,
+                    Build(w => { w.Write(AddSub); WriteFriend(w, accepterId, session.CharacterName, true, null); }));
+            if (plan.AddToAccepter)
+            {
+                lock (pending)
+                    pending.Remove((accepterId, askerId));
+                session.EnqueueMessage(ZoneMessageOpcode.FriendBase,
+                    Build(w => { w.Write(AddSub); WriteFriend(w, askerId, asker?.CharacterName ?? askerRow.Name, asker != null, askerRow.LastOnline); }));
+            }
+            if (plan.AskerFull && asker != null)
+                Chat.System(asker, "Your friends list is full.");
+            if (plan.AccepterFull)
+                Chat.System(session, "Your friends list is full.");
+            if (plan.Changes)
+                asker?.EnqueueMessage(ZoneMessageOpcode.FriendBase, Message(MessageAccepted, accepterId, session.CharacterName));
+            log.Info($"{session.CharacterName} accepted {askerId:X}'s friend request ({(mutual ? "mutual" : "one-way")}: "
+                + $"to the asker's list {(plan.AddToAsker ? "added" : plan.AskerFull ? "full" : "already there")}"
+                + (mutual ? $", the asker to theirs {(plan.AddToAccepter ? "added" : plan.AccepterFull ? "full" : "already there")}" : "") + ").");
         }
+
+        /// <summary>
+        /// An accepted request makes the friendship mutual (setting FriendRequestsMutual, FRIEND_REQUESTS_MUTUAL, default
+        /// true = live; read at each answer); false = one-way lists. Rules in Internal/Social/FriendAccept.cs.
+        /// </summary>
+        public static bool Mutual => Shared.Configuration.ConfigurationManager<WorldServerConfiguration>.Instance.Config?.FriendRequestsMutual ?? true;
 
         /// <summary>
         /// The response body after the u16 sub: u64 asker, the accept flag, the asker's name block {3 × u32, string first,
@@ -259,27 +313,23 @@ namespace LandmarkEmulator.WorldServer.Game
             WriteName(w, "");
         });
 
-        /// <summary>RemoveFriendRequest body: the friend's name {3 × u32, string first, string last} (client FUN_14351df90).</summary>
+        /// <summary>
+        /// RemoveFriendRequest body: identity {3 × u32, string first, string last}, u64 guid — the name from the friends
+        /// window / "/friend remove" (Ui.RemoveFriend), the guid from the player right-click menu (Ui.RemoveFriendByGuid);
+        /// Internal/Social/FriendRemoveRequest.cs. One-sided: only the remover's list loses the row [I].
+        /// </summary>
         public static void HandleRemove(WorldSession session, byte[] body)
         {
+            if (!FriendRemoveRequest.TryRead(body, out FriendRemoveRequest remove))
+            {
+                log.Debug($"{session.CharacterName} removed an unknown friend: {BitConverter.ToString(body ?? Array.Empty<byte>())}");
+                return;
+            }
             var database = DatabaseManager.Instance.CharacterDatabase;
-            var friends = database.GetFriends(session.PlayerGuid);
-            CharacterModel friend = null;
-            try
-            {
-                var reader = new GamePacketReader(body);
-                reader.ReadUInt();
-                reader.ReadUInt();
-                reader.ReadUInt();
-                string name = reader.ReadString()?.Trim();
-                friend = friends.FirstOrDefault(f => string.Equals(f.Name, name, StringComparison.OrdinalIgnoreCase));
-            }
-            catch (Exception)
-            {
-            }
+            CharacterModel friend = remove.Find(database.GetFriends(session.PlayerGuid), f => f.Id, f => f.Name);
             if (friend == null)
             {
-                log.Debug($"{session.CharacterName} removed an unknown friend: {BitConverter.ToString(body)}");
+                log.Debug($"{session.CharacterName} removed \"{remove.Name}\" ({remove.Guid:X}), who is not on the friends list.");
                 return;
             }
 

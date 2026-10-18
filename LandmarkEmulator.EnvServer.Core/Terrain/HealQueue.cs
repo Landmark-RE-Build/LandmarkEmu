@@ -217,6 +217,20 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 return pending.Where(e => e.Zone == zone && Array.IndexOf(e.Cells, cell) >= 0).ToList();
         }
 
+        /// <summary>
+        /// The still-open dug spheres (pending sphere entries, global dm) that reach within <paramref name="reach"/> of a
+        /// sphere's surface: what a dig's surface vertices are computed against when holes overlap (TerrainEdits.SurfaceVertices).
+        /// </summary>
+        public static List<(double X, double Y, double Z, double Radius)> SpheresNear(uint zone, (double X, double Y, double Z) centre,
+            double radius, double reach)
+        {
+            lock (sync)
+                return pending.Where(e => e.Zone == zone && !e.WholeCells && e.HalfHeight < 0
+                        && Math.Sqrt((e.X - centre.X) * (e.X - centre.X) + (e.Y - centre.Y) * (e.Y - centre.Y) + (e.Z - centre.Z) * (e.Z - centre.Z))
+                            <= e.Radius + radius + reach)
+                    .Select(e => (e.X, e.Y, e.Z, e.Radius)).ToList();
+        }
+
         /// <summary>The entries were healed: recorded, and the file compacted now and then.</summary>
         public static void Done(IEnumerable<Entry> healed)
         {

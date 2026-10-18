@@ -181,7 +181,7 @@ LIVE_OVERRIDES = {
     'SAFE_EJECT_RESET': 'true', 'LIVE_CHARACTER_STATS': 'true', 'PROP_STREAM_RANGE': 'not known',
     'PLAYER_TELEPORT_REQUESTS': 'true', 'HOME_CONTINENT': '406 (the live capture)', 'TERRAIN_LOD_COPIES': 'true',
     'KEEP_VERTEX_ONLY_VOXELS': '—', 'LANDMARKS_WORLD': 'auto', 'CAVERN_LANDSCAPES': 'all', 'SURFACE_GRAVEYARDS': 'not known',
-    'CAVERN_GRAVEYARD_STAMPS': 'true', 'OUTPOST_PRELOAD': '—', 'OUTPOST_ROTATION_HOURS': 'not known',
+    'CAVERN_GRAVEYARD_STAMPS': 'true', 'CAVERN_ARRIVAL_RESCUE': 'not known', 'OUTPOST_PRELOAD': '—', 'OUTPOST_ROTATION_HOURS': 'not known',
     'OUTPOST_ROTATION_SHARE': 'not known', 'CREATURE_PATHING': 'true', 'SITE_PATHING': 'true', 'CREATURE_WEAPONS': 'not known',
     'PROCEDURAL_RESPAWN': 'minmax', 'PROCEDURAL_RESPAWN_MIN_SHARE': 'not known', 'PROCEDURAL_PLACEMENT': 'not known',
     'PROCEDURAL_PLACEMENT_DECOR': 'not known', 'PROCEDURAL_PLACEMENT_MASKS': 'not known', 'EVENT_ISLAND': 'auto',
@@ -193,7 +193,7 @@ LIVE_OVERRIDES = {
     'FOUNDER_ENTITLEMENTS': 'false (live gave them to buyers and winners only)', 'ENTITLEMENT_PACKAGES': '—',
     'ENTITLEMENT_DELIVERY': 'auto', 'LANDSCAPE_CAPACITY': 'not known', 'MEMBERSHIP_PRICE_LUMENS': '— (live sold it for money)',
     'MEMBERSHIP_DAYS': '—', 'TRIAL_KEYS': 'true', 'TRIAL_KEY_DAYS': '10', 'VENDOR_SHOPS': 'false', 'BUILD_MENU_PROP_NAME': 'not known (no source shows it)',
-    'CHEST_ACCOUNT_CAP': '0', 'FRIEND_TELEPORT_COOLDOWN_SECONDS': '0', 'STORY_POSE_PERSISTS': 'true',
+    'CHEST_ACCOUNT_CAP': '0', 'FRIEND_TELEPORT_COOLDOWN_SECONDS': '0', 'FRIEND_REQUESTS_MUTUAL': 'true', 'STORY_POSE_PERSISTS': 'true',
     'PLACE_OPENS_BUILD_MODE': 'false', 'DAY_CYCLE_SPEED': '8', 'SHOWCASE_FOLLOW_DIGEST': 'true',
     'SHOWCASE_DIGEST_HOUR_UTC': 'not known', 'FINDER_RETURN_HOME': 'not known', 'CAVERN_TRIPS_OTHER_WORLDS': 'true',
     'SHORT_TELEPORT_DISTANCE': '—', 'ITEM_DEFINITION_CHUNK_SIZE': '0 (one packet)', 'SHORT_TELEPORT_WAIT_SCREEN': 'not known',
@@ -863,9 +863,10 @@ ADMIN_SLASH = [
     ('Building', '/prop <prop id>', 'Places a free prop at the point under the crosshair, owned by the admin, saved and '
      'shown to the landscape.', ['SpawnPropSub']),
     ('Building', '/prop reset_zone_and_wipe_db_forever_with_no_undo', 'Refused, and logged with who tried.', ['DeleteAllPropsSub']),
-    ('Social', '/friend forceadd <target> [source]', "Adds the target to the source's friends list (the admin's own when no "
-     'source is given; the source must be online).', ['ForceAddFriendSub']),
-    ('Social', '/friend remove <target> [source]', "Removes the target from the source's friends list.", ['ForceRemoveFriendSub']),
+    ('Social', '/friend forceadd <target> [source]', "Adds the target to the source's friends list without a friend request "
+     "(the admin's own list when no source is given; the source may be offline). The admin is told the outcome.", ['ForceAddFriendSub']),
+    ('Social', '/friend remove <target> [source]', "Removes the target from the source's friends list, as if the source had "
+     'removed them. The admin is told the outcome (removed, or not on the list).', ['ForceRemoveFriendSub']),
     ('Items', '/item add <item> [count] [tint] [name|guid]', 'Gives items to the target (the named player, else the admin '
      'target, else the admin). Tints are reported but not kept.', ['AddItemSub']),
     ('Items', '/item delete <item guid> [name|guid], /item undelete <item guid> [name|guid]', 'Deletes a stack; undelete '
@@ -893,10 +894,12 @@ ADMIN_SLASH = [
 # Server commands a player types. (group, syntax, who, what it does)
 PLAYER_SLASH = [
     ('Social', '/emotelist', 'Everyone', 'Lists the emote commands in chat.'),
-    ('Social', '/emote <0-21>', 'Everyone', 'Plays emote clip n.'),
-    ('Social', '/<emote word>  (EMOTE_WORDS)', 'Everyone', 'Plays that emote. Moods (calm, angry, happy) colour the idle '
-     'stance and later emotes; stances (dance, kneel, skip, drunk, sneak, playdead) loop until `/stand`, another stance or '
-     'walking away.'),
+    ('Social', '/emote <0-33>', 'Everyone', 'Plays emote clip n.'),
+    ('Social', '/<emote word>  (EMOTE_WORDS)', 'Everyone', 'Plays that emote, with its chat lines ("You wave." / '
+     '"[name] waves.", the "[target]" forms with a target). Moods (angry, happy, sad; `/calm` ends them) colour the idle '
+     'stance and later emotes; stances (dance, kneel, lie, playdead) loop until `/stand`, another stance or walking away; '
+     'the walk stances (skip, drunk, sneak) last while walking, until `/stand`; `/talking` talks until `/stop`. Players '
+     'who meet you later see your stance and mood too.'),
     ('Social', '/playdead', 'Everyone (0.695 clients)', 'The Play Dead stance, with its chat lines (with your target when '
      'you have one).'),
     ('Social', '/duel <name>', 'Everyone', 'Challenges a player to a duel (a world-channel encounter).'),
@@ -960,7 +963,8 @@ def split_usage(names, comment):
 
 def emote_words():
     text = read('LandmarkEmulator.WorldServer', 'Game', 'Emotes.cs')
-    return re.findall(r'\["(\w+)"\]\s*=\s*\d+', text)
+    # The word table's entries: a number or a constant (["lie"] = Lie); the chat-line table's `= new(...)` are not words.
+    return re.findall(r'\["(\w+)"\]\s*=\s*(?:\d+|[A-Z]\w*)\b(?!\s*\()', text)
 
 
 def check_subs():

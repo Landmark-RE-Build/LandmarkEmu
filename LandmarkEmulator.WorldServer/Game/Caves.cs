@@ -63,8 +63,11 @@ namespace LandmarkEmulator.WorldServer.Game
         private static readonly Vector3 ArrivalOffset = new(0f, 10f, 0f);
 
         private static readonly List<Vector3> caverns = new();
-        /// <summary>Deepest cavern entry (local metres) a random Underground Adventure picks (see TravelRandom).</summary>
-        private const float MinTravelDepth = -650f;
+        /// <summary>
+        /// Deepest cavern entry (local metres) a random Underground Adventure picks (see TravelRandom); also no more than
+        /// Graveyards.TripMaxDepthBelowGround below the landscape's ground (Graveyards.Arrivals.cs).
+        /// </summary>
+        public const float MinTravelDepth = -650f;
         /// <summary>
         /// The caverns with their cave biome (VoxelBiomes: 41 AncientForestCavern, 45 CrystalCavern, 62 DeciduousCavern,
         /// 63 VolcanicCavern …), from the placement's property group (VoxelLayerPropertyGroups → biome, tier): the Chaos
@@ -94,12 +97,6 @@ namespace LandmarkEmulator.WorldServer.Game
         private static readonly Dictionary<uint, List<Vector3>> graveyardPieces = new();
         /// <summary>The landscapes with cavern graveyards, in load order (the home continent first).</summary>
         private static readonly List<uint> graveyardLandscapes = new();
-        /// <summary>
-        /// A cavern graveyard's floor lies about this far below its Graveyard01 piece (metres; Graveyards.Landscape.cs: the
-        /// placement box's minimum is 26.4 m below the piece, the plinth 4.4 m high): the depth <see cref="MinTravelDepth"/>
-        /// is measured at for graveyard trips.
-        /// </summary>
-        private const float GraveyardFloorBelowPiece = 22f;
         /// <summary>
         /// The graveyard a player within this distance of (metres) is "at" (the client roll's current cave, left out):
         /// half the islands' graveyard spacing (a 9 × 9 grid about 700 m apart) [I: the distance is ours].
@@ -379,6 +376,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 return;
             }
             Go(session, trip.At, trip.Zone);
+            CavernArrivalGuard.Arm(session, trip.At, trip.Zone);
             Achievements.Progress(session, Achievements.UndergroundAdventure);
             FirstTimeEvents.Trigger(session, FirstTimeEvents.ChaosCavern);   // queued by the client while it loads
             log.Info($"{session.CharacterName} follows their group underground.");
@@ -477,11 +475,16 @@ namespace LandmarkEmulator.WorldServer.Game
         /// FUN_143f84420: a random entry of the type-3 pick list whose id differs from the current cave; "Player attempting
         /// to roll random cave with no caves loaded!") [P mechanism; I that live's server called it for this request: its
         /// log text names a player roll];</item>
-        /// <item>the arrival is that graveyard's arrival point (Graveyards.CavernArrival): on the stamped graveyard_launch
-        /// plinth, or with CavernGraveyardStamps off (and never stamped) on the cave floor at the graveyard, as before.</item>
+        /// <item>the arrival is that graveyard's arrival point (Graveyards.CavernArrival): 0.6 m over the stamped
+        /// graveyard_launch plinth (22 m below the piece), or with CavernGraveyardStamps off (and never stamped) on the cave
+        /// floor at the graveyard, as before.</item>
         /// </list>
-        /// Graveyards whose floor is deeper than <see cref="MinTravelDepth"/> are left out (the client streams those caves
-        /// too late, see <see cref="TravelToCavern"/>; 125 of the 1,944 on the 24 islands). When the landscape is not ready
+        /// Only graveyards that pass Graveyards.TripProblem are picked (Graveyards.TripArrival; bug 2026-10-18, the player
+        /// fell through the world 2,028 m below a mountain): arrival at y ≥ <see cref="MinTravelDepth"/> as before, at most
+        /// Graveyards.TripMaxDepthBelowGround below the landscape's ground, the client's own cave floor close under it.
+        /// 1,568 of the 1,944 island graveyards pass (125 are below y −650, 251 more than 1,600 m below the ground; dev
+        /// "cavecheck all"). The fall guard (CavernArrivalGuard) watches
+        /// every trip's first seconds and brings a player who falls through back. When the landscape is not ready
         /// (a fresh world's first trips, nothing ready anywhere) the trip goes to a random cavern of it as before 2026-10-17
         /// (<see cref="TravelToCavern"/>), never onto an unstamped graveyard whose plinth would then be stamped around the
         /// player. The group follow (P5188) and the Lost Crystal's own pick (Outposts.NextCave, with its loot lockouts;
@@ -523,9 +526,14 @@ namespace LandmarkEmulator.WorldServer.Game
                 TravelToCavern(session, zone == null && !Outposts.Ready(land) ? PickCavernLandscape() : land);
                 return;
             }
-            var choices = Enumerable.Range(0, pieces.Count).Where(i => pieces[i].Y - GraveyardFloorBelowPiece >= MinTravelDepth).ToList();
+            var choices = Enumerable.Range(0, pieces.Count).Where(i => Graveyards.TripArrival(land, pieces[i]) != null).ToList();
             if (choices.Count == 0)
-                choices = Enumerable.Range(0, pieces.Count).ToList();
+            {
+                // None of this landscape's graveyards is safe to arrive at (none on the shipped islands): its caverns instead.
+                log.Info($"{session.CharacterName}: no cavern graveyard on landscape {land} passes the arrival checks; a cavern instead.");
+                TravelToCavern(session, land);
+                return;
+            }
             // Never the graveyard the player is at (FUN_143f84420 skips the current cave id): the nearest one, when the
             // player is that close to it, while others remain.
             if (session.ZoneId == land && choices.Count > 1)
@@ -535,7 +543,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     choices.Remove(nearest);
             }
             int pick = choices[random.Next(choices.Count)];
-            if (Graveyards.CavernArrival(land, pieces[pick]) is not Vector3 at)
+            if (Graveyards.TripArrival(land, pieces[pick]) is not Vector3 at)
             {
                 log.Info($"{session.CharacterName}: cavern graveyard {pick} on landscape {land} has no arrival point; a cavern instead.");
                 TravelToCavern(session, land);
@@ -573,7 +581,8 @@ namespace LandmarkEmulator.WorldServer.Game
             // Random trips use the caverns down to MinTravelDepth: deeper ones (the .cpa has them to about y -1000) were
             // still loading on the client 35 s after arrival and the player then fell through (y -673 -> -1305,
             // y -865 -> -1882; the audit of 2026-10-14). Entries down to y -640 landed on the floor every time.
-            var reachable = all.Where(i => caverns[i].Y >= MinTravelDepth).ToList();
+            // The same depth below the ground as the graveyard trips (Graveyards.TripMaxDepthBelowGround, bug 2026-10-18).
+            var reachable = all.Where(i => caverns[i].Y >= MinTravelDepth && !TooDeepBelowGround(caverns[i], land)).ToList();
             // Never the cavern the player is in (as the client's CaveManager picks a "random cave": the beginning
             // locations other than the current cave; architecture-leads.md, L51): any cavern within this distance of
             // the player is left out while others remain.
@@ -587,11 +596,17 @@ namespace LandmarkEmulator.WorldServer.Game
             Arrive(session, at, land, "a cavern");
         }
 
+        /// <summary>Is a cavern point more than Graveyards.TripMaxDepthBelowGround below its landscape's ground?</summary>
+        private static bool TooDeepBelowGround(Vector3 at, uint zone)
+            => Terrain.TerrainHeights.HeightAt(at.X, at.Z, zone) is float ground && ground - at.Y > Graveyards.TripMaxDepthBelowGround;
+
         /// <summary>The trip itself: the move (re-zoning to another landscape), the goal, the first-time event, the group offer.</summary>
         private static void Arrive(WorldSession session, Vector3 at, uint land, string what)
         {
             // A spot on another landscape (or the home continent's from elsewhere): the trip re-zones there.
             Go(session, at, land);
+            // Its first seconds watched: a fall through the world comes back to the spot (CavernArrivalGuard).
+            CavernArrivalGuard.Arm(session, at, land);
             log.Info($"{session.CharacterName} goes underground at {at} on landscape {land}: {what}.");
             Achievements.Progress(session, Achievements.UndergroundAdventure);
             FirstTimeEvents.Trigger(session, FirstTimeEvents.ChaosCavern);   // queued by the client while it loads

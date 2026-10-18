@@ -212,7 +212,8 @@ namespace LandmarkEmulator.WorldServer.Game
                             break;
                         }
                         case "digmode":
-                            // digmode <n>: test switch for smoothed hole surfaces (0 off).
+                            // digmode <n>: how digs shape holes (TerrainEdits.OffsetMode): 8 the client's own surface (default),
+                            // 5 the old solid shell, 0 no vertices. For side-by-side checks.
                             Terrain.TerrainEdits.OffsetMode = int.Parse(parts[1]);
                             log.Info($"Dig offset mode {Terrain.TerrainEdits.OffsetMode}.");
                             break;
@@ -1933,9 +1934,28 @@ namespace LandmarkEmulator.WorldServer.Game
                             break;
                         }
                         case "cavecheck":
-                            // cavecheck [zone]: does every cavern entry point of the landscape have a floor (Caves.CheckFloors)?
-                            log.Info("cavecheck: " + Caves.CheckFloors(parts.Length > 1 ? uint.Parse(parts[1].Trim()) : 0));
+                        {
+                            // cavecheck [zone|all]: does every cavern entry point of the landscape have a floor (Caves.CheckFloors), and
+                            // where do its cavern graveyards' arrivals stand: on the plinth, the client's own floor under them, their
+                            // depth below the ground, how many random trips may use (Graveyards.CheckReport). all = every landscape
+                            // with cavern graveyards, in the background.
+                            string which = parts.Length > 1 ? parts[1].Trim() : "";
+                            if (which.Equals("all", StringComparison.OrdinalIgnoreCase))
+                            {
+                                List<uint> lands = Caves.GraveyardLandscapes.ToList();
+                                System.Threading.Tasks.Task.Run(() =>
+                                {
+                                    foreach (uint land in lands)
+                                        log.Info("cavecheck: " + Graveyards.CheckReport(land));
+                                });
+                                log.Info($"cavecheck: checking the cavern graveyards of {lands.Count} landscape(s) in the background.");
+                                break;
+                            }
+                            uint zone = which.Length > 0 ? uint.Parse(which) : 0;
+                            log.Info("cavecheck: " + Caves.CheckFloors(zone));
+                            log.Info("cavecheck: " + Graveyards.CheckReport(zone == 0 ? Terrain.TerrainStore.HomeContinent : zone));
                             break;
+                        }
                         case "cellstats":
                         {
                             // cellstats [x y z]: what the stored layers of the cell at the player (or a local point) hold.

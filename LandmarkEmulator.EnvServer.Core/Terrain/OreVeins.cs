@@ -561,7 +561,10 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 return z.Cells.Select(c => (c.Key, c.Value.Version)).ToList();
         }
 
-        /// <summary>Adds the ore under a cell's edits: voxels the overlay doesn't set get flag 1 + the ore material.</summary>
+        /// <summary>
+        /// Adds the ore under a cell's edits: voxels the overlay gives no material get flag 1 + the ore material (a
+        /// vertex-only voxel of a dug hole's wall keeps its vertex: the ore is the ground there).
+        /// </summary>
         public static bool Compose(ulong cellId, uint zone, BlockData blocks)
         {
             if (ZoneOf(zone == 0 ? TerrainStore.HomeContinent : zone) is not Zone z)
@@ -572,9 +575,9 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 if (!z.Cells.TryGetValue(cellId, out OreCell cell))
                     return false;
                 foreach ((int index, ushort material) in cell.Voxels)
-                    if (blocks.Flags[index] == 0)
+                    if ((blocks.Flags[index] & 1) == 0)
                     {
-                        blocks.Flags[index] = 1;
+                        blocks.Flags[index] |= 1;
                         blocks.Materials[index] = material;
                         any = true;
                     }

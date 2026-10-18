@@ -2141,6 +2141,36 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
   manifests listing SHA-256 / SHA-1 of the Feb exe (search the web for the CRC "ED231C3C" or the blob sha
   36808d0732ebd7d4f7d11c127ba34976e402453d); shutdown-week patch text (~110 bytes) for the locale reconstruction.
 
+### L192. Emote / animation details not provable without a live capture (animaudit 2026-10-18)
+- **Need:** (a) the live packet for emote chat lines (we send them like /playdead's); (b) whether /talking ends on move
+  (then remember it like a stance); (c) /yell vs the client's shout command; (d) "/emote" free-text vs our "/emote <n>";
+  (e) whether the six-shooter shooter's own client animates its shots; (f) which clip live played for potions (UsePotion
+  287?) and dynamite on watchers; (g) stance / mood on the player's own client across a cross-landscape re-zone;
+  (h) building pose and revive as seen by watchers; (i) shields (off hand slot 11) on players / creatures.
+- **Try next:** client tests for (b) (c) (d) (e) (g); 2016 videos for (f) (h); decompile for (c) (d).
+
+### L193. Hotbar placement on the active bar (invequip 2026-10-18)
+- **Need:** which bar live placed a right-clicked tool on (the client never tells the server the active bar; ours
+  starts at bar 0), and what ToolBase "switched build tool to Location (7)" right after an equip means.
+- **Try next:** client's active-bar index in the ActionManager data source / Lua; the ToolBase sender after equips.
+
+### L194. Weapon channel limits, charged follow-ups, Recon volley numbers (weaponinput 2026-10-18)
+- **Need:** live's longest hold / per-hit numbers for the channel attacks (ours: 3-5 hits, the 2 s block), whether a
+  charged Basic's follow-up (1045, 1057, 825, 822, 826, 816, 1164) was charged too (inferred from the longer follow-up
+  windows only), the Recon volley's reach / arc / shot count / spacing / 6 Energy cost (ours), and which animation index
+  the left-click follow-up played (sword index 1 = 316/317 lunges forward — the user saw it as "a charge").
+- **Searched:** AbilityEx (empty), AbilityParameterDefinitions, wiki weapon pages, patch notes, the live SendSelf
+  loadout (zeros), PacketDumps (no weapon ability-info replies).
+- **Try next:** a live 0x27 capture (cast-continue / cast-success timing), 2016 combat videos, the animation network's
+  index conditions for the combo step.
+
+### L195. Why very deep cavern arrivals get no collision (cavefall 2026-10-18)
+- **Need:** the client-side reason a player arriving >~1,600 m below the ground (graveyard 38 on 406: 2,028 m below a
+  1,423 m mountain) falls through, although the plinth cell is stored and the client holds physics until the player's
+  cell and the one above are loaded (FUN_143324910). Fix in place is a depth filter + fall guard (ours).
+- **Try next:** Frida on the cell request / collision build for a deep arrival (LOD / streaming depth limit in the
+  client's VoxelFarm view distance), client logs VoxelFarm.log / CellRequests during such a trip.
+
 ## Found
 
 - **ROOT CAUSE FOUND 2026-10-16 (Frida, test copy; re/test/teleport_trace.js + .py):** a Stalker probe of the frozen main

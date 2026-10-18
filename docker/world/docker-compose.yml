@@ -116,6 +116,9 @@ services:
       # The Chaos Caverns' graveyards stamped into the terrain (the client's graveyard_launch template, turned as each of
       # the cave file's placements says), once per landscape in the background on its first visit; false = no new stamps.
       CavernGraveyardStamps: ${CAVERN_GRAVEYARD_STAMPS:-true}
+      # A player who falls through the world in the first seconds after an Underground Adventure is put back on the
+      # graveyard (a second fall: the landscape's shallowest graveyard); false = left where they fell.
+      CavernArrivalRescue: ${CAVERN_ARRIVAL_RESCUE:-true}
       OutpostPreload: ${OUTPOST_PRELOAD:-false}
       # Outposts change caverns: every OUTPOST_ROTATION_HOURS per landscape a share (OUTPOST_ROTATION_SHARE) of its
       # outposts gets another ruin in its own cavern (stamped in the background; outposts players are near are left alone).
@@ -248,6 +251,8 @@ services:
       ChestAccountCap: ${CHEST_ACCOUNT_CAP:-0}
       # Seconds between two Teleport to Friend trips per character (0 = none, live since 5 May 2015; 1800 = 2014's 30 min).
       FriendTeleportCooldownSeconds: ${FRIEND_TELEPORT_COOLDOWN_SECONDS:-0}
+      # An accepted friend request fills both friends lists (true = live); false = one-way lists (only the asker's).
+      FriendRequestsMutual: ${FRIEND_REQUESTS_MUTUAL:-true}
       # Story creatures keep the mood / stance a Story Node gave them, saved with the spawner (true = live from 7 Jun 2016).
       StoryPosePersists: ${STORY_POSE_PERSISTS:-true}
       # Placing a prop from the bag opens Build Mode (Props page) and closes it when that placement ends (true = this

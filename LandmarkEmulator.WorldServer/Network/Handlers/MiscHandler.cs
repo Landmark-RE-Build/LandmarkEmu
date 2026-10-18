@@ -625,9 +625,11 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
         public static void HandleCancelCast(WorldSession session, AbilityCancelCast cancel)
         {
             log.Debug($"CancelCast from {session.CharacterName}: {BitConverter.ToString(cancel.Body)}");
-            // A channel's key let go (sprint, Immediate Delivery, Endless Breeze: MovementEffects.Release), else a charge
-            // given up (a leap, then a weapon's charged attack). The packet names no cast (one bool, FUN_142e0f5a0).
-            if (!Game.MovementEffects.Release(session, cancel.Interrupted) && !Game.MovementEffects.Finish(session, null))
+            // A channel's key let go (sprint, Immediate Delivery, Endless Breeze: MovementEffects.Release; a weapon's held
+            // channel or blocking stance: WeaponCombat.ReleaseChannel), else a charge given up (a leap, then a weapon's
+            // charged attack). The packet names no cast (one bool, FUN_142e0f5a0).
+            if (!Game.MovementEffects.Release(session, cancel.Interrupted) && !Game.MovementEffects.Finish(session, null)
+                && !Game.Combat.WeaponCombat.ReleaseChannel(session))
                 Game.Combat.WeaponCombat.CancelCharge(session);
         }
 
@@ -694,9 +696,11 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
             if (source == null)
             {
                 // Weapon combo abilities (e.g. 760/761/816/1181/1182 for axes) aren't listed on items and the client's
-                // AbilityEx table is empty (server data). With a weapon held, answer like an item ability of that
-                // weapon (short cast, quick recovery, so a combo can chain); otherwise the 1098 layout under the id.
-                if (Game.Abilities.HeldWeapon(session) is { } weapon)
+                // AbilityEx table is empty (server data). Answer like an item ability (short cast, quick recovery, so a
+                // combo can chain) of the weapon whose buttons send this id (Combat.WeaponInputs): the client asks for a
+                // weapon's casts whenever its tooltip shows, held or in the bag, and describing them with the held weapon
+                // gave a bag weapon the held one's attack names. Else the held weapon; otherwise the 1098 layout.
+                if ((Game.Combat.WeaponInputs.OwnerOf(abilityId) ?? Game.Abilities.HeldWeapon(session)) is { } weapon)
                 {
                     session.EnqueueMessage(WeaponAttackInfo(session, weapon, abilityId));
                     return;

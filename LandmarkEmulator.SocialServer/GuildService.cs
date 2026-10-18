@@ -259,9 +259,10 @@ namespace LandmarkEmulator.SocialServer
                         Create(player, reader.ReadString()?.Trim() ?? "");
                         break;
                     case InviteSub:
-                        reader.ReadULong();
-                        reader.ReadULong();
-                        Invite(player, reader.ReadString()?.Trim() ?? "");
+                        if (GuildInvites.TryRead(body, out GuildInvites.Request invite))
+                            Invite(player, invite);
+                        else
+                            log.Debug($"Unreadable guild invite from {player}: {BitConverter.ToString(body)}");
                         break;
                     case InviteReplySub:
                         Reply(player, body);
@@ -352,17 +353,25 @@ namespace LandmarkEmulator.SocialServer
             PushZoneState(new[] { player.Guid });
         }
 
-        /// <summary>Invites a player online on any world (needs CreateGuildInvite).</summary>
-        private void Invite(OnlineCharacter player, string name)
+        /// <summary>
+        /// Invites a player online on any world (needs CreateGuildInvite). The invitee is found by guid when the request
+        /// carries one (the right-click menu's Guild.Invite: {guild, target guid, ""}) and by name otherwise (the Guild
+        /// window: {guild, 0, typed name}; Internal/Social/GuildInvites.cs).
+        /// </summary>
+        private void Invite(OnlineCharacter player, GuildInvites.Request request)
         {
             Guild guild = GuildOf(player.Guid);
             if (guild == null || !Has(guild, player.Guid, "CreateGuildInvite"))
+            {
+                log.Debug($"{player}: guild invite ({request.Describe()}) without a guild or CreateGuildInvite: ignored.");
                 return;
-            SocialCharacterModel row = hub.Store.FindCharacterByName(name);
+            }
+            SocialCharacterModel row = GuildInvites.Resolve(request, hub.Store.GetCharacter, hub.Store.FindCharacterByName);
             OnlineCharacter target = row != null ? hub.Presence.Find(row.Guid) : null;
             if (target is not { Connected: true })
             {
-                Notify(player, NotifyPlayerNotFound, guild.Model.Name, name);
+                Notify(player, NotifyPlayerNotFound, guild.Model.Name, GuildInvites.ShownName(request, row?.Name));
+                log.Info($"{player}: guild invite ({request.Describe()}): {(row == null ? "no such character" : $"{row.Name} is not online")}.");
                 return;
             }
             if (guildOf.ContainsKey(target.Guid))

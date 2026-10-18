@@ -34,7 +34,10 @@ What each part of `LandmarkEmulator.WorldServer` does, which packets it uses (la
   - tooltips;
   - equip/unequip packets.
   - Every transfer is answered. Equipment changes go out to everyone as `SetCharacterEquipmentSlot`.
-- `Network/Handlers/ActionBarHandler.cs`: hotbar slot set/clear, saved in `character_action_slot`.
+- `Network/Handlers/ActionBarHandler.cs`: hotbar slot set/clear, saved in `character_action_slot`. The session keeps
+  a copy of the bars as the client has them (`WorldSession.actionSlots`, from SendSelf and every confirmed change):
+  a right-clicked bag tool (0.695 sends only the equip) is put on the first free slot by the server
+  (`InventoryHandler.IsRightClickEquip` -> `WorldSession.PlaceOnActionBar`), as the 0.589 client did by itself.
 - Item definitions are the client's item list as a live server sent it: the captured packet
   `Resources/PacketDumps/44-CommandBase`, sent at world entry (protocol.md §5).
 - Items are instances: a trade, a mail attachment or a chest hands over the same item, so it keeps its wear (condition;
@@ -124,12 +127,31 @@ What each part of `LandmarkEmulator.WorldServer` does, which packets it uses (la
   type-3 "cave beginning locations" (`.cpa` tile record byte 32 set, byte 38 = 3: the 81 Graveyard01 pieces of each
   island); the client's own roll among them (CaveManager GetRandomCaveBeginningLocation, 0.695 FUN_143f84420) never
   picks the current one, and neither does the server (the nearest graveyard within 350 m of the player is left out).
-  The player arrives on the stamped graveyard plinth, or on the cave floor there when `CavernGraveyardStamps` is off.
+  The player arrives 0.6 m over the stamped graveyard plinth (1 m above its top solid sample, as the cave-floor arrivals
+  always were), or on the cave floor there when `CavernGraveyardStamps` is off.
   Pioneer lands have only type-2 locations and are never picked. A landscape whose outposts or cavern graveyards
   aren't ready yet (laid out and stamped in the background on first use) is queued and a ready one is picked; with
   none ready the trip goes to a random cavern as before.
-  Random trips use arrivals at y >= -650 only: deeper caverns were still loading on the client 35 s after
-  arrival and the player fell through the world (audit 2026-10-14); 125 of the 1,944 island graveyards are deeper.
+  - **Where the arrival is** (`Game/Graveyards.Arrivals.cs`; checked on all 1,944 island graveyards, dev
+    `cavecheck all`): each island has 81 type-3 locations, all Graveyard01 pieces with rotation 0, each with one
+    graveyard_launch placement whose box minimum is (−22.0, −26.4, −6.4) m from the piece whatever its quarter turn.
+    The plinth top is 22.0 m below the piece on every graveyard; the arrival (the area's offset (0, ·, 6) from the
+    centrepiece, turned with the template like its props) is the same spot of the template everywhere, on the plinth.
+    The client's own beginning location (AddCave FUN_143f813e0 / GetRandomCaveBeginningLocation FUN_143f84420) is
+    the piece origin itself, with no offset of its own. The plinth stands in the generated cavern's air: the client's
+    own floor is 4.0-4.4 m under the arrival, and no floor within 40 m is lower than the stamped box's bottom (5.4 m).
+  - **Which graveyards random trips use** (bug 2026-10-18: a trip to graveyard 38 of 406, 2,028 m below a 1,423 m
+    mountain, fell through the world the moment the loading screen dropped; one to graveyard 24, 747 m deep, stood):
+    arrival at y >= −650 as before (deeper caverns were still loading 35 s after arrival and the player fell, audit
+    2026-10-14), at most 1,600 m below the landscape's ground (the trips that fell were 1,768 m and more below it, the
+    ones that worked at most 1,419 m) [I], more than 100 m below it, the client's own floor at most 6 m under the
+    arrival. 1,568 of the 1,944 island graveyards pass (125 are below −650, 251 too deep below the ground); the cavern
+    fallback trip uses the same two depth rules.
+  - **Fall guard** (`Game/CavernArrivalGuard.cs`; setting `CavernArrivalRescue`, Docker `CAVERN_ARRIVAL_RESCUE`,
+    default on; ours): in the first 30 s after a trip's loading screen dropped, a player reported more than 12 m below
+    the arrival within 60 m of it has fallen through the world (nothing there is that low) and is re-zoned back to the
+    arrival; a second fall goes to the landscape's shallowest open graveyard; a third is only logged. Positions from
+    behind the loading screen never count.
 - **Right-click menus** (`Game/RightClickMenus.cs`): the server chooses the buttons for players, friends, party and
   guild members, props and chat tabs, from the client's RadialMenuButtons.txt.
   - **Prop name while the menu is open** (`Game/Props.MenuName.cs`; setting `BuildMenuPropName`, Docker
@@ -491,7 +513,27 @@ world tick, and a second click within 5 s is ignored. Dev `founderchest`.
   waiting period can't be attached (0xA).
 - Trades end when a trader changes landscape (TradeCanceled) or enters a running site game (codes 8 / 9). The bag
   check counts stacking onto the receiver's own stacks.
-- `Game/Friends.cs`: one-way friend lists with online/offline notices, stored in `character_friend`.
+- Emotes and stances (`Game/Emotes.cs`; wire in docs/protocol.md "Sitting"): /sit is the client's own, the stances
+  (/kneel, /dance, /skip, /drunk, /sneak, /playdead) and /stand are the server's. **With a tool or weapon in the hand
+  (a pick, an axe, a sword ...) no sit or stance shows**, on the player's screen or anyone else's, although /sit still
+  prints "You sit down.": the held item puts the character's animation network in its weapon / tool idle, which has
+  no stances (client rule, so live did the same; protocol.md). Put the item away first, then /sit.
+- `Game/Friends.cs` (and the social service's `FriendService.cs`): friend lists with online/offline notices, stored
+  per direction in `character_friend` (`friend` in lmemu_social). A request ("/friend add Name" or the player
+  menu) shows the other player the Friend Invite popup; **accepting makes both friends**: the asker's list gets the one
+  who accepted ("[player] has accepted your friend request."), the accepter's list gets the asker ("[player] has been
+  added as a friend."), each at once with the other's online state, on whatever worlds they are (live: wiki Friends
+  List, people "you either sent friend requests to or from whom you accepted friend requests"; the client never adds a
+  row by itself). `FriendRequestsMutual` (`FRIEND_REQUESTS_MUTUAL`, default true; with `SOCIAL_ADDRESS` the social
+  service reads the same line) false keeps one-way lists, where only the asker gets a friend. Each list holds 200
+  (ours): a full side gets no row and "Your friends list is full.", the other side still gets its row. An ignore either
+  way (also one made while the popup was up) stops the accept with nothing said (as the 7 Aug 2014 Steam friends
+  import: "as long as they aren't ignoring you, and vice-versa"). Removing a friend — the friends window or
+  "/friend remove Name" (by name) and the player right-click menu's Remove Friend (Ui.RemoveFriendByGuid, by guid) —
+  takes them off the remover's list only (no source shows a removal reaching the other list; the client has no "removed
+  you" text). Admin `/friend forceadd` stays one-way. Rules: `Internal/Social/FriendAccept.cs`,
+  `Internal/Social/FriendRemoveRequest.cs`. Friendships made before mutual requests (2026-10-18) stay one-way until
+  asked again.
 - `Game/Groups.cs`: invites (the popup's Accept / Decline come back as a GroupsBase Join), the party window, leader, kick, leave, disband.
 - `Game/Guilds.cs` (and the social service's `GuildService.cs`): create, invite, ranks with permissions, MOTD, online
   flags, persisted (`guild`, `guild_member`). The invitee's client queues the invitation popup (GAQGuildInvite, with the
@@ -641,12 +683,36 @@ world tick, and a second click within 5 s is ignored. Dev `founderchest`.
 
 ## Weapon combat (`Game/Combat/WeaponCombat.cs`, `Statuses.cs`, `Gear.cs`)
 
-Launch combat (wiki "Combat", "Weapons", "Affinity", the weapon pages; the client's own texts). The cast ids are the
-same for every weapon (input table: 760 basic, 761 power, combo stages …), so the server applies the **held weapon's
-kit**: its affinity and two named attacks, e.g. Staff of Frozen Sorrow "Basic Attack: Shatter" (text 574445,
-description 574446) / "Power Attack: Blizzard" (574447/574448). 21 named kits cover 31 weapon items (launch weapons and
-the pre-launch items they replaced); a weapon without named attacks (Lightbringer's Justice) uses the generic
-"Basic Attack" / "Power Attack" and its affinity's main state.
+Launch combat (wiki "Combat", "Weapons", "Affinity", the weapon pages; the client's own texts). The server applies
+the **held weapon's kit**: its affinity and two named attacks, e.g. Staff of Frozen Sorrow "Basic Attack: Shatter"
+(text 574445, description 574446) / "Power Attack: Blizzard" (574447/574448). 21 named kits cover 31 weapon items
+(launch weapons and the pre-launch items they replaced); a weapon without named attacks (Lightbringer's Justice) uses
+the generic "Basic Attack" / "Power Attack" and its affinity's main state.
+
+- **Which button sends which cast** (`Game/Combat/WeaponInputs.cs`) is the client's own data: the weapon's item record
+  lists DynamicInputActionSystems ids (u59) → a state machine (DesignBasedStateMachineDefinition / StateDefinition /
+  StatePropertiesDefinition) → input action groups → InputActionGroupEntries (TRIGGER_ID 9 Primary = left mouse,
+  10 Secondary = right mouse, 11 Tertiary = E; ACTION_ID = the cast). A state's entry firing moves it to a follow-up
+  state (StateMachineMap → StateToStateTransitionMap → TransitionGroupRuleMap → TransitionRuleDefinition type 1), which
+  is how the second left click sends the combo id. Every launch weapon: left = the Basic Attack (and its follow-up),
+  right = the Power Attack; the right mouse has follow-ups only for the Six-Shooters (801 → 1080, Trick Shot again),
+  the Overcharged Recon Blaster (779 → 1077, the channelled volley) and the Electrified Assault Axe (761 → 1181 → 1182,
+  Rolling Thunder's leaps). **E** is commented out of the 0.695 InputProfile_Default.xml and no launch weapon has an
+  E entry in either build; **Q** is the grappling hook. All weapon entries fire on press (TRIGGER_ON 2, no minimum
+  hold); the hold behaviour is the caster info's kind: charged (hold to charge, release to strike), channelled (held
+  while the button is down) or instant.
+- **Caster info only for the held weapon's casts**: on a weapon change and when Frenzy / Supercharge / Energize start
+  or end the server re-sends the 2-5 replies of the ids the held weapon's buttons send (before 2026-10-18: every weapon
+  cast id in the input table, ≈120 replies). A cast id the client asks about is described with the weapon that sends
+  it (a weapon's tooltip in the bag no longer shows the held weapon's attack names).
+- **Held channels** ("Channel …": Unload on the Six-Shooters' left mouse; Torrent, Dark Embrace, Consecrate, the Recon
+  volley, and the blocking stances Molten Rebuke / Corrupting Revenge on the right mouse): their caster info has the
+  channelled kind 0x216b5dcb, so the client keeps the cast open while the button is held. The server confirms with
+  CastContinue (carrying the attack's Enter, then its Release), deals the hits while it is held (at most the attack's
+  hit count, each further hit paying the weapon's "energy cost over time"), and answers (CastSuccess, Force off, then
+  AbilityEnd) when the button comes up (CancelCast), the last hit lands, the Energy runs out or the player dies. A
+  stance stays up while held, at most its 2 s, and ends when it catches a hit. The 11 May 2016 notes' "Secondary
+  channeled abilities should now show a cast bar" is the live side of this.
 
 - **Special (E) attacks**: only four weapons have an E cast in the client's input table (trigger 11): Lightbringer's
   Justice 765, Katana of Crashing Waves 768, Desperado's Deadly Arsenal 795, Silent Shadow's Condemnation 798 — exactly
@@ -1069,8 +1135,8 @@ Full write-up with sources: research/trace/0695/agent-graveyards.md.
     written into layer 0 like the outpost ruins (corner = box minimum − 1 voxel; air on the cave's own air left out),
     turned by the record's `a` (quarter turns, see docs/terrain.md "Turned stamps"). Its 25 props stand where the
     turned template has them: the Graveyard Centerpiece 1518 (the template's own, carrying area 23, never a second
-    one), gravestones, glowing mushrooms and four Stone Gargoyles. The arrival point is on the plinth, 6 m from the
-    centrepiece. The ring of air around the plinth lies below the Graveyard01 piece's floor, so the stamp leaves a
+    one), gravestones, glowing mushrooms and four Stone Gargoyles. The arrival point is 0.6 m over the plinth, 6 m from
+    the centrepiece (Underground Adventure above: which graveyards trips use, the fall guard). The ring of air around the plinth lies below the Graveyard01 piece's floor, so the stamp leaves a
     trench 1-3 m deep around it (measured on 391 / 406; that live wrote the template's air too is inferred, as for the
     ruins).
   - **When:** in the background on a landscape's first visit, one landscape at a time (81 small stamps, a few MB of

@@ -113,7 +113,7 @@ namespace LandmarkEmulator.Internal.Social
 
     /// <summary>
     /// A client request the zone hands to the service (social-service.md §5.4 "conn id + sender guid (zone-verified) +
-    /// the client body"): AddFriendRequest 0x1E/0x10 {string name, u64 guid}, RemoveFriendRequest 0x1E/0x12 {name block},
+    /// the client body"): AddFriendRequest 0x1E/0x10 {string name, u64 guid}, RemoveFriendRequest 0x1E/0x12 {identity, u64 guid},
     /// IgnoreRequest 0x1E/0x20 {u64 guid, name block, u8 ignore / stop}. Body (ours): u64 connectionId, u64
     /// characterGuid, then the client's body after its sub, unchanged.
     /// </summary>
