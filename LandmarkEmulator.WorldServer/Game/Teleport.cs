@@ -362,6 +362,10 @@ namespace LandmarkEmulator.WorldServer.Game
             // Whether the landscape changes (either way the client deletes every entity but its own player at
             // ClientBeginZoning, FUN_142d1ccf0 case 8 [P]; the landscape's are sent again at ClientIsReady).
             session.RezoneChangedLandscape = zone != session.ZoneId;
+            // Behind this load's screen until it drops (ClientLoading {0} after the zone-in): the landscape's players and
+            // this one meet then, not at ClientIsReady 15-25 s earlier (PlayerManager.RezoneStarted / LoadingScreenLeft).
+            // Before ChangedZone below, so the new landscape's players aren't shown the player yet.
+            PlayerManager.RezoneStarted(session, session.RezoneChangedLandscape);
             if (zone != session.ZoneId)
                 session.SetZone(zone);
             session.SetPosition(position);

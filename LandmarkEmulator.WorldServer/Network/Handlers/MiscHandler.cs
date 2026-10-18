@@ -176,14 +176,20 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
 
         /// <summary>
         /// PlayerUpdate ClientLoading 0x6C {u8}: GameStateLoading's enter sends 1 (FUN_1436abc90; not at login, where the
-        /// connection doesn't exist yet), its exit 0 (FUN_1436abd00) when the loading screen drops [P]. The first 0 of a
-        /// login shows this player and the others to each other (<see cref="Game.PlayerManager.LoadingScreenLeft"/>).
+        /// connection doesn't exist yet), its exit 0 (FUN_1436abd00) when the loading screen drops [P]. Every re-zone shows
+        /// the same screen (ClientBeginZoning → run state 0x14 → WaitForWorldReady → StartLoadingScreen → GameState 1;
+        /// no 1 when the screen is still up from the load before, ChangeState FUN_1430fc5e0 skips the same state) [P].
+        /// A 0 shows this player and the others to each other when the login or re-zone holds them
+        /// (<see cref="Game.PlayerManager.LoadingScreenLeft"/>; a 0 that belongs to an earlier screen is ignored there).
         /// </summary>
         [ZoneMessageHandler(ZoneMessageOpcode.PlayerUpdateLoading)]
         public static void HandleLoading(WorldSession session, PlayerUpdateLoading message)
         {
-            if (!PlayerUpdateLoading.LeftLoading(message.Body) || session.LoadingScreenDown)
+            if (!PlayerUpdateLoading.LeftLoading(message.Body))
+            {
+                log.Debug($"{session.CharacterName}: loading screen up.");
                 return;
+            }
             session.LoadingScreenDown = true;
             Game.PlayerManager.LoadingScreenLeft(session);
         }

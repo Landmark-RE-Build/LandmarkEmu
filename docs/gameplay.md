@@ -13,7 +13,7 @@ What each part of `LandmarkEmulator.WorldServer` does, which packets it uses (la
   - other players (`AddLightweightPc` + their visible equipment), and it is shown to them, when its login loading
     screen drops (PlayerUpdate ClientLoading 0x6C {0}, `PlayerManager.LoadingScreenLeft`; 90 s at most). That is
     15-25 s after `ClientFinishedLoading`, which only ends WaitForWorldReady: the screen then waits for the terrain.
-    Until then no movement goes to or from the player;
+    Until then no movement goes to or from the player. Every re-zone holds the player the same way (see "Teleports");
   - the claim list, health, the placed props within `PropStreamRange` (see "Props and crafting"), the (empty) design
     list, the Spire;
   - friends and guild data.
@@ -819,6 +819,15 @@ no Landmark source names an amount, so all numbers are ours.
   TeleportToLocation moves used to hang the client's renderer now and then; the cause (a zero facing vector, fixed
   2026-10-18) and the history are in docs/terrain.md "Long teleports". A short move counts as a pending arrival for 1 s, so hit points,
   game HUD and site info wait for it as they wait for a re-zone. An arrival from another world always re-zones.
+- **Meeting after a re-zone.** A re-zone (long teleport, landscape / Spire / site travel, cavern trip, travel to a
+  friend, an arrival from another world, a re-attach) shows the same loading screen as a login (GameStateLoading,
+  ClientLoading 0x6C `{1}` when it comes up, `{0}` when it drops in run state 0x12, 15-25 s after ClientIsReady). The
+  re-zoned player and the landscape's players meet when that `{0}` arrives (`PlayerManager.RezoneStarted` /
+  `ZoneInDone` / `LoadingScreenLeft`): the re-zoned client is sent the others then, and players on a new landscape
+  are sent the player then; players who kept seeing it through a re-zone on the same landscape are not sent it again
+  (they get its arrival position at the zone-in). No movement goes to or from it meanwhile. A `{0}` before the
+  re-zone's zone-done flags belongs to the screen before and is ignored. Fallbacks: 90 s after the zone-in, 3 min if
+  the zone-in never comes. Short moves (TeleportToLocation) are not held.
 - **Evac to Safety and the admin teleports** (OPEN-LEADS L140): the Escape menu's Evac to Safety, `/location`,
   teleport-to-camera and the admin map teleport send Command 0x1E teleport requests and freeze the player until a
   TeleportToLocation answers (protocol.md §14). Admins go to the exact point. Players get an evac near their own spot

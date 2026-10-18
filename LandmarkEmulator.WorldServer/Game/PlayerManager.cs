@@ -24,18 +24,56 @@ namespace LandmarkEmulator.WorldServer.Game
         private static int nextTransientId;
 
         /// <summary>
-        /// Players in the world whose login loading screen is still up, with the time they entered. Nobody is shown to
-        /// them and they are shown to nobody until it drops (<see cref="LoadingScreenLeft"/>), so both sides meet at the
-        /// same moment, when the new client can show the others (bug 2026-10-18: after a login the others saw the
-        /// newcomer 15-25 s before the newcomer saw anyone).
+        /// A player in the world whose loading screen is still up: after a login, or after a re-zone (ClientBeginZoning:
+        /// long teleports, landscape travel, Spire / site travel, cavern trips, travel to a friend, a re-attach). Nobody is
+        /// shown to them and they are shown to nobody new until it drops (<see cref="LoadingScreenLeft"/>), so both sides
+        /// meet at the same moment, when this client can show the others (bug 2026-10-18: after a login the others saw
+        /// the newcomer 15-25 s before the newcomer saw anyone; a re-zone has the same gap, as its screen also waits for
+        /// the terrain in run state 0x12).
         /// </summary>
-        private static readonly Dictionary<WorldSession, DateTime> loading = new();
+        private sealed class Hold
+        {
+            /// <summary>When it began (login: Enter; re-zone: its ClientBeginZoning).</summary>
+            public DateTime Since;
+            /// <summary>
+            /// From when a ClientLoading {0} counts as this screen's drop. A login: at once (the connection has had no
+            /// earlier screen). A re-zone: once its zone-done flags went out (<see cref="ZoneInDone"/>): the client only
+            /// leaves WaitForConfirmationPacket (run state 0x10) on them and drops the screen in 0x12 after it, so its
+            /// drop report always comes after; a {0} before that belongs to the screen before this re-zone [P].
+            /// </summary>
+            public DateTime? ArmedAt;
+            /// <summary>A re-zone hold (else a login).</summary>
+            public bool Rezone;
+            /// <summary>
+            /// Players who already see this one: a re-zone on the same landscape leaves the others' view of the player
+            /// alone (only the re-zoned client deleted its entities, FUN_142d1ccf0 case 8 [P]), so at the drop only they
+            /// are shown to it, not it to them again. Empty after a login or a change of landscape.
+            /// </summary>
+            public readonly HashSet<WorldSession> SeenBy = new();
+        }
+
+        /// <summary>Players behind a loading screen (<see cref="Hold"/>), under <see cref="sync"/>.</summary>
+        private static readonly Dictionary<WorldSession, Hold> holds = new();
 
         /// <summary>
-        /// A loading screen that never reports its drop is given up on after this long and the player is shown anyway
-        /// [I ours; the dev world's logins took 15-25 s from ClientFinishedLoading to the drop].
+        /// A loading screen that never reports its drop is given up on this long after it could have (<see
+        /// cref="Hold.ArmedAt"/>) and the player is shown anyway [I ours; the dev world's logins took 15-25 s from
+        /// ClientFinishedLoading to the drop].
         /// </summary>
         public static readonly TimeSpan LoadingShowLimit = TimeSpan.FromSeconds(90);
+
+        /// <summary>
+        /// A re-zone whose zone-in never happened (no repeat ClientIsReady) is given up on after this long and the player
+        /// shown anyway [I ours: the client's own watchdog is 3 minutes].
+        /// </summary>
+        public static readonly TimeSpan RezoneHoldLimit = TimeSpan.FromMinutes(3);
+
+        /// <summary>Is the player behind a loading screen (login or re-zone) that the others wait for?</summary>
+        public static bool IsHeld(WorldSession session)
+        {
+            lock (sync)
+                return holds.ContainsKey(session);
+        }
 
         /// <summary>
         /// Transient ids identify an entity in movement packets. 0 is avoided as it reads as "none".
@@ -79,9 +117,14 @@ namespace LandmarkEmulator.WorldServer.Game
                 PruneDead();
 
                 // Still behind its loading screen (ClientLoading 0x6C {0} not in yet): the introductions below are held
-                // until it drops (Introduce skips the pair).
+                // until it drops (Introduce skips the pair). A login's first drop report is its own; a re-attached or
+                // arriving session entering during its re-zone (MiscHandler.FinishZoneIn) waits for that re-zone's
+                // drop, from its zone-in on (Reintroduce → ZoneInDone).
+                DateTime now = DateTime.UtcNow;
                 if (!session.LoadingScreenDown)
-                    loading[session] = DateTime.UtcNow;
+                    holds[session] = new Hold { Since = now, ArmedAt = now };
+                else if (session.RezoneInFlight)
+                    holds[session] = new Hold { Since = now, Rezone = true };
                 foreach (WorldSession other in players.Where(p => p.ZoneId == session.ZoneId))
                 {
                     Introduce(session, other);
@@ -193,8 +236,8 @@ namespace LandmarkEmulator.WorldServer.Game
         {
             if (AdminCommands.IsHidden(subject))
                 return;   // an admin under /hideme stays out of everyone else's view
-            if (loading.ContainsKey(viewer) || loading.ContainsKey(subject))
-                return;   // one of them is still behind its login loading screen: they meet when it drops
+            if (holds.ContainsKey(viewer) || holds.ContainsKey(subject))
+                return;   // one of them is still behind its loading screen (login or re-zone): they meet when it drops
             viewer.EnqueueMessage(subject.BuildAddLightweightPc());
             foreach ((uint slot, var item) in subject.VisibleEquipment())
                 viewer.EnqueueMessage(subject.BuildEquipmentSlot(slot, item));
@@ -207,49 +250,116 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>
-        /// The client's login loading screen dropped (ClientLoading 0x6C {0}, MiscHandler.HandleLoading): the player and
-        /// everyone on the landscape are shown to each other now, once each way. The client would take the characters
-        /// earlier too (AddLightweightPc has no run-state gate, dispatcher FUN_142cdfa60 case 0x57 [P]), but they then
-        /// stood on the others' screens for the whole load while this client showed nobody.
+        /// The client's loading screen dropped (ClientLoading 0x6C {0}, MiscHandler.HandleLoading), after a login or a
+        /// re-zone: the player and everyone on the landscape are shown to each other now, once each way (a viewer who
+        /// kept seeing the player through a same-landscape re-zone is not sent it again). The client would take the
+        /// characters earlier too (AddLightweightPc has no run-state gate, dispatcher FUN_142cdfa60 case 0x57 [P]), but
+        /// they then stood on the others' screens for the whole load while this client showed nobody. A re-zone's screen
+        /// is the same GameStateLoading as the login's: ClientBeginZoning → run state 0x14 (FUN_142d58cd0) →
+        /// WaitForWorldReady (FUN_142d58610) → StartLoadingScreen (FUN_142d579b0) → ShowLoadingScreen (FUN_142d55ff0)
+        /// → ChangeState 1, whose enter sends {1}; the drop in run state 0x12 (HideLoadingscreen FUN_142ce8510 →
+        /// ChangeState 3) runs its exit, which sends {0} [P]. A report before the re-zone's zone-in is the previous
+        /// screen's and is ignored (<see cref="Hold.ArmedAt"/>).
         /// </summary>
         public static void LoadingScreenLeft(WorldSession session)
         {
             lock (sync)
             {
-                if (!loading.Remove(session) || !players.Contains(session))
+                if (!holds.TryGetValue(session, out Hold hold) || !players.Contains(session))
                     return;
-                ShowToZone(session);
-                log.Info($"{session.CharacterName}: loading screen down, shown to the landscape's players.");
+                if (hold.ArmedAt == null)
+                {
+                    log.Debug($"{session.CharacterName}: loading-screen drop before its re-zone's zone-in (the screen before it): still held.");
+                    return;
+                }
+                Release(session, hold);
+                log.Info($"{session.CharacterName}: loading screen down{(hold.Rezone ? " after a re-zone" : "")}, shown to the landscape's players.");
             }
         }
 
-        /// <summary>The player and everyone else on the landscape meet, both ways (under the lock).</summary>
-        private static void ShowToZone(WorldSession session)
+        /// <summary>
+        /// The player's hold ends: it and everyone else on the landscape meet, once each way — except those who saw it
+        /// all along (<see cref="Hold.SeenBy"/>), who are only shown to it. A pair with another held player waits for
+        /// that one's drop (Introduce). Under the lock.
+        /// </summary>
+        private static void Release(WorldSession session, Hold hold)
         {
+            holds.Remove(session);
             foreach (WorldSession other in players.Where(p => p != session && p.ZoneId == session.ZoneId))
             {
                 Introduce(session, other);
-                Introduce(other, session);
+                if (!hold.SeenBy.Contains(other))
+                    Introduce(other, session);
+            }
+        }
+
+        /// <summary>
+        /// A re-zone (ClientBeginZoning) goes out to a player in the world (<see cref="Teleport"/>.RezoneNow): it is held
+        /// until that load's screen drops. Its client deletes every entity but its own player (FUN_142d1ccf0 case 8 →
+        /// FUN_142d60340 [P]), so it no longer sees anyone, including other held players who counted it as a viewer. On
+        /// the same landscape the others keep seeing it (<see cref="Hold.SeenBy"/>); on another landscape nobody there has
+        /// been shown it. A re-zone queued while the previous screen is still up continues that hold. A session not in
+        /// the world yet (an arrival from another world, a re-attach) is held by Enter instead.
+        /// </summary>
+        internal static void RezoneStarted(WorldSession session, bool changedLandscape)
+        {
+            lock (sync)
+            {
+                if (!players.Contains(session))
+                    return;
+                foreach (Hold other in holds.Values)
+                    other.SeenBy.Remove(session);
+                if (!holds.TryGetValue(session, out Hold hold))
+                {
+                    hold = new Hold();
+                    if (!changedLandscape && !AdminCommands.IsHidden(session))
+                        foreach (WorldSession other in players.Where(p => p != session && p.ZoneId == session.ZoneId
+                                && !holds.ContainsKey(p)))
+                            hold.SeenBy.Add(other);
+                    holds[session] = hold;
+                }
+                else if (changedLandscape)
+                    hold.SeenBy.Clear();
+                hold.Since = DateTime.UtcNow;
+                hold.ArmedAt = null;
+                hold.Rezone = true;
+            }
+        }
+
+        /// <summary>
+        /// A re-zone's zone-done flags went out (MiscHandler.FinishZoneIn → <see cref="Reintroduce"/>): the next drop
+        /// report is this screen's. False when the player is not held.
+        /// </summary>
+        internal static bool ZoneInDone(WorldSession session)
+        {
+            lock (sync)
+            {
+                if (!holds.TryGetValue(session, out Hold hold))
+                    return false;
+                hold.ArmedAt ??= DateTime.UtcNow;
+                return true;
             }
         }
 
         /// <summary>
         /// Once a second: forgets held players who left, and shows the ones whose loading screen never reported its
-        /// drop within <see cref="LoadingShowLimit"/>.
+        /// drop within <see cref="LoadingShowLimit"/> of when it could have, or whose re-zone never reached its zone-in
+        /// within <see cref="RezoneHoldLimit"/>.
         /// </summary>
         private static void ShowOverdue(DateTime now)
         {
             lock (sync)
             {
-                foreach ((WorldSession session, DateTime since) in loading.ToList())
+                foreach ((WorldSession session, Hold hold) in holds.ToList())
                 {
                     if (!players.Contains(session))
-                        loading.Remove(session);
-                    else if (now - since > LoadingShowLimit)
+                        holds.Remove(session);
+                    else if (hold.ArmedAt is DateTime armed ? now - armed > LoadingShowLimit : now - hold.Since > RezoneHoldLimit)
                     {
-                        loading.Remove(session);
-                        ShowToZone(session);
-                        log.Warn($"{session.CharacterName}: no loading-screen drop after {LoadingShowLimit.TotalSeconds:0} s, shown anyway.");
+                        Release(session, hold);
+                        log.Warn(hold.ArmedAt != null
+                            ? $"{session.CharacterName}: no loading-screen drop after {LoadingShowLimit.TotalSeconds:0} s, shown anyway."
+                            : $"{session.CharacterName}: re-zone not loaded after {RezoneHoldLimit.TotalSeconds:0} s, shown anyway.");
                     }
                 }
             }
@@ -277,14 +387,18 @@ namespace LandmarkEmulator.WorldServer.Game
         /// players and their visible equipment, placed props and the Spire; trees, plants and creatures are forgotten so
         /// their streaming sends the regions around the new position again. Nothing is sent to the other players: their
         /// view of this player is unchanged.
+        /// The other players wait for this load's screen to drop (<see cref="RezoneStarted"/>, <see cref="LoadingScreenLeft"/>):
+        /// the zone-done flags have just gone out, so the client's next drop report is this screen's (<see cref="ZoneInDone"/>).
+        /// A player whose hold already ended (<see cref="RezoneHoldLimit"/>) is shown them now, as before.
         /// </summary>
         public static void Reintroduce(WorldSession session)
         {
-            lock (sync)
-            {
-                foreach (WorldSession other in players.Where(p => p != session && p.ZoneId == session.ZoneId))
-                    Introduce(session, other);
-            }
+            if (!ZoneInDone(session))
+                lock (sync)
+                {
+                    foreach (WorldSession other in players.Where(p => p != session && p.ZoneId == session.ZoneId))
+                        Introduce(session, other);
+                }
             Gathering.Forget(session);
             Creatures.Forget(session);
             LandmarksOfLandmark.Forget(session);   // the client dropped them with the re-zone: sent again when near
@@ -308,7 +422,8 @@ namespace LandmarkEmulator.WorldServer.Game
 
         /// <summary>
         /// A player moved to another landscape: players on the old one stop seeing them, players on the new one start
-        /// (with their visible equipment). Their own view is rebuilt by <see cref="Reintroduce"/> after the re-zone.
+        /// (with their visible equipment) — when the re-zone's loading screen drops, as the player is held then
+        /// (<see cref="RezoneStarted"/>, Introduce). Their own view is rebuilt after the re-zone, at the same drop.
         /// </summary>
         public static void ChangedZone(WorldSession session, uint oldZone)
         {
@@ -361,6 +476,9 @@ namespace LandmarkEmulator.WorldServer.Game
             {
                 if (!players.Remove(session))
                     return;
+                holds.Remove(session);
+                foreach (Hold hold in holds.Values)
+                    hold.SeenBy.Remove(session);
                 AdminCommands.Leave(session);
                 Gathering.Forget(session);
                 Props.Forget(session);
@@ -457,28 +575,36 @@ namespace LandmarkEmulator.WorldServer.Game
         {
             lock (sync)
             {
+                // Nothing from a player behind a loading screen (login or re-zone): the others meet it when it drops.
                 if (movement.Length == 0 || !players.Contains(session) || AdminCommands.IsHidden(session)
-                        || loading.ContainsKey(session))
+                        || holds.ContainsKey(session))
                     return;
 
                 // Through the gateway's one-to-many list when the viewers are on the separate gateway (MovementFanout).
                 // Not to a player still loading: it hasn't been shown this one yet.
                 foreach (WorldSession other in players.Where(p => p != session && p.ZoneId == session.ZoneId
-                        && !p.Disconnected && !loading.ContainsKey(p)))
+                        && !p.Disconnected && !holds.ContainsKey(p)))
                     MovementFanout.Queue(other, session.TransientId, movement);
             }
         }
 
-        /// <summary>Tells the other players on the landscape where this player stands (after a teleport).</summary>
+        /// <summary>
+        /// Tells the other players on the landscape where this player stands (after a teleport). While the player is
+        /// still behind a re-zone's loading screen only those who kept seeing it (same landscape, <see cref="Hold.SeenBy"/>)
+        /// get it; the rest are shown the player at its position when the screen drops.
+        /// </summary>
         public static void ShowPosition(WorldSession session)
         {
             if (AdminCommands.IsHidden(session))
                 return;
             byte[] movement = Creatures.MovementBody(session.Position, 0f, System.Numerics.Vector3.Zero);
             lock (sync)
+            {
+                holds.TryGetValue(session, out Hold hold);
                 foreach (WorldSession other in players.Where(p => p != session && p.ZoneId == session.ZoneId && !p.Disconnected
-                        && !loading.ContainsKey(p) && !loading.ContainsKey(session)))
+                        && !holds.ContainsKey(p) && (hold == null || hold.SeenBy.Contains(p))))
                     MovementFanout.Queue(other, session.TransientId, movement);
+            }
         }
 
         /// <summary>

@@ -23,7 +23,16 @@ namespace LandmarkEmulator.Tests.Rules
         private readonly List<WorldSession> added = new();
 
         private static IList Players => (IList)Private.Field(typeof(PlayerManager), "players");
-        private static IDictionary Loading => (IDictionary)Private.Field(typeof(PlayerManager), "loading");
+        private static IDictionary Loading => (IDictionary)Private.Field(typeof(PlayerManager), "holds");
+
+        /// <summary>A login hold as Enter makes it (its first drop report counts at once).</summary>
+        private static object LoginHold(DateTime since)
+        {
+            object hold = Activator.CreateInstance(Private.Nested(typeof(PlayerManager), "Hold"))!;
+            hold.GetType().GetField("Since")!.SetValue(hold, since);
+            hold.GetType().GetField("ArmedAt")!.SetValue(hold, (DateTime?)since);
+            return hold;
+        }
 
         public void Dispose()
         {
@@ -42,7 +51,7 @@ namespace LandmarkEmulator.Tests.Rules
             s.LoadingScreenDown = !loading;
             Players.Add(s);
             if (loading)
-                Loading[s] = DateTime.UtcNow;
+                Loading[s] = LoginHold(DateTime.UtcNow);
             added.Add(s);
             return s;
         }
@@ -100,7 +109,7 @@ namespace LandmarkEmulator.Tests.Rules
             AssertShown(newcomer, online.PlayerGuid);
             Assert.False(Loading.Contains(newcomer));
 
-            // A second drop report (a later re-zone's screen) shows nothing again.
+            // A second drop report (no hold: a later screen with nobody waiting) shows nothing again.
             PlayerManager.LoadingScreenLeft(newcomer);
             Assert.Empty(Shown(online));
             Assert.Empty(Shown(newcomer));
@@ -135,6 +144,11 @@ namespace LandmarkEmulator.Tests.Rules
             Assert.True(newcomer.LoadingScreenDown);
             AssertShown(online, newcomer.PlayerGuid);
             AssertShown(newcomer, online.PlayerGuid);
+
+            // A later drop with no hold behind it (a pause screen, a re-zone already shown) sends nothing.
+            MiscHandler.HandleLoading(newcomer, Message(0));
+            Assert.Empty(Shown(online));
+            Assert.Empty(Shown(newcomer));
         }
 
         [Fact]
@@ -161,7 +175,7 @@ namespace LandmarkEmulator.Tests.Rules
         {
             WorldSession online = InWorld(0x7051, "Online", loading: false);
             WorldSession newcomer = InWorld(0x7052, "Newcomer", loading: true);
-            DateTime entered = (DateTime)Loading[newcomer]!;
+            DateTime entered = (DateTime)Loading[newcomer]!.GetType().GetField("Since")!.GetValue(Loading[newcomer])!;
 
             Private.Call(typeof(PlayerManager), "ShowOverdue", entered + PlayerManager.LoadingShowLimit - TimeSpan.FromSeconds(1));
             Assert.Empty(Shown(online));
