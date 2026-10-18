@@ -1,0 +1,18 @@
+{
+  "Network": {
+    "Host": "0.0.0.0",
+    "Port": 20400
+  },
+  "Database": "server=127.0.0.1;port=3306;user=landmarkemu;password=landmarkemu;database=lmemu_commerce",
+  "ImportFrom": "lmemu_character",
+  "ImportWorldId": 1,
+  "ImportRealm": "lmemu_character",
+  "DataPath": "Data",
+  "PlayerStudioApprovals": 3,
+  "PlayerStudioRejections": 3,
+  "PlayerStudioReviewsPerDay": 2,
+  "PlayerStudioStaffReview": true,
+  "PlayerStudioCreatorSharePercent": 40,
+  "ShowcaseFollowDigest": true,
+  "ShowcaseDigestHourUtc": 10
+}

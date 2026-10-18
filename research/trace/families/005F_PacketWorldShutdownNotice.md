@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 0 (0 not handled) · S2C 1 (0 never sent / opcode unknown)
 
 ## S2C PacketWorldShutdownNotice  `0x5F`
-- server: SENT (4× in opcode_stats) · seen in play 4×
+- server: SENT (opcode used in the server code) · seen in play 100×
 - reader: FUN_142b8b650
 - built in: FUN_142c4d020
 - layout:

@@ -1,0 +1,11 @@
+{
+  "GatewayInternalAddress": "127.0.0.1:20300",
+  "ZoneInternalAddress": "127.0.0.1:20310",
+  "LoginInternalAddress": "",
+  "WorldId": 1,
+  "TradeBroker": true,
+  "EncounterBroker": true,
+  "ClaimRatings": true,
+  "Database": "",
+  "ImportFrom": "lmemu_character"
+}

@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 0 (0 not handled) · S2C 1 (0 never sent / opcode unknown)
 
 ## S2C PropUpdateInteractionStatePacket  `0xFD`
-- server: SENT (156× in opcode_stats)
+- server: SENT (opcode used in the server code)
 - reader: FUN_142b94680
 - built in: FUN_1430064b0
 - layout:
@@ -20,11 +20,11 @@ FUN_142b945d0 -> +0x20
   u32   +0x24
   u64   +0x28
   FUN_142b9afe0 -> +0x30
-    i32   iVar5
+    i32   <local>
       [loop 1: list elements]
-    u32   *puVar2
+    u32   <element>
   FUN_142ba1df0 -> +0x60
-    i32   iVar3
+    i32   <local>
       [loop 1: list elements]
     str   +0x60
 bool  +0xe0

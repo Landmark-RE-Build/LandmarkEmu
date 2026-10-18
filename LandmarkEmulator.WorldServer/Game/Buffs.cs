@@ -17,7 +17,7 @@ namespace LandmarkEmulator.WorldServer.Game
         private static readonly ILogger log = LogManager.GetCurrentClassLogger();
 
         /// <summary>One stat change: <see cref="Add"/> to the value, then <see cref="Percent"/> of it.</summary>
-        private sealed record Buff(string Name, uint Stat, float Add, float Percent, DateTime Ends, uint Item);
+        private sealed record Buff(string Name, uint Stat, float Add, float Percent, DateTime Ends, uint Item, bool Announce = true);
 
         private sealed class State
         {
@@ -39,16 +39,17 @@ namespace LandmarkEmulator.WorldServer.Game
 
         /// <summary>
         /// Starts (or refreshes) a named stat buff: <paramref name="add"/> to stat <paramref name="stat"/> plus
-        /// <paramref name="percent"/> % of it, for <paramref name="duration"/>.
+        /// <paramref name="percent"/> % of it, for <paramref name="duration"/>. <paramref name="announce"/> off: no "has worn
+        /// off" chat line at the end (short, often repeated buffs such as Cloud Burst's; the icon still goes).
         /// </summary>
         public static void AddStat(WorldSession session, string name, uint stat, float add, float percent, TimeSpan duration,
-            uint item = 0)
+            uint item = 0, bool announce = true)
         {
             lock (sync)
-                Of(session).Buffs[name] = new Buff(name, stat, add, percent, DateTime.UtcNow + duration, item);
+                Of(session).Buffs[name] = new Buff(name, stat, add, percent, DateTime.UtcNow + duration, item, announce);
             session.SendCalculatedStats();
             ShowIcon(session, name, item, duration);
-            log.Info($"{session.CharacterName}: {name} for {duration.TotalMinutes:0.#} min (stat {stat} +{add} +{percent}%).");
+            log.Info($"{session.CharacterName}: {name} for {duration.TotalSeconds:0.#} s (stat {stat} +{add} +{percent}%).");
         }
 
         /// <summary>
@@ -57,6 +58,7 @@ namespace LandmarkEmulator.WorldServer.Game
         /// </summary>
         public static void Resend(WorldSession session)
         {
+            Pets.ResendIcon(session);   // the permanent pet icon (spec-pets.md §5.5); kept outside the buff states
             List<(string Name, uint Item, TimeSpan Left)> active = new();
             lock (sync)
             {
@@ -71,6 +73,14 @@ namespace LandmarkEmulator.WorldServer.Game
             foreach (var (name, item, left) in active)
                 ShowIcon(session, name, item, left);
             Consumables.ResendGadgets(session);
+        }
+
+        /// <summary>Is the named stat buff running on the player?</summary>
+        public static bool Has(WorldSession session, string name)
+        {
+            lock (sync)
+                return states.TryGetValue(session, out State state) && state.Buffs.TryGetValue(name, out Buff b)
+                    && b.Ends > DateTime.UtcNow;
         }
 
         /// <summary>A calculated stat after the player's buffs.</summary>
@@ -163,22 +173,36 @@ namespace LandmarkEmulator.WorldServer.Game
         /// </summary>
         private static void SendEffectStart(WorldSession session, string name, uint type = 0, float strength = 0f,
             float fade = 0f, float seconds = 0f, uint startMs = 0)
+            => session.EnqueueMessage(Network.Message.ZoneMessageOpcode.AbilityEffectStart,
+                CharacterEffectStart(session.PlayerGuid, name, type, 0f, strength, seconds, startMs, fade));
+
+        /// <summary>
+        /// The EffectStart body (after the opcode) for an effect on any character <paramref name="carrier"/> (+0x70 caster
+        /// and +0x78 carrier; the key's u64 is the carrier too, so each character's effect has its own key), for the
+        /// recipient's client to put on that character. Layout as <see cref="SendEffectStart"/>; 0.695 reader FUN_142e028b0
+        /// (re/tools/pkt.py: the three 4 × u32 blocks are fixed-size, FUN_142c02830), handler FUN_142e19660 copies +0x38 →
+        /// effect type +0x20, +0x110 → +0xa0, +0x114 → +0xa4, +0x118 → +0xa8, +0xdc → duration, +0xe0 → start [P].
+        /// <paramref name="arc"/> (+0x110) and <paramref name="strength"/> (+0x114) are the type's two parameters: a Block
+        /// effect's full arc in degrees and height in metres (FUN_14354dc10), DetectCave's strength (+0x114).
+        /// </summary>
+        public static byte[] CharacterEffectStart(ulong carrier, string name, uint type, float arc, float strength,
+            float seconds, uint startMs, float fade = 0f)
         {
             var output = new List<byte>();
             var w = new LandmarkEmulator.Shared.Network.GamePacketWriter(output);
             WriteHeader(w, 0x0C);
-            w.Write(session.PlayerGuid);
+            w.Write(carrier);
             w.Write(0u);
             w.Write(EffectId(name));
             w.Write(0u);                               // +0x34
-            w.Write(type);                             // +0x38 effect type (name hash, e.g. DetectCave)
+            w.Write(type);                             // +0x38 effect type (name hash, e.g. DetectCave, Block)
             for (int i = 0; i < 4; i++) w.Write(0u);   // +0x3c..+0x48
             w.Write(false);                            // +0x4c
             w.Write(0u);                               // +0x50
             for (int i = 0; i < 4; i++) w.Write(0u);   // +0x60
             w.Write(0u);                               // +0x54
-            w.Write(session.PlayerGuid);               // +0x70
-            w.Write(session.PlayerGuid);               // +0x78 the character carrying it
+            w.Write(carrier);                          // +0x70
+            w.Write(carrier);                          // +0x78 the character carrying it
             w.Write(0u);                               // +0x80
             for (int i = 0; i < 4; i++) w.Write(0u);   // second 4-value block
             w.Write(0f); w.Write(0f); w.Write(0f); w.Write(1f);   // +0xa0 rotation
@@ -186,8 +210,8 @@ namespace LandmarkEmulator.WorldServer.Game
             w.Write(0ul);                              // +0xb8
             w.Write(0u);                               // +0xc0
             for (int i = 0; i < 4; i++) w.Write(0f);   // +0xf0
-            w.Write(0u);                               // +0x110
-            w.Write(strength);                         // +0x114 → effect +0xa4
+            w.Write(arc);                              // +0x110 → effect +0xa0 (Block: full arc, degrees)
+            w.Write(strength);                         // +0x114 → effect +0xa4 (Block: height, m; DetectCave: strength)
             w.Write(fade);                             // +0x118 → effect +0xa8
             w.Write(0u);                               // +0x11c
             w.Write(0u);                               // +0x120
@@ -197,7 +221,7 @@ namespace LandmarkEmulator.WorldServer.Game
             w.Write(startMs);                          // +0xe0 start (server clock ms) → effect +0x40
             w.Write(false);                            // +0xe4
             w.Write(0u);                               // +0xe8
-            session.EnqueueMessage(Network.Message.ZoneMessageOpcode.AbilityEffectStart, output.ToArray());
+            return output.ToArray();
         }
 
         /// <summary>
@@ -217,22 +241,30 @@ namespace LandmarkEmulator.WorldServer.Game
         public static void EndClientEffect(WorldSession session, string name) => HideIcon(session, name);
 
         private static void HideIcon(WorldSession session, string name)
+            => session.EnqueueMessage(Network.Message.ZoneMessageOpcode.AbilityEffectEnd, CharacterEffectEnd(session.PlayerGuid, name));
+
+        /// <summary>
+        /// The EffectEnd body (after the opcode) taking effect <paramref name="name"/> off character
+        /// <paramref name="carrier"/> (key {carrier, 0, id} as <see cref="CharacterEffectStart"/>; target +0x40 = carrier).
+        /// 0.695 reader FUN_142e02440: u64, u32, u32, u32, u64 (+0x38), u64 target (+0x40), u32, f32, u32 type, u32, u32 [P].
+        /// </summary>
+        public static byte[] CharacterEffectEnd(ulong carrier, string name)
         {
             var output = new List<byte>();
             var w = new LandmarkEmulator.Shared.Network.GamePacketWriter(output);
             WriteHeader(w, 0x0D);
-            w.Write(session.PlayerGuid);
+            w.Write(carrier);
             w.Write(0u);
             w.Write(EffectId(name));
             w.Write(0u);
             w.Write(0ul);
-            w.Write(session.PlayerGuid);
+            w.Write(carrier);
             w.Write(0u);
             w.Write(0f);
             w.Write(6u);
             w.Write(0u);      // type != 1: two more u32 (+0x54 resource, +0x58)
             w.Write(0u);
-            session.EnqueueMessage(Network.Message.ZoneMessageOpcode.AbilityEffectEnd, output.ToArray());
+            return output.ToArray();
         }
 
         private static void WriteHeader(LandmarkEmulator.Shared.Network.GamePacketWriter w, ushort sub)
@@ -253,10 +285,12 @@ namespace LandmarkEmulator.WorldServer.Game
 
         /// <summary>
         /// The buff bar's cancel (Ui.CancelEffect: Abilities 0x1E RequestCancelEffect, the effect id last): ends that
-        /// buff early.
+        /// buff early. The pet icon dismisses the pet (<see cref="Pets.Cancel"/>).
         /// </summary>
         public static void Cancel(WorldSession session, uint effectId)
         {
+            if (Pets.Cancel(session, effectId))
+                return;
             string ended = null;
             lock (sync)
             {
@@ -369,13 +403,14 @@ namespace LandmarkEmulator.WorldServer.Game
                 }
             }
             foreach ((WorldSession session, float percent) in healing)
-                Health.Heal(session, (uint)Math.Ceiling(Health.MaxHealth * percent / 100f));
+                Health.Heal(session, (uint)Math.Ceiling(Health.Max(session) * percent / 100f));
             foreach (WorldSession session in expired.Select(e => e.Item1).Distinct())
                 session.SendCalculatedStats();
             foreach ((WorldSession session, Buff buff) in expired)
             {
                 HideIcon(session, buff.Name);
-                Chat.System(session, $"{buff.Name} has worn off.");
+                if (buff.Announce)
+                    Chat.System(session, $"{buff.Name} has worn off.");
             }
             foreach (WorldSession session in endedHeals)
                 HideIcon(session, HealingName);

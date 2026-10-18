@@ -13,7 +13,8 @@ ResourceTriggerMaps (CONDITION_TYPE / VALUE / REQUIREMENT → TRIGGER_ABILITY / 
 FUN_143bf3360 — movement speeds, sprint, jump, fall damage, attributes, damage, crit ...).
 
 ## Skills (0xBC; SkillAdmin in 0x01) ✔ UpdateClassPoints 0x1, SetSkillPointManager 0x5. ✗ SelectSkillSet, SpendClassPoints,
-SelectSkill, GetSkillPointManager (C→S); LoadSkillDefinitionManager 0x4, AddSkill 0x6, ReportSkillGrant 0x7 (S→C).
+SelectSkill, GetSkillPointManager (C→S); LoadSkillDefinitionManager 0x4, AddSkill 0x6, ReportSkillGrant 0x7 (S→C). (0.695:
+LoadSkillDefinitionManager = sub 5, SetSkillPointManager = 6 — FUN_142f55e50; agent-l138-c2.md.)
 SkillDefinitionManager loads 10 tables (FUN_143b310e0..322e0). 0.589 skill UI: check reachability.
 
 ## Experience (0xBE) ✔ rate tier, ranks; ✗ SetExperience 0x1.

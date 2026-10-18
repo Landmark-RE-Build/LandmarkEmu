@@ -142,7 +142,7 @@ u64   +0x38
 ```
 u32   +0x18
 u64   +0x20
-i32   iVar3
+i32   <local>
   [loop 1: list elements]
 FUN_142d3e830 -> +0x0
   FUN_142d3e940 -> +0x8
@@ -153,9 +153,9 @@ FUN_142d3e830 -> +0x0
   str   +0x28
   u32   +0xc8
   FUN_142d42010 -> +0xd0
-    i32   iVar3
+    i32   <local>
       [loop 1: list elements]
-    u64   uVar6
+    u64   <local>
   u32   +0x0
   bool  +0x178
 ```

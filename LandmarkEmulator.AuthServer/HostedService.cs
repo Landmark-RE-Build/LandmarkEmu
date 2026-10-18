@@ -1,4 +1,4 @@
-﻿using LandmarkEmulator.AuthServer.Command;
+using LandmarkEmulator.AuthServer.Command;
 using LandmarkEmulator.AuthServer.Network;
 using LandmarkEmulator.AuthServer.Network.Message;
 using LandmarkEmulator.AuthServer.Zone;
@@ -43,12 +43,21 @@ namespace LandmarkEmulator.AuthServer
             {
                 NetworkManager<AuthSession>.Instance.Update(lastTick);
                 ZoneServerManager.Instance.Update();
+                LoginQueue.Update();
             });
 
             ZoneServerManager.Instance.Initialise();
             NetworkManager<AuthSession>.Instance.Initialise(ConfigurationManager<AuthServerConfiguration>.Instance.Config.Network);
 
             CommandManager.Instance.Initialise(new AuthCommandHandler());
+
+            // Gateways in their own process consume tickets here (gateway-service.md §3.7).
+            var internalPort = ConfigurationManager<AuthServerConfiguration>.Instance.Config.Internal;
+            if (internalPort is { Port: not 0 })
+                LoginInternalService.Start(System.Net.IPAddress.TryParse(internalPort.Host, out var ip) ? ip : System.Net.IPAddress.Any, internalPort.Port);
+
+            // The character list's friends lists: from the shared social service when SocialAddress is set.
+            CharacterSelectFriends.Initialise(ConfigurationManager<AuthServerConfiguration>.Instance.Config);
 
             log.Info($"Service Started!");
             return Task.CompletedTask;
@@ -59,6 +68,8 @@ namespace LandmarkEmulator.AuthServer
             log.Info($"Ending Service...");
 
             NetworkManager<AuthSession>.Instance.Shutdown();
+            LoginInternalService.Stop();
+            CharacterSelectFriends.Shutdown();
 
             ThreadManager.Instance.Shutdown();
 

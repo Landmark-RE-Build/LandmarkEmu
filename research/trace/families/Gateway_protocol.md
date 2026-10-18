@@ -49,7 +49,7 @@ C2S 3 (2 not handled) · S2C 7 (5 never sent / opcode unknown)
 - log lines: ExternalGatewayApi::HandlePacket - failed to unserialize a packet to process.  %d bytes ignored.
 
 ## S2C Gateway::ExternalPackets::PacketLoginRequest  `0x1`
-- server: SENT (1× in opcode_stats) · seen in play 1×
+- server: SENT (opcode used in the server code) · seen in play 13×
 - reader: FUN_1439924f0
 - built in: FUN_143993ab0
 

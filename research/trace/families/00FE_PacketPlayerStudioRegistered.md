@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 0 (0 not handled) · S2C 1 (0 never sent / opcode unknown)
 
 ## S2C PacketPlayerStudioRegistered  `0xFE`
-- server: SENT (100× in opcode_stats) · seen in play 100×
+- server: SENT (16× in opcode_stats) · seen in play 323×
 - reader: FUN_142bb0fd0
 - handled in the zone dispatcher Zone_DispatchPacket (0x80)
 - Lua events/calls: GameEvents:OnPlayerStudioRegistered

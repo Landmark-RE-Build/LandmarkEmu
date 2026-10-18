@@ -145,7 +145,7 @@ C2S 13 (13 not handled) · S2C 22 (22 never sent / opcode unknown)
 ```
 u64   +0x18
 bool  +0x20
-i32   iVar3
+i32   <local>
 ```
 - handled in FUN_142c4dba0 (its switch case for this message)
 - code (handler case in FUN_142c4dba0):
@@ -175,7 +175,7 @@ i32   iVar3
 - layout:
 ```
 u8    +0x18
-  u8    *(byte *)param_2
+  u8    <computed>
   u8    +0x1d
   u8    +0x1d
   u8    +0x1e
@@ -184,7 +184,7 @@ u8    +0x18
   u8    +0x1f
 u32   +0x20
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 ```
 
 ## S2C RemoteProjectileLaunchHintPacket  `0xBA, 0x16`
@@ -194,7 +194,7 @@ u32   *puVar1
 - layout:
 ```
 u8    +0x18
-  u8    *(byte *)param_2
+  u8    <computed>
   u8    +0x1d
   u8    +0x1d
   u8    +0x1e
@@ -204,9 +204,9 @@ u8    +0x18
 u64   +0x20
 u32   +0x28
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
   [loop 2: list elements]
-u32   *puVar1
+u32   <element>
 ```
 
 ## S2C RemoteWeaponAddPacket  `0xBA, 0x16`
@@ -216,7 +216,7 @@ u32   *puVar1
 - layout:
 ```
 u8    +0x18
-  u8    *(byte *)param_2
+  u8    <computed>
   u8    +0x1d
   u8    +0x1d
   u8    +0x1e
@@ -224,7 +224,7 @@ u8    +0x18
   u8    +0x1e
   u8    +0x1f
 u64   +0x20
-i32   iVar3
+i32   <local>
 ```
 
 ## S2C RemoteWeaponRemovePacket  `0xBA, 0x16`
@@ -241,14 +241,14 @@ i32   iVar3
 - layout:
 ```
 u8    +0x18
-  u8    *(byte *)param_2
+  u8    <computed>
   u8    +0x1d
   u8    +0x1d
   u8    +0x1e
   u8    +0x1d
   u8    +0x1e
   u8    +0x1f
-i32   iVar3
+i32   <local>
 ```
 
 ## S2C ProjectileSpawnNpcPacket  `0xBA, 0x1F`
@@ -271,9 +271,9 @@ bool  +0x20
 u8    +0x24
 u8    +0x28
 FUN_142b9afe0 -> +0x30
-  i32   iVar5
+  i32   <local>
     [loop 1: list elements]
-  u32   *puVar2
+  u32   <element>
 ```
 - handled in FUN_142c4dba0 (its switch case for this message)
 - code (handler case in FUN_142c4dba0):

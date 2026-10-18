@@ -3,7 +3,7 @@
 Build sites can host games: a deathmatch, team zone control, or a cooperative adventure built from story tools. The
 client ships the game definitions and the UI; the live server ran the games. This page collects what is decoded.
 
-## Client data (gameData/*.txt)
+## Client data (the client's `Resources/*.txt` tables, in the server's game data folder)
 
 | Table | What it holds |
 |---|---|
@@ -36,9 +36,9 @@ Server → client:
 | 8 | Request | i16 type, i16 result, i16 value, i16, i16, u64 game, u32, string (FUN_143427cf0) | FUN_143438d00: type 6 result 1 value 1 = in the game (manager +0x38 = game: Leave button), value 0 = out (FUN_143432090); 5 queue position (value, +0x2c, +0x30); 4 left the queue |
 | 9 | HUD | entry, 6 lists, u32 state, u32 (FUN_14342ba40 → FUN_143427640) | FUN_143432bd0 → GameData.InstancedGameScoreHUD. Entry (FUN_1434284b0): u32 text id, string label, u32 ×7 (+0x24, +0x28, +0x2c, +0x34, +0x30, +0x3c, +0x38). The first entry's label heads the HUD; list 1 = round timers (+0x3c = end time on the client's synced clock, ms: the server's Synchronization clock), 2 wave progress, 3 control indicators, 4 progress bars (FUN_143428640 entries), 5 and 6 unknown. The state picks the message line: 3 "Waiting for players...", 4 the countdown, 6 nothing (or "Observer Mode"), 8 "Game over! Resetting in N seconds" with N = 1 + last u32 / 1000 |
 | 0xD | GetConfigurationResponse | | |
-| 0x11 | PropState | | |
-| 0x12 | PropInteraction | u64, u64, u32, u32 (FUN_143427900) | |
-| 0x13 | PlayerRemoval | | |
+| 0x11 | PropState (0.695: 0x12) | bool clear all, u32 n × {u32 0, u32 0, string label, u64 prop, i32 controller, u64 controlling player} (0.695 handler FUN_1434e8ea0) | The client's overhead game-object indicator (HudIndicators row 22) over each control point, labelled with its holder: controller −1 "Not Controlled", 0 the controlling player's name, n ≥ 1 team n's name |
+| 0x12 | PropInteraction (0.695: 0x13) | u64 player, u64 prop, u32 start, i32 duration ms (FUN_143427900; 0.695 reader FUN_1434d7570, handler FUN_1434e8d70) | A capture bar over the prop, filled (client clock − start) / duration in the player's team colour (FUN_1434f2c10); duration 0 removes it. The start is on the client's own clock |
+| 0x13 | PlayerRemoval (0.695: 0x14) | u64 game (0.695 reader FUN_1434dbfb0) | FUN_1434e8cd0: the full manager reset (as Request type 6 value 0) and the observer camera (mode 0x20) off. Sent after Membership 0 + State 0 when the server takes a player out of a game, and after ObserverRegistration 0 + State 0 when a game ends under its observers (L176) |
 | 0x14 | TeamMembers | {u64 guid, u32, string name, u32 team} (FUN_14342bf40 / FUN_143428170) | FUN_1434390e0: team map (manager +0x158); team -1 = observer |
 | 0x16 | UpdatePlayerFlags | u64, u8 (FUN_143428230) | |
 
@@ -78,8 +78,9 @@ game and not queued; observer buttons from the team map.
 - Moving a player is a re-zone. Nothing else for that player may go out until the client has finished it (ClientIsReady
   → Teleport.FinishRezone, then 1 s): hit points, game state, HUD, team list, scoreboard or the site update in the same
   burst as ClientBeginZoning hung the client for good in QuerySimpleVisibility (FUN_144009a40, its visibility list
-  looping). A plain TeleportToLocation (also a zero-length one) hangs it the same way.
-- Dev: game, game rules, gamejoin, gameleave, gamestart, gameend, gamescore n, gametp off|on.
+  looping). A plain TeleportToLocation used to hang it the same way (a zero facing vector, fixed 2026-10-18; terrain.md
+  "Long teleports").
+- Dev: game, game rules, gamejoin, gameleave, gamestart, gameend, gamescore n, gametp off|on, finderwaiting (below).
 
 ## Game Table settings
 
@@ -99,6 +100,18 @@ scores Points Per Capture and sends Event 9 (ControlPtTaken, kill feed + sound);
 its holder. The HUD's ControlIndicators (ControlIndicator.as: bar height = Progress / 100 in ProgressColor; Owned and
 OwnerColor mark the holder) follow it; colours are the client's team colour table (index = side). Dev: `gamepoint`.
 
+Over the points themselves (OPEN-LEADS L32, 0.695 numbers; the sub table above is in 0.589 numbers, protocol.md §1.6):
+
+- **Labels:** PropState names every control point with its holder while a round runs, sent with the HUD only when the
+  holders changed for that client, and cleared when the round is over.
+- **Capture bars:** PropInteraction shows the side taking a point. The bar's start is written on each client's own
+  clock, which the client reports in its KeepAlives (0x63 `{u32 game time}`; `WorldSession.ClientClockNow`). The bar only
+  rises, so a point left alone (our progress fades) or contested gets a 0, and a fresh bar, back-dated by the progress
+  kept, when a side takes it up again [I: when live sent it].
+- Until the server spoke 0.695 natively PropState went out as 0x11 and the 0.695 client dropped it (Frida, 2026-10-17).
+  The HUD is re-sent in 20 % capture steps, not every tick (that was ~700 packets a second). Dev `gamelabels off` stops
+  both packets.
+
 ## Adventure (rule set 8)
 
 Cooperative: no PvP; creature kills score (points per kill); the walk-on window shows "Difficulty Tier n" (general
@@ -106,6 +119,9 @@ setting 10). A round puts the site in Play Mode and restarts its story (`Claims.
 out again. The Adventure Game Table (2313) is linkable: its action "...Give reward and teleport to a Chaos Cavern."
 (text 577090) completes the adventure (everyone wins); after the scoreboard its players leave the game and travel to
 a random Chaos Cavern (the underground caverns, `Caves.TravelRandom`). There is no reward beyond the score (no data).
+The table's own events "On Game Started" (text 573010) and "On Game Ended" (573011, the Link the developers named on
+29 Sep 2016) run its Links when a round starts (after the story restarts) and when it ends (after the result, before
+Play Mode goes back off); the round's winner is the triggering character of "On Game Ended" (ours).
 
 ## Game editor (the client's RulesetObjectSettings window)
 
@@ -151,20 +167,51 @@ Notes:
 - The live prop dump names model 1739 for the spawn points, which this client doesn't have: it then creates no entity
   at all (invisible, Go To can't find them). Props.FixMissingModels replaces such ids by the model named like the
   prop's internal name (1699 Theme_Widgets_RuleSetObjects01_SpawnLocation01).
-- The 0.589 UI scripts (testclient/UI/ScriptsBase.bin) never call RequestGainActiveAuthorshipOfGame; the only thing
+- The 0.589 UI scripts (`UI/ScriptsBase.bin`) never call RequestGainActiveAuthorshipOfGame; the only thing
   that opens the window is the server's PropRecipe. The server opens it when the owner (or a builder) uses the Game
   Table's **Settings** (PropBase 0x1B; the client waits for no reply to it). Dev: `gameedit [off]`.
 
+## Game Finder (0.695 client, Game/InstancedGames.Finder.cs)
+
+- C→S MatchmakingRequest 0x10D / 0x19 `{u64 flag mask (start only), u64 player, u8 searching, u8}` (Lua
+  InstancedGame.StartMatchmaking / StopMatchmaking). Flag bits: 2 FFA, 4 Teams, 8 PvE, 0x10 PvP, 0x40 In Progress.
+- S→C MatchmakingUpdate 0x10D / 0x1A `{u64, u32 Players, u32 ActiveGames, u32 QueuedGames, u32 InactiveGames, u32
+  SearchState, u64 match flags}` (reader FUN_1434d7270, handler FUN_1434e9a50). The leading u64 is stored by the reader
+  and read by nothing (we send the player guid). SearchState 0 searching, 1 "Match found!" (clears the client's
+  matchmaking flag, plays a sound, prints the match's kind bits), 3 removed from the queue. The client does nothing
+  else on a match: the join is the game's queue entry (Request type 5, position 0 = "Join Now").
+- Across worlds (shared social service, `SOCIAL_ADDRESS`): each zone publishes its games (with landscape, kind and
+  name) and hands searches to the service, which counts every world and names a matching game on another world. If
+  that world is on the same gateway, the searcher's zone sends "Match found!" and a queue entry for that game; "Join
+  Now" hands the player over to the other world (cross-world travel, HandOver / AttachConnection `JoinGame`), where the
+  zone re-zones them beside the Game Table and joins them. "Leave Queue" or 30 s without an answer drops the offer.
+  This move is ours: the client's Game Finder packets carry no world.
+- What the client proves (0.695 decompile): the update's leading u64 is stored by the reader (packet +0x18) and read by
+  nothing (handler FUN_1434e9a50 takes +0x20..+0x38 only); the S→C Request handler FUN_1434e93e0 knows only types 4
+  (left queue), 5 (queue entry: guid kept in its own set, entry built from the packet alone) and 6 (membership); the
+  entry's Join Now (GaqInstancedGameQueue accept FUN_1433da170 → FUN_1434e11e0) sends Request 0x10D / 8 type 6 value 1
+  with the entry's game guid (entry +0x140, stored by FUN_1433daaf0 → ctor FUN_1433d7930) and makes it the client's
+  current game; RequestJoinTeam (type 9) has no answer type — TeamMembers and the scoreboard carry the result.
+- Afterwards the player stays on the game's world (`FINDER_RETURN_HOME=false`, the default; no source says live
+  brought them back, and a match on the player's own world never moves them back either). With
+  `FINDER_RETURN_HOME=true` on the searcher's world the hand-over also carries the world, landscape and spot they left
+  from (HandOver / AttachConnection `ReturnTo`); 3 s after they leave the game (still on its landscape, not moving)
+  the game's world hands them back, and they arrive at that spot (`ArriveAt`). A Chaos Cavern trip after an Adventure,
+  travelling on by themselves or logging out cancels the way back; a game gone on arrival sends them back at once.
+- Dev `finderwaiting <table guid hex> [off]` / `finderwaiting off` (no player needed; output in the world log): this
+  world publishes that game to the shared Game Finder with at least one player in it, so a search on another world is
+  matched with it — a cross-world test with one client. The log line lists this world's games and their table guids.
+
 ## Status
 
-Working (tested on the 0.589 client): game on the site record and walk-on window, join / leave, state and countdown,
-HUD with round timer, scoreboard, kill events, respawn at spawn points, round end with the end-of-game scoreboard.
+Working (tested on the 0.589 client; on 0.695 the Game Table settings, teams, join / start / spawn, the HUD's top score
+and the end banner were checked): game on the site record and walk-on window, join / leave, state and countdown, HUD
+with round timer, scoreboard, kill events, respawn at spawn points, round end with the end-of-game scoreboard.
 Adventure games run the site's story tools (see docs/story-tools.md).
 The game editor (settings, prop list, enable / disable) works (see above).
 Queues: see InstancedGames.Queue.cs (request type 5 queue position {i16 queue size, i16 position (0 = Join Now), i16
 wait s, name}, type 4 left the queue; MaxQueueJoinTime to take a freed place).
-Not yet: control points as spawners (Logic Filter, Travel Point, Story Node, Dice Roll, Timer, Starting Location, Damage, Focus,
-Reset nodes). Winner banner: the client builds it from InstancedGames.VictoryMessage / GameOverMessage / DrawMessage and
+Not yet: control points as spawners. Winner banner: the client builds it from InstancedGames.VictoryMessage / GameOverMessage / DrawMessage and
 InstancedGame.Teams.DefaultName_<id>, none of which this client's StringHashToValue.txt has, so on its own it always
 reads "Team 1" (the server does send the result: scoreboard +0xc0 team id 1-based, 0 = draw / free-for-all, -1 =
 none). The banner's UI script copies its data source into the banner movie with `Invoke('setText', text)`; the

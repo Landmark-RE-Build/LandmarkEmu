@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 1 (1 not handled) · S2C 1 (1 never sent / opcode unknown)
 
 ## C2S ActivityPacketActivityListRefreshRequest  `0x66`
-- server: NOT HANDLED · seen in play 2×
+- server: NOT HANDLED · seen in play 8×
 - built in: FUN_14326d9a0
 - sent by Lua natives: LeaveMiniGameOrEncounter
 - code (builder in FUN_14326d9a0):

@@ -11,7 +11,7 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
     public enum Affinity { None, Fire, Water, Lightning, Earth, Affliction, Radiance, Shadow }
 
     /// <summary>
-    /// The affinity properties (wiki weapon pages, "&lt;Affinity&gt; weapons ... possess the following properties") as
+    /// The affinity properties (wiki weapon pages: the properties each affinity's weapons have) as
     /// timed states on a creature or a player, plus a few helper states the attack and armour texts need.
     /// <list type="bullet">
     /// <item>Fire: <b>Erupt</b> (a hit can deal double damage — a roll, not a state), <b>Frenzy</b> (all attacks
@@ -44,8 +44,14 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
         Weakened,
         /// <summary>Spite Etched Bracer: Siphon "temporarily increases the damage opponents take when you attack them".</summary>
         Siphoned,
-        /// <summary>Night Herald's Promise: lightning keeps "periodically Electrocuting" an opponent for a short time.</summary>
+        /// <summary>Vestment of the Lightning Caller: lightning keeps "periodically Electrocuting" an opponent for a short time.</summary>
         Overloaded,
+        /// <summary>
+        /// Desperado's Dirty Fighting shots ("Snaring your opponent for 2 seconds", 573170 / 573172): slowed, like Cripple.
+        /// The client keeps Snared and Rooted apart (its test weapons 571366-571378 "Rooted Cast/Snared Active" …), so a
+        /// snare slows rather than stops [I strong]; name text 565472 "Snare".
+        /// </summary>
+        Snare,
         // On players
         Frenzy, Flow, Supercharge, Energize, Harden, Infect, Illuminate, Exalt, Rejuvenate,
         /// <summary>A blocking stance (Molten Rebuke, Corrupting Revenge): the next attack from the front is stopped.</summary>
@@ -57,7 +63,12 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
         /// <summary>Ring of Indifference: Regrowth "temporarily reduces all incoming damage".</summary>
         Bulwark,
         /// <summary>Consecrate's channel: less damage for the caster and allies nearby.</summary>
-        Consecrated
+        Consecrated,
+        /// <summary>
+        /// Desperado's Deadly Arsenal: "a 25% chance to gain Dirty Fighting for the next 4 seconds" when a shot lands
+        /// (573170); the next attack uses its Dirty Fighting form (WeaponCombat, Attack.Primer). Name text 573184.
+        /// </summary>
+        DirtyFighting
     }
 
     public static class Statuses
@@ -81,6 +92,7 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             new(Status.Weakened, 0, true, 4f, 1, 0, Affinity.Affliction),
             new(Status.Siphoned, 0, true, 4f, 1, 0, Affinity.Shadow),
             new(Status.Overloaded, 0, true, 4f, 1, 11290, Affinity.Lightning),
+            new(Status.Snare, 565472, true, 2f, 1, 11289, Affinity.Affliction),       // PFX_Combat_Misc_State_Snared
             new(Status.Frenzy, 574468, false, 8f, 1, 11535, Affinity.Fire),          // PFX_Combat_Fire_Bow_Attack01_Buff_Stage2
             new(Status.Flow, 574471, false, 10f, 5, 0, Affinity.Water),
             new(Status.Supercharge, 574473, false, 8f, 1, 11556, Affinity.Lightning), // Lightning_2HSword_Attack01_Buff
@@ -95,6 +107,7 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             new(Status.Eruption, 0, false, 4f, 1, 0, Affinity.Fire),
             new(Status.Bulwark, 0, false, 4f, 1, 0, Affinity.Earth),
             new(Status.Consecrated, 0, false, 1.5f, 1, 0, Affinity.Radiance),
+            new(Status.DirtyFighting, 573184, false, 4f, 1, 0, Affinity.Affliction),
         }.ToDictionary(d => d.Kind);
 
         /// <summary>Buff-bar icon per affinity (icon_abilities_&lt;affinity&gt;_buff).</summary>
@@ -108,6 +121,8 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
         {
             public DateTime Ends;
             public int Stacks;
+            /// <summary>When it was last put on (a re-application counts as a new one).</summary>
+            public DateTime Applied;
             public WorldSession Source;
             /// <summary>Damage per second (Burn, Rot), life per second (Rejuvenate), shield left (Illuminate).</summary>
             public float Power;
@@ -123,6 +138,13 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
         {
             lock (sync)
                 return on.TryGetValue(entity, out var map) && map.TryGetValue(s, out Entry e) && e.Ends > DateTime.UtcNow;
+        }
+
+        /// <summary>When the state was last put on the entity; default when it doesn't have it.</summary>
+        public static DateTime AppliedAt(ulong entity, Status s)
+        {
+            lock (sync)
+                return on.TryGetValue(entity, out var map) && map.TryGetValue(s, out Entry e) && e.Ends > DateTime.UtcNow ? e.Applied : default;
         }
 
         public static int Stacks(ulong entity, Status s)
@@ -141,8 +163,8 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
         public static bool CanMove(ulong entity) =>
             !Has(entity, Status.Freeze) && !Has(entity, Status.Electrocute) && !Has(entity, Status.Crush) && !Has(entity, Status.Condemn);
 
-        /// <summary>Movement speed factor: Cripple slows to half.</summary>
-        public static float Speed(ulong entity) => Has(entity, Status.Cripple) ? 0.5f : 1f;
+        /// <summary>Movement speed factor: Cripple and Snare slow to half.</summary>
+        public static float Speed(ulong entity) => Has(entity, Status.Cripple) || Has(entity, Status.Snare) ? 0.5f : 1f;
 
         /// <summary>Damage it takes: Torment +25 %, Siphoned (Spite Etched Bracer) +15 %.</summary>
         public static float TakenFactor(ulong entity) =>
@@ -174,6 +196,7 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                 if (fresh)
                     map[s] = e = new Entry { Stacks = 0, NextTick = now.AddSeconds(1) };
                 e.Ends = now.AddSeconds(secs);
+                e.Applied = now;
                 e.Stacks = Math.Min(def.MaxStacks, e.Stacks + stacks);
                 e.Source = source ?? e.Source;
                 if (power > 0)
@@ -186,6 +209,9 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                 Buffs.ShowStatus(player, "status:" + s, def.NameText, BuffIcon(def.Affinity), TimeSpan.FromSeconds(secs), (uint)total);
             if (fresh && PlayerManager.FindByGuid(entity) is WorldSession p2)
                 WeaponCombat.StatusChanged(p2, s, true);
+            // A blocking stance (started or refreshed) is shown to the other clients: their sweeps stop on it (BlockStance).
+            if (s == Status.Block && PlayerManager.FindByGuid(entity) != null)
+                BlockStance.PlayerBlocked(entity, secs);
             return fresh;
         }
 
@@ -215,6 +241,8 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
 
         private static void Ended(ulong entity, Status s)
         {
+            if (s == Status.Block)
+                BlockStance.PlayerUnblocked(entity);
             if (PlayerManager.FindByGuid(entity) is not WorldSession player)
                 return;
             if (Defs[s].NameText != 0)
@@ -290,30 +318,50 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                 }
             }
             foreach (var (entity, s) in ended)
-                Ended(entity, s);
+            {
+                try { Ended(entity, s); }
+                catch (Exception ex) { log.Error(ex, $"End of {s} on 0x{entity:X} failed."); }
+            }
+            // Each tick on its own: a Burn / Rot tick can kill a story creature, whose "dies" Links run right here
+            // (Creatures.Kill → StoryTools.CreatureDied). One that throws skipped the rest of the ticks and the channel
+            // hits, sweeps and lingering areas below (WeaponCombat.Update) for that tick (bughunt-combat.md B10).
             foreach (var (entity, s, e) in ticks)
             {
-                switch (s)
+                try
                 {
-                    case Status.Burn:
-                    case Status.Rot:
-                        if (e.Power > 0 && e.Source != null)
-                            Creatures.StatusDamage(e.Source, entity, (uint)Math.Max(1, e.Power));
-                        break;
-                    case Status.Rejuvenate:
-                        if (PlayerManager.FindByGuid(entity) is WorldSession healed && e.Power > 0)
-                            Health.Heal(healed, (uint)e.Power);
-                        break;
-                    case Status.Energize:
-                        if (PlayerManager.FindByGuid(entity) is WorldSession energized)
-                            WeaponAttacks.GainEnergy(energized, 3.0 * e.Stacks * Gear.EnergizeRegenFactor(energized));
-                        break;
-                    case Status.Overloaded:
-                        Apply(entity, Status.Electrocute, e.Source, seconds: 1f);
-                        break;
+                    Tick(entity, s, e);
+                }
+                catch (Exception ex)
+                {
+                    log.Error(ex, $"{s} tick on 0x{entity:X} failed.");
                 }
             }
+            BlockStance.Update(now);
             WeaponCombat.Update(now);
+        }
+
+        /// <summary>One second of a state: damage over time, healing, Energy, Overloaded's Electrocute.</summary>
+        private static void Tick(ulong entity, Status s, Entry e)
+        {
+            switch (s)
+            {
+                case Status.Burn:
+                case Status.Rot:
+                    if (e.Power > 0 && e.Source != null)
+                        Creatures.StatusDamage(e.Source, entity, (uint)Math.Max(1, e.Power));
+                    break;
+                case Status.Rejuvenate:
+                    if (PlayerManager.FindByGuid(entity) is WorldSession healed && e.Power > 0)
+                        Health.Heal(healed, (uint)e.Power);
+                    break;
+                case Status.Energize:
+                    if (PlayerManager.FindByGuid(entity) is WorldSession energized)
+                        WeaponAttacks.GainEnergy(energized, 3.0 * e.Stacks * Gear.EnergizeRegenFactor(energized));
+                    break;
+                case Status.Overloaded:
+                    Apply(entity, Status.Electrocute, e.Source, seconds: 1f);
+                    break;
+            }
         }
 
         /// <summary>A player left: their own states go (no icons to clear).</summary>
@@ -321,6 +369,7 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
         {
             lock (sync)
                 on.Remove(session.PlayerGuid);
+            BlockStance.Forget(session);   // their character leaves every client with them: no end packets
         }
     }
 }

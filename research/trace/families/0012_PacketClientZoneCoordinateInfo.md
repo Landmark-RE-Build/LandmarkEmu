@@ -6,17 +6,17 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 0 (0 not handled) · S2C 1 (0 never sent / opcode unknown)
 
 ## S2C PacketClientZoneCoordinateInfo  `0x12`
-- server: SENT (102× in opcode_stats) · seen in play 102×
+- server: SENT (16× in opcode_stats) · seen in play 325×
 - reader: FUN_142b8a3b0
 - layout:
 ```
 u16   +0x8
   [loop 1: list elements]
-u64   *puVar1
+u64   <element>
   [loop 2: list elements]
-u32   *puVar2
+u32   <element>
   [loop 3: list elements]
-u32   *puVar2
+u32   <element>
 FUN_142b9e660 -> +0x40
     [loop 1: list elements]
     [loop 2: list elements]

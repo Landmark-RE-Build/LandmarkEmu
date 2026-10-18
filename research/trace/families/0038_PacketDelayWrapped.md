@@ -12,7 +12,7 @@ C2S 0 (0 not handled) · S2C 1 (1 never sent / opcode unknown)
 ```
 u16   +0x8
 u32   +0x10
-i32   iVar3
+i32   <local>
 ```
 - handled in the zone dispatcher Zone_DispatchPacket (0x18)
 - code (handler case in Zone_DispatchPacket):

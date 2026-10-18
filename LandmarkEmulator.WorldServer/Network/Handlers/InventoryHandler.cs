@@ -15,6 +15,9 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
     {
         private static readonly ILogger log = LogManager.GetCurrentClassLogger();
 
+        /// <summary>InventoryPacketEquipByItemRecord (InventoryBase 0x2D sub 8, 0.695 FUN_142fcbbb0) [P].</summary>
+        private const ushort EquipByItemRecordSub = 0x08;
+
         /// <summary>
         /// Routes one inventory request by sub-opcode. Every TransferItem (0x16) gets a TransferItemResponse (0x19): the
         /// request echoed plus a u32 result (0 = done); the client waits for it.
@@ -29,7 +32,9 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                     TransferItemRequest transfer = TransferItemRequest.Read(request.Body);
                     uint result = transfer.Source.OwnerType == Game.Chests.ChestOwnerType || transfer.Destination.OwnerType == Game.Chests.ChestOwnerType
                         ? Game.Chests.Transfer(session, transfer)
-                        : HandleTransfer(session, transfer) ? Game.Chests.TransferDone : Game.Chests.TransferFailedInInventory;
+                        : HandleTransfer(session, transfer) ? Game.Chests.TransferDone
+                        // A refusal with its own client message (0x22 unique-equip dialog, TASKS 6.54), else the generic one.
+                        : session.Inventory.LastRefusal != 0 ? session.Inventory.LastRefusal : Game.Chests.TransferFailedInInventory;
                     // TransferItemResponse (0x19, reader FUN_142e78a30): the request echoed, then a u32 result — the
                     // client's "Item Transfer:" reasons (FUN_143b966c0, 42 names; 1 = success). Some show a message:
                     // 0x16 / 0x17 Chest.AccessDeniedOnItemAction, 0x20 / 0x21 no-trade, 0x12 fraud timer, 0x25 a chest
@@ -49,11 +54,11 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                 case InventoryRequest.RequestOverflowAbsorb:
                 {
                     var moved = session.Inventory.AbsorbOverflow();
-                    foreach ((var item, bool deleted) in moved)
+                    foreach ((var item, bool deleted, bool added) in moved)
                         if (deleted)
                             session.EnqueueMessage(new ClientUpdateItemDelete { Guid = item.Id });
                         else
-                            session.SendItem(item, replace: true);
+                            session.SendItem(item, replace: !added);
                     if (session.Inventory.HasOverflow)
                         Game.Chat.System(session, "Your bag is full; some items are still in overflow.");
                     log.Info($"{session.CharacterName} retrieved overflow: {moved.Count} stacks changed.");
@@ -68,10 +73,18 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                         var equipmentBefore = session.VisibleEquipment();
                         if (session.TakeFromStack(guid, count) is { } taken)
                         {
+                            // A destroyed chest that still held items: its contents go with it (they were keyed to its
+                            // guid, which nothing holds any more, and stayed in the chest table and in memory for good).
+                            if (session.Inventory.Get(guid) == null && Game.Chests.HasItems(guid))
+                                Game.Chests.Empty(guid, null);
                             session.SendEquipmentChanges(equipmentBefore);
                             log.Info($"{session.CharacterName} destroyed {count} × item {taken.ItemDefinitionId}.");
                         }
                     }
+                    break;
+                case InventoryRequest.ToggleAutoResupply:
+                    if (request.Body.Length >= 9)
+                        HandleToggleAutoResupply(session, BitConverter.ToUInt64(request.Body, 0), request.Body[8] != 0);
                     break;
                 case InventoryRequest.RearrangeItemSlots:
                     // The bag's "sort by" (ClientInventory.SetItemsToSlots): u32 container, u32 n, n × {u32 slot, u64 guid}.
@@ -104,6 +117,13 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                     if (request.Body.Length >= 8)
                         HandleActivate(session, BitConverter.ToUInt64(request.Body, 0));
                     break;
+                case EquipByItemRecordSub:
+                    // InventoryPacketEquipByItemRecord {List<ItemRecord>} (FUN_142fcbbb0): sent by the store screen's
+                    // EquipStoreBundle (FUN_1435e8d40 → FUN_14324b820, a bundle of the Daybreak-served store pages) and the
+                    // requisition reply handler FUN_1431d3260; no shipped UI calls it. Logged until decisions 6.59 / 6.60
+                    // settle the store (L137; then: equip each listed record the player owns via HandleEquip).
+                    log.Info($"{session.CharacterName}: EquipByItemRecord ({request.Body.Length} bytes) not handled (store pending).");
+                    break;
                 default:
                     Network.OpcodeStats.Unanswered("Inventory", request.SubOpcode);
                     log.Debug($"Unhandled inventory request 0x{request.SubOpcode:X2} ({request.Body.Length} bytes).");
@@ -121,7 +141,9 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
         private static void HandleEquip(WorldSession session, ulong itemGuid, uint equipSlotId)
         {
             CharacterItemModel item = session.Inventory.Get(itemGuid);
-            if (item == null)
+            // A vault item is worn only while the vault is open within reach (as TransferItem): right-click Equip names
+            // the item by guid alone, which reached the vault from anywhere.
+            if (item == null || (item.Container == Game.Inventory.Inventory.VaultContainer && !Game.Vaults.CanAccess(session)))
                 return;
             uint? slot = Game.Inventory.Inventory.EquippedSlotFor(equipSlotId);
             if (slot == null)
@@ -149,8 +171,35 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
             session.SendEquipmentChanges(equipmentBefore);
         }
 
+        /// <summary>
+        /// InventoryPacketToggleAutoResupply (Inventory 0x2D sub 0x0D) {u64 item guid, bool on} [P: writer FUN_142f18aa0
+        /// writes the u16 family and sub (FUN_142f169d0), the guid (FUN_142c128f0) and one byte]. Sent by the client's
+        /// CoinStoreScreen.TurnOnAutoResupply / TurnOffAutoResupply Lua natives (FUN_1435eeb90 / FUN_1435eec10 →
+        /// FUN_142f261b0) with an item definition id: the client takes the first stack of that definition (its
+        /// definition map, keyed at ClientItem +0x178 by FUN_142ced2c0 from +0x8), returns at once when the definition
+        /// fails its check FUN_142f1d360 (<see cref="Game.Inventory.ItemDefinitionManager.ItemDefinition.AutoResupplyAllowed"/>)
+        /// and sends only a change, after setting its own +0xdc [P]. No shipped UI or script calls either native (0.589
+        /// and 0.695 AS3, Resources/Scripts) and no live definition passes the check, so a stock client never sends it;
+        /// the switch is still kept as live kept it (items.auto_resupply). Nothing on the client acts on +0xdc beyond
+        /// keeping it (readers: the item record readers / writers / copies and the uncalled getter FUN_142f21ff0) [P];
+        /// what live's server did with it (PS2's auto-resupply re-bought a consumable at the depot) is not known yet
+        /// (OPEN-LEADS). No reply: the client expects none.
+        /// </summary>
+        internal static void HandleToggleAutoResupply(WorldSession session, ulong itemGuid, bool on)
+        {
+            CharacterItemModel item = session.Inventory.Get(itemGuid);
+            // The client's own check (FUN_142f1d360) on the item's definition: a toggle it would never send is refused.
+            if (item == null || Game.Inventory.ItemDefinitionManager.Get(item.ItemDefinitionId) is not { AutoResupplyAllowed: true })
+            {
+                log.Debug($"{session.CharacterName}: auto-resupply {(on ? "on" : "off")} for item 0x{itemGuid:X} refused (no such item or not allowed).");
+                return;
+            }
+            if (session.Inventory.SetAutoResupply(item, on))
+                log.Info($"{session.CharacterName}: auto-resupply {(on ? "on" : "off")} for item {item.ItemDefinitionId} (0x{itemGuid:X}).");
+        }
+
         /// <summary>Using an item from the inventory: prop items start placing their prop.</summary>
-        private static void HandleActivate(WorldSession session, ulong itemGuid)
+        internal static void HandleActivate(WorldSession session, ulong itemGuid)
         {
             CharacterItemModel item = session.Inventory.Get(itemGuid);
             if (item == null)
@@ -161,15 +210,17 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                 || Game.DesignItems.TryUse(session, item))
                 return;
             uint propId = Game.Inventory.ItemDefinitionManager.Get(item.ItemDefinitionId)?.PropId ?? 0;
+            // A prop item starts its placement; build mode opens for it (PLACE_OPENS_BUILD_MODE, Game/BuildModeHolster).
             if (propId != 0)
-                Game.Props.BeginPlacement(session, propId, item.ItemDefinitionId, item.Id);
+                Game.BuildModeHolster.OpenForPlacement(session, Game.Props.BeginPlacement(session, propId, item.ItemDefinitionId, item.Id));
             else
                 log.Debug($"{session.CharacterName} activated item {item.ItemDefinitionId}, which has no use yet.");
         }
 
         /// <summary>
         /// Tooltip requests: 0x11 by item definition (u32 id, then a flag byte); 0x0F / 0x10 by item: an item location
-        /// (owner type 1 = no owner guid), then the item guid.
+        /// (owner type 1 = no owner guid), then the item guid — the requester's own item, or another player's equipped
+        /// item when the location names them (the Inspect window).
         /// </summary>
         private static void HandleTooltip(WorldSession session, InventoryRequest request)
         {
@@ -177,6 +228,7 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
             uint definitionId;
             ulong guid = 0;
             bool full = request.SubOpcode == InventoryRequest.ItemInstanceFullTooltipRequest;
+            ulong fraudTimer = 0;
             if (byDefinition)
             {
                 if (request.Body.Length < 4)
@@ -187,24 +239,32 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
             else
             {
                 var reader = new LandmarkEmulator.Shared.Network.GamePacketReader(request.Body);
-                ItemLocation.Read(reader);
+                ItemLocation location = ItemLocation.Read(reader);
                 if (reader.BytesRemaining < 8)
                     return;
                 guid = reader.ReadULong();
                 CharacterItemModel item = session.Inventory.Get(guid);
+                // The Inspect window's gear (0.695, EquipmentItemRenderer → FUN_1435de7d0): the location names the
+                // inspected player; only their equipped items, which StartInspect showed (TASKS 3.22).
+                if (item == null && location.OwnerGuid != 0 && location.OwnerGuid != session.PlayerGuid
+                    && Game.PlayerManager.FindByGuid(location.OwnerGuid) is WorldSession owner && owner.Inventory?.Get(guid) is { } theirs
+                    && theirs.Container == Game.Inventory.Inventory.EquippedContainer)
+                    item = theirs;
                 if (item == null)
                 {
                     log.Debug($"Tooltip 0x{request.SubOpcode:X2} for unknown item {guid:X} ({Convert.ToHexString(request.Body)}).");
                     return;
                 }
                 definitionId = item.ItemDefinitionId;
+                // A store purchase still waiting out StoreTradeWaitHours: the tooltip's "Tradable in %TIME" (L184).
+                fraudTimer = InventoryTooltipReply.FraudTimerOf(item.TradeableAfter, DateTime.UtcNow);
             }
 
             var definition = Game.Inventory.ItemDefinitionManager.Get(definitionId);
             if (definition?.RawData == null)
                 return;
             session.EnqueueMessage(ZoneMessageOpcode.InventoryBase,
-                InventoryTooltipReply.Build(byDefinition, full, definition, guid));
+                InventoryTooltipReply.Build(byDefinition, full, definition, guid, fraudTimer));
         }
 
         private static bool IsStorage(uint container)
@@ -223,6 +283,7 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
         private static bool HandleTransfer(WorldSession session, TransferItemRequest request)
         {
             Game.Inventory.Inventory inventory = session.Inventory;
+            inventory.LastRefusal = 0;
             // The vault only while one is open within reach (Game.Vaults).
             if ((request.Source.Container == Game.Inventory.Inventory.VaultContainer
                  || request.Destination.Container == Game.Inventory.Inventory.VaultContainer) && !Game.Vaults.CanAccess(session))
@@ -238,12 +299,21 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                 : inventory.Get(request.ItemGuid);
             if (item == null)
                 return false;
+            CharacterItemModel wanted = inventory.Get(request.ItemGuid);
+            // The same vault rule for the items themselves: a request naming an empty bag slot (or a worn slot, for the
+            // tool switch) finds its item by guid, so "bag slot → bag" carrying a vault item's guid took it out of the vault
+            // from anywhere, and the hotbar tool switch could wield a tool stored in the vault.
+            if ((item.Container == Game.Inventory.Inventory.VaultContainer || wanted?.Container == Game.Inventory.Inventory.VaultContainer)
+                && !Game.Vaults.CanAccess(session))
+            {
+                log.Debug($"{session.CharacterName}: transfer of a vault item refused (no vault open within reach).");
+                return false;
+            }
 
             var equipmentBefore = session.VisibleEquipment();
             bool sameSpot = request.Source.Container == request.Destination.Container
                 && request.Source.Slot == request.Destination.Slot;
             List<CharacterItemModel> moved;
-            CharacterItemModel wanted = inventory.Get(request.ItemGuid);
             ItemLocation? equipSlot = request.Destination.Container == Game.Inventory.Inventory.EquippedContainer ? request.Destination
                 : request.Source.Container == Game.Inventory.Inventory.EquippedContainer ? request.Source
                 : null;

@@ -1,4 +1,5 @@
 using LandmarkEmulator.Shared.Configuration;
+using LandmarkEmulator.WorldServer.Game.WorldChannel;
 using LandmarkEmulator.WorldServer.Network;
 using NLog;
 using System;
@@ -8,9 +9,10 @@ using System.Linq;
 namespace LandmarkEmulator.WorldServer.Game
 {
     /// <summary>
-    /// The admin menu: accounts (or characters) named in WorldServer.json "Admins" get a /admin chat command that opens
+    /// The admin menu: accounts or characters named in WorldServer.json "Admins" (<see cref="IsAdmin"/>) get a /admin chat command that opens
     /// an Admin page in the in-game browser (the client's own OpenMarketplaceTo(url), global.lua; the page is served by
-    /// <see cref="WebPages"/> at /admin with the player's Showcase token). The page's buttons run <see cref="DevCommands"/>
+    /// <see cref="WebPages"/> at /admin, opened with the player's Showcase token once and then by an admin cookie,
+    /// <see cref="AdminSessions"/>). The page's buttons run <see cref="DevCommands"/>
     /// for the admin or any player online; the commands go through the same queue as dev_commands.txt and run on the
     /// next world tick. Only admins' tokens are accepted, and every command run is logged with who ran it.
     /// </summary>
@@ -18,24 +20,162 @@ namespace LandmarkEmulator.WorldServer.Game
     {
         private static readonly ILogger log = LogManager.GetCurrentClassLogger();
 
-        /// <summary>Is this player an admin (account name or character name in WorldServer.json "Admins")?</summary>
+        /// <summary>
+        /// Is this player an admin (an entry in WorldServer.json "Admins", Docker ADMIN_ACCOUNT / ADMIN_2 / ADMIN_3, or in
+        /// the comma-separated "AdminList", Docker ADMINS)? An entry is <c>account:Name</c> (only the account username is
+        /// compared), <c>character:Name</c> (only the character name), or a bare name (either, under the contest rule of
+        /// <see cref="Contested"/>).
+        /// </summary>
         public static bool IsAdmin(WorldSession session)
         {
             if (session == null)
                 return false;
-            List<string> admins = ConfigurationManager<WorldServerConfiguration>.Instance.Config?.Admins;
-            if (admins == null || admins.Count == 0)
+            WorldServerConfiguration config = ConfigurationManager<WorldServerConfiguration>.Instance.Config;
+            if (config == null)
                 return false;
-            return admins.Any(a => string.Equals(a, session.CharacterName, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(a, session.Account?.Username, StringComparison.OrdinalIgnoreCase));
+            foreach (string entry in Entries(config))
+            {
+                (EntryKind kind, string name) = ParseEntry(entry);
+                switch (Match(kind, name, session.Account?.Username, session.CharacterName))
+                {
+                    case EntryMatch.Yes:
+                        return true;
+                    case EntryMatch.IfUncontested:
+                        bool byAccount = string.Equals(name, session.Account?.Username, StringComparison.OrdinalIgnoreCase);
+                        bool byCharacter = string.Equals(name, session.CharacterName, StringComparison.OrdinalIgnoreCase);
+                        if (!Contested(session, name, byAccount, byCharacter))
+                            return true;
+                        break;
+                }
+            }
+            return false;
         }
+
+        /// <summary>Every configured admin entry, trimmed, empty ones left out.</summary>
+        internal static IEnumerable<string> Entries(WorldServerConfiguration config)
+            => (config.Admins ?? new List<string>())
+                .Concat((config.AdminList ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                .Where(a => !string.IsNullOrWhiteSpace(a))
+                .Select(a => a.Trim());
+
+        /// <summary>Which name an admin entry names (review 2026-10-18b #2).</summary>
+        internal enum EntryKind
+        {
+            /// <summary>A bare name: an account or a character (the old form, kept so existing configs keep working).</summary>
+            Either,
+            /// <summary><c>account:Name</c>: only the account username is compared.</summary>
+            Account,
+            /// <summary><c>character:Name</c>: only the character name is compared.</summary>
+            Character,
+        }
+
+        internal enum EntryMatch
+        {
+            No,
+            /// <summary>A prefixed entry matched its own namespace: nothing else is consulted.</summary>
+            Yes,
+            /// <summary>A bare entry matched: admin unless the name is contested (<see cref="Contested"/>).</summary>
+            IfUncontested,
+        }
+
+        internal const string AccountPrefix = "account:";
+        internal const string CharacterPrefix = "character:";
+
+        /// <summary>Splits an entry into its kind and name ("account:Robin" → Account, "Robin"; prefixes ignore case).</summary>
+        internal static (EntryKind Kind, string Name) ParseEntry(string entry)
+        {
+            entry = (entry ?? "").Trim();
+            if (entry.StartsWith(AccountPrefix, StringComparison.OrdinalIgnoreCase))
+                return (EntryKind.Account, entry[AccountPrefix.Length..].Trim());
+            if (entry.StartsWith(CharacterPrefix, StringComparison.OrdinalIgnoreCase))
+                return (EntryKind.Character, entry[CharacterPrefix.Length..].Trim());
+            return (EntryKind.Either, entry);
+        }
+
+        /// <summary>
+        /// Does an entry name this player? A prefixed entry is decided by its own namespace alone: account usernames are
+        /// unique among accounts and character names among characters, so nobody can take an <c>account:</c> or
+        /// <c>character:</c> entry from its owner by registering the name in the other namespace (the denial of service
+        /// the bare-name contest rule allows: any player can register a free account named like the admin's character,
+        /// and the bare entry then makes nobody an admin; review 2026-10-18b #2).
+        /// </summary>
+        internal static EntryMatch Match(EntryKind kind, string name, string accountName, string characterName)
+        {
+            if (string.IsNullOrEmpty(name))
+                return EntryMatch.No;
+            bool byAccount = string.Equals(name, accountName, StringComparison.OrdinalIgnoreCase);
+            bool byCharacter = string.Equals(name, characterName, StringComparison.OrdinalIgnoreCase);
+            return kind switch
+            {
+                EntryKind.Account => byAccount ? EntryMatch.Yes : EntryMatch.No,
+                EntryKind.Character => byCharacter ? EntryMatch.Yes : EntryMatch.No,
+                _ => byAccount || byCharacter ? EntryMatch.IfUncontested : EntryMatch.No,
+            };
+        }
+
+        /// <summary>
+        /// The bare-name rule (entries without <c>account:</c> / <c>character:</c>, kept so existing configs keep working).
+        /// A bare entry is a name in either of two namespaces that players fill themselves: account names (anyone may
+        /// register a free one, /srp/register) and character names (anyone may create a free one). Matching either let a
+        /// player become admin by taking the configured name in the other namespace — registering an account called
+        /// like the admin's character ("ADMIN_ACCOUNT=RobinHood" naming the character), or creating a character called
+        /// like the admin's account — and with it every dev command for every player (Admin.Run, AdminCommands, the
+        /// /admin web menu). A bare entry that names this player's account while a character of another account has that
+        /// name, or this player's character while an account of someone else has it, is contested: it makes nobody an
+        /// admin until the owner fixes the list (logged once per name, with the prefixed form to use). Neither namespace
+        /// can be trusted over the other, as either side may be the impostor; the prefixes let the owner say which one is
+        /// meant, and the other namespace is then never consulted. Looked up in the databases at most once a minute per
+        /// (entry, account).
+        /// </summary>
+        private static bool Contested(WorldSession session, string entry, bool byAccount, bool byCharacter)
+        {
+            // Both: this player's account and character carry the name; names are unique in each namespace, so no one
+            // else holds it.
+            if (byAccount && byCharacter)
+                return false;
+            ulong account = session.Account?.Id ?? 0;
+            var key = (entry.ToLowerInvariant(), account, byAccount);
+            DateTime now = DateTime.UtcNow;
+            if (contested.TryGetValue(key, out var cached) && now - cached.At < ContestedRecheck)
+                return cached.Contested;
+            bool result;
+            try
+            {
+                result = byAccount
+                    ? Shared.Database.DatabaseManager.Instance.CharacterDatabase.FindCharacterByName(entry) is { } other
+                        && other.AccountId != account
+                    : Shared.Database.DatabaseManager.Instance.AuthDatabase.AccountExists(entry);
+            }
+            catch (Exception e)
+            {
+                // The database is away: no admin rights on a name that can't be checked (the last answer stays cached).
+                log.Warn($"Admin entry '{entry}' could not be checked ({e.Message}); not an admin for now.");
+                return cached.At != default ? cached.Contested : true;
+            }
+            contested[key] = (result, now);
+            if (result && (!cached.Contested || cached.At == default))
+                log.Error($"Admin entry '{entry}' names {(byAccount ? "account" : "character")} {entry} of {session.CharacterName}, "
+                    + $"but {(byAccount ? "a character of another account" : "another account")} has the same name: the entry is "
+                    + "ignored (nobody gets admin from it). Write it as "
+                    + $"'{(byAccount ? AccountPrefix : CharacterPrefix)}{entry}' so only the {(byAccount ? "account" : "character")} "
+                    + "is checked (docs/admin.md), or rename the impostor.");
+            else if (!result && cached.At == default)
+                log.Info($"Admin entry '{entry}' has no '{AccountPrefix}' / '{CharacterPrefix}' prefix, so another player can take "
+                    + "it away by registering the name in the other namespace; write it as "
+                    + $"'{(byAccount ? AccountPrefix : CharacterPrefix)}{entry}' (docs/admin.md).");
+            return result;
+        }
+
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<(string Entry, ulong Account, bool ByAccount),
+            (bool Contested, DateTime At)> contested = new();
+        private static readonly TimeSpan ContestedRecheck = TimeSpan.FromMinutes(1);
 
         /// <summary>World entry: admins get the /admin command (bound in their client) and a line saying so.</summary>
         public static void Enter(WorldSession session)
         {
-            if (!IsAdmin(session) || Store.TokenOf(session) is not string token)
+            if (!IsAdmin(session) || WorldChannelServices.Commerce.ShowcaseToken(session) is not string token)
                 return;
-            string url = $"{Store.BaseUrl}/admin?t={token}";
+            string url = $"{WorldChannelServices.Commerce.ShowcaseUrl}/admin?t={token}";
             ClientLua.RunCode(session, $"BindCommandToLua('admin', \"OpenMarketplaceTo('{url}')\")");
             Chat.System(session, "You are an admin: type /admin to open the admin menu.");
             log.Info($"{session.CharacterName} is an admin.");
@@ -51,7 +191,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 return (false, "No command.");
             string who = string.IsNullOrWhiteSpace(target) || target == "me" ? admin.CharacterName : target.Trim();
             string line = who == "all" ? command : $"@{who} {command}";
-            DevCommands.Enqueue(line);
+            DevCommands.Enqueue(line, admin);
             log.Info($"Admin {admin.CharacterName} ran: {line}");
             return (true, $"Ran \"{command}\" for {(who == "all" ? "everyone" : who)}.");
         }
@@ -79,6 +219,10 @@ input,select{background:#2a2d34;color:#eee;border:1px solid #444;border-radius:4
 <div id="msg">Ready.</div>
 <div class="row">Target: <select id="target"><option value="me">Me</option><option value="all">Everyone</option></select>
 <button onclick="players()">Refresh players</button></div>
+<div class="row"><button onclick="location.href='/admin/monitor'">Server monitor</button>
+<span class="note">zone stats, update times, services, site games, procedural data, packets (read-only)</span></div>
+<div class="row"><button onclick="location.href='/admin/settings'">Server settings</button>
+<span class="note">every server setting, explained; change them here instead of in .env, and restart the world</span></div>
 
 <h2>Me / target</h2>
 <div class="row"><button onclick="run('god on')">God mode on</button><button class="off" onclick="run('god off')">God mode off</button>
@@ -91,7 +235,7 @@ input,select{background:#2a2d34;color:#eee;border:1px solid #444;border-radius:4
 <div class="row"><button onclick="run('spire')">Spire</button><button onclick="run('tpclaim')">My build site</button>
 <button onclick="run('cave')">Random cave</button><button onclick="run('landscapes')">Landscapes window</button></div>
 <div class="row">To player: <input id="tpto" size="12" placeholder="name"><button onclick="run('tpto '+v('tpto'))">Go</button>
-Landscape id: <input id="zone" size="5" placeholder="417"><button onclick="run('landscape '+v('zone'))">Go</button></div>
+Landscape id: <input id="zone" size="5" placeholder="464"><button onclick="run('landscape '+v('zone'))">Go</button></div>
 
 <h2>Building</h2>
 <div class="row"><button onclick="run('claimhere')">Claim a build site here</button>
@@ -103,26 +247,54 @@ Landscape id: <input id="zone" size="5" placeholder="417"><button onclick="run('
 <button onclick="run('timeofday 6')">Dawn</button><button onclick="run('timeofday 12')">Noon</button><button onclick="run('timeofday 19')">Dusk</button><button onclick="run('timeofday 0')">Night</button></div>
 <div class="row">Creature: <select id="kind"><option>kobold</option><option>runt</option><option>shaman</option><option>skeleton</option><option>slaug</option><option>ogre</option></select>
 <button onclick="run('creature '+v('kind'))">Spawn near target</button><button class="off" onclick="run('clearcreatures')">Clear creatures</button></div>
-<div class="row">Server shutdown in <input id="secs" size="4" value="60"> s <button class="off" onclick="if(confirm('Shut the server down?'))run('shutdown '+v('secs'))">Start countdown</button>
+<div class="row">Server shutdown in <input id="secs" size="4" value="60"> s <input id="why" size="24" placeholder="reason (optional)">
+<button class="off" onclick="if(confirm('Shut the server down?'))run('shutdown '+v('secs')+(v('why')?' '+v('why'):''))">Start countdown</button>
 <button onclick="run('shutdown cancel')">Cancel</button></div>
+<div class="row">Broadcast: <input id="bc" size="40" placeholder="message to everyone online">
+<button onclick="if(v('bc'))runFor('all','broadcast '+v('bc'))">System Broadcast</button>
+<span class="note">"System Broadcast: …" on screen and in chat, to everyone</span></div>
+
+<h2>Moderation (target player)</h2>
+<div class="row">Kick in <input id="ksecs" size="4" value="30"> s <input id="kwhy" size="30" placeholder="reason (optional)">
+<button class="off" onclick="kick()">Kick target</button><button onclick="if(one())run('kick cancel')">Cancel kick</button>
+<span class="note">warnings during the countdown, then a message box and the connection closes; 0 s = now</span></div>
+
+<h2>Player Studio: staff review</h2>
+<div class="row"><button onclick="psqueue()">Refresh</button>
+<span class="note">designs the peer reviewers rejected; approve lists them, reject turns them down (the creator gets the result mail)</span></div>
+<div id="psq" class="note">Not loaded.</div>
 
 <h2>Any command</h2>
 <div class="row"><input id="cmd" size="50" placeholder="dev command, e.g. give 231 10"><button onclick="run(v('cmd'))">Run</button></div>
 <p class="note">Commands run on the next server tick. The full list is in DevCommands.cs; results show in the server window.</p>
 
 <script>
-var t=(location.search.match(/[?&]t=([0-9a-f]+)/)||[])[1]||'';
+var csrf='__CSRF__';
 function v(id){return document.getElementById(id).value;}
 function say(s){document.getElementById('msg').innerHTML=s;}
-function call(path,cb){var x=new XMLHttpRequest();x.open('POST','/api/'+path+(path.indexOf('?')<0?'?':'&')+'t='+t);
-x.onload=function(){try{cb(JSON.parse(x.responseText));}catch(e){say('Bad answer: '+x.status);}};x.onerror=function(){say('Server not reachable.');};x.send();}
-function run(c){var tg=v('target');call('admin/run?target='+encodeURIComponent(tg)+'&cmd='+encodeURIComponent(c),function(r){say(r.message);});}
+function call(path,cb){var x=new XMLHttpRequest();x.open('POST','/api/'+path);x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+x.onload=function(){try{cb(JSON.parse(x.responseText));}catch(e){say('Bad answer: '+x.status);}};x.onerror=function(){say('Server not reachable.');};x.send('csrf='+encodeURIComponent(csrf));}
+function runFor(tg,c){call('admin/run?target='+encodeURIComponent(tg)+'&cmd='+encodeURIComponent(c),function(r){say(r.message);});}
+function run(c){runFor(v('target'),c);}
+function one(){var tg=v('target');if(tg=='me'||tg=='all'){say('Pick one player as the target first.');return false;}return true;}
+function kick(){if(!one())return;var s=parseInt(v('ksecs'),10);if(isNaN(s)||s<0)s=0;
+if(confirm('Kick '+v('target')+(s>0?' in '+s+' s':' now')+'?'))run('kick '+s+(v('kwhy')?' '+v('kwhy'):''));}
 function ask(c,q){var a=prompt(q);if(a)run(c+' '+a);}
 function players(){call('admin/players',function(r){if(!r.ok){say(r.message);return;}var s=document.getElementById('target'),keep=s.value;
 s.innerHTML='<option value="me">Me</option><option value="all">Everyone</option>';
 for(var i=0;i<r.players.length;i++){var o=document.createElement('option');o.value=r.players[i].name;o.text=r.players[i].name+' ('+r.players[i].landscape+')';s.appendChild(o);}
 s.value=keep;say('Players: '+r.players.length+' online.');});}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function decide(id,how){call('admin/run?target=me&cmd='+encodeURIComponent('psreview '+id+' '+how),function(r){say(r.message);setTimeout(psqueue,1500);});}
+function psqueue(){call('admin/psqueue',function(r){var d=document.getElementById('psq');if(!r.ok){d.innerHTML=esc(r.message);return;}
+if(!r.products.length){d.innerHTML='Nothing waiting for staff.';return;}var h='';
+for(var i=0;i<r.products.length;i++){var p=r.products[i];
+h+='<div class="row"><b>'+esc(p.name)+'</b> by '+esc(p.creator)+' &middot; '+p.price+' &middot; '+p.approvals+' up / '+p.rejections+' down &middot; '+esc(p.created)
++'<br>'+esc(p.description)+(p.tags?' <i>['+esc(p.tags)+']</i>':'')+(p.reasons?'<br>Rejected for: '+esc(p.reasons):'')
++'<br><button onclick="decide(\''+p.id+'\',\'approve\')">Approve</button><button class="off" onclick="decide(\''+p.id+'\',\'reject\')">Reject</button></div>';}
+d.innerHTML=h;});}
 players();
+psqueue();
 </script></body></html>
 """;
     }

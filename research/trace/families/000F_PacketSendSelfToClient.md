@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 0 (0 not handled) · S2C 1 (0 never sent / opcode unknown)
 
 ## S2C PacketSendSelfToClient  `0xF`
-- server: SENT (102× in opcode_stats) · seen in play 102×
+- server: SENT (18× in opcode_stats) · seen in play 327×
 - reader: FUN_142bb1050
 - handled in the zone dispatcher Zone_DispatchPacket (0x02)
 - text keys: NetInfo.log

@@ -1,6 +1,7 @@
 ﻿using LandmarkEmulator.WorldServer.Game.Terrain;
 using LandmarkEmulator.WorldServer.Network;
 using LandmarkEmulator.WorldServer.Network.Message.Model;
+using Microsoft.Extensions.Configuration;
 using NLog;
 using System;
 using System.Collections.Generic;
@@ -17,42 +18,78 @@ namespace LandmarkEmulator.WorldServer.Game
     /// map), standing on the generated ground (<see cref="TerrainHeights"/>), above sea level, on gentle slopes and
     /// outside build sites. Players are sent only the regions around them; a gathered node is removed for everyone in
     /// range and grows back later.
+    /// <para>
+    /// On the Desert, Tropical, Old Growth and Tundra surface biomes the trees follow the shipped procedural placement
+    /// sets (<see cref="ProceduralPlacement"/>: the sets' own tree props, spacing, slope / altitude limits, ground
+    /// materials, masks, scale / heading ranges and respawn minutes); Volcanic, Deciduous and the ocean's shore, which
+    /// have no sets, keep the tree lists below. Set nodes use indices 128-255 of a region's keys.
+    /// </para>
+    /// <para>
+    /// What happens after a node is gathered is the respawn model (setting ProceduralRespawn, Gathering.Respawn.cs): live's
+    /// minimum / maximum per type and landscape with respawns elsewhere (default), or the older regrow-in-place.
+    /// </para>
     /// </summary>
-    public static class Gathering
+    public static partial class Gathering
     {
-        /// <summary>Party members within this many metres share what a member gathers (wiki Gathering: "everyone who is
-        /// harvesting within 200m of each other will share the materials being harvested").</summary>
+        /// <summary>Party members within this many metres share what a member gathers (wiki Gathering: everyone
+        /// harvesting within 200 m of each other shares the materials).</summary>
         public const float PartyShareRange = 200f;
 
         /// <summary>
-        /// Drops while gathering (wiki Gathering / Lumens / Recipes / Essence: "the gathering process also has a chance to
-        /// drop Essences, recipes, and Lumens ... more likely when mining a vein of ore or uncommon stone, or while
-        /// chopping trees"). The live rates were server data; these are ours. <paramref name="rich"/>: a vein, a tree or a
+        /// Drops while gathering (wiki Gathering / Lumens / Recipes / Essence: gathering may also drop Essences,
+        /// recipes and Lumens, more often from ore veins, uncommon stone and trees). The live rates were server data;
+        /// these are ours. <paramref name="rich"/>: a vein, a tree or a
         /// plant (plain digging only rarely drops Lumens).
         /// </summary>
-        public static void RollDrops(WorldSession session, bool rich, uint tool = 0)
+        public static void RollDrops(WorldSession session, bool rich, uint tool = 0, bool wearTool = true)
         {
+            // One harvesting swing: the held tool loses condition (TASKS 6.53, Durability.ToolUsed). RollDrops runs once
+            // per collecting mining swing (Abilities.Dig) and per reaped plant; Chop wears on every hit itself and
+            // passes wearTool: false for the felling hit.
+            if (wearTool)
+                Durability.ToolUsed(session);
             // Charmed tools: "a bit of luck" — finds come twice as often.
             double roll = random.NextDouble() / (CharmedTools.Contains(tool) ? 2.0 : 1.0);
+            // Lumens and essences follow the play-session curve (Pacing: fewer early, more in long sessions).
+            double pace = Pacing.Factor(session);
+            double lumenChance = RichLumenChance * pace, essenceChance = EssenceChance * pace;
             if (!rich)
             {
-                if (roll < PlainLumenChance)
+                if (roll < PlainLumenChance * pace)
                     GiveHarvest(session, Health.LumenItem, 1);
                 return;
             }
-            if (roll < RichLumenChance)
+            if (roll < lumenChance)
                 GiveHarvest(session, Health.LumenItem, (uint)random.Next(1, 4));
-            else if (roll < RichLumenChance + EssenceChance)
+            else if (roll < lumenChance + essenceChance)
                 GiveHarvest(session, AdventureEssence, 1);
-            else if (roll < RichLumenChance + EssenceChance + RecipeChance
+            else if (roll < lumenChance + essenceChance + RecipeChance
                      && RecipeBook.RandomUnknownRecipeItem(session, random) is uint recipe and not 0)
             {
                 session.GiveItem(recipe, 1);
                 log.Info($"{session.CharacterName} found recipe item {recipe} while gathering.");
             }
+            else if (roll >= lumenChance + essenceChance + RecipeChance
+                     && roll < lumenChance + essenceChance + RecipeChance + EmitterChance)
+            {
+                // A rare prop drop: a Fireworks Emitter item 4455-4476 (P5915: dropped at random like other props; a
+                // player
+                // saw one drop on day one, forum 57596; trace/0695/spec-fireworks.md §5.2 F). Uncommon kinds come twice
+                // as often as rare ones (Fireworks.RandomEmitterItem). The band starts after the recipe band so a player
+                // who knows every recipe doesn't get emitters more often.
+                uint emitter = Fireworks.RandomEmitterItem(random);
+                session.GiveItem(emitter, 1);
+                log.Info($"{session.CharacterName} found fireworks emitter item {emitter} while gathering.");
+            }
+            // A rare Repair Bot Beacon, rolled on its own (P4835 "global loot").
+            if (RareDrops.Beacon(random) is uint beacon and not 0)
+            {
+                session.GiveItem(beacon, 1);
+                log.Info($"{session.CharacterName} found a Repair Bot Beacon while gathering.");
+            }
         }
 
-        /// <summary>Charmed Pick / Charmed Axe (wiki: "chance to find recipes, special resources").</summary>
+        /// <summary>Charmed Pick / Charmed Axe (wiki: a chance at recipes and special resources).</summary>
         private static readonly HashSet<uint> CharmedTools = new() { 3254, 3260 };
         /// <summary>Hotfoot Axe, NovaTech Velocitizer: "a brief speed boost after logging" / "a small speed buff after use".</summary>
         private static readonly HashSet<uint> SpeedBurstTools = new() { 3263, 3705 };
@@ -71,6 +108,8 @@ namespace LandmarkEmulator.WorldServer.Game
         private const uint MaxMovementSpeedStat = 2;
 
         private const double PlainLumenChance = 0.003, RichLumenChance = 0.04, EssenceChance = 0.03, RecipeChance = 0.0075;
+        /// <summary>Chance of a fireworks emitter prop item per rich gather (ours; live's rate was server data).</summary>
+        private const double EmitterChance = 0.002;
         /// <summary>Adventure Essence (item 3683): a crafting component from gathering and exploring.</summary>
         public const uint AdventureEssence = 3683;
 
@@ -104,7 +143,8 @@ namespace LandmarkEmulator.WorldServer.Game
 
         private const uint PlainWood = 71, BurledWood = 72, TreeFiber = 921, TreeSap = 922;
 
-        private enum NodeType { Tree, Plant }
+        /// <summary>Tree (axe), Plant (sickle) or Decor (a placement set's rock / bush / flower: shown, not gathered).</summary>
+        private enum NodeType { Tree, Plant, Decor }
 
         private sealed class Node
         {
@@ -113,6 +153,12 @@ namespace LandmarkEmulator.WorldServer.Game
             public uint Zone;
             public ulong Guid => GuidBase | Key;
             public NodeType Type;
+            /// <summary>The placement set it came from (respawn minutes), or null for the old tree lists.</summary>
+            public ProceduralPlacement.PlacementSet Set;
+            /// <summary>The set entity it came from (admin monitor counts), or null for the old tree lists.</summary>
+            public ProceduralPlacement.SetEntity Entity;
+            /// <summary>The biome under an old-list node (part of its respawn pool, <see cref="PoolKeyOf"/>); 0 for set nodes.</summary>
+            public int Biome;
             public PlayerUpdateAddLightweightProp Spawn;
             public uint Yield;          // wood item for trees, plant item for plants
             public int MaxHits;
@@ -146,7 +192,9 @@ namespace LandmarkEmulator.WorldServer.Game
         private static readonly Dictionary<int, TreeKind> treeKinds = new()
         {
             // OldGrowthForestSurface (sky/audio "JaggedPine"): jagged, gnarled and diamond pines.
-            [50] = new TreeKind { Models = new uint[] { 338, 342, 343, 345, 346, 347, 348, 349 }, Density = 0.16f, Wood = PlainWood },
+            // Every Old Growth tree gives Burled Wood (hotfix 11 May 2016, P5415: "All old growth forest trees should now be
+            // giving burled wood"); one wood per biome (13 Apr 2016, P4628).
+            [50] = new TreeKind { Models = new uint[] { 338, 342, 343, 345, 346, 347, 348, 349 }, Density = 0.16f, Wood = BurledWood },
             // VolcanicSurface (Lavastorm): sparse scorched trees, striped wood.
             [47] = new TreeKind { Models = new uint[] { 225, 226, 1370, 1371 }, Density = 0.05f, Wood = 73 }
         };
@@ -160,6 +208,9 @@ namespace LandmarkEmulator.WorldServer.Game
         private static readonly PlantKind[] fallbackPlants = { Cotton, Sunblossom };
         private const float PlantDensity = 0.04f;
 
+        /// <summary>Whether the world grows harvestable plant nodes: not since 21 Mar 2016 (P4128).</summary>
+        private const bool PlantsHarvestable = false;
+
         private static readonly object sync = new();
         private static readonly Dictionary<long, Node[]> regions = new();
         private static readonly Dictionary<ulong, DateTime> gathered = new();
@@ -170,21 +221,40 @@ namespace LandmarkEmulator.WorldServer.Game
         private static bool dirty;
 
         /// <summary>
-        /// Loads which trees and plants are gathered and when they regrow (one "key ticks" line each).
+        /// Loads which trees and plants are gathered: with the regrow-in-place model when they regrow ("key ticks" lines),
+        /// with the min / max model which candidate spots are free ("E key") and which landscapes have had their first
+        /// population rolled ("Z landscape generator"); see <see cref="LoadRespawnLine"/>.
         /// </summary>
         public static void Load(string path)
         {
             savePath = path;
+            // The placement sets (gameData) and their masks (the install); settings in WorldServer.json or the
+            // environment: ProceduralPlacement (default off), ProceduralPlacementDecor (off), ProceduralPlacementMasks (on).
+            // Off by default: all 108 shipped sets name the 2014 alpha biomes (18-31), none a launch biome, so live's launch
+            // placement came from rules the client doesn't carry and using the sets on launch landscapes rests on the
+            // inferred biome-type match (trace/0695/procedural-placement-695.md, L113); it also halves Old Growth forests.
+            var config = LandmarkEmulator.Shared.Configuration.SharedConfiguration.Configuration;
+            ProceduralPlacement.Load(config?.GetValue("GameDataPath", "gameData") ?? "gameData", Landscapes.GameDirectory,
+                config?.GetValue("ProceduralPlacement", false) ?? false,
+                config?.GetValue("ProceduralPlacementDecor", false) ?? false,
+                config?.GetValue("ProceduralPlacementMasks", true) ?? true);
+            LoadRespawnSettings(config);
             if (!File.Exists(path))
                 return;
             foreach (string line in File.ReadLines(path))
             {
                 string[] f = line.Split(' ');
-                if (f.Length == 2 && ulong.TryParse(f[0], out ulong key) && long.TryParse(f[1], out long ticks)
-                    && ticks > DateTime.UtcNow.Ticks)
+                if (LoadRespawnLine(f))
+                    continue;
+                // Regrow-in-place entries; under the min / max model nothing regrows in place, so they are dropped.
+                if (Respawn == RespawnModel.InPlace && f.Length == 2 && ulong.TryParse(f[0], out ulong key)
+                    && long.TryParse(f[1], out long ticks) && ticks > DateTime.UtcNow.Ticks)
                     gathered[key] = new DateTime(ticks, DateTimeKind.Utc);
             }
-            log.Info($"Gathering: {gathered.Count} tree(s)/plant(s) still regrowing.");
+            if (Respawn == RespawnModel.InPlace)
+                log.Info($"Gathering: {gathered.Count} tree(s)/plant(s) still regrowing.");
+            else
+                log.Info($"Gathering: {empty.Count} free spot(s) saved on {rolled.Count} landscape(s).");
         }
 
         /// <summary>Called every server tick: streams regions around each player, regrows nodes and saves.</summary>
@@ -211,9 +281,18 @@ namespace LandmarkEmulator.WorldServer.Game
                 Stream(session);
             }
             RegrowDue(now);
-            if (dirty)
-                Save();
+            RespawnUpdate(now);
+            // At most every SaveInterval, written off the world thread (the min / max model's list of free spots is
+            // thousands of lines per landscape).
+            if (dirty && now >= nextSave)
+            {
+                nextSave = now + SaveInterval;
+                Save(background: true);
+            }
         }
+
+        private static readonly TimeSpan SaveInterval = TimeSpan.FromSeconds(10);
+        private static DateTime nextSave;
 
         /// <summary>
         /// Drops what was sent to a player who left.
@@ -225,6 +304,8 @@ namespace LandmarkEmulator.WorldServer.Game
                 sent.Remove(session);
                 lastUpdate.Remove(session);
             }
+            // (Also called after a re-zone, PlayerManager.Reintroduce: losing the 5 s throttle then costs nothing.)
+            lastWrongTool.TryRemove(session, out _);
         }
 
         /// <summary>
@@ -239,9 +320,13 @@ namespace LandmarkEmulator.WorldServer.Game
                 WrongTool(session, targetGuid, NodeType.Plant, "That plant needs a sickle.");
                 return false;
             }
-            bool felled = Hit(tree, TreeRegrowTime);
-            // The Goliath Axe "grants more resources per swing, but swings slower".
-            uint wood = (uint)(random.Next(2, 5) * (tool == 3261 ? 1.5 : 1.0) * ToolYieldBonus(tool));
+            bool felled = Hit(tree, RegrowTime(tree, TreeRegrowTime));
+            Durability.ToolUsed(session);   // every axe hit is a harvest (TASKS 6.53)
+            // The Goliath Axe gives more per swing but swings slower; Harvest Bonus (stat 17) counts on trees
+            // too (1 Apr 2016, P4389: harvest-bonus items gave too much from trees — reduced, not removed).
+            uint wood = (uint)(random.Next(2, 5) * (tool == 3261 ? 1.5 : 1.0) * ToolYieldBonus(tool)
+                * (1f + Buffs.Apply(session, 17, 0f) / 100f) * Durability.ToolStrength(session));   // broken axe: half (6.53)
+            wood = Math.Max(1u, wood);
             GiveHarvest(session, tree.Yield, wood);
             Achievements.Harvested(session, tree.Yield, wood);
             LootPinatas.SpawnChunk(session, target + new Vector3(0f, 1f, 0f), tree.Yield, wood);
@@ -254,7 +339,7 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             if (random.NextDouble() < 0.15)
                 GiveHarvest(session, TreeSap, 1);
-            RollDrops(session, rich: true, tool);
+            RollDrops(session, rich: true, tool, wearTool: false);
             AfterUse(session, tool);
             Despawn(tree);
             log.Debug($"{session.CharacterName} felled tree {tree.Key:X} (model {tree.Spawn.ModelId}).");
@@ -270,7 +355,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 WrongTool(session, targetGuid, NodeType.Tree, "That tree needs an axe.");
                 return false;
             }
-            Hit(plant, PlantRegrowTime);
+            Hit(plant, RegrowTime(plant, PlantRegrowTime));
             GiveHarvest(session, plant.Yield, 1);
             RollDrops(session, rich: true, tool);
             LootPinatas.SpawnChunk(session, target + new Vector3(0f, 0.5f, 0f), plant.Yield);
@@ -292,7 +377,8 @@ namespace LandmarkEmulator.WorldServer.Game
             Node node;
             lock (sync)
                 node = Find(targetGuid & ~GuidBase);
-            if (node == null || node.Type != hit)
+            // Decoration (a set's rock or bush) can't be gathered with any tool.
+            if (node == null || node.Type != hit && node.Type != NodeType.Decor)
                 return;
             DateTime now = DateTime.UtcNow;
             if (lastWrongTool.TryGetValue(session, out DateTime last) && now - last < TimeSpan.FromSeconds(5))
@@ -330,8 +416,13 @@ namespace LandmarkEmulator.WorldServer.Game
             w.Write(0u);
             w.Write(0f);
             w.Write(reason);
-            w.Write(resource);
-            w.Write(0u);
+            // The client reads the resource and the last u32 only when the reason isn't 1 (leftover bytes drop the
+            // packet; trace/0695/audit-wire-d.md) [P].
+            if (reason != 1)
+            {
+                w.Write(resource);
+                w.Write(0u);
+            }
             session.EnqueueMessage(Network.Message.ZoneMessageOpcode.AbilityEffectEnd, output.ToArray());
         }
 
@@ -347,6 +438,9 @@ namespace LandmarkEmulator.WorldServer.Game
             Node node;
             lock (sync)
             {
+                // Before a landscape's first population is rolled, nothing is shown there and nothing can be gathered.
+                if (!NodesReady(session.ZoneId))
+                    return null;
                 if (targetGuid >> 62 == 1)
                     node = Find(targetGuid & ~GuidBase);
                 else
@@ -361,6 +455,20 @@ namespace LandmarkEmulator.WorldServer.Game
             return node;
         }
 
+        /// <summary>
+        /// How long a gathered node stays gone under the regrow-in-place model (ProceduralRespawn inplace): a set node's
+        /// MIN..MAX_RESPAWN_MINUTES (12-18 on most sets; "within about 20 minutes", Domino 19 Jun 2015, forum 55352),
+        /// otherwise the old list's fixed time. The min / max model (default) uses the same delays for its respawns
+        /// elsewhere (<see cref="RespawnDelay"/>).
+        /// </summary>
+        private static TimeSpan RegrowTime(Node node, TimeSpan fallback)
+        {
+            if (node.Set == null)
+                return fallback;
+            lock (sync)
+                return node.Set.Respawn(random);
+        }
+
         /// <summary>Counts a hit; true (and the node is gone until it regrows) when it was the last one.</summary>
         private static bool Hit(Node node, TimeSpan regrow)
         {
@@ -370,6 +478,11 @@ namespace LandmarkEmulator.WorldServer.Game
                 if (node.Hits < node.MaxHits)
                     return false;
                 node.Hits = 0;
+                if (Respawn == RespawnModel.MinMax)
+                {
+                    Felled(node, DateTime.UtcNow);   // gone; maybe another of its kind elsewhere (Gathering.Respawn.cs)
+                    return true;
+                }
                 node.RegrowsAt = DateTime.UtcNow + regrow;
                 gathered[node.Key] = node.RegrowsAt;
                 dirty = true;
@@ -420,7 +533,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 for (int pass = 0; pass < 4; pass++)
                 {
                     bool moved = false;
-                    foreach (Node tree in Nearby(zone, point, 12f).Where(n => n.Standing && n.Type == NodeType.Tree))
+                    foreach (Node tree in Nearby(zone, point, 12f).Where(n => n.Standing && n.Type != NodeType.Plant))
                     {
                         if (ModelFootprints.Of(tree.Spawn.ModelId) is not (float footprint, Vector3 offset))
                             continue;
@@ -458,6 +571,10 @@ namespace LandmarkEmulator.WorldServer.Game
             if (DevCommands.NoStreaming || !TerrainHeights.Has(zone))
                 return;   // no baked heights for this landscape: nothing can be placed on its ground
             if (session.StreamsOnHold)
+                return;
+            // Min / max model: the census runs on the first visit since the start (seconds, in the background); only a
+            // landscape's very first population waits for it, after a restart the saved free spots apply at once.
+            if (AwaitCensus(zone))
                 return;
             Vector3 position = session.Position;
             var spawns = new List<PlayerUpdateAddLightweightProp>();
@@ -522,17 +639,34 @@ namespace LandmarkEmulator.WorldServer.Game
                             session.EnqueueMessage(node.Spawn);
         }
 
-        /// <summary>The trees and plants of a region, generated the same way every time from its coordinates.</summary>
+        /// <summary>
+        /// The trees and plants of a region (cached), generated the same way every time from its coordinates, with their
+        /// saved state (regrowing, or a free spot under the min / max model). Caller holds <see cref="sync"/>.
+        /// </summary>
         private static Node[] Region(uint zone, int rx, int rz)
         {
             long key = Pack(zone, rx, rz);
             if (regions.TryGetValue(key, out Node[] cached))
                 return cached;
+            Node[] result = Generate(zone, rx, rz, census: false);
+            foreach (Node node in result)
+                node.RegrowsAt = SavedState(node);
+            regions[key] = result;
+            return result;
+        }
 
+        /// <summary>
+        /// A region's nodes from its coordinates alone, all standing. Touches no shared state (the census runs it on its
+        /// own thread for a whole landscape); <paramref name="census"/>: no transient ids are taken for the throw-away
+        /// nodes.
+        /// </summary>
+        private static Node[] Generate(uint zone, int rx, int rz, bool census)
+        {
+            long key = Pack(zone, rx, rz);
             var nodes = new List<Node>();
             // Seeded per landscape (for the home continent, 406/407 as before, so its saved state still matches).
-            var treeRng = new Random(HashCode.Combine(rx * 73856093, rz * 19349663, (int)zone));
-            var plantRng = new Random(HashCode.Combine(rx * 83492791, rz * 29765723, (int)zone + 1));
+            var treeRng = new Random(Shared.StableHash.Combine(rx * 73856093, rz * 19349663, (int)zone));
+            var plantRng = new Random(Shared.StableHash.Combine(rx * 83492791, rz * 29765723, (int)zone + 1));
             float cell = RegionSize / CellsPerSide;
             for (int i = 0; i < CellsPerSide * CellsPerSide; i++)
             {
@@ -544,12 +678,13 @@ namespace LandmarkEmulator.WorldServer.Game
                 float yaw = (float)(treeRng.NextDouble() * Math.PI * 2), scale = 0.85f + 0.3f * (float)treeRng.NextDouble();
                 int biome = TerrainMaterials.BiomeAt(new Vector3(x, 0f, z), zone);
                 TreeKind trees = treeKinds.GetValueOrDefault(biome, fallbackTrees);
-                if (roll < trees.Density && Ground(zone, x, z) is float y)
+                // Biomes with placement sets get their trees from the sets (below).
+                if (roll < trees.Density && !ProceduralPlacement.Covers(biome) && Ground(zone, x, z) is float y)
                 {
                     uint model = trees.Models[pick % trees.Models.Length];
                     bool big = IsLargeTree(model);
                     nodes.Add(Create(zone, key, i, NodeType.Tree, model, new Vector3(x, y - 0.3f, z), yaw, scale,
-                        big && trees.Wood == PlainWood ? BurledWood : trees.Wood, big ? 8 : 5));
+                        trees.Wood, big ? 8 : 5, biome, census));
                 }
 
                 float px = rx * RegionSize + (i % CellsPerSide + 0.05f * (float)plantRng.NextDouble()) * cell;
@@ -557,27 +692,151 @@ namespace LandmarkEmulator.WorldServer.Game
                 double plantRoll = plantRng.NextDouble(), rarity = plantRng.NextDouble();
                 int plantPick = plantRng.Next(1000);
                 float plantYaw = (float)(plantRng.NextDouble() * Math.PI * 2);
-                if (plantRoll < PlantDensity && Ground(zone, px, pz) is float py)
+                // No plant nodes: plants are no longer harvested and sickles have no use (21 Mar 2016, P4128); plants
+                // stay the client's own decoration. The tables above are kept for reference.
+                int plantBiome = TerrainMaterials.BiomeAt(new Vector3(px, 0f, pz), zone);
+                if (PlantsHarvestable && plantRoll < PlantDensity && !ProceduralPlacement.Covers(plantBiome) && Ground(zone, px, pz) is float py)
                 {
-                    PlantKind[] kinds = plantKinds.GetValueOrDefault(TerrainMaterials.BiomeAt(new Vector3(px, 0f, pz), zone), fallbackPlants);
+                    PlantKind[] kinds = plantKinds.GetValueOrDefault(plantBiome, fallbackPlants);
                     PlantKind kind = kinds[plantPick % kinds.Length];
                     (uint model, uint item) = rarity < 0.05 ? (kind.RareModel, kind.PerfectItem)
                         : rarity < 0.2 ? (kind.UncommonModel, kind.LargeItem)
                         : (kind.CommonModel, kind.Item);
-                    nodes.Add(Create(zone, key, PlantIndexBase + i, NodeType.Plant, model, new Vector3(px, py - 0.1f, pz), plantYaw, 1f, item, 1));
+                    nodes.Add(Create(zone, key, PlantIndexBase + i, NodeType.Plant, model, new Vector3(px, py - 0.1f, pz), plantYaw, 1f, item, 1,
+                        plantBiome, census));
                 }
             }
-            Node[] result = nodes.ToArray();
-            regions[key] = result;
-            return result;
+            AddSetNodes(zone, key, rx, rz, nodes, census);
+            return nodes.ToArray();
         }
 
-        /// <summary>Ground height for a node at x/z, or null where nothing should grow (sea, cliffs, build sites).</summary>
+        /// <summary>First key index of the placement-set nodes of a region (0-63 old trees, 64-127 old plants).</summary>
+        private const int SetIndexBase = 128;
+
+        /// <summary>
+        /// Adds a region's placement-set nodes (<see cref="ProceduralPlacement.Region"/>): trees give their biome type's
+        /// wood, sickle plants only while plants are harvestable, decoration only with ProceduralPlacementDecor. At most
+        /// 128 per region (key indices 128-255); trees-only regions hold far fewer (about 4-10 on 64 m).
+        /// </summary>
+        private static void AddSetNodes(uint zone, long region, int rx, int rz, List<Node> nodes, bool census)
+        {
+            if (!ProceduralPlacement.Enabled || !ProceduralPlacement.Loaded)
+                return;
+            List<ProceduralPlacement.Placement> placed = ProceduralPlacement.Region(zone, rx * RegionSize, rz * RegionSize, RegionSize,
+                PlantsHarvestable, (x, z, y) => Allowed(zone, x, y, z));
+            for (int i = 0; i < placed.Count; i++)
+            {
+                if (i >= 256 - SetIndexBase)
+                {
+                    log.Debug($"Region {rx},{rz} of landscape {zone}: {placed.Count - i} placement(s) over the 128-node limit left out.");
+                    break;
+                }
+                ProceduralPlacement.Placement p = placed[i];
+                (NodeType type, uint yield, int hits) = p.Entity.Kind switch
+                {
+                    ProceduralPlacement.EntityKind.Tree => (NodeType.Tree, SetWood(p.Set.BiomeType),
+                        p.Entity.Footprint >= LargeTreeFootprint ? 8 : 5),
+                    ProceduralPlacement.EntityKind.Plant => (NodeType.Plant, SetPlantItem(p.Entity.Model), 1),
+                    _ => (NodeType.Decor, 0u, int.MaxValue)
+                };
+                if (type == NodeType.Plant && yield == 0)
+                    continue;   // a set plant with no sickle item here (Flax, Jute, Silkfall)
+                ulong key = ((ulong)region << 8) | (uint)(SetIndexBase + i);
+                nodes.Add(new Node
+                {
+                    Key = key,
+                    Zone = zone,
+                    Type = type,
+                    Set = p.Set,
+                    Entity = p.Entity,
+                    Yield = yield,
+                    MaxHits = hits,
+                    Spawn = new PlayerUpdateAddLightweightProp
+                    {
+                        Guid = GuidBase | key,
+                        TransientId = census ? 0u : PlayerManager.AllocateTransientId(),
+                        ModelId = p.Entity.Model,
+                        Position = new Vector4(p.Position, 1f),
+                        Rotation = new Vector4(p.Rotation.X, p.Rotation.Y, p.Rotation.Z, p.Rotation.W),
+                        Scale = new Vector4(p.Scale, p.Scale, p.Scale, 1f)
+                    }
+                });
+            }
+        }
+
+        /// <summary>
+        /// Gathering nodes of one landscape, per (placement set, set entity) — or per model for the old tree lists (Set and
+        /// Entity null) — for the admin monitor: the page-28 reply (ProceduralDataMonitorPacketUpdateResponse 0x10A,
+        /// <see cref="AdminMonitor"/>) and the web page. <c>Standing</c>: nodes standing now; <c>Total</c>: candidate spots
+        /// (the page's "node count"); <c>Min</c> / <c>Max</c>: the per-landscape minimum and maximum; <c>Queued</c>: respawns
+        /// waiting (min / max model) or nodes regrowing in place.
+        /// <para>
+        /// Min / max model (<see cref="Respawn"/>): from the landscape's census, i.e. the whole landscape, once it is in.
+        /// Regrow-in-place: only the regions a player has caused to be generated (that model works per region, on demand);
+        /// Min 0, Max the set entity's MAX_SPAWNS (10,000) or, for the old lists, the nodes generated.
+        /// </para>
+        /// </summary>
+        public sealed record NodeCount(ProceduralPlacement.PlacementSet Set, ProceduralPlacement.SetEntity Entity, uint Model, int Standing,
+            int Total, int Min, int Max, int Queued);
+
+        public static List<NodeCount> NodeCounts(uint zone)
+        {
+            if (CensusCounts(zone) is List<NodeCount> fromCensus)
+                return fromCensus;
+            var counts = new Dictionary<(int Set, uint Entity), NodeCount>();
+            DateTime now = DateTime.UtcNow;
+            lock (sync)
+                foreach (Node[] nodes in regions.Values)
+                    foreach (Node node in nodes)
+                    {
+                        if (node.Zone != zone)
+                            continue;
+                        var key = (node.Set?.Id ?? -1, node.Entity?.Id ?? node.Spawn.ModelId);
+                        counts.TryGetValue(key, out NodeCount had);
+                        bool standing = node.RegrowsAt <= now;
+                        int total = (had?.Total ?? 0) + 1, up = (had?.Standing ?? 0) + (standing ? 1 : 0);
+                        counts[key] = new NodeCount(node.Set, node.Entity, node.Spawn.ModelId, up, total,
+                            0, node.Entity?.MaxSpawns ?? total, total - up);
+                    }
+            return counts.Values.ToList();
+        }
+
+        /// <summary>A set tree whose blocking radius (Models.txt) is at least this is "large": 8 hits like the old list's big trees.</summary>
+        private const float LargeTreeFootprint = 4.5f;
+
+        /// <summary>
+        /// The wood of a placement set's trees by biome type (wiki Gathering / Striped Wood: Plain in Jungle and Tundra,
+        /// Striped in the Desert; hotfix 11 May 2016, P5415: every Old Growth tree gives Burled Wood).
+        /// </summary>
+        private static uint SetWood(int biomeType) => biomeType switch
+        {
+            1 => 73,          // Desert → Striped Wood
+            4 => BurledWood,  // Old Growth Forest
+            _ => PlainWood    // Tropical, Tundra
+        };
+
+        /// <summary>The plant item of a set's sickle plant model (the plant kinds above), 0 if it has none.</summary>
+        private static uint SetPlantItem(uint model) =>
+            new[] { Amberleaf, Cotton, Earthblood, Sunblossom, Vilebloom }.FirstOrDefault(k => k.CommonModel == model)?.Item ?? 0;
+
+        /// <summary>The server's own refusals at a ground point (the Spire, build sites, graveyards).</summary>
+        private static bool Allowed(uint zone, float x, float y, float z)
+        {
+            if (Spire.Covers(zone, x, z) || Graveyards.PreventsSpawning(zone, new Vector3(x, y, z)))
+                return false;
+            var global = TerrainEdits.ToGlobal(new Vector3(x, y, z));
+            return Claims.MayEdit(0, global.X, global.Y, global.Z, zone);
+        }
+
+        /// <summary>
+        /// Ground height for a node at x/z, or null where nothing should grow (sea, cliffs, build sites, a graveyard's
+        /// "Prevent Spawning" area, Graveyards.PreventsSpawning).
+        /// </summary>
         private static float? Ground(uint zone, float x, float z)
         {
             if (TerrainHeights.HeightAt(x, z, zone) is not float y || y < SeaLevel || TerrainHeights.Slope(x, z, 2f, zone) > MaxSlope)
                 return null;
-            if (Spire.Covers(zone, x, z))
+            if (Spire.Covers(zone, x, z) || Graveyards.PreventsSpawning(zone, new Vector3(x, y, z)))
                 return null;
             var global = TerrainEdits.ToGlobal(new Vector3(x, y, z));
             return Claims.MayEdit(0, global.X, global.Y, global.Z, zone) ? y : null;
@@ -588,7 +847,7 @@ namespace LandmarkEmulator.WorldServer.Game
         /// packet that shows it.
         /// </summary>
         private static Node Create(uint zone, long region, int index, NodeType type, uint model, Vector3 position, float yaw, float scale,
-            uint yield, int maxHits)
+            uint yield, int maxHits, int biome, bool census)
         {
             ulong key = ((ulong)region << 8) | (uint)index;
             return new Node
@@ -596,13 +855,13 @@ namespace LandmarkEmulator.WorldServer.Game
                 Key = key,
                 Zone = zone,
                 Type = type,
+                Biome = biome,
                 Yield = yield,
                 MaxHits = maxHits,
-                RegrowsAt = gathered.GetValueOrDefault(key),
                 Spawn = new PlayerUpdateAddLightweightProp
                 {
                     Guid = GuidBase | key,
-                    TransientId = PlayerManager.AllocateTransientId(),
+                    TransientId = census ? 0u : PlayerManager.AllocateTransientId(),
                     ModelId = model,
                     Position = new Vector4(position, 1f),
                     Rotation = new Vector4(0f, MathF.Sin(yaw / 2), 0f, MathF.Cos(yaw / 2)),
@@ -618,7 +877,9 @@ namespace LandmarkEmulator.WorldServer.Game
         /// </summary>
         public static bool SendFull(WorldSession session, ulong guid)
         {
-            if ((guid & GuidBase) == 0)
+            // The whole top byte: creature guids (0x50.., cavern 0x51..) share bit 62 with GuidBase 0x40.., and a creature's
+            // request decoded as a node made a region for "landscape" 0x100000 / 0x110000 (2026-10-15).
+            if ((guid & 0xFF00_0000_0000_0000) != GuidBase)
                 return false;
             Node node;
             lock (sync)
@@ -685,27 +946,56 @@ namespace LandmarkEmulator.WorldServer.Game
             return (code == 0 ? Home : code, (short)(ushort)(key >> 16), (short)(ushort)key);
         }
 
+        private static readonly object saveSync = new();
+        private static long saveSequence, writtenSequence;
+
         /// <summary>
-        /// Writes the gathered list to disk (only when something changed).
+        /// Writes the gathered list to disk (only when something changed): regrowing nodes ("key ticks") and the min / max
+        /// model's state (<see cref="RespawnLines"/>). The lines are taken under the lock; <paramref name="background"/>
+        /// writes them on the thread pool, an older snapshot never overwriting a newer one. Written in place (not via a
+        /// temporary file): in Docker the file is a symbolic link into the world's data folder.
         /// </summary>
-        private static void Save()
+        private static void Save(bool background)
         {
             if (savePath == null)
                 return;
             string[] lines;
+            long sequence;
             lock (sync)
             {
-                lines = gathered.Select(f => $"{f.Key} {f.Value.Ticks}").ToArray();
+                lines = gathered.Select(f => $"{f.Key} {f.Value.Ticks}").Concat(RespawnLines()).ToArray();
                 dirty = false;
+                sequence = ++saveSequence;
             }
-            try
+            if (background)
+                System.Threading.Tasks.Task.Run(() => Write(lines, sequence));
+            else
+                Write(lines, sequence);
+        }
+
+        private static void Write(string[] lines, long sequence)
+        {
+            lock (saveSync)
             {
-                File.WriteAllLines(savePath, lines);
+                if (sequence < writtenSequence)
+                    return;
+                writtenSequence = sequence;
+                try
+                {
+                    File.WriteAllLines(savePath, lines);
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    log.Warn($"Couldn't save gathered trees and plants: {e.Message}");
+                }
             }
-            catch (IOException e)
-            {
-                log.Warn($"Couldn't save gathered trees and plants: {e.Message}");
-            }
+        }
+
+        /// <summary>Writes what changed since the last save now (the world is stopping).</summary>
+        public static void Flush()
+        {
+            if (dirty)
+                Save(background: false);
         }
     }
 }

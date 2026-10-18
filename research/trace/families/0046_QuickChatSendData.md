@@ -7,5 +7,5 @@ C2S 0 (0 not handled) · S2C 1 (0 never sent / opcode unknown)
 
 ## S2C QuickChatSendDataPacket  `0x46`
 - resolved by hand: placed by placeclasses.py (opcode only): FUN_143298c40
-- server: SENT (102× in opcode_stats)
+- server: SENT (16× in opcode_stats)
 - built in: FUN_143298c40

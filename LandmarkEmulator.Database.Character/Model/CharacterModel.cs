@@ -27,6 +27,16 @@ namespace LandmarkEmulator.Database.Character.Model
         public uint LoginCount { get; set; }
         /// <summary>Minutes spent in the world (SendSelfToClient PlayedMinutes, shown by /played).</summary>
         public uint PlayedMinutes { get; set; }
+        /// <summary>The player's profile text (0.695 Bio, at most 512 characters: client "BioLengthMax").</summary>
+        public string Bio { get; set; } = "";
+        /// <summary>
+        /// Chat bubble colours and size (CommandPacketSetChatBubbleColor 0x1E/0x15 {u32 fg, u32 bg, u32 size, u64 guid},
+        /// Lua Ui.SetChatColorFgBgSz): the character's own, shown to others through LightweightToFullPc and 0x15. Defaults
+        /// are the client's for a new character entity (FUN_142e88840: FUN_143b94310 0xFFFFFF, FUN_143b941a0 0xD4E2F0, 1).
+        /// </summary>
+        public uint ChatBubbleForeground { get; set; } = 0xFFFFFF;
+        public uint ChatBubbleBackground { get; set; } = 0xD4E2F0;
+        public uint ChatBubbleSize { get; set; } = 1;
         public float PositionX { get; set; }
         public float PositionY { get; set; }
         public float PositionZ { get; set; }

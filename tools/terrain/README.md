@@ -14,3 +14,21 @@ height a character stands on. These scripts sample that function from your own r
 4. `python pack_heights.py <GameDataPath> 406`. This writes about 27 MB.
 
 Format: see `LandmarkEmulator.WorldServer/Game/Terrain/TerrainHeights.cs`.
+
+## Several landscapes, the 0.695 client and the event islands
+
+`bake_all.py <GameDataPath> <dev_commands.txt> <client Logs dir> <zone> [zone ...]` bakes one landscape after another
+in one client session: it writes `landscape <zone>` to the world's dev command file (the server re-zones the client
+there), waits for the loading screen to drop, samples and packs `TerrainHeights<zone>.bin`. The hook picks the
+sampler's address by the client's build (0.589 `FUN_143fc3e00`, 0.695 `FUN_144087ab0`). Files are named by **zone
+id**, which is the continent id for the islands 391-421 but not for the event islands: zones 460 / 461 / 462 are
+continents 436 / 437 / 438 (`landscape 460` works even while that island is not on the Events world).
+
+After baking an event island, check it against the client's shipped surface cache, which also tells whether the
+bitmap names the server sent are the ones live used (`csc.py`; docs/terrain.md, "Surface cache"), with GAME_DIR and
+GAME_DATA_DIR set as in docker/worlds/*.env:
+
+    python csc.py pick 460 436 427 424 437
+
+The right names give about 96-98 % on the island's own cache (every baked island 391-421 does against its own) and
+side with it on the texels where the candidates differ.

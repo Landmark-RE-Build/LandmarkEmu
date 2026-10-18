@@ -73,7 +73,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 bool turn = open && i < free;
                 if (turn)
                     queue[i].OfferedAt ??= DateTime.UtcNow;
-                int wait = turn ? 0 : Math.Max(10, (int)(game.State == StateRunning ? (game.RoundEnds - DateTime.UtcNow).TotalSeconds
+                int wait = turn ? 0 : Math.Max(10, (int)(game.State == StateRunning ? Math.Min(3600, (game.RoundEnds - DateTime.UtcNow).TotalSeconds)
                     : (game.StateEnds - DateTime.UtcNow).TotalSeconds));
                 SendQueueRequest(queue[i].Session, game, RequestQueuePosition, turn ? 0 : i + 1, wait);
             }
@@ -81,17 +81,25 @@ namespace LandmarkEmulator.WorldServer.Game
 
         /// <summary>Request sub 8 as the client's HandleGameRequestPacket reads it (see SendMembership).</summary>
         private static void SendQueueRequest(WorldSession session, Game game, short type, int position, int waitSeconds)
+            => SendQueueRequest(session, type, game.Queue.Count, position, waitSeconds, game.Guid, game.Rules.NameId, game.CustomName);
+
+        /// <summary>
+        /// The same for any game by its fields — also a game of another world, which the client's queue entry takes like
+        /// any other (FUN_1434e93e0 type 5 keeps the guid in its own set and builds the entry from the packet alone; L31).
+        /// </summary>
+        private static void SendQueueRequest(WorldSession session, short type, int queueSize, int position, int waitSeconds,
+            ulong guid, uint nameId, string name)
         {
             var output = new List<byte>();
             var w = Begin(output, SubRequest);
             w.Write((ushort)type);
             w.Write((ushort)1);
-            w.Write((ushort)Math.Clamp(game.Queue.Count, 0, short.MaxValue));
+            w.Write((ushort)Math.Clamp(queueSize, 0, short.MaxValue));
             w.Write((ushort)Math.Clamp(position, 0, short.MaxValue));
             w.Write((ushort)Math.Clamp(waitSeconds, 0, short.MaxValue));
-            w.Write(game.Guid);
-            w.Write(game.Rules.NameId);
-            w.Write(game.CustomName ?? "");
+            w.Write(guid);
+            w.Write(nameId);
+            w.Write(name ?? "");
             session.EnqueueMessage(ZoneMessageOpcode.InstancedGameBase, output.ToArray());
         }
 

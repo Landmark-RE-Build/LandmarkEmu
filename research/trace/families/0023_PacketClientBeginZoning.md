@@ -6,5 +6,5 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 0 (0 not handled) · S2C 1 (0 never sent / opcode unknown)
 
 ## S2C PacketClientBeginZoning  `0x23`
-- server: SENT (60× in opcode_stats) · seen in play 60×
+- server: SENT (4× in opcode_stats) · seen in play 419×
 - case functions (dispatcher): FUN_142bcba10 FUN_142b89b40 FUN_1430aed20

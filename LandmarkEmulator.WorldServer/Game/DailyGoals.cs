@@ -9,8 +9,8 @@ namespace LandmarkEmulator.WorldServer.Game
 {
     /// <summary>
     /// Daily goals (wiki "Daily Goals", Journal → Daily): straightforward, time-intensive goals that reset every 24 hours,
-    /// each worth 30-45 Lumens; "as long as you have some progress on a daily goal, it will remain even after daily reset
-    /// until you complete it", and the same goal can come up again any day.
+    /// each worth 30-45 Lumens; a daily with some progress survives the reset until it is completed, and the same goal
+    /// can come up again any day.
     /// <para>
     /// The client knows 21 of them by name (texts 575703-575723 "Daily: Build Site Tourist" … "Daily: Lightning
     /// Wielder"); a live capture holds two records (669 Scalewind Hunt, 679 Shadow Wielder: achievement = 575040 + name
@@ -83,7 +83,7 @@ namespace LandmarkEmulator.WorldServer.Game
             int todays = keep.Count(e => e.Day == today);
             if (todays < PerDay)
             {
-                var rng = new Random(HashCode.Combine((int)character, (int)today, 0x6461));
+                var rng = new Random(Shared.StableHash.Combine((int)character, (int)(character >> 32), (int)today, 0x6461));
                 foreach (Daily d in All.Where(d => !keepIds.Contains(d.Id)).OrderBy(_ => rng.Next()).Take(PerDay - todays))
                 {
                     keep.Add((today, d.Id));

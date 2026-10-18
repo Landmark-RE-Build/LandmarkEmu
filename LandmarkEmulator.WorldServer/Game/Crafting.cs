@@ -1,8 +1,10 @@
 ﻿using LandmarkEmulator.Shared.GameTable;
 using LandmarkEmulator.Shared.GameTable.Model;
+using LandmarkEmulator.Shared.GameTable.Text;
 using LandmarkEmulator.Shared.Network;
 using LandmarkEmulator.WorldServer.Network;
 using LandmarkEmulator.WorldServer.Network.Message;
+using Microsoft.Extensions.Configuration;
 using NLog;
 using System;
 using System.Collections.Generic;
@@ -13,6 +15,19 @@ namespace LandmarkEmulator.WorldServer.Game
     /// <summary>
     /// Crafting at stations: checks the request against the recipe tables (never trusting the client), takes the
     /// components up front, and hands over the output once the recipe's casting time has passed.
+    /// <para>Closing a station window from the server (OPEN-LEADS L177): RecipePacketZoneCraftingWindow 0x42/0x24
+    /// {u32 sub, u32 (+0x18, ctor default 0xFFFFFFFF, not read by the handler), bool (+0x1c)} (0.695 reader FUN_142f300e0,
+    /// Crafting dispatcher case 0x24) [P]: bool 0 → FUN_142f381b0 sends CraftWindowEnableRequest 6 {u64 station, bool 0}
+    /// (handled as <see cref="StationClosed"/>) and closes the window with GameEvents:OnCloseCraftingWindow, or
+    /// HudStateManager:OnCloseRepairWindow for a repair station (type 6); bool 1 rebuilds it (FUN_142f3c630(…, 1)). The
+    /// client never closes a station window by distance itself (FUN_142f3c630 / FUN_142f381b0 are reached only from this
+    /// packet, the window-open response and the Lua window toggle), so a window stayed open as its player walked away,
+    /// and the next craft failed with "You are too far from the station." The server closes it when the player is more
+    /// than <see cref="MaxStationDistance"/> from the station or the station prop is gone (checked twice a second;
+    /// setting CraftingWindowCloseAway, default true [I]: live's behaviour is not documented).</para>
+    /// <para>Recipe cooldowns (PlayerRecipeDataUpdatePacket 0x42/0x1E; the crafting list's CooldownRemaining /
+    /// CooldownTotal, FUN_143613ab0: recipe +0x44 minus the time since the player's last craft) need nothing: every
+    /// recipe's COOLDOWN_TIME is 0 in the client's own Resources/Recipes.txt (0.695: 2,363 rows; 0.589: 2,331) [P].</para>
     /// </summary>
     public static class Crafting
     {
@@ -46,6 +61,71 @@ namespace LandmarkEmulator.WorldServer.Game
 
         /// <summary>Most crafts one request may ask for.</summary>
         private const uint MaxCount = 100;
+
+        /// <summary>RecipeBase sub 0x24 RecipePacketZoneCraftingWindow.</summary>
+        private const uint ZoneCraftingWindowSub = 0x24;
+
+        /// <summary>CraftingWindowCloseAway: the server closes a station window its player walked away from (true).</summary>
+        private static bool CloseAwayEnabled =>
+            closeAway ??= LandmarkEmulator.Shared.Configuration.SharedConfiguration.Configuration?.GetValue("CraftingWindowCloseAway", true) ?? true;
+        private static bool? closeAway;
+
+        private static DateTime lastAwayCheck = DateTime.MinValue;
+
+        /// <summary>RecipePacketZoneCraftingWindow body: u32 sub 0x24, u32 station [I], bool refresh (false closes the window).</summary>
+        public static byte[] CraftingWindowBody(uint station, bool refresh)
+        {
+            var output = new List<byte>();
+            var w = new GamePacketWriter(output);
+            w.Write(ZoneCraftingWindowSub);
+            w.Write(station);
+            w.Write(refresh);
+            return output.ToArray();
+        }
+
+        /// <summary>Closes the player's station window (the client answers with CraftWindowEnableRequest 6).</summary>
+        public static void CloseWindow(WorldSession session)
+        {
+            uint station;
+            lock (sync)
+            {
+                if (!openStations.Remove(session, out var open))
+                    return;
+                openRepairWindows.Remove(session);
+                station = open.Station;
+            }
+            session.EnqueueMessage(ZoneMessageOpcode.RecipeBase, CraftingWindowBody(station, false));
+            ResetCursor(session);
+            log.Info($"{session.CharacterName}: station {station} window closed by the server.");
+        }
+
+        /// <summary>
+        /// Twice a second: station windows whose player walked off (or whose station prop is gone) are closed. World
+        /// stations by their prop's position, the repair window (no prop kept) by where it was opened; UI stations (55)
+        /// and dev-opened windows stay.
+        /// </summary>
+        private static void CloseWindowsAway()
+        {
+            if (!CloseAwayEnabled || (DateTime.UtcNow - lastAwayCheck).TotalMilliseconds < 500)
+                return;
+            lastAwayCheck = DateTime.UtcNow;
+            List<(WorldSession Session, ulong Prop, System.Numerics.Vector3? OpenedAt)> open;
+            lock (sync)
+            {
+                if (openStations.Count == 0)
+                    return;
+                open = openStations.Where(o => !o.Key.Disconnected && (o.Value.PropGuid != 0 || openRepairWindows.ContainsKey(o.Key)))
+                    .Select(o => (o.Key, o.Value.PropGuid, openRepairWindows.TryGetValue(o.Key, out var at) ? at : (System.Numerics.Vector3?)null))
+                    .ToList();
+            }
+            foreach (var (session, prop, openedAt) in open)
+            {
+                System.Numerics.Vector3? station = prop != 0 ? Props.PositionOf(prop) : openedAt;
+                if (station is System.Numerics.Vector3 at && System.Numerics.Vector3.Distance(at, session.Position) <= MaxStationDistance)
+                    continue;
+                CloseWindow(session);
+            }
+        }
 
         /// <summary>
         /// Remembers which station a player opened, and its prop (0 for a dev-opened window, which skips the
@@ -137,24 +217,81 @@ namespace LandmarkEmulator.WorldServer.Game
             if (!recipe.CanCraftWithoutStation && !GameTableManager.Instance.CraftingStationRecipeMappings.Entries
                     .Any(m => m.CraftingStationId == station && m.RecipeId == recipeId))
                 return "That recipe needs a different station.";
+            // A one-time Lumen Station unlock the player already owns (L43, user decision 2026-10-17): refused before
+            // anything is taken.
+            if (recipe.VisibilityRequirementId != 0 && UnlockRefusal(session, recipe, count) is uint refusal)
+                return TextManager.Instance.GetTextForId(refusal) ?? "You already have that.";
 
             List<RecipeComponentEntry> components = GameTableManager.Instance.ComponentsOf(recipeId).ToList();
             // Type 1 = an item. The other types (item category / category group / keywords) only occur in salvaging
             // recipes, which Salvaging handles with the player's chosen items.
             if (components.Any(c => c.ComponentType != 1))
                 return "That recipe isn't supported yet.";
-            if (components.Any(c => session.Inventory.CountOf(c.ComponentId) < c.ComponentCount * count))
+            // One need per item: 18 recipes list the same item in two component rows (the RECIPE_ID rows of
+            // RecipeComponents.txt next to the RecipeRecipeComponentMaps rows, e.g. the forge's recipe 28: ore 108 × 600
+            // and × 150). Checked row by row, a player holding only the larger row passed, the second TakeItem failed
+            // unnoticed and the job still recorded both rows as paid, so Cancel handed back more than was taken (an item
+            // duplication loop) and the craft itself cost less than the recipe.
+            var needed = components.GroupBy(c => c.ComponentId)
+                .Select(g => (Item: g.Key, Count: (ulong)g.Sum(c => (long)c.ComponentCount) * count)).ToList();
+            if (needed.Any(n => n.Count > uint.MaxValue || session.Inventory.CountOf(n.Item) < n.Count))
                 return "Missing components.";
             var paid = new List<(uint, uint)>();
-            foreach (RecipeComponentEntry component in components)
+            foreach ((uint item, ulong amount) in needed)
             {
-                session.TakeItem(component.ComponentId, component.ComponentCount * count);
-                paid.Add((component.ComponentId, component.ComponentCount * count));
+                if (!session.TakeItem(item, (uint)amount))
+                {
+                    // Can't happen after the check above (one thread); never keep a partial payment.
+                    foreach ((uint back, uint backCount) in paid)
+                        session.GiveItem(back, backCount);
+                    return "Missing components.";
+                }
+                paid.Add((item, (uint)amount));
             }
 
             Queue(session, recipe, count, paid);
             log.Info($"{session.CharacterName} started crafting recipe {recipeId} x{count}.");
             return null;
+        }
+
+        /// <summary>
+        /// The Lumen Station's one-time unlock purchases: the 581 recipes with a VISIBILITY_REQUIREMENT_ID (0.695
+        /// Recipes.txt, all CAN_CRAFT_WITHOUT_STATION 1): the 555 "Recipe:" items, the 22 "Recipe: Fireworks Emitter (…)"
+        /// and Recipe: Highfall Catapult, the Dungeon Builder's Starter Set (MAX_QUEUE 1 each) and the Vault / Inventory /
+        /// Design Expansions (2386-2388, MAX_QUEUE 3 / 3 / 7). Repeatable purchases (outfits, cut stone) have none
+        /// (trace/0695/agent-leads3-b.md L43) [P data]. The id is a server Requirements row the client cannot evaluate (its
+        /// Requirements.txt has rows 3-76 only; no reader of recipe +0x40 found yet), read as "the player doesn't have this
+        /// yet", which hid the purchase [I strong]. So the server refuses one that would add nothing (the text id, or null
+        /// to allow):
+        /// <list type="bullet">
+        /// <item>a storage expansion past its most (counting the unused copies held; <see cref="ItemUses.ExpansionUsesLeft"/>);</item>
+        /// <item>a recipe item whose use would be refused (<see cref="RecipeBook.TeachesNew"/>: recipe or prop known), one
+        /// already held unused, or more than one at a time (MAX_QUEUE 1);</item>
+        /// <item>a Starter Set while an unopened one is held [I: opening it is not recorded, so a set opened earlier can be
+        /// bought again].</item>
+        /// </list>
+        /// The texts are the client's own, as for the item uses (<see cref="ItemUses"/>): 568756 "You've already learned
+        /// this prop!" for a prop recipe item whose prop is known, else 560768 "Error: Failed item requirement" (the client
+        /// has no "recipe known" / "storage at its most" text) [I: that live answered a crafting start with these]. They go
+        /// out as the StartResponse string, which the client prints to chat (0.695 FUN_142f39150 copies it, DAT_145431a10
+        /// +0x18 the chat-print path) and then resets its crafting state (FUN_142f37fe0 on failure) [P].
+        /// </summary>
+        private static uint? UnlockRefusal(WorldSession session, RecipeEntry recipe, uint count)
+        {
+            uint item = recipe.ItemDefinitionId;
+            if (ItemUses.ExpansionUsesLeft(session, item) is int left)
+                return count * Math.Max(1, recipe.ItemCount) > left ? ItemUses.FailedItemRequirementText : null;
+            uint held = session.Inventory.CountOf(item);
+            if (RecipeBook.TeachesNew(session, item) is bool teaches)
+            {
+                if (!teaches)
+                    return RecipeBook.IsPropRecipeItem(item) ? ItemUses.PropKnownText : ItemUses.FailedItemRequirementText;
+                return held > 0 || count > 1 ? ItemUses.FailedItemRequirementText : null;
+            }
+            if (item == ItemUses.DungeonStarterSet)
+                return held > 0 || count > 1 ? ItemUses.FailedItemRequirementText : null;
+            // Any other unlock: at most MAX_QUEUE at a time.
+            return recipe.MaxQueue > 0 && count > recipe.MaxQueue ? ItemUses.FailedItemRequirementText : null;
         }
 
         /// <summary>Queues a craft whose components were already taken; it completes after the recipe's casting time.</summary>
@@ -216,8 +353,48 @@ namespace LandmarkEmulator.WorldServer.Game
             => SendResponse(session, 2, error == null, error ?? "");
 
         /// <summary>
-        /// Finishes crafts that are due (server tick). A player who logged out loses that craft; its components were
-        /// already spent.
+        /// The player left the world (PlayerManager.Leave): a craft or salvage still running is finished now, its output
+        /// put in the inventory the session still holds (saved like any other change). Before, the job stayed queued for
+        /// the old session and <see cref="Update"/> dropped it when it came due, so the components (taken at the start) and
+        /// the output were both lost to a logout or disconnect mid-craft. Every recipe takes at most 1 s per item
+        /// (Recipes.txt CASTING_TIME 0 / 0.25 / 1, at most 100 per job), so finishing early saves at most 100 s.
+        /// When the character has already logged in again (a fast or crash relog: the new session's inventory came from
+        /// the database before this leave), the output goes to the new session instead (<see cref="Network.ZoneSessions.ReplacementOf"/>):
+        /// added to the old in-memory inventory it was overwritten by the new session's next save of that stack, or took
+        /// a slot the new session also filled (review 2026-10-18b #4).
+        /// </summary>
+        public static void Forget(WorldSession session)
+        {
+            List<Job> mine;
+            lock (sync)
+            {
+                mine = jobs.Where(j => j.Session == session).ToList();
+                foreach (Job job in mine)
+                    jobs.Remove(job);
+                openStations.Remove(session);
+                openRepairWindows.Remove(session);
+            }
+            if (mine.Count == 0)
+                return;
+            WorldSession replacement = Network.ZoneSessions.ReplacementOf(session);
+            if (replacement == null && session.Inventory == null)
+                return;
+            foreach (Job job in mine)
+            {
+                if (replacement != null)
+                {
+                    replacement.GiveItem(job.Recipe.ItemDefinitionId, job.Recipe.ItemCount * job.Count);
+                    log.Info($"{session.CharacterName} left while crafting recipe {job.Recipe.Id} x{job.Count}: finished, "
+                        + "given to the session that replaced it.");
+                    continue;
+                }
+                session.Inventory.Add(job.Recipe.ItemDefinitionId, job.Recipe.ItemCount * job.Count);
+                log.Info($"{session.CharacterName} left while crafting recipe {job.Recipe.Id} x{job.Count}: finished at logout.");
+            }
+        }
+
+        /// <summary>
+        /// Finishes crafts that are due (server tick). A job whose player left was finished by <see cref="Forget"/>.
         /// </summary>
         public static void Update()
         {
@@ -229,7 +406,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 foreach ((WorldSession player, System.Numerics.Vector3 at) in openRepairWindows.ToList())
                     if (player.Disconnected)
                         openRepairWindows.Remove(player);
-                    else if (System.Numerics.Vector3.Distance(player.Position, at) > MaxStationDistance)
+                    else if (!CloseAwayEnabled && System.Numerics.Vector3.Distance(player.Position, at) > MaxStationDistance)
                     {
                         openRepairWindows.Remove(player);
                         ResetCursor(player);
@@ -241,12 +418,13 @@ namespace LandmarkEmulator.WorldServer.Game
                 foreach (WorldSession gone in openStations.Keys.Where(s => s.Disconnected).ToList())
                     openStations.Remove(gone);
             }
+            CloseWindowsAway();
             foreach (Job job in due)
             {
                 if (job.Session.Disconnected)
                     continue;
                 job.Session.GiveItem(job.Recipe.ItemDefinitionId, job.Recipe.ItemCount * job.Count);
-                Achievements.Crafted(job.Session, job.Recipe.ItemDefinitionId);
+                Achievements.Crafted(job.Session, job.Recipe.ItemDefinitionId, job.Count);
                 SendResponse(job.Session, 5, true, "", job.Recipe.Id);
                 log.Info($"{job.Session.CharacterName} crafted recipe {job.Recipe.Id} x{job.Count}.");
             }

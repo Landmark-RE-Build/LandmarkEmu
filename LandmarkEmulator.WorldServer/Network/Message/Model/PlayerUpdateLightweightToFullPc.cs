@@ -13,7 +13,7 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
     /// reads three more from the same buffer: a movement body, a PlayerUpdateUpdateStat and a
     /// ClientUpdateUpdateCalculatedStats, each with its own opcode header.
     /// The character data blob is found by transient id, so it must match the lightweight spawn.
-    /// Unknown fields are zero and every list empty, which keeps the reply small.
+    /// Fields the server has nothing for are zero and every list empty, which keeps the reply small.
     /// </remarks>
     [ZoneMessage(ZoneMessageOpcode.PlayerUpdateLightweightToFullPcWire)]
     public class PlayerUpdateLightweightToFullPc : IWritable
@@ -30,6 +30,18 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
         public CharacterModelInfo Model { get; set; } = new();
         public byte[] Movement { get; set; } = EmptyMovement;
         public List<(uint StatId, float Value)> Stats { get; } = new();
+        /// <summary>
+        /// Character stats for the nested PlayerUpdate UpdateStat: the SEND_TO_REMOTE_CLIENT movement times
+        /// (Game.CharacterStats.ForOthers, L162); the client copies them into this character's animation (vtable +0x588).
+        /// </summary>
+        public List<Game.CharacterStats.Stat> CharacterStats { get; } = new();
+        /// <summary>
+        /// Chat bubble foreground, background and size: the 2nd-4th u32 after the transient id (0.695 blob reader
+        /// FUN_142c21350 +0x8 / +0xc / +0x10, copied by the case-0x5B handler in FUN_142cdfa60 to the character entity
+        /// +0x219c / +0x21a0 / +0x21a4, the fields CommandPacketSetChatBubbleColor sets). Client defaults 0xFFFFFF,
+        /// 0xD4E2F0, 1 (FUN_142e88840).
+        /// </summary>
+        public (uint Foreground, uint Background, uint Size) ChatBubble { get; set; } = (0xFFFFFF, 0xD4E2F0, 1);
 
         public void Write(GamePacketWriter writer)
         {
@@ -41,10 +53,12 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
 
             writer.WriteBytes(Movement);
 
-            // PlayerUpdateUpdateStat: base 0x26, sub-opcode byte 0x53.
-            writer.WriteBytes(new byte[] { 0x26, 0x00, 0x53 });
+            // PlayerUpdateUpdateStat nested in the body: base 0x26, u32 sub 0x53 — the 0.695 reader FUN_142c2cd60 reads the
+            // u32 sub; the old one-byte sub left the body 3 bytes short and the client dropped the whole packet, so other
+            // players stayed placeholders (trace/0695/audit-wire-a.md M1) [P].
+            writer.WriteBytes(new byte[] { 0x26, 0x00, 0x53, 0x00, 0x00, 0x00 });
             writer.Write(Guid);
-            writer.Write(0u);
+            Game.CharacterStats.WriteList(writer, CharacterStats);
 
             // ClientUpdateUpdateCalculatedStats: base 0x29, u16 sub-opcode 0x2C.
             writer.WriteBytes(new byte[] { 0x29, 0x00, 0x2C, 0x00 });
@@ -60,8 +74,12 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
         private void WriteCharacterData(GamePacketWriter writer)
         {
             writer.WriteUIntWith2BitLength((int)TransientId);
-            for (int i = 0; i < 6; i++)
-                writer.Write(0u);
+            writer.Write(0u);
+            writer.Write(ChatBubble.Foreground);
+            writer.Write(ChatBubble.Background);
+            writer.Write(ChatBubble.Size);
+            writer.Write(0u);
+            writer.Write(0u);
             writer.Write(0u);                   // empty list
             Model.Write(writer);
             writer.Write(0u);

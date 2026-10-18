@@ -34,6 +34,20 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <summary>Prop id → (effect set, "on" row index).</summary>
         private static Dictionary<uint, (uint Set, int On)> byProp = new();
 
+        /// <summary>
+        /// One-shot effects: the 22 Fireworks Emitters (props 2949-2970, 0.695) → their set (prop − 2820, sets 129-150
+        /// "EFX_Prop_Emitter_Fireworks_*", matched by name for all 22; trace/0695/spec-fireworks.md §3). Each set has two
+        /// "On" rows (index 0 and 1) and no "Off": a launch plays the burst once (<see cref="Launch"/>), nothing is shown
+        /// at spawn and there is no on / off.
+        /// </summary>
+        private static Dictionary<uint, uint> oneShots = new();
+
+        /// <summary>The value each emitter last launched with (0 / 1): every launch is a state change.</summary>
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<ulong, uint> launchValue = new();
+
+        public const uint FirstFireworksEmitter = 2949, LastFireworksEmitter = 2970;
+        private const uint FireworksSetOffset = 2820;
+
         /// <summary>Generic sets by model keyword (light sources only), when no set is named after the model.</summary>
         private static readonly (string Keyword, uint Set)[] keywordSets =
         {
@@ -149,8 +163,21 @@ namespace LandmarkEmulator.WorldServer.Game
                     if (set != 0 && onIndex.TryGetValue(set, out int on))
                         map[propId] = (set, on);
                 }
+                var shots = new Dictionary<uint, uint>();
+                for (uint prop = FirstFireworksEmitter; prop <= LastFireworksEmitter; prop++)
+                {
+                    uint set = prop - FireworksSetOffset;
+                    if (!setNames.TryGetValue(set, out string name) || !name.Contains("Fireworks", StringComparison.OrdinalIgnoreCase))
+                    {
+                        log.Warn($"Fireworks emitter {prop}: set {set} is \"{name}\", not a fireworks set; left without an effect.");
+                        continue;
+                    }
+                    map.Remove(prop);
+                    shots[prop] = set;
+                }
                 byProp = map;
-                log.Info($"{map.Count} props have light or particle effects.");
+                oneShots = shots;
+                log.Info($"{map.Count} props have light or particle effects, {shots.Count} launch fireworks.");
             }
             catch (Exception e)
             {
@@ -160,27 +187,50 @@ namespace LandmarkEmulator.WorldServer.Game
 
         public static bool HasEffect(uint propId) => byProp.ContainsKey(propId);
 
+        public static bool IsOneShot(uint propId) => oneShots.ContainsKey(propId);
+
+        /// <summary>
+        /// Launches a one-shot effect (a Fireworks Emitter) for the viewers: the state value flips between the set's two
+        /// "On" rows (0 / 1) so every launch is a change, previous −1, apply flag 1. The 0.695 client then always plays
+        /// the row's composite once (FUN_1430ac970 → behaviour +8 FUN_143476ad0 / +0x10 FUN_143476bb0 → FUN_1430aaeb0).
+        /// One body for all viewers.
+        /// </summary>
+        public static void Launch(IEnumerable<WorldSession> viewers, uint propId, ulong guid)
+        {
+            if (!oneShots.TryGetValue(propId, out uint set))
+                return;
+            uint value = launchValue.AddOrUpdate(guid, 0u, (_, v) => v ^ 1u);
+            byte[] body = Body(guid, set, value);
+            foreach (WorldSession viewer in viewers)
+                viewer.EnqueueMessage(ZoneMessageOpcode.UpdatePropInteractionState, body);
+        }
+
         /// <summary>Turns a prop's effect on (or off) for one viewer. Nothing for props without an effect set.</summary>
         public static void Send(WorldSession session, uint propId, ulong guid, bool on = true)
         {
             if (!byProp.TryGetValue(propId, out (uint Set, int On) fx))
                 return;
+            session.EnqueueMessage(ZoneMessageOpcode.UpdatePropInteractionState, Body(guid, fx.Set, on ? (uint)fx.On : uint.MaxValue));
+        }
+
+        private static byte[] Body(ulong guid, uint set, uint value)
+        {
             var output = new List<byte>();
             var writer = new GamePacketWriter(output);
             writer.Write(guid);
             writer.Write(CompositeEffectBehaviour);
-            writer.Write(fx.Set);                      // key: one effect slot per prop
-            writer.Write(on ? (uint)fx.On : uint.MaxValue);
+            writer.Write(set);                         // key: one effect slot per prop
+            writer.Write(value);
             writer.Write(uint.MaxValue);               // previous: none, so the effect starts now
             writer.Write(0ul);
             writer.Write(4u);
-            writer.Write(fx.Set);
+            writer.Write(set);
             writer.Write(0u);
             writer.Write(0u);                          // start offset (ms)
             writer.Write(1u);                          // non-zero: apply a change to an existing state (FUN_1433c8980)
             writer.Write(0u);                          // strings
             writer.Write(false);
-            session.EnqueueMessage(ZoneMessageOpcode.UpdatePropInteractionState, output.ToArray());
+            return output.ToArray();
         }
     }
 }

@@ -30,7 +30,8 @@ namespace LandmarkEmulator.WorldServer.Game
             uint players = (uint)PlayerManager.Snapshot().Count;
             // During a shutdown countdown the world is reported down already (no new players join a closing world).
             bool running = !Shutdown.InProgress;
-            pending = DatabaseManager.Instance.AuthDatabase.UpdateZoneServerHeartbeat(ZoneServerId, running, players)
+            // The player limit goes with it: the login server queues logins beyond it (LoginQueue.ReportedLimit).
+            pending = DatabaseManager.Instance.AuthDatabase.UpdateZoneServerHeartbeat(ZoneServerId, running, players, LoginQueue.ReportedLimit)
                 .ContinueWith(t => log.Warn(t.Exception?.GetBaseException(), "World heartbeat not saved."),
                     TaskContinuationOptions.OnlyOnFaulted);
         }

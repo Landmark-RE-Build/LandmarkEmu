@@ -39,7 +39,7 @@ u32   +0x20
 u16   +0x8
 i16   +0x10
 u64   +0x18
-i32   iVar2
+i32   <local>
   [loop 1: list elements]
 ```
 - handled in FUN_14330fd00 (its switch case for this message)
@@ -111,13 +111,13 @@ u16   +0x8
 i16   +0x10
 u64   +0x18
 FUN_142b9b0b0 -> +0x20
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
-  u32   *puVar3
+  u32   <element>
 FUN_142b9b0b0 -> +0x40
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
-  u32   *puVar3
+  u32   <element>
 ```
 - handled in FUN_14330fd00 (its switch case for this message)
 - code (handler case in FUN_14330fd00):

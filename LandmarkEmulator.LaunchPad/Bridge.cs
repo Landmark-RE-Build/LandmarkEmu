@@ -112,7 +112,7 @@ namespace LandmarkEmulator.LaunchPad
                     var (host, port) = ParseAddress(Str(args, "address"));
                     ServerEntry server = settings.Servers.FirstOrDefault(s => s.Id == Str(args, "server")) ?? new ServerEntry();
                     if (server.Address != host || server.ApiPort != port)
-                        (server.SavedKey, server.SavedSalt, server.AcceptedPatches) = ("", "", new());   // a login belongs to its server
+                        (server.SavedKey, server.SavedSalt) = ("", "");   // a login belongs to its server
                     (server.Address, server.ApiPort) = (host, port);
                     string name = Str(args, "name").Trim();
                     if (name.Length == 0)
@@ -174,29 +174,43 @@ namespace LandmarkEmulator.LaunchPad
                     return State();
                 }
 
-                // ---- patching from the server, then playing
+                // ---- the update from the server (ServerPatches), then playing. Nothing is downloaded until the player has
+                //      seen what it is (updateOffer: server, build, size; only the server's list is fetched and checked)
+                //      and clicked to install it (update, with the list's SHA-256 they were shown).
+                case "updateOffer":
+                {
+                    if (!settings.AllowServerUpdates)
+                        throw new InvalidOperationException("Installing the update from servers is switched off (Settings > Options).");
+                    ServerEntry server = Server(args);
+                    GameStore s = Store();
+                    var api = new ServerApi(server);
+                    JsonElement info = await api.Info();
+                    ServerPatches.Listed listed = ServerPatches.Needed(s, ServerPatches.FromInfo(info))
+                        ?? throw new InvalidOperationException("Your game needs nothing from this server.");
+                    ServerPatches.Offer offer = await Long(cancel => ServerPatches.Check(api, listed, cancel));
+                    return new
+                    {
+                        server = server.Name, address = server.Display, id = listed.Sha256, name = offer.Manifest.Name,
+                        build = offer.Build.Label, packBytes = listed.PackBytes, files = offer.Manifest.Files.Count,
+                        bytes = offer.Manifest.Files.Sum(f => f.Size), deletes = offer.Manifest.Delete.Count
+                    };
+                }
                 case "update":
                 {
-                    if (!ServerPatches.Enabled)
-                        throw new InvalidOperationException("Server patches are switched off in this LaunchPad: install the update from its .lmpatch file (Settings > Patch packs).");
+                    if (!settings.AllowServerUpdates)
+                        throw new InvalidOperationException("Installing the update from servers is switched off (Settings > Options).");
                     ServerEntry server = Server(args);
                     GameStore s = Store();
                     if (Game.IsRunning())
                         throw new InvalidOperationException("Close Landmark first.");
+                    string agreed = Str(args, "id");
+                    if (agreed.Length == 0)
+                        throw new InvalidOperationException("Agree to the update first.");
                     var api = new ServerApi(server);
                     JsonElement info = await api.Info();
-                    var listed = ServerPatches.FromInfo(info);
-                    ServerPatches.Plan plan = ServerPatches.PlanFor(s, listed);
-                    if (!plan.Needed)
-                        return State();
-                    if (plan.Install.Any(p => !server.AcceptedPatches.Contains(p.Sha256)))
-                    {
-                        if (!Bool(args, "accept"))
-                            throw new InvalidOperationException("Accept this server's patches first.");
-                        server.AcceptedPatches = listed.Select(p => p.Sha256).ToList();
-                        settings.Save();
-                    }
-                    await Long(cancel => ServerPatches.Sync(s, api, server.Display, server.Name, plan, Report, cancel));
+                    ServerPatches.Listed listed = ServerPatches.Needed(s, ServerPatches.FromInfo(info))
+                        ?? throw new InvalidOperationException("Your game needs nothing from this server.");
+                    await Long(cancel => ServerPatches.Install(s, api, server.Name, listed, agreed, Report, cancel));
                     return State();
                 }
                 case "play":
@@ -207,8 +221,9 @@ namespace LandmarkEmulator.LaunchPad
                         throw new InvalidOperationException("Landmark is already running.");
                     var api = new ServerApi(server);
                     JsonElement info = await api.Info();
-                    if (ServerPatches.Enabled && ServerPatches.PlanFor(s, ServerPatches.FromInfo(info)).Needed)
-                        throw new InvalidOperationException("This server's patches aren't installed yet: update first.");
+                    // Only a genuine Daybreak exe is started (Steam's 0.589 one or a known 0.695 build's: GameStore.CheckExe).
+                    if (await Task.Run(() => s.CheckExe(settings.AllowFebruaryWeak)) is string notGenuine)
+                        throw new InvalidOperationException(notGenuine);
                     string required = info.TryGetProperty("requiredClientBuild", out JsonElement r) ? r.GetString() ?? "" : "";
                     string build = Game.Build(Game.Folder);
                     if (required.Length > 0 && required != build)
@@ -235,6 +250,10 @@ namespace LandmarkEmulator.LaunchPad
                         settings.AutoPlay = Bool(args, "autoPlay");
                     if (args?["locale"] != null)
                         settings.Locale = Str(args, "locale");
+                    if (args?["allowServerUpdates"] != null)
+                        settings.AllowServerUpdates = Bool(args, "allowServerUpdates");
+                    if (args?["allowFebruaryWeak"] != null)
+                        settings.AllowFebruaryWeak = Bool(args, "allowFebruaryWeak");
                     settings.Save();
                     return State();
                 }
@@ -249,18 +268,20 @@ namespace LandmarkEmulator.LaunchPad
                     };
                     if (dialog.ShowDialog(window) != true)
                         return null;
-                    return DescribePack(dialog.FileName);
+                    return DescribePack(dialog.FileName, settings.AllowFebruaryWeak);
                 }
                 case "dropPack":
-                    return DescribePack(files.FirstOrDefault() ?? throw new InvalidOperationException("Drop the patch pack (.lmpatch) on the window."));
+                    return DescribePack(files.FirstOrDefault() ?? throw new InvalidOperationException("Drop the patch pack (.lmpatch) on the window."),
+                        settings.AllowFebruaryWeak);
                 case "installPack":
                 {
                     GameStore s = Store();
                     string path = Str(args, "path");
                     await Long(cancel => Task.Run(() =>
                     {
+                        // A pack the player chose: their February opt-in applies (never to a server's pack).
                         using var pack = new Patching.Pack(path);
-                        return s.Install(pack, "", "", filesChecked: false, Report, cancel);
+                        return s.Install(pack, "", "", Report, cancel, settings.AllowFebruaryWeak);
                     }, cancel));
                     return State();
                 }
@@ -281,6 +302,32 @@ namespace LandmarkEmulator.LaunchPad
                     }, cancel));
                     return State();
                 }
+                // ---- making the update pack from the player's own 0.695 copy (Settings > Patch packs > Create update pack)
+                case "chooseFolder":
+                {
+                    var dialog = new Microsoft.Win32.OpenFolderDialog { Title = Str(args, "title") is { Length: > 0 } t ? t : "Choose a folder" };
+                    return dialog.ShowDialog(window) == true ? dialog.FolderName : null;
+                }
+                case "chooseSave":
+                {
+                    var dialog = new Microsoft.Win32.SaveFileDialog
+                    {
+                        Title = "Save the update pack as", Filter = "Patch packs (*.lmpatch)|*.lmpatch",
+                        FileName = "update-0695" + PatchFile.Extension, DefaultExt = PatchFile.Extension, AddExtension = true
+                    };
+                    return dialog.ShowDialog(window) == true ? dialog.FileName : null;
+                }
+                case "checkMakeSource":
+                {
+                    string from = Str(args, "from");
+                    if (!Directory.Exists(from))
+                        throw new InvalidOperationException("Choose your 0.695 game folder first.");
+                    Patching.FolderCheck check = await Long(cancel => Task.Run(() => Patching.CheckFolder(from, Report, cancel, settings.AllowFebruaryWeak), cancel));
+                    return FolderCheckResult(check);
+                }
+                case "makePack":
+                    return await Long(cancel => Task.Run(() => MakePack(Str(args, "from"), Str(args, "steam"), Str(args, "out"), cancel), cancel));
+
                 case "clearCache":
                     Store().ClearCache();
                     return State();
@@ -352,27 +399,86 @@ namespace LandmarkEmulator.LaunchPad
             return $"http://{server.Address}:19001";
         }
 
-        /// <summary>What playing on a server needs patched, for the page (and whether the player already agreed).</summary>
+        /// <summary>
+        /// Does this server host the update and does the game need it, for the page (UPDATE). Nothing is fetched beyond
+        /// /info; what it is exactly is checked when the player asks (updateOffer).
+        /// </summary>
         private object PatchSummary(ServerEntry server, JsonElement info)
         {
-            if (!Game.IsGameFolder(Game.Folder) || !ServerPatches.Enabled)
+            if (!Game.IsGameFolder(Game.Folder) || !settings.AllowServerUpdates)
                 return new { needed = false };
-            ServerPatches.Plan plan = ServerPatches.PlanFor(Store(), ServerPatches.FromInfo(info));
-            return new
-            {
-                needed = plan.Needed,
-                accepted = plan.Install.All(p => server.AcceptedPatches.Contains(p.Sha256)),
-                undo = plan.Undo.Select(p => p.Name),
-                install = plan.Install.Select(p => new { p.Name, p.Version, p.Description, p.Files, p.Bytes, p.Delete })
-            };
+            ServerPatches.Listed? listed = ServerPatches.Needed(Store(), ServerPatches.FromInfo(info));
+            return listed == null ? new { needed = false }
+                : new { needed = true, name = listed.Name, version = listed.Version, packBytes = listed.PackBytes };
         }
 
+        private static object FolderCheckResult(Patching.FolderCheck check) => new
+        {
+            ok = check.Build != null, build = check.Build?.Label ?? "", closest = check.Closest, checkedFiles = check.Checked,
+            problems = check.Problems.Take(50), total = check.Problems.Count, weak = check.Weak
+        };
+
+        /// <summary>
+        /// Makes the update pack from the player's 0.695 folder (<see cref="Patching.MakeUpdate"/>, as --make-update): checks
+        /// the folder against the strong list first (refused unless it is a known build, file for file), and the Steam
+        /// copy if one is used ("own" = LaunchPad's own game folder, a path, or "" for none: every file whole). The made
+        /// pack is checked with the same rules a server and every player use (<see cref="PackCheck.Verify"/>, replaying
+        /// each edit and patch on the Steam copy when there is one) before it is reported done; one that fails is deleted.
+        /// </summary>
+        private object MakePack(string from, string steam, string output, CancellationToken cancel)
+        {
+            if (!Directory.Exists(from))
+                throw new InvalidOperationException("Choose your 0.695 game folder first.");
+            if (output.Length == 0 || !output.EndsWith(PatchFile.Extension, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"Choose where to save the pack (a {PatchFile.Extension} file).");
+            string? steamFolder = steam == "own" ? Game.Folder : steam.Length > 0 ? steam : null;
+            if (steamFolder != null && Same(steamFolder, from))
+                throw new InvalidOperationException("The Steam copy and the 0.695 folder are the same folder.");
+            if (Path.GetFullPath(output).StartsWith(Path.GetFullPath(from).TrimEnd('\\') + '\\', StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Save the pack somewhere outside your 0.695 game folder.");
+
+            // 1. The 0.695 folder: every file the update carries must be a known build's genuine file.
+            bool february = settings.AllowFebruaryWeak;
+            Patching.FolderCheck check = Patching.CheckFolder(from, Report, cancel, february);
+            if (check.Build == null)
+                throw new InvalidOperationException($"Your 0.695 folder isn't a known 0.695 build file for file ({check.Problems.Count} file(s) " +
+                    $"missing, different or unverifiable for the {check.Closest}; first: " +
+                    string.Join("; ", check.Problems.Take(5).Select(p => $"{p.Path}: {p.Issue}")) + "). No pack was made.");
+            // 2. The Steam copy the edits and patches are made against: complete and unchanged (Steam's SHA-1s).
+            if (steamFolder != null)
+            {
+                GameStore steamStore = steam == "own" ? Store() : new GameStore(steamFolder);
+                if (steamStore.Stack.Count > 0)
+                    throw new InvalidOperationException("That game folder has the update installed, so it isn't a Steam copy now. Choose " +
+                        "\"No Steam copy\"" + " or another copy.");
+                steamStore.RequireSteamCopy(Report, cancel);
+            }
+            // 3. The pack, then 4. the same check a server and every player run on it.
+            var (edits, patches, whole, bytes) = Patching.MakeUpdate(steamFolder, [from], output,
+                $"Update to {check.Build.Label}", null, Report, cancel, february);
+            PackCheck.Result verified;
+            try
+            {
+                using var pack = new Patching.Pack(output);
+                verified = PackCheck.Verify(pack, steamFolder, Report, cancel, february);
+            }
+            catch (Exception)
+            {
+                try { File.Delete(output); } catch (IOException) { }
+                throw;
+            }
+            return new { path = output, bytes, edits, patches, whole, build = verified.Build.Label, replayed = verified.Replayed, weak = check.Weak };
+        }
+
+        private static bool Same(string a, string b)
+            => Path.GetFullPath(a).TrimEnd('\\').Equals(Path.GetFullPath(b).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
+
         /// <summary>A chosen or dropped pack (an .lmpatch).</summary>
-        private static object DescribePack(string path)
+        private static object DescribePack(string path, bool allowFebruary)
         {
             if (!path.EndsWith(PatchFile.Extension, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException($"Patch packs are {PatchFile.Extension} files.");
-            return new { path, info = Patching.Describe(path, Game.Folder) };
+            return new { path, info = Patching.Describe(path, Game.Folder, allowFebruary) };
         }
 
         private static void CheckAccount(string account, string password)
@@ -454,6 +560,10 @@ namespace LandmarkEmulator.LaunchPad
                 }),
                 autoPlay = settings.AutoPlay,
                 locale = settings.Locale,
+                allowServerUpdates = settings.AllowServerUpdates,
+                allowFebruaryWeak = settings.AllowFebruaryWeak,
+                // Can this game folder be the Steam copy a made pack's edits and patches start from (checked when used)?
+                ownSteamCopy = s != null && s.Stack.Count == 0 && Game.Build(Game.Folder) == Patching.SteamBuild,
                 busy = busy != null,
                 packs = s?.Stack.Select(p => new
                 {

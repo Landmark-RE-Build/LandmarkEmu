@@ -14,42 +14,13 @@ namespace LandmarkEmulator.LaunchPad
         /// </summary>
         public static string Folder { get; } = Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory;
 
-        public static bool IsGameFolder(string? path)
-            => !string.IsNullOrWhiteSpace(path) && File.Exists(Path.Combine(path, "Landmark64.exe")) && Directory.Exists(Path.Combine(path, "Resources"));
+        public static bool IsGameFolder(string? path) => GameFolder.IsGameFolder(path);
 
-        private static readonly Regex VersionPattern = new(@"0\.\d{3}\.\d\.\d{6}", RegexOptions.Compiled);
-
-        /// <summary>
-        /// The game build ("0.589.1.128895"): the exe has no version resource, but the build string the title bar shows is
-        /// stored in it as text. "" when not found.
-        /// </summary>
-        public static string Build(string folder)
-        {
-            string exe = Path.Combine(folder, "Landmark64.exe");
-            if (!File.Exists(exe))
-                return "";
-            string text = Encoding.Latin1.GetString(File.ReadAllBytes(exe));
-            return VersionPattern.Match(text) is { Success: true } m ? m.Value : "";
-        }
+        /// <summary>The game build ("0.589.1.128895"; GameFolder.Build), "" when not found.</summary>
+        public static string Build(string folder) => GameFolder.Build(folder);
 
         /// <summary>Is the game in LaunchPad's folder running? (A copy in another folder doesn't block this one.)</summary>
-        public static bool IsRunning()
-        {
-            string mine = Path.GetFullPath(Path.Combine(Folder, "Landmark64.exe"));
-            foreach (Process p in Process.GetProcessesByName("Landmark64"))
-            {
-                try
-                {
-                    if (string.Equals(p.MainModule?.FileName, mine, StringComparison.OrdinalIgnoreCase))
-                        return true;
-                }
-                catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
-                {
-                    return true;   // can't tell where it runs from: be safe
-                }
-            }
-            return false;
-        }
+        public static bool IsRunning() => GameFolder.IsRunning(Folder);
 
         /// <summary>
         /// Points ClientConfig.ini at a server: the login server (Server=), the in-game web pages (MarketplaceUrl=), and

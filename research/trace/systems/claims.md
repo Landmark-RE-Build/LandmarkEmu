@@ -249,3 +249,11 @@ Still open:
   line "Claim Operation Result: ERROR: Player or Guild could not be found under the name [%s]!". Special Access for
   an unknown name now answers this (was a server chat line). Verified with dev grantaccess + Frida.
 - Table above is partly stale: 0x5F UpdatePropCategoryCount is sent (chests), 0x10 now sent.
+
+## Site height limits (traced 2026-10-16, TASKS 6.47)
+0.589 placement tool: FUN_1435afc20 reads ClaimPlacement.TerrainFollowHeightOffsetMax 150 → DAT_1451b4d00 and ...Min -75
+→ DAT_1451b4d04; FUN_1435b0150 clamps the tool's height offset (+0x88, Ctrl+wheel) to them; FUN_1435b14a0 puts the box's
+bottom at ground(centre x/z, FUN_1430a8040) + offset − ClaimSize.y × 0.5, so the requested centre = ground + offset ∈
+[-75, 150] m. Server: Claims.HeightRefusal (result 3) with 2 m slack against TerrainHeights. 0.695: same constants, code
+not re-read. Ultimate Power (0x11F) may switch Play / Edit (P5343): Lua Claims.ToggleAdventureStatus (0.695 FUN_1435e62a0)
+sends the current claim's id, no client-side owner test.

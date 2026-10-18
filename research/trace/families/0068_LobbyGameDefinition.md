@@ -13,5 +13,5 @@ C2S 0 (0 not handled) · S2C 1 (1 never sent / opcode unknown)
 ```
 u16   +0x8
 i16   +0x10
-i32   iVar3
+i32   <local>
 ```

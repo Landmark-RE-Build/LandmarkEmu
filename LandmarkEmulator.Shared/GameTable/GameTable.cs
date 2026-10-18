@@ -18,6 +18,13 @@ namespace LandmarkEmulator.Shared.GameTable
         public ulong MaxId => entries.Count == 0 ? 0 : entries.Keys.Max();
 
         private Dictionary<ulong, T> entries = new();
+
+        /// <summary>
+        /// The client's tables write numbers the invariant way ("2.8"). Parsed with the machine's culture, a server on a
+        /// comma-decimal Windows (German, Turkish …) read 2.8 as 28 (the '.' taken as a thousands separator): a profile's
+        /// camera height and capsule radius, a crafting station's repair cost per point, all ten times or more too big.
+        /// </summary>
+        private static readonly System.Globalization.CultureInfo Invariant = System.Globalization.CultureInfo.InvariantCulture;
         private static readonly Dictionary<FieldInfo, GameTableFieldArrayAttribute> attributeCache;
         private bool _hasId = true;
 
@@ -78,37 +85,37 @@ namespace LandmarkEmulator.Shared.GameTable
                         switch (Type.GetTypeCode(modelField.PropertyType))
                         {
                             case TypeCode.Boolean:
-                                modelField.SetValue(entry, Convert.ToBoolean(Byte.Parse(pieces[i])));
+                                modelField.SetValue(entry, Convert.ToBoolean(Byte.Parse(pieces[i], Invariant)));
                                 break;
                             case TypeCode.Byte:
-                                modelField.SetValue(entry, Byte.Parse(pieces[i]));
+                                modelField.SetValue(entry, Byte.Parse(pieces[i], Invariant));
                                 break;
                             case TypeCode.SByte:
-                                modelField.SetValue(entry, SByte.Parse(pieces[i]));
+                                modelField.SetValue(entry, SByte.Parse(pieces[i], Invariant));
                                 break;
                             case TypeCode.Int16:
-                                modelField.SetValue(entry, Int16.Parse(pieces[i]));
+                                modelField.SetValue(entry, Int16.Parse(pieces[i], Invariant));
                                 break;
                             case TypeCode.Int32:
-                                modelField.SetValue(entry, Int32.Parse(pieces[i]));
+                                modelField.SetValue(entry, Int32.Parse(pieces[i], Invariant));
                                 break;
                             case TypeCode.Int64:
-                                modelField.SetValue(entry, Int64.Parse(pieces[i]));
+                                modelField.SetValue(entry, Int64.Parse(pieces[i], Invariant));
                                 break;
                             case TypeCode.UInt16:
-                                modelField.SetValue(entry, UInt16.Parse(pieces[i]));
+                                modelField.SetValue(entry, UInt16.Parse(pieces[i], Invariant));
                                 break;
                             case TypeCode.UInt32:
-                                modelField.SetValue(entry, UInt32.Parse(pieces[i]));
+                                modelField.SetValue(entry, UInt32.Parse(pieces[i], Invariant));
                                 break;
                             case TypeCode.UInt64:
-                                modelField.SetValue(entry, UInt64.Parse(pieces[i]));
+                                modelField.SetValue(entry, UInt64.Parse(pieces[i], Invariant));
                                 break;
                             case TypeCode.Single:
-                                modelField.SetValue(entry, Single.Parse(pieces[i]));
+                                modelField.SetValue(entry, Single.Parse(pieces[i], System.Globalization.NumberStyles.Float, Invariant));
                                 break;
                             case TypeCode.Double:
-                                modelField.SetValue(entry, Double.Parse(pieces[i]));
+                                modelField.SetValue(entry, Double.Parse(pieces[i], System.Globalization.NumberStyles.Float, Invariant));
                                 break;
                             case TypeCode.String:
                             default:
@@ -118,8 +125,8 @@ namespace LandmarkEmulator.Shared.GameTable
                     }
                     catch (Exception ex)
                     {
-                        log.Error($"{modelField.Name} errored with value {pieces[i]}.");
-                        throw new ArgumentException();
+                        log.Error($"{modelField.Name} errored with value {pieces[i]}: {ex.Message}");
+                        throw new ArgumentException($"{modelField.Name}: bad value '{pieces[i]}'.", ex);
                     }
                     
                 }

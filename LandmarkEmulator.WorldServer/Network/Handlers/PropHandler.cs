@@ -23,6 +23,10 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
         public static void HandleProp(WorldSession session, PropRequest request)
         {
             var reader = new GamePacketReader(request.Body);
+            // A prop request means the build-mode prop menu is closed (a button was used, or the player went on to
+            // something else): its name label goes (Game/Props.MenuName.cs). Not for the prop tool's own state reports.
+            if (request.SubOpcode != 0x0C)
+                Game.Props.HideMenuName(session);
             switch (request.SubOpcode)
             {
                 case PropRequest.Access:
@@ -48,8 +52,14 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                     break;
                 case PropRequest.PickUp:
                 case PropRequest.Delete:
+                    // PickUp {u64 prop, u8}: u8 1 is the menu's Recycle (Prop.DisassembleObject), 0 Send to Inventory
+                    // (Prop.PickUpObject); 0.695 FUN_142fb6740 modes 3 / 1, 0.589 FUN_142f17890 (TASKS 6.38).
                     if (request.Body.Length >= 8)
-                        Game.Props.PickUp(session, reader.ReadULong(), request.SubOpcode == PropRequest.Delete);
+                    {
+                        ulong guid = reader.ReadULong();
+                        bool recycle = request.SubOpcode == PropRequest.PickUp && request.Body.Length >= 9 && reader.ReadByte() != 0;
+                        Game.Props.PickUp(session, guid, request.SubOpcode == PropRequest.Delete, recycle);
+                    }
                     break;
                 case 0x16:
                     Game.Props.SetTint(session, request.Body);
@@ -71,8 +81,13 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                         Game.Props.SendText(session, reader.ReadULong());
                     break;
                 case 0x19:
+                    // SetPropName: {string name, u64 prop} (FUN_1435fca20) [P].
                     if (request.Body.Length >= 12)
-                        Game.Props.SetName(session, reader.ReadULong(), reader.ReadString());
+                    {
+                        string name = reader.ReadString();
+                        if (reader.BytesRemaining >= 8)
+                            Game.Props.SetName(session, reader.ReadULong(), name);
+                    }
                     break;
                 case 0x1A:
                     if (request.Body.Length >= 9)
@@ -83,9 +98,22 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                     if (request.Body.Length >= 8)
                         Game.PropSettings.SendSettings(session, reader.ReadULong());
                     break;
+                case 0x1D:
+                    // PropPacketDialogResponse (0.695; Lua Prop.OnConfirmNpcDialog / OnDenyNpcDialog, FUN_1435fbf80 /
+                    // FUN_1435fc030): {u64 question id as the server sent it, bool accepted}.
+                    if (request.Body.Length >= 9)
+                        Game.StoryTools.DialogResponse(session, reader.ReadULong(), reader.ReadBool());
+                    break;
                 case 0x0C:
                     // PropProcessorStateNotification: the client's placement tool reporting its state
                     // ({u32 state, u64, u32}); informational, no reply.
+                    break;
+                case 0x09:
+                    // PropPacketRequestList {string} (/queryprops: CommandQueryProps FUN_1433a22d0 → FUN_1433b2480, no
+                    // admin check; the prop manager's own sender FUN_142fc0320 has no reference) [P]. A developer query
+                    // with no live answer found: the ListReply 0xED/0xA (reader FUN_142faa9b0) went out at zone-in (L52)
+                    // [I]. Logged only (agent-l140.md B4).
+                    log.Debug($"{session.CharacterName}: /queryprops {BitConverter.ToString(request.Body)} (no reply).");
                     break;
                 default:
                     Network.OpcodeStats.Unanswered("Prop 0xED", request.SubOpcode);

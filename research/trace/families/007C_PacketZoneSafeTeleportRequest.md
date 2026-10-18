@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 1 (0 not handled) · S2C 0 (0 never sent / opcode unknown)
 
 ## C2S PacketZoneSafeTeleportRequest  `0x7C`
-- server: handled
+- server: handled · seen in play 4×
 - built in: FUN_142c709d0, FUN_143518170
 - sent by Lua natives: EvacLocalPlayerToSafepoint, TeleportToSafePoint
 - code (builder in FUN_142c709d0):

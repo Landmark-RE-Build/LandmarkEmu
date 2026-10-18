@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 1 (0 not handled) · S2C 0 (0 never sent / opcode unknown)
 
 ## C2S PacketGameTimeSync  `0x37`
-- server: handled · seen in play 2338× · received 2338×
+- server: handled · seen in play 12596× · received 433×
 - writer: FUN_14312f170
 - built in: FUN_14312fb00, FUN_14312fc90
 - layout:

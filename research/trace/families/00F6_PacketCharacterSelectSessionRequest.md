@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 1 (0 not handled) · S2C 0 (0 never sent / opcode unknown)
 
 ## C2S PacketCharacterSelectSessionRequest  `0xF6`
-- server: handled
+- server: handled · seen in play 26×
 - built in: FUN_142ca2540, FUN_142cbead0
 - sent by Lua natives: Logout
 - code (builder in FUN_142ca2540):

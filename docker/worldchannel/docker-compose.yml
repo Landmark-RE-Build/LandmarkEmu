@@ -1,0 +1,43 @@
+# A world's world-channel service (trace/architecture/world-channel-service.md, LandmarkEmulator.WorldChannel): the back
+# end of channel 1 (World) of that world's gateway. First stage: it hands every channel-1 packet on to the world's zone
+# process; the world-channel areas move into it one by one. Needs the gateway container (docker/gateway) and the world
+# started with docker/gateway/world.override.yml (which opens the zone's internal port 20310).
+#
+#   docker compose --env-file .env --env-file docker/worlds/dev.env -p landmarkemu-worldchannel-dev -f docker/worldchannel/docker-compose.yml up -d
+#
+# Without it the gateway sends channel 1 to the zone directly, as before.
+services:
+  worldchannel:
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile
+      target: worldchannel
+    # WORLDCHANNEL_IMAGE: another tag for this build, so a second build can stand beside the running one
+    # without replacing its image (e.g. a project started with its own -p name and env file, as in
+    # docker/worlds/extra-world.env.example).
+    image: ${WORLDCHANNEL_IMAGE:-landmarkemu-worldchannel}
+    restart: unless-stopped
+    environment:
+      GatewayInternalAddress: gateway-${WORLD_KEY:-main}:20300
+      ZoneInternalAddress: zone-${WORLD_KEY:-main}:20310
+      WorldId: ${WORLD_ID:-1}
+      # Trade invitations answered here (world-channel-service.md §6.4); false = handed on to the zone (pass-through).
+      TradeBroker: ${WC_TRADE_BROKER:-true}
+      # Duel invitations and their lifecycle answered here (world-channel-service.md §6.5, step 7); false = handed on to the zone.
+      EncounterBroker: ${WC_ENCOUNTER_BROKER:-true}
+      # Relog sessions for logout to character select (the auth container's internal port).
+      LoginInternalAddress: ${LOGIN_INTERNAL_ADDRESS:-landmarkemu-login:20210}
+      # Build-site likes answered here (world-channel-service.md §6.5, build step 6); false = handed on to the zone.
+      ClaimRatings: ${WC_CLAIM_RATINGS:-true}
+      # This service's own database lmemu_wc_<WORLD_KEY> (table claim_vote; created at start; grant in docker/db-init). Not
+      # reachable (e.g. DB_PASSWORD unset) = the likes stay in the zone, as before.
+      Database: server=landmarkemu-db;port=3306;user=landmarkemu;password=${DB_PASSWORD-};database=lmemu_wc_${WORLD_KEY:-main}
+      # The likes counted before step 6 (character_unlock kind 11) are copied from here once, and the ones the zone counted
+      # while this service was away at every later start (empty = no copy).
+      ImportFrom: ${WC_IMPORT_FROM-lmemu_character}
+    networks: [landmarkemu]
+
+networks:
+  landmarkemu:
+    external: true
+    name: ${NETWORK_NAME:-landmarkemu}

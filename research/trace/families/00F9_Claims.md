@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 29 (11 not handled) · S2C 25 (12 never sent / opcode unknown)
 
 ## C2S ClaimsPacketsIdRequestAllClaimBasicInfo  `0xF9, 0x19`
-- server: handled (sub in handler) · seen in play 162× · received 162×
+- server: handled (sub in handler) · seen in play 735× · received 19×
 - built in: FUN_142d30390
 - code (builder in FUN_142d30390):
 ```
@@ -14,7 +14,7 @@ C2S 29 (11 not handled) · S2C 25 (12 never sent / opcode unknown)
 ```
 
 ## C2S ClaimsPacketPlaceClaimRequest  `0xF9, 0x1A`
-- server: handled (sub in handler) · seen in play 16× · received 16×
+- server: handled (sub in handler) · seen in play 18×
 - built in: FUN_142d30400, FUN_142d30790
 - code (builder in FUN_142d30400):
 ```
@@ -26,7 +26,7 @@ C2S 29 (11 not handled) · S2C 25 (12 never sent / opcode unknown)
 ```
 
 ## C2S ClaimsPacketPlaceClaimConfirm  `0xF9, 0x1B`
-- server: handled (sub in handler)
+- server: handled (sub in handler) · seen in play 4×
 - built in: FUN_142d32950
 - sent by Lua natives: ClaimConfirmDialogResponse
 - UI using them: ClaimConfirmationDialog.lua
@@ -36,7 +36,7 @@ C2S 29 (11 not handled) · S2C 25 (12 never sent / opcode unknown)
 ```
 
 ## C2S ClaimsPacketClaimManagmentRequest  `0xF9, 0x1C`
-- server: handled (sub in handler) · seen in play 190× · received 190×
+- server: handled (sub in handler) · seen in play 880× · received 22×
 - built in: FUN_1435314f0
 - sent by Lua natives: RequestClaimManagmentDialogData
 - UI using them: ClaimManagementWindow
@@ -46,7 +46,7 @@ C2S 29 (11 not handled) · S2C 25 (12 never sent / opcode unknown)
 ```
 
 ## C2S ClaimsPacketRequestEditClaimItemData  `0xF9, 0x1E`
-- server: handled (sub in handler) · seen in play 4× · received 4×
+- server: handled (sub in handler) · seen in play 14×
 - built in: FUN_142d32b70
 - sent by Lua natives: RequestClaimItemDialogData
 - UI using them: ClaimManagementWindow
@@ -84,7 +84,7 @@ C2S 29 (11 not handled) · S2C 25 (12 never sent / opcode unknown)
 ```
 
 ## C2S ClaimsPacketIdRequestClaimsByOwner  `0xF9, 0x27`
-- server: handled (sub in handler) · seen in play 162× · received 162×
+- server: handled (sub in handler) · seen in play 735× · received 19×
 - built in: FUN_142d30c40
 - code (builder in FUN_142d30c40):
 ```
@@ -112,7 +112,7 @@ C2S 29 (11 not handled) · S2C 25 (12 never sent / opcode unknown)
 ```
 
 ## C2S ClaimsPacketSetTagString  `0xF9, 0x2C`
-- server: handled (sub in handler) · seen in play 1× · received 1×
+- server: handled (sub in handler) · seen in play 4×
 - built in: FUN_142d33950
 - sent by Lua natives: SetClaimTags
 - UI using them: ClaimManagementWindow
@@ -122,7 +122,7 @@ C2S 29 (11 not handled) · S2C 25 (12 never sent / opcode unknown)
 ```
 
 ## C2S ClaimsPacketSetItemBasicPermissions  `0xF9, 0x2D`
-- server: handled (sub in handler)
+- server: handled (sub in handler) · seen in play 3×
 - built in: FUN_1435325d0
 - sent by Lua natives: SetBasicSecuritySettings
 - UI using them: ClaimManagementWindow
@@ -132,7 +132,7 @@ C2S 29 (11 not handled) · S2C 25 (12 never sent / opcode unknown)
 ```
 
 ## C2S ClaimsPacketSetItemIndividualPermission  `0xF9, 0x2E`
-- server: handled (sub in handler)
+- server: handled (sub in handler) · seen in play 1×
 - built in: FUN_1435326c0, FUN_143532820
 - sent by Lua natives: DeleteAdvancedSecuritySetting, SetAdvancedSecuritySettings
 - UI using them: ClaimManagementWindow
@@ -146,7 +146,7 @@ C2S 29 (11 not handled) · S2C 25 (12 never sent / opcode unknown)
 ```
 
 ## C2S ClaimsPacketDeleteClaimItem  `0xF9, 0x2F`
-- server: handled (sub in handler) · seen in play 2× · received 2×
+- server: handled (sub in handler) · seen in play 8×
 - built in: FUN_142d309a0
 - sent by Lua natives: DeleteClaim, RecoverFlag
 - UI using them: ClaimManagementWindow.lua
@@ -156,7 +156,7 @@ C2S 29 (11 not handled) · S2C 25 (12 never sent / opcode unknown)
 ```
 
 ## C2S ClaimsPacketIdRequestPropExclusionArea  `0xF9, 0x35`
-- server: handled (sub in handler) · seen in play 162× · received 162×
+- server: handled (sub in handler) · seen in play 735× · received 19×
 - built in: FUN_142d30cb0
 - code (builder in FUN_142d30cb0):
 ```
@@ -260,7 +260,7 @@ C2S 29 (11 not handled) · S2C 25 (12 never sent / opcode unknown)
 ```
 
 ## C2S ClaimsPacketSetAdventureStatus  `0xF9, 0x43`
-- server: handled (sub in handler)
+- server: handled (sub in handler) · seen in play 19×
 - built in: FUN_142d33110
 - sent by Lua natives: ToggleAdventureStatus
 - UI using them: BuildModeHUDWidget, ClaimWalkOnTextWindow
@@ -270,7 +270,7 @@ C2S 29 (11 not handled) · S2C 25 (12 never sent / opcode unknown)
 ```
 
 ## C2S ClaimsPacketOnClientRateClaim  `0xF9, 0x44`
-- server: handled (sub in handler)
+- server: handled (sub in handler) · seen in play 8×
 - built in: FUN_142d1f470
 - code (builder in FUN_142d1f470):
 ```
@@ -286,7 +286,7 @@ C2S 29 (11 not handled) · S2C 25 (12 never sent / opcode unknown)
 ```
 
 ## S2C ClaimsPacketsIdSendAllClaimBasicInfo  `0xF9, 0x1`
-- server: SENT (135× in opcode_stats) · seen in play 135×
+- server: SENT (19× in opcode_stats) · seen in play 708×
 - reader: FUN_142d08ce0
 - built in: FUN_142d1ff50
 - handled in FUN_142d1ff50 (its switch case for this message)
@@ -296,7 +296,7 @@ C2S 29 (11 not handled) · S2C 25 (12 never sent / opcode unknown)
 ```
 
 ## S2C ClaimsPacketResultResponse  `0xF9, 0x10`
-- server: NOT SENT (not in opcode_stats, not in the server code)
+- server: probably sent (static check: sent by server (sub in payload)); not in opcode_stats · seen in play 1×
 - reader: FUN_142d012c0
 - built in: FUN_142d1ff50
 - layout:
@@ -315,7 +315,7 @@ u64   +0x38
 ```
 
 ## S2C ClaimsPacketIdRecievePropExclusionArea  `0xF9, 0x11`
-- server: SENT (162× in opcode_stats) · seen in play 162×
+- server: SENT (19× in opcode_stats) · seen in play 735×
 - case functions (dispatcher): FUN_142d0bbc0 FUN_142d00df0 FUN_142d35150 FUN_142d0f840
 
 ## S2C ClaimsPacketLostClaimServerConnection  `0xF9, 0x12`
@@ -394,7 +394,7 @@ u64   +0x20
 ```
 
 ## S2C ClaimsPacketContestEntryResults  `0xF9, 0x18`
-- server: probably sent (static check: sent by server (sub in payload)); not in opcode_stats
+- server: probably sent (static check: sent by server (sub in payload)); not in opcode_stats · seen in play 4×
 - reader: FUN_142d08640 -> FUN_142d00ab0
 - built in: FUN_142d1ff50
 - layout:
@@ -414,7 +414,7 @@ str   +0x38
 ```
 
 ## S2C ClaimsPacketsIdUpdateClaimBasicInfo  `0xF9, 0x2`
-- server: probably sent (static check: sent by server (sub in payload)); not in opcode_stats
+- server: NOT SENT (not in opcode_stats, not in the server code)
 - case functions (dispatcher): FUN_142d0c340 FUN_142d08e20 FUN_142d34b70 FUN_142d0fd80
 
 ## S2C ClaimsPacketIdClaimRequestMoveItemToPlayer  `0xF9, 0x23`
@@ -431,7 +431,7 @@ str   +0x38
 - UI reacting: ClaimManagementWindow (ptr:ClaimDialogs_ClaimUpkeepManagmen_14511ff08) · ClaimUpkeepMessageWindow (ptr:ClaimDialogs_ClaimUpkeepManagmen_14511ff08) · Inventory (ptr:ClaimDialogs_ClaimUpkeepManagmen_14511ff08) · UpkeepManagementWindow (ptr:ClaimDialogs_ClaimUpkeepManagmen_14511ff08)
 
 ## S2C ClaimsPacketDeleteClaimItemReply  `0xF9, 0x30`
-- server: SENT (2× in opcode_stats) · seen in play 2×
+- server: probably sent (static check: sent by server (sub in payload)); not in opcode_stats · seen in play 8×
 - reader: FUN_142d00b70
 - built in: FUN_142d1ff50
 - layout:
@@ -457,7 +457,7 @@ u32   +0x20
 u16   +0x8
 u8    +0x10
 u64   +0x18
-i32   iVar3
+i32   <local>
 ```
 - handled in FUN_142d1ff50 (its switch case for this message)
 - log lines: /claim inventory <%llu> · [%d] <itemGuid:%llu> <itemDefId:%d> <propGuid:%llu> <ownerGuid:%llu> <stackCount:%d> <slot:%d> <invIndex:%d> <ownerType:%d>
@@ -467,7 +467,7 @@ i32   iVar3
 ```
 
 ## S2C ClaimsPacketAOIUpdate  `0xF9, 0x4`
-- server: SENT (192× in opcode_stats) · seen in play 192×
+- server: SENT (20× in opcode_stats) · seen in play 963×
 - reader: FUN_142d00720
 - built in: FUN_142d1ff50
 - layout:
@@ -476,10 +476,10 @@ u16   +0x8
 u8    +0x10
 bool  +0x18
 FUN_142d04200 -> +0x20
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
 FUN_142d04900 -> +0x40
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
 ```
 - handled in FUN_142d1ff50 (its switch case for this message)
@@ -490,7 +490,7 @@ FUN_142d04900 -> +0x40
 ```
 
 ## S2C ClaimsPacketClaimInfoUpdate  `0xF9, 0x5`
-- server: SENT (221× in opcode_stats) · seen in play 221×
+- server: SENT (19× in opcode_stats) · seen in play 1915×
 - built in: FUN_142d1ff50
 - handled in FUN_142d1ff50 (its switch case for this message)
 - code (handler case in FUN_142d1ff50):
@@ -499,7 +499,7 @@ FUN_142d04900 -> +0x40
 ```
 
 ## S2C ClaimsPacketUpdatePropCategoryCount  `0xF9, 0x5F`
-- server: NOT SENT (not in opcode_stats, not in the server code)
+- server: SENT (18× in opcode_stats) · seen in play 353×
 - reader: FUN_142d08c00 -> FUN_142d013b0
 - built in: FUN_142d1ff50
 - layout:
@@ -507,7 +507,7 @@ FUN_142d04900 -> +0x40
 u16   +0x8
 u8    +0x10
 u64   +0x18
-i32   iVar3
+i32   <local>
   [loop 1: list elements]
 FUN_142cffa10 -> +0x0
   u32   +0x0
@@ -522,7 +522,7 @@ FUN_142cffa10 -> +0x0
 ```
 
 ## S2C ClaimsPacketPlaceClaimResponse  `0xF9, 0x6`
-- server: SENT (26× in opcode_stats) · seen in play 26×
+- server: probably sent (static check: sent by server (sub in payload)); not in opcode_stats · seen in play 80×
 - reader: FUN_142d01130
 - built in: FUN_142d1ff50
 - layout:
@@ -548,7 +548,7 @@ u64   +0x38
 ```
 
 ## S2C ClaimsPacketPlaceClaimComplete  `0xF9, 0x7`
-- server: SENT (7× in opcode_stats) · seen in play 7×
+- server: probably sent (static check: sent by server (sub in payload)); not in opcode_stats · seen in play 54×
 - reader: FUN_142d08a50
 - built in: FUN_142d1ff50
 - handled in FUN_142d1ff50 (its switch case for this message)
@@ -559,7 +559,7 @@ u64   +0x38
 ```
 
 ## S2C ClaimsPacketClaimManagmentData  `0xF9, 0x8`
-- server: SENT (192× in opcode_stats) · seen in play 192×
+- server: SENT (22× in opcode_stats) · seen in play 888×
 - reader: FUN_142d00990
 - built in: FUN_142d1ff50
 - layout:
@@ -567,7 +567,7 @@ u64   +0x38
 u16   +0x8
 u8    +0x10
 u64   +0x18
-i32   iVar2
+i32   <local>
   [loop 1: list elements]
 ```
 - handled in FUN_142d1ff50 (its switch case for this message)
@@ -580,7 +580,7 @@ i32   iVar2
 ```
 
 ## S2C ClaimsPacketEditClaimItemData  `0xF9, 0x9`
-- server: SENT (6× in opcode_stats) · seen in play 6×
+- server: NOT SENT (not in opcode_stats, not in the server code) · seen in play 23×
 - case functions (dispatcher): FUN_142d0bb40 FUN_142d00c30 FUN_142d19b90 FUN_142d0fe80
 - data sources: ptr:ClaimDialogs_ClaimEditDialog_Cla_14511fe50 · ptr:ClaimDialogs_ClaimEditGroupDialo_14511fe58 · ptr:ClaimItemMessage_14511fe70 · ptr:ClaimItemOwner_14511fe68 · ptr:PermissionsPublic_14511fe98 · ptr:PermissionsGroup_14511fea0 · ptr:PermissionsGuild_14511fea8 · ptr:InContest_14511fe80 · ptr:ContestName_14511fe88 · ptr:ContestState_14511fe90 · ptr:MusicOverrideId_14511fef8 · ptr:AdventureStatus_14511ff00 · ptr:ClaimDialogs_ClaimEditDialog_Cla_14511feb0 · ptr:ClaimDialogs_ClaimEditGroupDialo_14511feb8 · ptr:AccessLevel_14511fed0 · ptr:ClaimItemGuid_14511fec0 · ptr:ClaimDialogs_ClaimEditDialog_Sna_1451200b8 · ptr:SnapshotTemplateGuid_1451200d0 · ptr:SnapshotName_1451200c8 · ptr:SnapshotIndex_1451200c0 · GameData.
 - text keys: UIDataSourceErrors.log
@@ -588,7 +588,7 @@ i32   iVar2
 - UI reacting: ClaimManagementWindow (ptr:ClaimDialogs_ClaimEditDialog_Cla_14511fe50) · ContestWindow (ptr:ClaimDialogs_ClaimEditDialog_Cla_14511fe50) · ClaimWalkOnTextWindow (ptr:ContestName_14511fe88) · Gaq.lua (GameData.) · global.lua (GameData.) · hudstate.lua (GameData.) · ActionBar.lua (GameData.)
 
 ## S2C ClaimsPacketUpkeepManagmentData  `0xF9, 0xA`
-- server: SENT (192× in opcode_stats) · seen in play 192×
+- server: SENT (22× in opcode_stats) · seen in play 888×
 - reader: FUN_142d014e0
 - built in: FUN_142d1ff50
 - layout:
@@ -646,5 +646,5 @@ bool  +0x2c
 - case functions (dispatcher): FUN_142d0bcd0 FUN_142d00f60 FUN_142a873d0 FUN_142a87320 FUN_142a873d0 FUN_142a87320
 
 ## S2C ClaimsPacketIdSendClaimsByOwner  `0xF9, 0xF`
-- server: SENT (171× in opcode_stats) · seen in play 171×
+- server: SENT (19× in opcode_stats) · seen in play 797×
 - case functions (dispatcher): FUN_142d0bc80 FUN_142d08870 FUN_142d1b4f0 FUN_143ecba90 FUN_143ecba90 FUN_142b6a7c0

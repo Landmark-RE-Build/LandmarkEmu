@@ -324,7 +324,7 @@ namespace LandmarkEmulator.Parser
             var reader = new GamePacketReader(body);
             try
             {
-                message.Read(reader);
+                CaptureReading.Read(message, reader);
             }
             catch (Exception ex)
             {
@@ -497,7 +497,7 @@ namespace LandmarkEmulator.Parser
             {
                 var payload = new Span<byte>(data, offset, payloadLen).ToArray();
                 var reader = new GamePacketReader(payload);
-                message.Read(reader);
+                CaptureReading.Read(message, reader);
                 if (verboseJson)
                     _lines.Add(JsonConvert.SerializeObject(message, Formatting.Indented));
             }

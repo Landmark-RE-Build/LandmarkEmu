@@ -47,7 +47,10 @@ namespace LandmarkEmulator.Database.Auth
                 entity.Property(e => e.Username)
                     .IsRequired()
                     .HasColumnName("username")
-                    .HasColumnType("varchar(128")
+                    // varchar(255): what 20220111035602_Accounts created. This read "varchar(128" (no closing bracket)
+                    // until 2026-10-18; Pomelo could not parse it and fell back to its varchar(255) default, so the
+                    // effective model was already varchar(255) and nothing changes.
+                    .HasColumnType("varchar(255)")
                     .HasDefaultValue("");
 
                 entity.Property(e => e.Salt)
@@ -79,10 +82,43 @@ namespace LandmarkEmulator.Database.Auth
                     .HasColumnType("varchar(32)")
                     .HasDefaultValue("");
 
+                entity.Property(e => e.ServerTicketIssuedAt)
+                    .HasColumnName("serverTicketIssuedAt")
+                    .HasColumnType("datetime");
+
+                entity.Property(e => e.ServerTicketWorld)
+                    .HasColumnName("serverTicketWorld")
+                    .HasColumnType("int(10) unsigned")
+                    .HasDefaultValue(0u);
+
                 entity.Property(e => e.CreateTime)
                     .HasColumnName("createTime")
                     .HasColumnType("datetime")
                     .HasDefaultValueSql("current_timestamp()");
+
+                // Membership and the trial key (migration AccountMembership; trace/0695/agent-membership.md).
+                entity.Property(e => e.MemberType)
+                    .HasColumnName("memberType")
+                    .HasColumnType("tinyint(3) unsigned")
+                    .HasDefaultValue((byte)0);
+
+                entity.Property(e => e.MemberUntil)
+                    .HasColumnName("memberUntil")
+                    .HasColumnType("datetime");
+
+                entity.Property(e => e.TrialKeyMailed)
+                    .HasColumnName("trialKeyMailed")
+                    .HasColumnType("tinyint(1)")
+                    .HasDefaultValue(false);
+
+                entity.Property(e => e.TrialRedeemed)
+                    .HasColumnName("trialRedeemed")
+                    .HasColumnType("tinyint(1)")
+                    .HasDefaultValue(false);
+
+                entity.Property(e => e.MemberStipendAt)
+                    .HasColumnName("memberStipendAt")
+                    .HasColumnType("datetime");
             });
 
             modelBuilder.Entity<ZoneServerModel>(entity =>
@@ -123,6 +159,11 @@ namespace LandmarkEmulator.Database.Auth
 
                 entity.Property(e => e.PlayersOnline)
                     .HasColumnName("playersOnline")
+                    .HasColumnType("int(10) unsigned")
+                    .HasDefaultValue(0u);
+
+                entity.Property(e => e.MaxPlayers)
+                    .HasColumnName("maxPlayers")
                     .HasColumnType("int(10) unsigned")
                     .HasDefaultValue(0u);
 

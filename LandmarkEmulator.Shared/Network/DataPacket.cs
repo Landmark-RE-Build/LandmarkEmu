@@ -20,12 +20,20 @@
             IsFragment = isFragment;
         }
 
+        /// <summary>
+        /// A resend of this sequence is queued and has not hit UDP yet (DataStreamOutput guards it; cleared by
+        /// <see cref="MarkSent"/>), so the RTO pass, accelerated hole fills and forced resends queue it once, not once per
+        /// tick / ack while it waits.
+        /// </summary>
+        public bool ResendQueued { get; set; }
+
         public void MarkSent(long utcTicks)
         {
             if (FirstSendTicks == 0)
                 FirstSendTicks = utcTicks;
             LastSendTicks = utcTicks;
             SendCount++;
+            ResendQueued = false;
         }
     }
 }

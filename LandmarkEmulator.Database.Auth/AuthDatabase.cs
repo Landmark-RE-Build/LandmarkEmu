@@ -56,21 +56,35 @@ namespace LandmarkEmulator.Database.Auth
         /// <summary>
         /// Create a new account with the supplied email, salt and password verifier that is inserted into the database.
         /// </summary>
+        /// <summary>
+        /// Serialises account creation in this process (the auth server: its console command, /create and /srp/register).
+        /// The account table's username index is not unique (20220111035602_Accounts), so two registrations of one name
+        /// at the same moment both passed the AccountExists check and both inserted (2026-10-18). Every lookup by name
+        /// (GetAccountByUsername, AccountExists, DeleteAccount) uses SingleOrDefault, which then throws for that name:
+        /// the account could never log in again. A unique index would need a migration that fails on a database that
+        /// already holds such a pair, so the check and the insert are made one step here instead.
+        /// </summary>
+        private static readonly object createLock = new();
+
+        /// <summary>Creates an account; throws <see cref="InvalidOperationException"/> when the name is taken.</summary>
         public void CreateAccount(string username, string s, string v)
         {
-            if (AccountExists(username))
-                throw new InvalidOperationException($"Account with that username already exists.");
-
-            using var context = new AuthContext(config);
-            var model = new AccountModel
+            lock (createLock)
             {
-                Username = username,
-                Salt     = s,
-                Verifier = v,
-            };
-            context.Account.Add(model);
+                if (AccountExists(username))
+                    throw new InvalidOperationException($"Account with that username already exists.");
 
-            context.SaveChanges();
+                using var context = new AuthContext(config);
+                var model = new AccountModel
+                {
+                    Username = username,
+                    Salt     = s,
+                    Verifier = v,
+                };
+                context.Account.Add(model);
+
+                context.SaveChanges();
+            }
         }
 
         /// <summary>
@@ -113,6 +127,15 @@ namespace LandmarkEmulator.Database.Auth
                 .SingleOrDefaultAsync(a => a.SessionKey == sessionKey && a.SessionKeyExpiration > DateTime.Now);
         }
 
+        /// <summary>The account with this id, or null.</summary>
+        public async Task<AccountModel> GetAccountByIdAsync(ulong id)
+        {
+            using var context = new AuthContext(config);
+            return await context.Account
+                .AsSplitQuery()
+                .SingleOrDefaultAsync(a => a.Id == id);
+        }
+
         /// <summary>
         /// Selects an <see cref="AccountModel"/> asynchronously that matches the supplied session key.
         /// </summary>
@@ -138,15 +161,26 @@ namespace LandmarkEmulator.Database.Auth
         /// <summary>
         /// Update <see cref="AccountModel"/> with supplied server ticket asynchronously.
         /// </summary>
-        public async Task UpdateServerTicket(AccountModel account, string serverTicket)
+        public async Task UpdateServerTicket(AccountModel account, string serverTicket, uint world = 0)
         {
             account.ServerTicket = serverTicket;
+            account.ServerTicketIssuedAt = DateTime.UtcNow;
+            account.ServerTicketWorld = world;
 
             await using var context = new AuthContext(config);
             EntityEntry<AccountModel> entity = context.Attach(account);
             entity.Property(p => p.ServerTicket).IsModified = true;
+            entity.Property(p => p.ServerTicketIssuedAt).IsModified = true;
+            entity.Property(p => p.ServerTicketWorld).IsModified = true;
             await context.SaveChangesAsync();
         }
+
+        /// <summary>
+        /// How long a server ticket stays good after Play (ours [I]: live's lifetime is not known). The client connects to
+        /// the world right after the login server's answer, so a fresh ticket is used within seconds; a kept one can no
+        /// longer skip a login queue later.
+        /// </summary>
+        public static readonly TimeSpan TicketLifetime = TimeSpan.FromMinutes(2);
 
         /// <summary>
         /// Selects an <see cref="AccountModel"/> asynchronously that matches the supplied server ticket.
@@ -161,9 +195,12 @@ namespace LandmarkEmulator.Database.Auth
 
         /// <summary>
         /// Takes a server ticket: returns its account and clears the ticket, so a ticket logs in once (one seen on the
-        /// network can't be replayed). The login server issues a fresh one for every character login.
+        /// network can't be replayed). The login server issues a fresh one for every character login. Ticket hardening: a
+        /// ticket older than <see cref="TicketLifetime"/>, or issued for another world than <paramref name="world"/> (0 =
+        /// the caller doesn't know its world), is refused and cleared; a ticket stored for world 0 (written by a local test
+        /// login) is good on any world.
         /// </summary>
-        public async Task<AccountModel> ConsumeServerTicketAsync(string serverTicket)
+        public async Task<AccountModel> ConsumeServerTicketAsync(string serverTicket, uint world = 0)
         {
             if (string.IsNullOrEmpty(serverTicket))
                 return null;
@@ -171,6 +208,19 @@ namespace LandmarkEmulator.Database.Auth
             AccountModel account = await context.Account.SingleOrDefaultAsync(a => a.ServerTicket == serverTicket);
             if (account == null)
                 return null;
+            bool expired = account.ServerTicketIssuedAt is not DateTime issued || DateTime.UtcNow - issued > TicketLifetime;
+            bool otherWorld = world != 0 && account.ServerTicketWorld != 0 && account.ServerTicketWorld != world;
+            if (expired || otherWorld)
+            {
+                // Logged, so a refused login has a reason on record (review 2026-10-18 #9: a direct login to a secondary
+                // world through a multi-world gateway, which passes its primary world, is refused here with no message).
+                log.Warn(otherWorld
+                    ? $"Server ticket of account {account.Id} issued for world {account.ServerTicketWorld} used on world {world}: refused."
+                    : $"Server ticket of account {account.Id} expired (issued {account.ServerTicketIssuedAt:u}): refused.");
+                await context.Account.Where(a => a.Id == account.Id && a.ServerTicket == serverTicket)
+                    .ExecuteUpdateAsync(s => s.SetProperty(a => a.ServerTicket, ""));
+                return null;
+            }
             // Only the first of two simultaneous logins with the same ticket wins.
             int taken = await context.Account.Where(a => a.Id == account.Id && a.ServerTicket == serverTicket)
                 .ExecuteUpdateAsync(s => s.SetProperty(a => a.ServerTicket, ""));
@@ -178,14 +228,61 @@ namespace LandmarkEmulator.Database.Auth
         }
 
         /// <summary>
-        /// The world server is running (heartbeat = now, or null when it stops) with this many players.
+        /// Stores an account's membership (type and end, UTC) and whether it has used its trial (TASKS 3.12; world server
+        /// Game/Membership). The world keeps the online account's copy and writes it through here.
         /// </summary>
-        public async Task UpdateZoneServerHeartbeat(ulong zoneServerId, bool running, uint players)
+        public async Task UpdateMembership(ulong accountId, byte type, DateTime? until, bool trialRedeemed)
+        {
+            await using var context = new AuthContext(config);
+            await context.Account.Where(a => a.Id == accountId)
+                .ExecuteUpdateAsync(s => s.SetProperty(a => a.MemberType, type).SetProperty(a => a.MemberUntil, until)
+                    .SetProperty(a => a.TrialRedeemed, trialRedeemed));
+        }
+
+        /// <summary>
+        /// Marks the account's one trial key as mailed. True only for the call that changed it, so two worlds entered at
+        /// the same time can't both mail a key.
+        /// </summary>
+        /// <summary>
+        /// Takes the account's member stipend if it is due (never had, or the last one is older than
+        /// <paramref name="interval"/>): one atomic update, so two worlds can't both pay it. True when this call took it.
+        /// </summary>
+        public async Task<bool> ClaimMemberStipend(ulong accountId, TimeSpan interval)
+        {
+            using var context = new AuthContext(config);
+            DateTime now = DateTime.UtcNow, due = now - interval;
+            int changed = await context.Account.Where(a => a.Id == accountId && (a.MemberStipendAt == null || a.MemberStipendAt < due))
+                .ExecuteUpdateAsync(s => s.SetProperty(a => a.MemberStipendAt, now));
+            return changed == 1;
+        }
+
+        public async Task<bool> MarkTrialKeyMailed(ulong accountId)
+        {
+            await using var context = new AuthContext(config);
+            int changed = await context.Account.Where(a => a.Id == accountId && !a.TrialKeyMailed)
+                .ExecuteUpdateAsync(s => s.SetProperty(a => a.TrialKeyMailed, true));
+            return changed == 1;
+        }
+
+        /// <summary>The membership columns of one account (type, end, trial used), or null; read fresh, not cached.</summary>
+        public async Task<(byte Type, DateTime? Until, bool TrialRedeemed)?> GetMembership(ulong accountId)
+        {
+            await using var context = new AuthContext(config);
+            var row = await context.Account.AsNoTracking().Where(a => a.Id == accountId)
+                .Select(a => new { a.MemberType, a.MemberUntil, a.TrialRedeemed }).SingleOrDefaultAsync();
+            return row == null ? null : (row.MemberType, row.MemberUntil, row.TrialRedeemed);
+        }
+
+        /// <summary>
+        /// The world server is running (heartbeat = now, or null when it stops) with this many players and this limit.
+        /// </summary>
+        public async Task UpdateZoneServerHeartbeat(ulong zoneServerId, bool running, uint players, uint maxPlayers = 0)
         {
             using var context = new AuthContext(config);
             DateTime? now = running ? DateTime.UtcNow : null;
             await context.ZoneServer.Where(s => s.Id == zoneServerId)
-                .ExecuteUpdateAsync(s => s.SetProperty(z => z.Heartbeat, now).SetProperty(z => z.PlayersOnline, players));
+                .ExecuteUpdateAsync(s => s.SetProperty(z => z.Heartbeat, now).SetProperty(z => z.PlayersOnline, players)
+                    .SetProperty(z => z.MaxPlayers, maxPlayers));
         }
 
         /// <summary>

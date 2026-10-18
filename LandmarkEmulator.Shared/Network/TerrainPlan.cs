@@ -19,7 +19,12 @@ namespace LandmarkEmulator.Shared.Network
     public sealed class TerrainPlanCellEntry
     {
         public ulong CellId { get; set; }
-        public uint Unknown0 { get; set; }
+        /// <summary>
+        /// The cell's version in CellsUpdate (0xEC sub 5: {u64 cell, u32 version, list of layers}; docs/protocol.md §8):
+        /// version 0 = block (voxel) data that the client re-meshes (VoxelCellBlockCacheImpl::HandleCellsUpdate
+        /// 0x143f52db0, docs/client-reference.md). Nothing builds a TerrainPlan yet (IZoneSessionChannel only).
+        /// </summary>
+        public uint Version { get; set; }
         public uint SegmentCount { get; set; } = 1;
         public uint Flags { get; set; } = 2;
         public byte[] DataBlob { get; set; }

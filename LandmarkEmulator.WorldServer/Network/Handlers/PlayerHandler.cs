@@ -51,6 +51,11 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                 p.EnqueueMessage(ZoneMessageOpcode.PlayerUpdateRemoveTemporaryAppearanceWire, packet);
         }
 
+        /// <summary>SafeEject: the client was launched (see <see cref="Game.SafeEject"/>); bit 26 is cleared when it lands.</summary>
+        [ZoneMessageHandler(ZoneMessageOpcode.PlayerUpdateSafeEjectWire)]
+        public static void HandleSafeEject(WorldSession session, PlayerUpdateSafeEjectRequest request)
+            => Game.SafeEject.Report(session, request.Flag);
+
         /// <summary>SetEnabled and EmoteStringById: informational; logged.</summary>
         [ZoneMessageHandler(ZoneMessageOpcode.PlayerUpdateSetEnabledWire)]
         public static void HandleSetEnabled(WorldSession session, PlayerUpdateSetEnabledRequest request)
@@ -70,16 +75,17 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
 
         /// <summary>
         /// FullCharacterDataRequest (0x26/0x5E {u64 guid}): the client wants the full form of a lightweight entity. Props (placed and
-        /// the Spire's) get LightweightToFullProp (collision, interaction; needed before a placed prop can be edited); other players get LightweightToFullPc (their
-        /// appearance, stats and equipment).
+        /// the Spire's) get LightweightToFullProp (collision, interaction; needed before a placed prop can be edited); creatures get
+        /// LightweightToFullNpc; other players get LightweightToFullPc (their appearance, stats and equipment).
         /// </summary>
         [ZoneMessageHandler(ZoneMessageOpcode.PlayerUpdateFullCharacterDataRequestWire)]
         public static void HandleFullCharacterDataRequest(WorldSession session, PlayerUpdateFullCharacterDataRequest request)
         {
             if (Game.Props.SendFull(session, request.Guid) || Game.Spire.SendFull(session, request.Guid)
                 || Game.WarpNetwork.SendFull(session, request.Guid) || Game.Outposts.SendFull(session, request.Guid)
-                || Game.LootChests.SendFull(session, request.Guid)
-                || Game.Gathering.SendFull(session, request.Guid))
+                || Game.LandmarksOfLandmark.SendFull(session, request.Guid)
+                || Game.LootChests.SendFull(session, request.Guid) || Game.Graveyards.SendFull(session, request.Guid)
+                || Game.Gathering.SendFull(session, request.Guid) || Game.Creatures.SendFull(session, request.Guid))
                 return;
 
             WorldSession other = PlayerManager.FindByGuid(request.Guid);
@@ -90,6 +96,9 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
             }
 
             session.EnqueueMessage(other.BuildLightweightToFullPc());
+            // A stance the player is in (kneel, play dead…), after the full character so the client has the entity; a
+            // client sit travels in the LightweightToFullPc's movement itself (Game.Emotes.IntroducePose).
+            Game.Emotes.IntroducePose(session, other);
         }
     }
 }

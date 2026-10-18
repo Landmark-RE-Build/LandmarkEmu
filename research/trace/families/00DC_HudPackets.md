@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 1 (1 not handled) · S2C 2 (0 never sent / opcode unknown)
 
 ## C2S HudPackets::PacketRadialMenuRequest  `0xDC, 0x1`
-- server: sub NOT handled
+- server: sub NOT handled · seen in play 224× · received 3×
 - built in: FUN_1434fe730, FUN_14350a240, FUN_143531000, FUN_14353f680, FUN_143673600, FUN_143673fe0
 - code (builder in FUN_1434fe730):
 ```
@@ -19,11 +19,11 @@ C2S 1 (1 not handled) · S2C 2 (0 never sent / opcode unknown)
 
 ## S2C HudPackets::PacketRadialDisplayNotification  `0xDC`
 - resolved by hand: placed by placeclasses.py (opcode only): FUN_143671890 <- FUN_143393ab0
-- server: SENT (opcode used in the server code)
+- server: SENT (3× in opcode_stats)
 - built in: FUN_143671890
 
 ## S2C HudPackets::PacketRadialMenuResponse  `0xDC, 0x2`
-- server: probably sent (static check: sent by server (sub in payload)); not in opcode_stats
+- server: SENT (3× in opcode_stats) · seen in play 224×
 - reader: FUN_143670ee0
 - built in: FUN_1436722b0
 - layout:
@@ -33,7 +33,7 @@ u8    +0x10
 u64   +0x18
 u32   +0x20
 FUN_143671050 -> +0x28
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
 u32   +0x170
 ```

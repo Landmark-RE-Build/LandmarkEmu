@@ -66,6 +66,11 @@
     $('autoPlay').checked = s.autoPlay;
     $('optAutoPlay').checked = s.autoPlay;
     $('optLocale').value = s.locale || '';
+    $('optServerUpdates').checked = !!s.allowServerUpdates;
+    $('optFebruary').checked = !!s.allowFebruaryWeak;
+    document.querySelectorAll('.steam-build').forEach(function (e) { e.textContent = s.steamBuild; });
+    if (!s.ownSteamCopy && $('makeSteam').value === 'own') $('makeSteam').value = '';
+    $('makeSteam').options[0].disabled = !s.ownSteamCopy;
     $('folderPath').textContent = s.folder;
     $('folderBuild').textContent = s.folderOk ? 'Game build: ' + (s.build || 'unknown') : 'LaunchPad.exe is not next to Landmark64.exe. Move it into your Landmark folder.';
     $('steamBuild').textContent = s.steamBuild;
@@ -181,7 +186,7 @@
 
   // ---- progress events
   var phases = {
-    checking: 'Checking the pack', verifying: 'Checking your game against Steam\'s list', downloading: 'Downloading',
+    checking: 'Checking the pack', verifying: 'Checking files', downloading: 'Downloading', making: 'Making the pack',
     'backing up': 'Backing up', installing: 'Installing', restoring: 'Restoring', validating: 'Validating'
   };
   function onEvent(name, data) {
@@ -269,26 +274,26 @@
     play();
   });
 
-  // The server's patches: asked about once (what changes, how big, a warning), then downloaded and installed.
+  // The server's update: every time, LaunchPad first fetches and checks only its list (updateOffer), shows the player what
+  // it is, and downloads nothing until they click.
   function askUpdate(thenPlay) {
     var srv = selected();
-    if (patch.accepted) { runUpdate(false, thenPlay); return; }
-    $('patchServer').textContent = srv.name;
-    var list = $('patchList'); list.innerHTML = '';
-    patch.undo.forEach(function (n) { list.appendChild(el('li', 'Undo "' + n + '" (this server doesn\'t use it)')); });
-    patch.install.forEach(function (p) {
-      var what = [];
-      if (p.files) what.push(p.files + ' file(s), ' + fmtBytes(p.bytes));
-      if (p.delete) what.push('removes ' + p.delete + ' file(s)');
-      list.appendChild(el('li', 'Update to the final build ' + (p.version || '') + ' ("' + p.name + '"): ' + what.join(', ') +
-        (p.description ? '. ' + p.description : '')));
-    });
-    closeModals(); openModal('patchModal');
-    $('patchAccept').onclick = function () { closeModals(); runUpdate(true, thenPlay); };
+    setProgress(0, 'Checking ' + srv.name + '\'s update...');
+    job('updateOffer', { server: srv.id }).then(function (o) {
+      setProgress(0, 'Ready.');
+      $('patchServer').textContent = o.server + ' (' + o.address + ')';
+      var list = $('patchList'); list.innerHTML = '';
+      list.appendChild(el('li', 'Leads to: ' + o.build + ' (' + o.name + ')'));
+      list.appendChild(el('li', 'Download: ' + fmtBytes(o.packBytes) + ' (' + o.files + ' files, ' + fmtBytes(o.bytes) +
+        ' once installed' + (o.deletes ? '; removes ' + o.deletes + ' old file(s)' : '') + ')'));
+      list.appendChild(el('li', 'Its list matches LaunchPad\'s own list of the genuine files. The files themselves are checked after the download.'));
+      closeModals(); openModal('patchModal');
+      $('patchAccept').onclick = function () { closeModals(); runUpdate(o.id, thenPlay); };
+    }).catch(function (e) { setProgress(0, ''); showError(e.message, 'This server\'s update was refused'); });
   }
-  function runUpdate(accept, thenPlay) {
+  function runUpdate(id, thenPlay) {
     var srv = selected();
-    job('update', { server: srv.id, accept: accept }).then(function (s) {
+    job('update', { server: srv.id, id: id }).then(function (s) {
       apply(s);
       setProgress(100, 'Your game is up to date for ' + srv.name + '.');
       return loadInfo();
@@ -346,7 +351,10 @@
     box.appendChild(title);
     if (i.description) box.appendChild(el('p', i.description, 'muted'));
     box.appendChild(el('p', i.files + ' files, ' + fmtBytes(i.bytes) + (i.deletes ? '; removes ' + i.deletes + ' old file(s)' : '') + '.', 'muted'));
-    if (i.verified) box.appendChild(el('p', 'Update to ' + i.build + ': every file matches that build exactly.'));
+    if (i.verified && !(i.weak && i.weak.length)) box.appendChild(el('p', 'Update to ' + i.build + ': every file matches that build exactly.'));
+    if (i.verified && i.weak && i.weak.length) box.appendChild(el('p', 'Warning: update to ' + i.build + '. These files are only checked by ' +
+      'size and CRC32 (no SHA-256 of the genuine file is known), so a forged file could pass: ' + i.weak.join(', ') +
+      '. Every other file matches the build exactly. Only install it if you trust where the pack came from.', 'error'));
     else box.appendChild(el('p', 'This is not the verified update to the final build, so it can\'t be installed: ' + i.problems.join('; ') + '.', 'error'));
     if (i.verified && !i.buildOk) box.appendChild(el('p', 'Your game is ' + (i.currentBuild || 'an unknown build') + '; the update goes on the Steam build ' + state.steamBuild + '.', 'error'));
     var buttons = el('div', null, 'buttons');
@@ -411,6 +419,55 @@
   $('autoPlay').addEventListener('change', function () { call('setOption', { autoPlay: this.checked }).then(apply); });
   $('optAutoPlay').addEventListener('change', function () { call('setOption', { autoPlay: this.checked }).then(apply); });
   $('optLocale').addEventListener('change', function () { call('setOption', { locale: this.value }).then(apply); });
+  $('optFebruary').addEventListener('change', function () {
+    call('setOption', { allowFebruaryWeak: this.checked }).then(apply);
+    $('packPreview').classList.add('hidden');
+  });
+  $('optServerUpdates').addEventListener('change', function () {
+    call('setOption', { allowServerUpdates: this.checked }).then(apply).then(loadInfo);
+  });
+
+  // ---- making the update pack from the player's own 0.695 copy
+  var make = { from: '', steamPath: '', out: '' };
+  function makeArgs() {
+    var steam = $('makeSteam').value;
+    return { from: make.from, steam: steam === 'other' ? make.steamPath : steam, out: make.out };
+  }
+  $('makeChooseFrom').addEventListener('click', function () {
+    call('chooseFolder', { title: 'Choose your 0.695 Landmark folder' }).then(function (p) {
+      if (p) { make.from = p; $('makeFrom').textContent = p; $('makeResult').innerHTML = ''; }
+    });
+  });
+  $('makeSteam').addEventListener('change', function () {
+    if (this.value !== 'other') { $('makeSteamPath').textContent = ''; return; }
+    call('chooseFolder', { title: 'Choose a Steam copy of Landmark ' + state.steamBuild }).then(function (p) {
+      if (p) { make.steamPath = p; $('makeSteamPath').textContent = p; } else { $('makeSteam').value = ''; }
+    });
+  });
+  $('makeChooseOut').addEventListener('click', function () {
+    call('chooseSave').then(function (p) { if (p) { make.out = p; $('makeOut').textContent = p; } });
+  });
+  function folderResult(out, r) {
+    out.innerHTML = '';
+    if (r.ok && r.weak && r.weak.length) { out.appendChild(el('p', 'This is the ' + r.build + '. Warning: ' + r.weak.join(', ') +
+      ' are only checked by size and CRC32 (your February setting); every other file of the update is genuine (SHA-256).', 'error')); return; }
+    if (r.ok) { out.appendChild(el('p', 'This is the ' + r.build + ': all ' + r.checkedFiles + ' files of the update are genuine.')); return; }
+    problemList(out, r, '', 'Not a known 0.695 build file for file: ' + r.total + ' file(s) are missing, different or can\'t be verified (closest: ' + r.closest + '):');
+  }
+  $('makeCheck').addEventListener('click', function () {
+    var out = $('makeResult'); out.innerHTML = '';
+    job('checkMakeSource', { from: make.from }).then(function (r) { folderResult(out, r); })
+      .catch(function (err) { out.innerHTML = ''; out.appendChild(el('p', err.message, 'error')); });
+  });
+  $('makeGo').addEventListener('click', function () {
+    var out = $('makeResult'); out.innerHTML = '';
+    job('makePack', makeArgs()).then(function (r) {
+      out.appendChild(el('p', 'Done: ' + r.path + ' (' + fmtBytes(r.bytes) + '), the update to ' + r.build + ': ' + r.edits +
+        ' in-place edits, ' + r.patches + ' patches, ' + r.whole + ' whole files. It was checked again with the rules a server ' +
+        'and every player use' + (r.replayed ? ' (' + r.replayed + ' edits and patches replayed on the Steam copy)' : '') + '.'));
+      setProgress(100, 'Update pack made.');
+    }).catch(function (err) { out.innerHTML = ''; out.appendChild(el('p', err.message, 'error')); });
+  });
 
   // ---- start
   call('state').then(function (s) {
@@ -424,8 +481,8 @@
     loadInfo().then(function () {
       var srv = selected();
       if (!s.autoPlay || !srv || !srv.loggedIn) return;
-      if (needsUpdate()) { if (patch.accepted) runUpdate(false, true); }
-      else if (!needsPatch()) play();
+      // A server's update is never started without the player's click.
+      if (!needsUpdate() && !needsPatch()) play();
     });
   }).catch(function (e) { showError(e.message); });
 })();

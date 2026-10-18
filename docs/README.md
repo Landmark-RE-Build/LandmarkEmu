@@ -1,22 +1,31 @@
 # LandmarkEmu developer documentation
 
-These documents explain how the Landmark client talks to a server and how this emulator answers it. Everything
-here was worked out by observing and reading the retail client (Steam build **0.589.1.128895**, x64), so that
-anyone can extend the server without repeating the research.
+These documents explain how the Landmark client talks to a server and how this emulator answers it. Everything here
+was worked out by observing and reading the retail client, so that anyone can extend the server without repeating
+the research. The server speaks the **0.695.1.132647** client (the last build, x64; protocol.md §1.6) and refuses the
+Steam build 0.589.1.128895, on which most layouts were first traced; LaunchPad updates a 0.589 install to 0.695
+(launchpad.md). Where a layout differs between the two, the documents say so.
 
 | Document | What it covers |
 |---|---|
-| [protocol.md](protocol.md) | Transport (SOE UDP, gateway tunnel, zone opcodes), packet layouts for every system the server handles, and the rules the client enforces when reading them. |
-| [terrain.md](terrain.md) | The VoxelFarm terrain: cell ids, the block (voxel) format the server sends, the mesh format, how player edits overlay the client's own generated world, ground heights, ore veins and grass. |
-| [gameplay.md](gameplay.md) | How each server system works: login/logout, inventory and equipment, abilities and mining, gathering, building, claims, props and crafting, social (chat, friends, groups, guilds, mail), health, travel, the world clock. |
-| [client-reference.md](client-reference.md) | Where things live in the client: function addresses with descriptive names, client data tables the server reads, client log files, the UI/Lua entry points behind each menu. |
-| [instanced-games.md](instanced-games.md) | Site games: rule sets from the client tables, the InstancedGame packets (state, HUD, scoreboard, queues, observers), zone control, adventures, and the client's own game editor. |
+| [docker.md](docker.md) | Running the servers in Docker: the services, every `.env` setting, more worlds, the optional gateway / world-channel / social / commerce / Environment Server containers, the account website, backups. |
+| [launchpad.md](launchpad.md) | LaunchPad: installing it, the Steam check, the verified 0.695 update and its SHA-256 list, `.lmpatch` packs, the server's patch folder, what PLAY does. |
+| [protocol.md](protocol.md) | Transport (SOE UDP, gateway tunnel, zone opcodes), the 0.695 wire numbering, packet layouts for every system the server handles, and the rules the client enforces when reading them. |
+| [gameplay.md](gameplay.md) | How each server system works: sessions, inventory, abilities and movement, gathering, building, build sites, props and crafting, account items, chests, social, goals, creatures, combat, grief, landscapes, teleports, caverns and outposts, graveyards, death, developer commands. |
+| [terrain.md](terrain.md) | The VoxelFarm terrain: the Environment Server split, cell ids, the block and mesh formats, edits, heals, ore veins, grass, the event islands, caves, long teleports, voxel templates and stamps, the client's mesh cache, slow loading screens. |
+| [sendself.md](sendself.md) | The SendSelfToClient record block by block and field by field, with the client code behind each name. |
+| [client-reference.md](client-reference.md) | Where things live in the client: function addresses, loading-bar stages, the client data tables the server reads, the UI / Lua entry points, the client's log files. |
+| [admin.md](admin.md) | Admin players: the SendSelf admin flag, admin entries, the client's admin slash commands, broadcasts and kicks, the server monitor page. |
+| [commerce.md](commerce.md) | In-game commerce (InGamePurchase 0x45) and Player Studio: product creation, peer review, the listing fee, buying designs, the commerce service. |
+| [showcase.md](showcase.md) | The Showcase window: the server's store and gallery pages, following and the daily mail, sign-in by token, the web API, icons, running Lua in the client, likes, portraits. |
+| [membership.md](membership.md) | Membership: the client's membership state, PacketMembershipActivation 0x66, MemberStatus, the login queue's member priority, buying it with Lumens, the trial key. |
+| [vendors.md](vendors.md) | Build site vendors (player shops), the client script gaps patched at run time, the NPC merchant window, Point-of-Need purchases. |
+| [instanced-games.md](instanced-games.md) | Site games: rule sets from the client tables, the InstancedGame packets, zone control, adventures, the client's game editor, the Game Finder. |
 | [story-tools.md](story-tools.md) | Story tools: the ObjectScripting (Links) protocol, Play Mode, every story prop's events and actions, the prop settings window, story creatures. |
-| [vendors.md](vendors.md) | Build site vendors (player shops): the ClaimVendor packets, the client script gaps patched at run time, the Showcase "My vendors" API; the NPC merchant window; Point-of-Need purchases. |
-| [commerce.md](commerce.md) | In-game commerce (InGamePurchase 0x45) and Player Studio: product creation, the client-driven peer review, result mail kinds, TemplateData XML. |
-| [showcase.md](showcase.md) | The Showcase window: the server's web pages (free store, build site gallery), player sign-in by token, the web API, icon export, and running Lua in the client (`ClientLua.RunCode`). |
-| [sendself.md](sendself.md) | The SendSelfToClient record field by field (0.589). |
-| [unknowns.md](unknowns.md) | Fields whose purpose is still unknown, and what was ruled out. |
+| [encounters.md](encounters.md) | Encounters (EncounterBase 0x2C): the packets in both directions, duels, the death window, the world-channel split. |
+| [unknowns.md](unknowns.md) | The record of how every field once called `Unknown*` was named, and the few slots whose reader is still not found. |
+
+`img_story_node_settings.png` is the screenshot story-tools.md refers to.
 
 ## Conventions
 
@@ -27,20 +36,24 @@ anyone can extend the server without repeating the research.
 - **World units**: the client's local frame is metres; "global" coordinates are decimetres measured from the
   continent origin (`global = local × 10 + zone origin`). The zone origin used here is
   `(25584000, 20000, 25564500)` dm.
-- **Client addresses** (for example `FUN_142c83660`) are function entry points in `Landmark64.exe` 0.589 with
-  image base `0x140000000`, as named by Ghidra. They are given so contributors can find the same place in their
-  own copy of the client. No client code is reproduced in this repository.
+- **Client addresses** (for example `FUN_142c83660`) are function entry points in `Landmark64.exe` with image base
+  `0x140000000`, as named by Ghidra: 0.695 where the text says so (or the 0.695 decompile is cited), else 0.589. They
+  are given so contributors can find the same place in their own copy of the client. No client code is reproduced in
+  this repository.
+- **[P] / [I]**: proven from the client (or a capture) / inferred. A field is only called "verified" when the real
+  client accepted it in game.
+- **Lnnn**, **TASKS n.n**: entries in the project's open-leads and task lists (`research/trace/0695/` in the published
+  repository).
 
 ## How the client was studied
 
-- **Static:** Ghidra 12 (headless and through an MCP server) on `Landmark64.exe`. Packet readers were found from
-  their packet class names (RTTI strings such as `PacketMailInboxListResponse`) and the zone dispatcher.
+- **Static:** Ghidra on `Landmark64.exe`. Packet readers were found from their packet class names (RTTI strings such
+  as `PacketMailInboxListResponse`) and the zone dispatcher.
 - **Live:** read-only Frida hooks on the running client (log arguments and return values, never change them) to
   confirm a reading or see which branch the client takes.
 - **Client files:** the plain-text tables in `Resources/*.txt`, the UI definitions in `UI/Default/*.xml|*.lua`,
   `Resources/Scripts/*.lua`, the client's own log files, and the `.pack` asset archives (read only).
-- **The rule of thumb:** the running client is the source of truth. A field is only called "verified" here when
-  the real client accepted it in game.
+- **The rule of thumb:** the running client is the source of truth.
 
 ## Legal note
 

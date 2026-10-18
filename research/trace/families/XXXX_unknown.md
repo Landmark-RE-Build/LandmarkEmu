@@ -113,7 +113,7 @@ FUN_1432d7df0 -> +0x20
   u64   +0x20
   bool  +0x28
   FUN_1432db1f0 -> +0x50
-    i32   iVar3
+    i32   <local>
       [loop 1: list elements]
     FUN_1432d7cc0 -> +0x50
       u32   +0x50
@@ -127,10 +127,10 @@ FUN_1432d7df0 -> +0x20
   bool  +0x48
   bool  +0x49
   FUN_1432db4b0 -> +0x230
-    i32   iVar5
+    i32   <local>
       [loop 1: list elements]
     str   +0x230
-    u32   *(undefined4 *)(lVar4 + 0x18)
+    u32   <computed>
 bool  +0x5d0
 ```
 
@@ -372,7 +372,7 @@ u64   +0x28
 - layout:
 ```
 u8    +0x18
-  u8    *(byte *)param_2
+  u8    <computed>
   u8    +0x1d
   u8    +0x1d
   u8    +0x1e
@@ -393,7 +393,7 @@ u64   +0x28
 - layout:
 ```
 u8    +0x18
-  u8    *(byte *)param_2
+  u8    <computed>
   u8    +0x1d
   u8    +0x1d
   u8    +0x1e
@@ -411,7 +411,7 @@ u64   +0x28
 - layout:
 ```
 u8    +0x18
-  u8    *(byte *)param_2
+  u8    <computed>
   u8    +0x1d
   u8    +0x1d
   u8    +0x1e
@@ -434,7 +434,7 @@ u64   +0x28
 - layout:
 ```
 u8    +0x18
-  u8    *(byte *)param_2
+  u8    <computed>
   u8    +0x1d
   u8    +0x1d
   u8    +0x1e
@@ -452,7 +452,7 @@ u64   +0x28
 - layout:
 ```
 u8    +0x18
-  u8    *(byte *)param_2
+  u8    <computed>
   u8    +0x1d
   u8    +0x1d
   u8    +0x1e
@@ -470,7 +470,7 @@ u64   +0x28
 - layout:
 ```
 u8    +0x18
-  u8    *(byte *)param_2
+  u8    <computed>
   u8    +0x1d
   u8    +0x1d
   u8    +0x1e

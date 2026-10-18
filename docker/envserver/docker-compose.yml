@@ -1,0 +1,77 @@
+# One world's Environment Server (trace/architecture/terrain-service.md §7 steps 3-6, LandmarkEmulator.EnvServer): the
+# world's terrain / voxel store — build edits, the Heal tool, undo / paste writes, digs and their persisted heal queue,
+# Voxel Vision ownership, ore veins, LOD copies, the Spire / ruin / Landmarks of Landmark stamps — in its own container.
+# The world's zone process dials it on the internal network (port 20500, never published) when its ENVSERVER_ADDRESS is
+# set, and stays the only thing that talks to the game client about terrain.
+#
+# Opt-in: the project's docker-compose.yml runs it only with the "envserver" profile. In .env:
+#   COMPOSE_PROFILES=envserver          (or social,commerce,envserver)
+#   ENVSERVER_ADDRESS=envserver:20500
+# Stop the world first, then "docker compose up -d --build". With ENVSERVER_ADDRESS empty the world keeps its terrain
+# itself, exactly as before.
+#
+# Its data: <the world's data folder>/envserver (ENVSERVER_DATA_DIR; default server-data/worlds/<WORLD_KEY>/envserver),
+# mounted at /data. On its first start with an
+# empty store it copies the world's TerrainEdits folder (read-only at /world-data) into /data/TerrainEdits once (marker
+# /data/import.done); back up first. The world's own TerrainEdits folder then keeps only its placement markers (Spire,
+# outposts, Landmarks of Landmark). Going back to in-process terrain needs /data/TerrainEdits copied back into the world's
+# folder (docs/docker.md "Environment Server").
+#
+# One per world: a second world runs this file with its own WORLD_KEY / ENVSERVER_DATA_DIR and its zone uses the alias
+# envserver-<WORLD_KEY> (ENVSERVER_ADDRESS=envserver-<key>:20500).
+services:
+  envserver:
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile
+      target: envserver
+    # ENVSERVER_IMAGE: another tag for this build, so a second build can stand beside the running one
+    # without replacing its image (e.g. a project started with its own -p name and env file, as in
+    # docker/worlds/extra-world.env.example).
+    image: ${ENVSERVER_IMAGE:-landmarkemu-envserver}
+    restart: unless-stopped
+    # Its stop (EnvHub.Dispose) lets the work thread finish for up to 30 s, then writes the store's last changes; Docker's
+    # default 10 s before the kill cut that short (2026-10-18).
+    stop_grace_period: 45s
+    healthcheck:
+      # Healthy while the service's loop touched /tmp/envserver-alive in the last minute (written every 10 s).
+      test: ["CMD-SHELL", "[ -f /tmp/envserver-alive ] && [ $$(( $$(date +%s) - $$(stat -c %Y /tmp/envserver-alive) )) -lt 60 ]"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5m
+    environment:
+      Network__Host: 0.0.0.0
+      Network__Port: 20500
+      DataPath: /data
+      # The world's TerrainEdits, copied once into /data/TerrainEdits on the first start (empty = start from nothing).
+      ImportFrom: ${ENVSERVER_IMPORT_FROM-/world-data/TerrainEdits}
+      GameDirectory: /game
+      GameDataPath: /gamedata
+      # The home continent, LOD copies and vertex-only voxels: the same .env lines as the world's (HOME_CONTINENT,
+      # TERRAIN_LOD_COPIES, KEEP_VERTEX_ONLY_VOXELS), so the two always agree. With ENVSERVER_ADDRESS set these count.
+      Continent: ${HOME_CONTINENT:-406}
+      TerrainLodCopies: ${TERRAIN_LOD_COPIES:-true}
+      KeepVertexOnlyVoxels: ${KEEP_VERTEX_ONLY_VOXELS:-true}
+      # The persisted heal queue (spec §4.3); false pauses heals (nothing is lost, they catch up when switched on).
+      HealQueue: ${ENVSERVER_HEAL_QUEUE:-true}
+      # Ruin-layer records (ruins.tsv / ruin-layers.tsv, spec §4.5); placement itself stays in the world for now.
+      RuinLayers: ${ENVSERVER_RUIN_LAYERS:-false}
+      RuinLayerDesired: ${ENVSERVER_RUIN_LAYER_DESIRED:-0}
+      HealthFile: /tmp/envserver-alive
+    volumes:
+      # Default: the envserver folder inside the world's own data folder (WORLD_DATA_DIR, as docker/world mounts it).
+      - ${ENVSERVER_DATA_DIR:-${WORLD_DATA_DIR:-../../server-data/worlds/${WORLD_KEY:-main}}/envserver}:/data
+      - ${WORLD_DATA_DIR:-../../server-data/worlds/${WORLD_KEY:-main}}:/world-data:ro
+      - ${GAME_DATA_DIR:-../../server-data/gamedata}:/gamedata:ro
+      - ${GAME_DIR:?Set GAME_DIR in .env to your Landmark folder}:/game:ro
+    expose:
+      - "20500"
+    networks:
+      landmarkemu:
+        aliases: [envserver, "envserver-${WORLD_KEY:-main}"]
+
+networks:
+  landmarkemu:
+    external: true
+    name: ${NETWORK_NAME:-landmarkemu}

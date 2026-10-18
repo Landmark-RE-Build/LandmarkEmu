@@ -28,9 +28,16 @@ namespace LandmarkEmulator.WorldServer
 
         static void Main(string[] args)
         {
+            // One-shot tool mode (Docker's "icons" service, docs/showcase.md "Icons"): export the item icons, then exit.
+            if (args.Length > 0 && args[0] == Game.IconExport.Argument)
+                Environment.Exit(Game.IconExport.Run(args[1..]));
+
             StartTime = (DateTime.Now.Ticks - DateTime.UnixEpoch.Ticks) / 1000;
             Directory.SetCurrentDirectory(Path.GetDirectoryName(Assembly.GetEntryAssembly().Location));
-            ConfigurationManager<WorldServerConfiguration>.Instance.Initialise("WorldServer.json");
+            // WorldServer.json, the environment (.env through docker compose), the command line, and last the values saved on
+            // the admin Settings page (Game/ServerSettings: the overrides file in the world's data folder).
+            ConfigurationManager<WorldServerConfiguration>.Instance.Initialise("WorldServer.json", Game.ServerSettings.StartupOverrides);
+            Game.ServerSettings.Start();
 
             IHostBuilder builder = new HostBuilder()
                 .ConfigureLogging(lb =>

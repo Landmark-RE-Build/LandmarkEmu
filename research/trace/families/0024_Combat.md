@@ -88,7 +88,7 @@ u32   +0x3c
 ```
 
 ## S2C CombatPacketEnableBossDisplay  `0x24, 0xA`
-- server: SENT (17× in opcode_stats) · seen in play 17×
+- server: SENT (2× in opcode_stats) · seen in play 57×
 - reader: FUN_14331c160
 - built in: FUN_14331e620
 - layout:

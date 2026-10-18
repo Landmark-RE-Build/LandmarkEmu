@@ -23,9 +23,6 @@ namespace LandmarkEmulator.LaunchPad
         /// </summary>
         public string SavedKey { get; set; } = "";
         public string SavedSalt { get; set; } = "";
-        /// <summary>The server's patches the player agreed to install (pack SHA-256s): new ones are asked about first.</summary>
-        public List<string> AcceptedPatches { get; set; } = new();
-
         /// <summary>"host" or "host:port" as the player typed it.</summary>
         public string Display => ApiPort == 5000 ? Address : $"{Address}:{ApiPort}";
     }
@@ -41,6 +38,20 @@ namespace LandmarkEmulator.LaunchPad
         public bool AutoPlay { get; set; }
         /// <summary>Client language (Internationalization:Locale), e.g. en_US; empty = the game's default.</summary>
         public string Locale { get; set; } = "";
+        /// <summary>
+        /// May the update be installed from a server that hosts it (Settings > Options)? On by default. Even then LaunchPad
+        /// asks every time before it downloads anything (server, build, size), and checks every byte against its own list
+        /// of genuine files (ServerPatches). Off: servers' patches are never offered.
+        /// </summary>
+        public bool AllowServerUpdates { get; set; } = true;
+        /// <summary>
+        /// "Allow the February 2017 build's three files without a strong fingerprint (local pack files only)": off by
+        /// default. On, a pack the player chose or made themselves may write Daybreak's final build's Landmark64.exe and
+        /// Locale\en_us_data.dat / .dir checked by size and CRC32 against Daybreak's list only (no genuine copy's SHA-256 is
+        /// known yet; Patching.WeakAllowed). Never for a server's pack, never any other file; once a LaunchPad update
+        /// carries their SHA-256 it has no effect.
+        /// </summary>
+        public bool AllowFebruaryWeak { get; set; }
 
         private static readonly JsonSerializerOptions json = new() { WriteIndented = true, DefaultIgnoreCondition = JsonIgnoreCondition.Never };
 

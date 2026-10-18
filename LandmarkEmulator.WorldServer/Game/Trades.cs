@@ -18,6 +18,21 @@ namespace LandmarkEmulator.WorldServer.Game
     /// 13 UpdateAccept, 14 Message, 15 Rejected.
     /// Each side's offer is shown on both screens ("mine" true for the offerer). Any change clears both accepts; when
     /// both have accepted the server re-checks the offers and moves the items.
+    /// <para>
+    /// Two brokers for the invitation (trace/architecture/world-channel-service.md §3.3, §6.4; build step 5). The client
+    /// sends Initiate / InviteReply / Cancel on the World channel and Accept / OfferItem / CoinCount on Zone.
+    /// <list type="bullet">
+    /// <item><b>In-process</b> (no world-channel service — the default — or while it is away and the gateway sends
+    /// channel 1 here): this class handles all six subs as before (<see cref="Handle"/>); ids count up from 1.</item>
+    /// <item><b>World-channel broker</b> (LandmarkEmulator.WorldChannel, TradeBroker): the service answers the World
+    /// subs and drives this class with TradeZoneSessionStart → <see cref="BrokerStart"/> (the zone's checks; the trade
+    /// is held, not yet open), TradeZoneSessionOpen → <see cref="BrokerOpen"/> (sent before the service's StartSession,
+    /// so offers find it open) and TradeZoneSessionEnd → <see cref="BrokerEnd"/> (declined / canceled). The exchange
+    /// is unchanged; whenever the zone ends a brokered trade (completed, failed, a player left, changed landscape,
+    /// entered an instanced game) it sends TradeZoneSessionEnd back (<see cref="WorldChannel.WorldChannelLink.TradeEnded"/>)
+    /// so the service frees the pair. Its ids start at 0x40000001 (TradeMessages.FirstBrokerTradeId), apart from ours.</item>
+    /// </list>
+    /// </para>
     /// </summary>
     public static class Trades
     {
@@ -34,6 +49,8 @@ namespace LandmarkEmulator.WorldServer.Game
         /// </summary>
         private const byte Canceled = 1, PartnerDisconnected = 2, PartnerOfferInvalid = 3, YourOfferInvalid = 4,
             Completed = 6, ChangedAfterAccept = 7, YouEnteredInstance = 8, PartnerEnteredInstance = 9, InventoryFull = 10;
+        /// <summary>TradeZoneSessionEnd code 0 (ours, TradeMessages.EndSilently): ended without telling the players.</summary>
+        private const byte Silently = 0;
 
         private class Side
         {
@@ -50,14 +67,29 @@ namespace LandmarkEmulator.WorldServer.Game
             public int Id;
             public Side A, B;
             public bool Started;
+            /// <summary>
+            /// The world-channel broker generation that started it (WorldChannelLink), 0 when the zone brokered the
+            /// invitation itself. A brokered trade's end is reported back to that service.
+            /// </summary>
+            public int Broker;
             public int Sequence;
             public Side Of(WorldSession s) => A.Session == s ? A : B.Session == s ? B : null;
             public Side Other(Side s) => s == A ? B : A;
         }
 
+        /// <summary>Client text 577061 "That item was recently purchased and may not be traded yet. Please wait and try again later."</summary>
+        public const uint RecentlyPurchasedText = 577061;
+
         private static readonly object sync = new();
         private static readonly Dictionary<int, Trade> trades = new();
         private static int nextId;
+
+        /// <summary>
+        /// The subs the client sends on the World channel: 1 Initiate (FUN_142cb1dc0), 3 InviteReply (FUN_14358fda0 /
+        /// FUN_14358ff50), 7 Cancel (FUN_14358fef0). A world back end brokered the invitation; Accept, OfferItem and
+        /// CoinCount come on Zone, which holds the inventories (trace/architecture/world-channel-service.md §3.3).
+        /// </summary>
+        public static bool IsWorldChannelSub(byte sub) => sub is InitiateSub or InviteReplySub or CancelSub;
 
         public static void Handle(WorldSession session, byte sub, byte[] body)
         {
@@ -85,7 +117,14 @@ namespace LandmarkEmulator.WorldServer.Game
         private static void Initiate(WorldSession session, ulong target)
         {
             WorldSession other = PlayerManager.FindByGuid(target);
-            if (Ignores.Refuses(other, session))
+            if (other == null && target != 0 && target != session.PlayerGuid)
+            {
+                // Gone (logged out or another world): the client's own "[player] is not online at this." (L175).
+                TargetNotOnline.Tell(session, target);
+                log.Info($"{session.CharacterName} can't trade with 0x{target:X}: not online here.");
+                return;
+            }
+            if (Social.SocialServices.IgnoreCache.Refuses(other, session))
                 return;
             lock (sync)
             {
@@ -118,6 +157,7 @@ namespace LandmarkEmulator.WorldServer.Game
             if (!accept)
             {
                 Send(trade.A.Session, RejectedSub, w => Identity(w, session));
+                Reported(trade, Silently);
                 return;
             }
             foreach ((Side me, Side other) in new[] { (trade.A, trade.B), (trade.B, trade.A) })
@@ -138,6 +178,14 @@ namespace LandmarkEmulator.WorldServer.Game
                 if (item == null || item.Container != Inventory.Inventory.BagContainer || Chests.HasItems(itemGuid)
                     || Inventory.ItemDefinitionManager.Get(item.ItemDefinitionId) is { NoTrade: true })
                     return;
+                // A store purchase still in its waiting period (audit-wiki-gaps #7): the client's own line 577061 "That
+                // item was recently purchased and may not be traded yet. Please wait and try again later." [P text; I: no
+                // trade packet carries it, so it goes as a system message].
+                if (Inventory.Inventory.IsTradeLocked(item))
+                {
+                    SystemMessages.Show(session, RecentlyPurchasedText);
+                    return;
+                }
                 quantity = Math.Min(quantity, item.Count);
                 bool known = me.Items.ContainsKey(itemGuid);
                 if (quantity == 0)
@@ -219,13 +267,17 @@ namespace LandmarkEmulator.WorldServer.Game
                 trades.Remove(trade.Id);
             foreach (Side side in new[] { trade.A, trade.B })
             {
+                // Offer's rules again, not only "still there": an offered stack can change after it was offered without
+                // the trade hearing of it — a store purchase in its waiting period merged into it (Inventory.MoveCount locks
+                // the joined stack) would otherwise be handed over all the same.
                 bool valid = side.Coins <= side.Session.Coins && side.Items.All(o => side.Session.Inventory.Get(o.Key) is { } i
-                    && i.Container == Inventory.Inventory.BagContainer && i.Count >= o.Value);
+                    && i.Container == Inventory.Inventory.BagContainer && i.Count >= o.Value
+                    && !Inventory.Inventory.IsTradeLocked(i) && !Chests.HasItems(i.Id));
                 if (!valid)
                 {
                     Send(side.Session, MessageSub, w => w.Write(YourOfferInvalid));
                     Send(trade.Other(side).Session, MessageSub, w => w.Write(PartnerOfferInvalid));
-                    End(trade);
+                    End(trade, YourOfferInvalid);
                     log.Info($"Trade {trade.Id} failed: {side.Session.CharacterName}'s offer is no longer there.");
                     return;
                 }
@@ -235,26 +287,29 @@ namespace LandmarkEmulator.WorldServer.Game
                 {
                     Send(receiver.Session, MessageSub, w => w.Write(InventoryFull));
                     Send(side.Session, MessageSub, w => w.Write(Canceled));
-                    End(trade);
+                    End(trade, InventoryFull);
                     log.Info($"Trade {trade.Id} failed: {receiver.Session.CharacterName}'s bag has no room.");
                     return;
                 }
             }
             // Take both offers first, then give, so neither side's incoming items fill the slots of its outgoing ones.
-            var moving = new List<(WorldSession To, uint Definition, uint Count)>();
+            // Each item keeps its instance state (wear: a worn sword arrives as worn, audit-wiki-gaps #1).
+            var moving = new List<(WorldSession To, uint Definition, uint Count, Inventory.ItemState State)>();
             var designs = new List<(WorldSession To, ulong OldItem)>();
             foreach (Side side in new[] { trade.A, trade.B })
                 foreach ((ulong guid, uint count) in side.Items)
                 {
-                    uint definition = side.Session.Inventory.Get(guid).ItemDefinitionId;
+                    CharacterItemModel offered = side.Session.Inventory.Get(guid);
+                    uint definition = offered.ItemDefinitionId;
+                    Inventory.ItemState state = Inventory.Inventory.StateOf(offered);
                     side.Session.TakeFromStack(guid, count);
                     if (definition == DesignItems.PlayerDesignItem)
                         designs.Add((trade.Other(side).Session, guid));
                     else
-                        moving.Add((trade.Other(side).Session, definition, count));
+                        moving.Add((trade.Other(side).Session, definition, count, state));
                 }
-            foreach ((WorldSession to, uint definition, uint count) in moving)
-                to.GiveItem(definition, count);
+            foreach ((WorldSession to, uint definition, uint count, Inventory.ItemState state) in moving)
+                to.GiveItem(definition, count, state);
             // A Player Design item is one design each: a new single item, with the design moved onto it.
             foreach ((WorldSession to, ulong oldItem) in designs)
                 if (to.Inventory.AddSingle(DesignItems.PlayerDesignItem) is { } single)
@@ -274,7 +329,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 if (trade.A.Items.Count + trade.B.Items.Count > 0)
                     Achievements.Traded(side.Session);
             }
-            End(trade);
+            End(trade, Completed);
             log.Info($"Trade {trade.Id} completed: {trade.A.Session.CharacterName} gave {trade.A.Items.Count} stack(s), "
                 + $"{trade.B.Session.CharacterName} gave {trade.B.Items.Count} (coins {trade.A.Coins} / {trade.B.Coins}).");
         }
@@ -290,7 +345,7 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             foreach (Side side in new[] { trade.A, trade.B })
                 Send(side.Session, MessageSub, w => w.Write(Canceled));
-            End(trade);
+            End(trade, Canceled);
         }
 
         /// <summary>A player left: their partner is told and the trade ends.</summary>
@@ -308,6 +363,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 WorldSession other = trade.Other(trade.Of(session)).Session;
                 Send(other, MessageSub, w => w.Write(PartnerDisconnected));
                 Send(other, EndSessionSub, w => w.Write((uint)trade.Id));
+                Reported(trade, PartnerDisconnected);
             }
         }
 
@@ -329,15 +385,126 @@ namespace LandmarkEmulator.WorldServer.Game
                 WorldSession other = trade.Other(trade.Of(session)).Session;
                 Send(session, MessageSub, w => w.Write(intoGame ? YouEnteredInstance : Canceled));
                 Send(other, MessageSub, w => w.Write(intoGame ? PartnerEnteredInstance : Canceled));
-                End(trade);
+                End(trade, intoGame ? YouEnteredInstance : Canceled);
                 log.Info($"Trade {trade.Id} canceled: {session.CharacterName} {(intoGame ? "entered a game" : "changed landscape")}.");
             }
         }
 
-        private static void End(Trade trade)
+        /// <summary>
+        /// EndSession 0x3E/5 to both; a brokered trade's end goes back to its world channel with <paramref name="code"/>
+        /// (the TradeMessage code the players were shown).
+        /// </summary>
+        private static void End(Trade trade, byte code)
         {
             foreach (Side side in new[] { trade.A, trade.B })
                 Send(side.Session, EndSessionSub, w => w.Write((uint)trade.Id));
+            Reported(trade, code);
+        }
+
+        /// <summary>
+        /// The zone ended (or refused) a trade a world channel brokered: TradeZoneSessionEnd to it, so it frees the
+        /// pair (world-channel-service.md §6.4 step 5). Nothing for the zone's own trades.
+        /// </summary>
+        private static void Reported(Trade trade, byte code)
+        {
+            if (trade.Broker != 0)
+                WorldChannel.WorldChannelLink.TradeEnded(trade.Broker, trade.Id, code);
+        }
+
+        // ---- the world-channel trade broker (world-channel-service.md §6.4; WorldChannelLink, world thread) --------------
+
+        /// <summary>
+        /// TradeZoneSessionStart (spec §6.4 step 1): the world channel's trade <paramref name="id"/> between the inviter
+        /// <paramref name="characterA"/> and <paramref name="characterB"/>. The same checks as <see cref="Initiate"/> —
+        /// B is not ignoring A, both online on one landscape, neither in a trade (ours or brokered) — then the trade is
+        /// held (not open: offers are refused until <see cref="BrokerOpen"/>). Returns the two sessions for the
+        /// TradeZoneSessionReady reply (the service then sends TradeInvite to B), or (null, null) when refused (the
+        /// in-process Initiate only logged that too; the client is told nothing).
+        /// </summary>
+        public static (WorldSession A, WorldSession B) BrokerStart(int broker, int id, ulong characterA, ulong characterB)
+        {
+            WorldSession session = PlayerManager.FindByGuid(characterA);
+            WorldSession other = PlayerManager.FindByGuid(characterB);
+            if (session == null || Social.SocialServices.IgnoreCache.Refuses(other, session))
+                return (null, null);
+            lock (sync)
+            {
+                if (id <= 0 || trades.ContainsKey(id) || other == null || other == session || other.ZoneId != session.ZoneId
+                    || trades.Values.Any(t => t.A.Session == session || t.B.Session == session
+                        || t.A.Session == other || t.B.Session == other))
+                {
+                    log.Info($"{session.CharacterName} can't trade with 0x{characterB:X} now (world channel trade {id}).");
+                    return (null, null);
+                }
+                trades[id] = new Trade { Id = id, Broker = broker, A = new Side { Session = session }, B = new Side { Session = other } };
+            }
+            log.Info($"{session.CharacterName} invited {other.CharacterName} to trade ({id}, through the world channel).");
+            return (session, other);
+        }
+
+        /// <summary>
+        /// TradeZoneSessionOpen (spec §6.4 step 2): B accepted; the exchange is open. The world channel sends
+        /// StartSession 0x3E/4 to both right after (the in-process <see cref="Reply"/> sends it itself).
+        /// </summary>
+        public static void BrokerOpen(int broker, int id)
+        {
+            Trade trade;
+            lock (sync)
+            {
+                if (!trades.TryGetValue(id, out trade) || trade.Broker != broker || trade.Started)
+                    return;
+                trade.Started = true;
+            }
+            log.Info($"Trade {id} started: {trade.A.Session.CharacterName} ↔ {trade.B.Session.CharacterName} (world channel).");
+        }
+
+        /// <summary>
+        /// TradeZoneSessionEnd from the world channel: code 0 = the invitation was declined (the inviter already got
+        /// TradeRejected from the service): forgotten quietly, as the in-process <see cref="Reply"/> does; any other
+        /// code (1 TradeCanceled from TradeCancel, spec §6.4 step 4): TradeMessage code and EndSession to both, as the
+        /// in-process <see cref="Cancel"/> does. Not reported back (the service ended it).
+        /// </summary>
+        public static void BrokerEnd(int broker, int id, byte code)
+        {
+            Trade trade;
+            lock (sync)
+            {
+                if (!trades.TryGetValue(id, out trade) || trade.Broker != broker)
+                    return;
+                trades.Remove(id);
+            }
+            if (code == Silently)
+                return;
+            foreach (Side side in new[] { trade.A, trade.B })
+            {
+                Send(side.Session, MessageSub, w => w.Write(code));
+                Send(side.Session, EndSessionSub, w => w.Write((uint)trade.Id));
+            }
+            log.Info($"Trade {id} ended by the world channel (code {code}).");
+        }
+
+        /// <summary>
+        /// The world channel of <paramref name="broker"/> is gone (its link closed): every trade it brokered ends with
+        /// TradeCanceled for both (spec §7 — "the zone keeps a TradeZoneSession only while WC confirms it"); a
+        /// restarted service starts with an empty table.
+        /// </summary>
+        public static void BrokerLost(int broker)
+        {
+            List<Trade> gone;
+            lock (sync)
+            {
+                gone = trades.Values.Where(t => t.Broker == broker).ToList();
+                foreach (Trade t in gone)
+                    trades.Remove(t.Id);
+            }
+            foreach (Trade trade in gone)
+                foreach (Side side in new[] { trade.A, trade.B })
+                {
+                    Send(side.Session, MessageSub, w => w.Write(Canceled));
+                    Send(side.Session, EndSessionSub, w => w.Write((uint)trade.Id));
+                }
+            if (gone.Count > 0)
+                log.Warn($"World channel gone: {gone.Count} brokered trade(s) canceled.");
         }
 
         /// <summary>A change to an offer: bump the sequence and clear accepts (telling both sides if one had accepted).</summary>

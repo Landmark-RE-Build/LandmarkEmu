@@ -55,5 +55,5 @@ C2S 5 (2 not handled) · S2C 1 (0 never sent / opcode unknown)
 
 ## S2C PalettePacketPaletteUpdate  `0xF5`
 - resolved by hand: placed by placeclasses.py (opcode only): FUN_142e74800
-- server: SENT (102× in opcode_stats)
+- server: SENT (16× in opcode_stats)
 - built in: FUN_142e74800

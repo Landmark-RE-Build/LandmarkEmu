@@ -9,8 +9,8 @@ using System.Linq;
 namespace LandmarkEmulator.WorldServer.Game
 {
     /// <summary>
-    /// Player chat rooms (/join room [password], /leave room; wiki Chat: "/join creates or joins a channel and opens a new
-    /// tab"). ChatBase 0x13 with a u16 sub, on the World channel:
+    /// Player chat rooms (/join room [password], /leave room; wiki Chat: /join makes or enters a channel in a new tab).
+    /// ChatBase 0x13 with a u16 sub, on the World channel:
     /// - C→S 0x0A JoinRoomRequest {string room, string password} (FUN_1432ba400; typed through the command runner the
     ///   password can arrive inside the room string, "room password"); 0x0C LeaveRoomRequest {string room, bool}.
     /// - S→C 0x0B JoinRoomResponse / 0x0D LeaveRoomResponse {string room, u32 result} (readers FUN_1432aa140 / 210):
@@ -23,6 +23,8 @@ namespace LandmarkEmulator.WorldServer.Game
     ///   8 = ownership granted.
     /// Messages to a room are PacketChat channel 10 with the room's name as the last trailing string (writer
     /// FUN_1432a93e0); <see cref="Chat"/> relays them to the room's members only.
+    /// Part of the social service: callers outside it use <see cref="Social.SocialServices"/> (LocalSocialService runs
+    /// this code; social-service.md §6 step 1).
     /// </summary>
     public static class ChatRooms
     {
@@ -31,8 +33,9 @@ namespace LandmarkEmulator.WorldServer.Game
         public const ushort JoinRequest = 0x0A, JoinResponse = 0x0B, LeaveRequest = 0x0C, LeaveResponse = 0x0D, RoomInfo = 0x09;
         /// <summary>The chat channel of player rooms.</summary>
         public const ushort RoomChannel = 10;
+        public const uint RoomNameInappropriate = 19;
         private const uint Success = 1, AlreadyInRoom = 8, InvalidPassword = 12, InTooManyRooms = 15, RoomNameTooLong = 17,
-            PasswordTooLong = 18, RoomNameInappropriate = 19, LeaveRoomNotFound = 22, LeaveNotInRoom = 23;
+            PasswordTooLong = 18, LeaveRoomNotFound = 22, LeaveNotInRoom = 23;
         private const uint KindEntered = 1, KindUsersJoined = 2, KindUserLeft = 5;
         /// <summary>
         /// Client constants Chat.PlayerPublicMaxChatRooms 10, Chat.MaxRoomNameCharLength 32 (FUN_143aafcf0),
@@ -175,7 +178,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     : new List<WorldSession>();
         }
 
-        private static void SendResult(WorldSession session, ushort sub, string name, uint result)
+        public static void SendResult(WorldSession session, ushort sub, string name, uint result)
         {
             var output = new List<byte>();
             var w = new GamePacketWriter(output);
@@ -206,7 +209,7 @@ namespace LandmarkEmulator.WorldServer.Game
             return output.ToArray();
         }
 
-        private static bool IsBlacklisted(string text) =>
+        public static bool IsBlacklisted(string text) =>
             LandmarkEmulator.Shared.GameTable.GameTableManager.Instance.BlackList?.Entries.Any(e =>
                 e.RequiresExactMatch ? string.Equals(text, e.Word, StringComparison.OrdinalIgnoreCase)
                     : text.Contains(e.Word, StringComparison.OrdinalIgnoreCase)) ?? false;

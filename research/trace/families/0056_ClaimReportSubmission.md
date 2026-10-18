@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 1 (1 not handled) · S2C 0 (0 never sent / opcode unknown)
 
 ## C2S ClaimReportSubmissionPacketAddReport  `0x56, 0x1`
-- server: sub NOT handled
+- server: sub NOT handled · seen in play 2×
 - built in: FUN_14306f5e0
 - sent by Lua natives: OnClaimReportUiSubmit
 - UI using them: ReportClaimWindow.lua

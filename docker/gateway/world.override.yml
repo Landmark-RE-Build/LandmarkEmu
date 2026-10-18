@@ -1,0 +1,13 @@
+# Added to a world's compose files when its gateway runs in its own container (docker/gateway/docker-compose.yml): the
+# world dials the gateway and publishes only its web pages port (the gateway has the UDP game port).
+services:
+  world:
+    environment:
+      GatewayInternalAddress: gateway-${WORLD_KEY:-main}:20300
+      # The zone's own internal port, for the world-channel container (docker/worldchannel); never published.
+      ZONE_INTERNAL_PORT: "20310"
+    ports: !override
+      - "${WEB_PAGES_PORT:-19001}:${WEB_PAGES_PORT:-19001}/tcp"
+    networks: !override
+      landmarkemu:
+        aliases: ["zone-${WORLD_KEY:-main}"]

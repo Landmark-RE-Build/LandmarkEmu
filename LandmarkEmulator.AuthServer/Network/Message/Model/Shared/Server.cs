@@ -1,9 +1,13 @@
-﻿using LandmarkEmulator.Shared.GameTable.Text;
-using LandmarkEmulator.Shared.Network;
+﻿using LandmarkEmulator.Shared.Network;
 using LandmarkEmulator.Shared.Network.Message;
 
 namespace LandmarkEmulator.AuthServer.Network.Message.Model.Shared
 {
+    /// <summary>
+    /// One world in ServerListReply / ServerUpdate (client Login::ClientGameServerData, reader FUN_143a54570 [0.695; 0.589 FUN_14399c690]).
+    /// Read is the exact mirror of Write; the capture parser adds the text ids' strings to its own log
+    /// (LandmarkEmulator.Parser CaptureReading.DecorateServers), not this model.
+    /// </summary>
     public class Server : IWritable, IReadable
     {
         public ulong ServerId { get; set; }
@@ -25,12 +29,8 @@ namespace LandmarkEmulator.AuthServer.Network.Message.Model.Shared
             IsLocked = reader.ReadBool();
             Name = reader.ReadString();
             NameId = reader.ReadUInt();
-            if (TextManager.Instance != null)
-                Name = Name + $" ({TextManager.Instance.GetTextForId(NameId)})";
             Description = reader.ReadString();
             DescriptionId = reader.ReadUInt();
-            if (TextManager.Instance != null)
-                Description = Description + $" ({TextManager.Instance.GetTextForId(DescriptionId)})";
             ReqFeatureId = reader.ReadUInt();
             ServerInfo = reader.ReadString();
             PopulationLevel = reader.ReadUInt();

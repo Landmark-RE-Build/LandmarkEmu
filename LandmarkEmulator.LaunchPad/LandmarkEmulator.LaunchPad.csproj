@@ -32,17 +32,18 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
-    <PackageReference Include="System.IO.Hashing" Version="9.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <!-- The launcher's page, inside the exe (served to WebView2 from the resources, MainWindow). -->
     <EmbeddedResource Include="wwwroot\**" LogicalName="wwwroot/%(RecursiveDir)%(Filename)%(Extension)" />
-    <!-- Daybreak's file list for the final build (path, size, CRC32): names and checksums only, no game content. -->
-    <EmbeddedResource Include="Data\landmark-final-2017-file-list.csv" LogicalName="final-file-list.csv" />
-    <EmbeddedResource Include="Data\steam-0589-file-list.csv" LogicalName="steam-file-list.csv" />
-    <!-- The update's files (re/tools/update_files.py): which 0.695 files differ from a verified Steam copy. -->
-    <EmbeddedResource Include="..\LandmarkEmulator.WebAPI\update-0589-to-0695-files.csv" LogicalName="update-files.csv" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Patch packs and the rules they are checked by, shared with the server's patch host (and its embedded lists of
+         genuine files: names, sizes and checksums only, no game content). -->
+    <ProjectReference Include="..\LandmarkEmulator.PatchPacks\LandmarkEmulator.PatchPacks.csproj" />
+    <Using Include="LandmarkEmulator.PatchPacks" />
   </ItemGroup>
 
 </Project>

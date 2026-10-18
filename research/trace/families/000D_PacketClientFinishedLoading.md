@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 1 (0 not handled) · S2C 0 (0 never sent / opcode unknown)
 
 ## C2S PacketClientFinishedLoading  `0xD`
-- server: handled · seen in play 162× · received 162×
+- server: handled · seen in play 739× · received 20×
 - built in: FUN_142c294a0
 - code (builder in FUN_142c294a0):
 ```

@@ -14,8 +14,24 @@ services:
       context: ../..
       dockerfile: docker/Dockerfile
       target: world
-    image: landmarkemu-world
+    # WORLD_IMAGE: another tag for this build, so a second build can stand beside the running one
+    # without replacing its image (e.g. a project started with its own -p name and env file, as in
+    # docker/worlds/extra-world.env.example).
+    image: ${WORLD_IMAGE:-landmarkemu-world}
     restart: unless-stopped
+    # How long "docker compose down / stop / up --build" waits after SIGTERM before it kills the world. Docker's default
+    # is 10 s, but a graceful stop (HostedService.StopAsync) waits 1 s for the shutdown notice, then up to 60 s for
+    # players to leave for character select (at least 5 s), and only then closes the sessions (each player saved), the
+    # terrain store's last flush and the gathering state. Killed at 10 s, everything after the wait was skipped: player
+    # changes since their last save were lost whenever anyone was online (2026-10-18).
+    stop_grace_period: 90s
+    healthcheck:
+      # Healthy while the world's tick touched /tmp/world-alive in the last minute; start-up can take minutes.
+      test: ["CMD-SHELL", "[ -f /tmp/world-alive ] && [ $$(( $$(date +%s) - $$(stat -c %Y /tmp/world-alive) )) -lt 60 ]"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10m
     environment:
       Database__Auth__ConnectionString: server=landmarkemu-db;port=3306;user=landmarkemu;password=${DB_PASSWORD:?Set DB_PASSWORD in .env};database=lmemu_auth
       Database__Character__ConnectionString: server=landmarkemu-db;port=3306;user=landmarkemu;password=${DB_PASSWORD};database=lmemu_character
@@ -25,17 +41,264 @@ services:
       GameDataPath: /gamedata
       GameDirectory: /game
       ZoneServerId: ${WORLD_ID:-1}
-      WorldNameId: ${WORLD_NAME_ID:-62147}
+      # The server-list name, a client text id (560916 Serenity; the list is in .env.example; 0 = keep the stored one).
+      WorldNameId: ${WORLD_NAME_ID:-560916}
+      # The world id the game client is told (0 = 2, as the live capture). Worlds that share one gateway (travel between
+      # worlds, TASKS B.10) need different ids, never 3.
+      ClientWorldId: ${CLIENT_WORLD_ID:-0}
+      # The world's name in game, a client text id. 0 = as live, its own name: WORLD_NAME_ID when that is a live world name
+      # (560911-560926), else 560912 "Liberation".
+      ClientWorldNameText: ${CLIENT_WORLD_NAME_TEXT:-0}
+      # The home (starting) landscape's continent (406, the live capture's); the envserver container reads the same line.
+      Continent: ${HOME_CONTINENT:-406}
+      # Build and place props anywhere without a build site (false = live: only where you have build permission).
+      FreeBuild: ${FREE_BUILD:-false}
+      # Sprint / boot abilities carry their client-run movement effects (true = live; without them nothing moves).
+      MovementEffects: ${MOVEMENT_EFFECTS:-true}
+      # Melee swings run as the client's Sweep targeter: the client reports whom it hit, the server checks and strikes
+      # (true = live); false: the server resolves every swing itself.
+      MeleeTargeters: ${MELEE_TARGETERS:-true}
+      # A blocking stance (Molten Rebuke, Corrupting Revenge, a creature's shield) is shown to the other players' clients,
+      # so their melee swings stop on the blocker with the "blocked" effect (true = live); the server decides damage either way.
+      BlockStanceVisible: ${BLOCK_STANCE_VISIBLE:-true}
+      # A flinger / launcher / thrust pad launch the client reports (SafeEject) ends when the player lands: the server clears
+      # the client's "launched" state so the next launch works the same (true = live); false only logs it.
+      SafeEjectReset: ${SAFE_EJECT_RESET:-true}
+      # The character stats live sent (movement tuning at login, acceleration times to other players; true = live).
+      LiveCharacterStats: ${LIVE_CHARACTER_STATS:-true}
+      # Placed props are sent to a player within this many metres (by 64 m region, nearest first) and dropped 80 m further
+      # out. 400 = the client's Render Distance slider at its last bounded step; 0 = the whole landscape at every zone-in.
+      PropStreamRange: ${PROP_STREAM_RANGE:-400}
+      # The Escape menu's "Evac to Safety" moves players (onto the ground where they stand, or just off the build site
+      # they stand on); true = live. false: players' requests are answered in place (admins' /location etc. still work).
+      PlayerTeleportRequests: ${PLAYER_TELEPORT_REQUESTS:-true}
+      # Coarse (LOD) copies of build edits (true = live) and keeping the client's vertex-only voxels (true); the envserver
+      # container reads the same two lines, and with ENVSERVER_ADDRESS set its values are the ones that count.
+      TerrainLodCopies: ${TERRAIN_LOD_COPIES:-true}
+      KeepVertexOnlyVoxels: ${KEEP_VERTEX_ONLY_VOXELS:-true}
+      # Message of the day, shown once per login (both empty = none: set them empty in .env to turn it off).
+      MotdSubject: "${MOTD_SUBJECT-Welcome to Landmark}"
+      MotdBody: "${MOTD_BODY-This server is LandmarkEmu, a fan-made recreation. Have fun building!}"
       PublicAddress: ${PUBLIC_HOST:-127.0.0.1}:${WORLD_PORT:-19000}
       Network__Port: ${WORLD_PORT:-19000}
       WebPagesPort: ${WEB_PAGES_PORT:-19001}
       # Listen on every interface in the container: the default (loopback) can't be reached through the port mapping.
       WebPagesHost: 0.0.0.0
       WebPagesUrl: http://${PUBLIC_HOST:-127.0.0.1}:${WEB_PAGES_PORT:-19001}
-      # Admins (account or character names): in-game admin commands and the /admin menu.
+      # Scheduled restarts; empty = none (default). Live restarted "Mon,Sat 03:00" Pacific (P5902, P5906). The restart
+      # policy below brings the world back. Warnings start RESTART_WARNING_SECONDS before, with RESTART_MESSAGE.
+      RestartSchedule: ${RESTART_SCHEDULE:-}
+      RestartTimeZone: ${RESTART_TIME_ZONE:-America/Los_Angeles}
+      RestartWarningSeconds: ${RESTART_WARNING_SECONDS:-3600}
+      RestartMessage: "${RESTART_MESSAGE:-Scheduled server restart.}"
+      # Shutdown / restart warnings also as a System Broadcast (on-screen text + chat line) beside the client's own
+      # countdown (false = live: only the countdown).
+      ShutdownBroadcasts: ${SHUTDOWN_BROADCASTS:-false}
+      # The client's kick warning packet (0x65) before an admin kick and in a shutdown's last 30 s: it turns the
+      # client's sound back up; its own text is empty on the retail clients, a readable line goes with it (true).
+      PendingKickPacket: ${PENDING_KICK_PACKET:-true}
+      # "[player] is not online at this." (offline friend to travel to, trade / inspect target gone) as the client's own
+      # packet 0x1A (true: its line names the reader instead of the target) or as a system line with the right name (false).
+      TargetNotOnlinePacket: ${TARGET_NOT_ONLINE_PACKET:-false}
+      # A crafting / repair station's window closes when its player walks more than 8 m away or the station is gone
+      # (true); false leaves it open (crafting from too far still fails).
+      CraftingWindowCloseAway: ${CRAFTING_WINDOW_CLOSE_AWAY:-true}
+      # Whose Landmarks of Landmark stand beside the Spires: auto (the live world named by WORLD_NAME_ID, else Courage),
+      # Courage, Determination, Liberation, Rebellion, Serenity or off. A landscape keeps the first one it was given.
+      LandmarksOfLandmarkWorld: ${LANDMARKS_WORLD:-auto}
+      # Chaos Caverns with outposts for Underground Adventure / Lost Crystal trips: all (every non-Pioneer island, as live
+      # from June 2016), home (the home continent only) or zone ids "406,391". Another landscape's outposts are stamped in
+      # the background on its first visit; OUTPOST_PRELOAD=true stamps the unvisited ones too, one after another.
+      CavernLandscapes: ${CAVERN_LANDSCAPES:-all}
+      # Surface graveyards (the map's red circles: Flee sites with a creature-free buffer, no build sites on them); their
+      # spots are ours (no client file places them). The Chaos Caverns' graveyards are always on.
+      SurfaceGraveyards: ${SURFACE_GRAVEYARDS:-true}
+      # The Chaos Caverns' graveyards stamped into the terrain (the client's graveyard_launch template, turned as each of
+      # the cave file's placements says), once per landscape in the background on its first visit; false = no new stamps.
+      CavernGraveyardStamps: ${CAVERN_GRAVEYARD_STAMPS:-true}
+      OutpostPreload: ${OUTPOST_PRELOAD:-false}
+      # Outposts change caverns: every OUTPOST_ROTATION_HOURS per landscape a share (OUTPOST_ROTATION_SHARE) of its
+      # outposts gets another ruin in its own cavern (stamped in the background; outposts players are near are left alone).
+      # 0 = never (default; no source gives live's period).
+      OutpostRotationHours: ${OUTPOST_ROTATION_HOURS:-0}
+      OutpostRotationShare: ${OUTPOST_ROTATION_SHARE:-0.25}
+      # Creature navigation: cavern / outpost creatures walk around cave rock and ruin walls (paths searched on a
+      # background thread, a bounded cache of walkable tiles); false = every creature steps straight at its goal, as before.
+      CreaturePathing: ${CREATURE_PATHING:-true}
+      # Story creatures on build sites path around player walls, dug holes and placed props (a per-site grid from the
+      # Environment Server, rebuilt 2 s after the last edit there; server-internal); false = they step straight, as before.
+      SitePathing: ${SITE_PATHING:-true}
+      # Creatures hold weapons (a model in the main hand; story creatures only while Equipped). On by default: a best
+      # guess (the weapon type from each creature's palette icon, the model chosen by us; live's exact weapons are not in
+      # the client). false = no creature weapons.
+      CreatureWeapons: ${CREATURE_WEAPONS:-true}
+      # Trees and plants after gathering (Game/Gathering.Respawn.cs): minmax = live's model (forum 55352): a minimum and a
+      # maximum per type and landscape, a type below its minimum respawns at another random free spot of the same placement
+      # set after its respawn minutes (state in gathered_nodes.txt); inplace = the older regrow where it stood.
+      ProceduralRespawn: ${PROCEDURAL_RESPAWN:-minmax}
+      ProceduralRespawnMinShare: ${PROCEDURAL_RESPAWN_MIN_SHARE:-0.67}
+      # Trees from the client's placement sets (Game/ProceduralPlacement.cs): false (default) = the older per-biome lists
+      # (the shipped sets name only 2014 alpha biomes, so live's launch placement is not in the client, L113); the sets'
+      # rocks / bushes too (false), and their mask bitmaps (true).
+      ProceduralPlacement: ${PROCEDURAL_PLACEMENT:-false}
+      ProceduralPlacementDecor: ${PROCEDURAL_PLACEMENT_DECOR:-false}
+      ProceduralPlacementMasks: ${PROCEDURAL_PLACEMENT_MASKS:-true}
+      # The island on the teleport menu's "Events" world (0.695 clients): auto (live's 2016 dates), halloween, winter,
+      # judgement or off; switched at a restart. Default auto = live (heights baked 2026-10-16, docs/terrain.md).
+      EventIsland: ${EVENT_ISLAND:-auto}
+      # true = when the Events world's island changes between two runs, the sites left on the island that closed expire
+      # (design saved, terrain reverted, props and resources mailed to the owner), as live did (forum 58077); default
+      # true = live. Deletes builds: back up first; the dev command "eventexpire" lists what would expire.
+      EventIslandExpireOnClose: ${EVENT_ISLAND_EXPIRE_ON_CLOSE:-true}
+      # true = build sites still on the old Pioneer lands 417-421 (before 2026-10-17) move to their replacements 464-468
+      # at start-up (a design of the old build saved; the old voxels / props stay behind unseen). Default true.
+      MoveOldPioneerSites: ${MOVE_OLD_PIONEER_SITES:-true}
+      # The slate slab under each new Pioneer site (live fixed it on new sites, notes 30 Jun 2016):
+      # claim3x3 (default; the client's 210 m plus-shaped slab template) | claim1x1 (its 70 m middle) | off; and its
+      # material (VoxelMaterials ARRAY_INDEX; 26 = Worked Slate; 0 = the template's stored index 53).
+      PioneerSlab: ${PIONEER_SLAB:-claim3x3}
+      PioneerSlabMaterial: ${PIONEER_SLAB_MATERIAL:-26}
+      # Seasonal outfit drops (Skeletal Bodysuits in Halloween, festive suits / sweaters in winter): auto (live's 2016
+      # calendar, default) | halloween | winter | off.
+      LANDMARK_SEASON: ${LANDMARK_SEASON:-auto}
+      # Ninja Mask / Samurai Helmet unlocker drops: season (live: only in the Halloween season, stopped 6 Dec 2016;
+      # default) | always | off.
+      HAT_DROPS: ${HAT_DROPS:-season}
+      # A hung world (no tick for WATCHDOG_SECONDS, default 180; 0 = never) ends itself and the restart policy starts it
+      # again; the file feeds the healthcheck above (Game/Watchdog.cs).
+      HealthFile: /tmp/world-alive
+      # Values saved on the admin Settings page (/admin, Server settings): kept with this world's files, so they survive
+      # rebuilding the container; they win over .env (docs/admin.md "Settings page").
+      SettingsOverridesFile: /data/settings-overrides.json
+      WatchdogSeconds: ${WATCHDOG_SECONDS:-180}
+      # A client silent this long (crash, killed process, lost network) is disconnected and leaves the world (seconds;
+      # 60 = two of the client's 29 s SOE keep-alives; 0 = never). The gateway container reads the same line.
+      ClientTimeoutSeconds: ${CLIENT_TIMEOUT_SECONDS:-60}
+      # The shared social service ("social:20200" with the compose profile "social"); empty = this world keeps its own
+      # presence / friends / ignore lists, as before (docker/social).
+      SocialAddress: ${SOCIAL_ADDRESS:-}
+      # The shared commerce service ("commerce:20400" with the compose profile "commerce"); empty = this world keeps its own
+      # Player Studio, contests and portraits, as before (docker/commerce).
+      CommerceAddress: ${COMMERCE_ADDRESS:-}
+      # This world's Environment Server ("envserver:20500" with the compose profile "envserver"); empty = this world keeps
+      # its terrain store (edits, heals, veins, ownership, stamps) itself, as before (docker/envserver).
+      EnvServerAddress: ${ENVSERVER_ADDRESS:-}
+      # How long start-up waits for the Environment Server's index before going on without it (seconds).
+      EnvServerStartupWaitSeconds: ${ENVSERVER_STARTUP_WAIT_SECONDS:-120}
+      # Admins (account:<name> / character:<name>, or a bare name for either; docs/admin.md): in-game admin commands and
+      # the /admin menu; ADMINS = any number more, comma separated.
       Admins__0: ${ADMIN_ACCOUNT:-}
       Admins__1: ${ADMIN_2:-}
       Admins__2: ${ADMIN_3:-}
+      AdminList: ${ADMINS:-}
+      # The dev commands that run code / raw packets in a game client (lua, luacode, luas, send) may target any player and
+      # call the client's "open in the desktop browser" functions (true); false = only the admin who ran them and other
+      # admins, and no desktop-browser calls. Every use is logged.
+      DevClientCodeOnOthers: ${DEV_CLIENT_CODE_ON_OTHERS:-false}
+      # Push the instanced-games admin monitor page (page 29) to admins while a site game runs (false = only on request).
+      AdminMonitorPush: ${ADMIN_MONITOR_PUSH:-false}
+      # Players allowed in the world at once; more logins wait in the login server's queue, members first (0 = no limit;
+      # live queued logins, its cap is not known).
+      MaxPlayers: ${MAX_PLAYERS:-0}
+      # Players allowed on one landscape at once; more Travel-window arrivals wait in the travel queue (0 = no limit).
+      LandscapeCapacity: ${LANDSCAPE_CAPACITY:-0}
+      # The Showcase store: false = live's 2016 Marketplace items for Lumens (Daybreak Cash prices x LUMENS_PER_DBC);
+      # true = every outfit, decoration and design free. Nothing is ever paid with real money.
+      FreeStore: ${FREE_STORE:-false}
+      LumensPerDaybreakCash: ${LUMENS_PER_DBC:-1.3}
+      # Owner store prices in Lumens, "item id=Lumens" comma separated (e.g. 900001=500,2551=1300; 0 = free): replaces a
+      # live product's price, or adds any catalogue item to the store. Empty = live's prices only.
+      StorePrices: ${STORE_PRICES:-}
+      # Player Studio designs cost their creator's price (Daybreak Cash on live) x LUMENS_PER_DBC in Lumens (free with
+      # FREE_STORE); the creator is mailed this share (percent) of it (live: 60/40, creator 40). In-process commerce only:
+      # with COMMERCE_ADDRESS the commerce service's own PLAYER_STUDIO_CREATOR_SHARE applies.
+      PlayerStudioCreatorSharePercent: ${PLAYER_STUDIO_CREATOR_SHARE:-40}
+      # Player Studio listing fee, as live (10 % of the price, at least 100 Daybreak Cash) in Lumens at LUMENS_PER_DBC
+      # (13 %, at least 130 Lumens), taken when a design is submitted; false = no fee. Never with FREE_STORE.
+      PlayerStudioListingFee: ${PLAYER_STUDIO_LISTING_FEE:-true}
+      # Player Studio peer review: approvals that list a design, rejections that turn it down (live's not known; 3 / 3).
+      # In-process commerce only: with COMMERCE_ADDRESS the commerce service reads the same two lines.
+      PlayerStudioApprovals: ${PLAYER_STUDIO_APPROVALS:-3}
+      PlayerStudioRejections: ${PLAYER_STUDIO_REJECTIONS:-3}
+      # Reviewers: accounts that spent this much Daybreak Cash (x LUMENS_PER_DBC in Lumens) on the store and Player Studio
+      # (live 1000; 0 = anyone). Checked by the world in both commerce modes. Reviews per player per 24 h (live 2; 0 = no
+      # limit) and the staff queue for peer-rejected products (live true; false = rejected at once): in-process commerce
+      # here, the commerce service reads the same two lines.
+      PlayerStudioReviewerMinSpend: ${PLAYER_STUDIO_REVIEWER_MIN_SPEND:-1000}
+      PlayerStudioReviewsPerDay: ${PLAYER_STUDIO_REVIEWS_PER_DAY:-2}
+      PlayerStudioStaffReview: ${PLAYER_STUDIO_STAFF_REVIEW:-true}
+      # Founder's Pack / Year Zero / promotional items for every character, once (false = nobody gets them and their
+      # props leave the palette; live gave them only to buyers / survivors / winners); which packages; and how they arrive:
+      # auto = as live (Founder's Pack into the bag, Year Zero and promo by mail), mail, bag, or "founder=bag,promo=mail".
+      FounderEntitlements: ${FOUNDER_ENTITLEMENTS:-true}
+      EntitlementPackages: ${ENTITLEMENT_PACKAGES:-founder,yearzero,promo}
+      EntitlementDelivery: ${ENTITLEMENT_DELIVERY:-auto}
+      # Membership (Game/Membership): bought with Lumens (price for MEMBERSHIP_DAYS days; 0 = not for sale), and the trial
+      # key every account is mailed once to give a friend TRIAL_KEY_DAYS days of trial membership (false = no keys).
+      MembershipPriceLumens: ${MEMBERSHIP_PRICE_LUMENS:-1950}
+      MembershipDays: ${MEMBERSHIP_DAYS:-30}
+      TrialKeys: ${TRIAL_KEYS:-true}
+      TrialKeyDays: ${TRIAL_KEY_DAYS:-10}
+      # Player shops on the Vendor Booth (false = live: a decorative prop since 1 Apr 2016).
+      VendorShops: ${VENDOR_SHOPS:-false}
+      # The prop's name over it while its build-mode right-click menu is open, for that player only (false = no label).
+      BuildMenuPropName: ${BUILD_MENU_PROP_NAME:-true}
+      # Storage chests one account may have placed over all its build sites (0 = no account cap, live: only the
+      # 50-per-build-site cap of the 21 Mar 2016 notes; 50 = the wiki's "50 per account" reading).
+      ChestAccountCap: ${CHEST_ACCOUNT_CAP:-0}
+      # Seconds between two Teleport to Friend trips per character (0 = none, live since 5 May 2015; 1800 = 2014's 30 min).
+      FriendTeleportCooldownSeconds: ${FRIEND_TELEPORT_COOLDOWN_SECONDS:-0}
+      # Story creatures keep the mood / stance a Story Node gave them, saved with the spawner (true = live from 7 Jun 2016).
+      StoryPosePersists: ${STORY_POSE_PERSISTS:-true}
+      # Placing a prop from the bag opens Build Mode (Props page) and closes it when that placement ends (true = this
+      # server's default, asked for by the user; false = live, where the placement runs outside build mode).
+      PlaceOpensBuildMode: ${PLACE_OPENS_BUILD_MODE:-true}
+      # Day/night clock speed, game seconds per real second (8 = live: a full day lasts 3 real hours).
+      DayCycleSpeed: ${DAY_CYCLE_SPEED:-8}
+      # Showcase following (Following tab: creators and tags): a daily in-game mail of what they listed on Player Studio and
+      # the Gallery since the last one, none when nothing is new (true = live, Update Notes 27 Aug 2014; false = no mail).
+      # Sent at SHOWCASE_DIGEST_HOUR_UTC (0-23). Read by whichever side runs the digest: this world with in-process commerce,
+      # the commerce service (docker/commerce) for the worlds with COMMERCE_ADDRESS set.
+      ShowcaseFollowDigest: ${SHOWCASE_FOLLOW_DIGEST:-true}
+      ShowcaseDigestHourUtc: ${SHOWCASE_DIGEST_HOUR_UTC:-10}
+      # Game Finder across worlds: bring a player the finder took to another world's game back to where they left from
+      # after they leave that game (false = they stay there, travelling home with the Landscapes window).
+      FinderReturnHome: ${FINDER_RETURN_HOME:-false}
+      # Lost Crystal / Underground Adventure trips may land in a Chaos Cavern on another world of a multi-world gateway
+      # (true = live: "Lost Crystals can now teleport you to other worlds and biomes"; false = this world's landscapes only).
+      CavernTripsOtherWorlds: ${CAVERN_TRIPS_OTHER_WORLDS:-true}
+      # Same-landscape teleports up to this many metres move the player in place (no loading screen); farther ones
+      # re-zone. 0 = every teleport re-zones. Default 60 (inside the client's 80 m terrain window; docs/terrain.md).
+      ShortTeleportDistance: ${SHORT_TELEPORT_DISTANCE:-60}
+      # Item definitions per packet at world entry (the client takes each packet in one go on its main thread; cut up,
+      # its window keeps responding while it loads). 0 = the whole list in one packet, as the live dump has it.
+      ItemDefinitionChunkSize: ${ITEM_DEFINITION_CHUNK_SIZE:-100}
+      # Short moves with the client's own "Waiting for Teleport..." screen (the packet's loading-screen byte) instead of
+      # moving inside a normal frame; false (default) while it is measured (OPEN-LEADS L116).
+      ShortTeleportWaitScreen: ${SHORT_TELEPORT_WAIT_SCREEN:-false}
+      # Member benefits besides login-queue priority: Lumens every 30 days and percent off store prices. 0 = live (Landmark
+      # had no member perks); owners can set e.g. 650 / 10.
+      MemberMonthlyLumens: ${MEMBER_MONTHLY_LUMENS:-0}
+      MemberStoreDiscountPercent: ${MEMBER_STORE_DISCOUNT:-0}
+      # Hours a store purchase (bought for Lumens) waits before it can be traded, mailed or put in a chest: live's "fraud
+      # timer" (client texts 577061 / 562759; the item tooltip shows "Tradable in %TIME"). Default 12 (developer post 26
+      # Mar 2014: locked for at most 12 hours); 0 = off.
+      StoreTradeWaitHours: ${STORE_TRADE_WAIT_HOURS:-12}
+      # Hours items wait in the inventory's overflow tab before they are deleted (24 = live, wiki Inventory; the client
+      # shows "Overflow: Items expire in H:MM:SS"); 0 = kept until retrieved.
+      OverflowExpiryHours: ${OVERFLOW_EXPIRY_HOURS:-24}
+      # Most of one item a mail attachment may carry (9000 = live, wiki Trading); 0 = no cap.
+      MailMaxStack: ${MAIL_MAX_STACK:-9000}
+      # Keep each item's auto-resupply switch (Inventory 0x2D sub 0x0D; true = live, whose item table had an
+      # auto_resupply column); false = ignore the toggle and send every item with it off.
+      ItemAutoResupply: ${ITEM_AUTO_RESUPPLY:-true}
+      # Grief (friendly fire in team site games earns grief: warnings, equipment lock, suspension; false = teammates
+      # can't hurt each other and nothing earns grief). Amounts, level thresholds, decay and suspension length are ours.
+      GriefAwards: ${GRIEF_AWARDS:-true}
+      GriefDamagePerPoint: ${GRIEF_DAMAGE_PER_POINT:-100}
+      GriefLevelPoints: ${GRIEF_LEVEL_POINTS:-10,20,30,40,60}
+      GriefDecayPerHour: ${GRIEF_DECAY_PER_HOUR:-30}
+      GriefSuspensionMinutes: ${GRIEF_SUSPENSION_MINUTES:-60}
     volumes:
       - ${GAME_DATA_DIR:-../../server-data/gamedata}:/gamedata:ro
       - ${GAME_DIR:?Set GAME_DIR in .env to your Landmark folder}:/game:ro
@@ -50,3 +313,4 @@ services:
 networks:
   landmarkemu:
     external: true
+    name: ${NETWORK_NAME:-landmarkemu}

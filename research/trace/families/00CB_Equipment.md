@@ -7,22 +7,22 @@ C2S 0 (0 not handled) · S2C 5 (0 never sent / opcode unknown)
 
 ## S2C Equipment::BaseEquipmentPacket  `0xCB`
 - resolved by hand: placed by placeclasses.py (opcode only): FUN_142da4a00
-- server: SENT (352× in opcode_stats)
+- server: SENT (29× in opcode_stats)
 - built in: FUN_142da4a00
 
 ## S2C Equipment::EquipmentPacketSetCharacterEquipment  `0xCB`
-- server: SENT (352× in opcode_stats) · seen in play 352×
+- server: SENT (29× in opcode_stats) · seen in play 1513×
 - built in: FUN_142da4b10
 
 ## S2C Equipment::EquipmentPacketSetCharacterEquipmentSlot  `0xCB`
-- server: SENT (352× in opcode_stats) · seen in play 352×
+- server: SENT (29× in opcode_stats) · seen in play 1513×
 - built in: FUN_142da4dd0
 
 ## S2C Equipment::EquipmentPacketSetCharacterEquipmentSlots  `0xCB`
-- server: SENT (352× in opcode_stats) · seen in play 352×
+- server: SENT (29× in opcode_stats) · seen in play 1513×
 - built in: FUN_142da5140
 
 ## S2C Equipment::EquipmentPacketUnsetCharacterEquipmentSlot  `0xCB`
 - resolved by hand: placed by placeclasses.py (opcode only): FUN_142da5580 <- FUN_142da4a00
-- server: SENT (352× in opcode_stats)
+- server: SENT (29× in opcode_stats)
 - built in: FUN_142da5580

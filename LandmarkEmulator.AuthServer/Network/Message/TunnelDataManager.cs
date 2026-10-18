@@ -38,6 +38,9 @@ namespace LandmarkEmulator.AuthServer.Network.Message
         /// </summary>
         public ITunnelData NewEntityCommand(TunnelDataType type)
         {
+            // Read by the login tunnel before the server's start-up Initialise in tools and tests: build the table on first use.
+            if (tunnelDataFactories == null)
+                Initialise();
             return tunnelDataFactories.TryGetValue(type, out TunnelDataFactoryDelegate factory) ? factory.Invoke() : null;
         }
 

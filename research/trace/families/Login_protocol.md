@@ -10,7 +10,7 @@ C2S 1 (0 not handled) · S2C 19 (11 never sent / opcode unknown)
 - built in: FUN_1439a3df0
 
 ## S2C Login::ExternalPackets::PacketLoginRequest  `0x1`
-- server: SENT (1× in opcode_stats) · seen in play 1×
+- server: SENT (opcode used in the server code) · seen in play 13×
 - reader: FUN_1439a1930
 - built in: FUN_1439a3df0
 - data sources: ptr:LoginRequest_14520a338
@@ -21,25 +21,25 @@ C2S 1 (0 not handled) · S2C 19 (11 never sent / opcode unknown)
 - data sources: ptr:TunnelAppPacketClientToServer_14520a300
 
 ## S2C Login::ExternalPackets::PacketTunnelAppPacketServerToClient  `0x11`
-- server: SENT (162× in opcode_stats) · seen in play 162×
+- server: SENT (20× in opcode_stats) · seen in play 740×
 - reader: FUN_14399cfd0
 - built in: FUN_143999e30, FUN_143999f20
 - layout:
 ```
 u8    +0x8
 u64   +0x10
-i32   iVar3
+i32   <local>
 ```
 - data sources: ptr:TunnelAppPacketServerToClient_14520a308
 - log lines: Element %s not found. · Attribute %s not found.
 
 ## S2C Login::ExternalPackets::PacketCharacterTransferServerRequest  `0x12`
-- server: SENT (102× in opcode_stats) · seen in play 102×
+- server: SENT (16× in opcode_stats) · seen in play 325×
 - built in: FUN_1439a4d70
 - data sources: ptr:CharacterTransferRequest_14520a328
 
 ## S2C Login::ExternalPackets::PacketCharacterTransferServerReply  `0x13`
-- server: SENT (87× in opcode_stats) · seen in play 87×
+- server: SENT (opcode used in the server code) · seen in play 232×
 - reader: FUN_14399cbf0
 - built in: FUN_143999560, FUN_143999690
 - layout:
@@ -48,7 +48,7 @@ u8    +0x8
 u64   +0x10
 u64   +0x18
 u32   +0x28
-i32   iVar3
+i32   <local>
 ```
 - data sources: ptr:CharacterTransferReply_14520a330
 - log lines: Element %s not found. · Attribute %s not found.
@@ -94,7 +94,7 @@ u8    +0x8
 u64   +0x10
 u64   +0x18
 u32   +0x20
-i32   iVar3
+i32   <local>
 ```
 - data sources: ptr:CharacterLoginReply_14520a2d8
 - log lines: Element %s not found. · Attribute %s not found.
@@ -113,7 +113,7 @@ i32   iVar3
 u8    +0x8
 u64   +0x10
 u32   +0x18
-i32   iVar3
+i32   <local>
 ```
 - data sources: ptr:CharacterDeleteReply_14520a2e8
 - log lines: Element %s not found. · Attribute %s not found.
@@ -141,7 +141,7 @@ i32   iVar3
 - log lines: Element %s not found. · Attribute %s not found.
 
 ## S2C Login::ExternalPackets::PacketServerUpdate  `0xF`
-- server: SENT (102× in opcode_stats) · seen in play 102×
+- server: SENT (18× in opcode_stats) · seen in play 327×
 - built in: FUN_143999bc0, FUN_143999cf0
 - data sources: ptr:ServerUpdate_14520a320
 - log lines: Element %s not found. · Attribute %s not found.

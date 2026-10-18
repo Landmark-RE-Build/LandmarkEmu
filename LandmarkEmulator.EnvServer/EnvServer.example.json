@@ -1,0 +1,17 @@
+{
+  "Network": {
+    "Host": "0.0.0.0",
+    "Port": 20500
+  },
+  "DataPath": "Data",
+  "ImportFrom": "",
+  "GameDirectory": "",
+  "GameDataPath": "gameData",
+  "Continent": 406,
+  "HealQueue": true,
+  "RuinLayers": false,
+  "RuinLayerDesired": 0,
+  "TerrainLodCopies": true,
+  "KeepVertexOnlyVoxels": true,
+  "HealthFile": ""
+}

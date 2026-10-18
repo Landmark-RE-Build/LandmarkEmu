@@ -9,13 +9,14 @@
   <ItemGroup>
     <ProjectReference Include="..\LandmarkEmulator.Database\LandmarkEmulator.Database.csproj" />
     <ProjectReference Include="..\LandmarkEmulator.Shared\LandmarkEmulator.Shared.csproj" />
+    <!-- The patch host checks packs with exactly the rules players' LaunchPad uses (and its embedded lists of genuine
+         files: names, sizes and checksums only). -->
+    <ProjectReference Include="..\LandmarkEmulator.PatchPacks\LandmarkEmulator.PatchPacks.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Daybreak's final-build file list (path, size, CRC32): the patch host only serves the verified update to it. -->
-    <EmbeddedResource Include="..\LandmarkEmulator.LaunchPad\Data\landmark-final-2017-file-list.csv" LogicalName="final-file-list.csv" />
-    <!-- The files the update must carry: final-build files a verified Steam copy doesn't already have (re/tools/update_files.py). -->
-    <EmbeddedResource Include="update-0589-to-0695-files.csv" LogicalName="update-files.csv" />
+    <!-- The tests read request bodies the way the plain-text endpoints do (AuthWebAPI.ReadCredentials). -->
+    <InternalsVisibleTo Include="LandmarkEmulator.Tests" />
   </ItemGroup>
 
 </Project>

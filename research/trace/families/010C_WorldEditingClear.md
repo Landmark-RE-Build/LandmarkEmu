@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 8 (8 not handled) · S2C 0 (0 never sent / opcode unknown)
 
 ## C2S WorldEditingClearPacket  `0x10C, 0x0`
-- server: NOT HANDLED
+- server: NOT HANDLED · seen in play 181774× · received 13×
 - built in: FUN_142fe3ae0, FUN_142fe6140, FUN_1433b9530
 - sent by Lua natives: SetDemoModeSelf
 - code (builder in FUN_142fe3ae0):
@@ -19,7 +19,7 @@ C2S 8 (8 not handled) · S2C 0 (0 never sent / opcode unknown)
 ```
 
 ## C2S WorldEditingBoxUpdatePacket  `0x10C, 0x1`
-- server: NOT HANDLED
+- server: NOT HANDLED · seen in play 60186× · received 4583×
 - writer: FUN_142fdf050
 - built in: FUN_142fe3ae0, FUN_142fe5fe0, FUN_1433b9530
 - code (builder in FUN_142fe3ae0):
@@ -32,13 +32,13 @@ C2S 8 (8 not handled) · S2C 0 (0 never sent / opcode unknown)
 ```
 
 ## C2S WorldEditingSphereUpdatePacket  `0x10C, 0x2`
-- server: NOT HANDLED
+- server: NOT HANDLED · seen in play 109857×
 - writer: FUN_142fdc1c0
 - built in: FUN_142fe3ae0, FUN_142fe64b0, FUN_1433b9530
 - layout:
 ```
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 u32   +0x24
 str   +0x28
 u64   +0x40
@@ -53,20 +53,20 @@ u64   +0x40
 ```
 
 ## C2S WorldEditingShapeUpdatePacket  `0x10C, 0x3`
-- server: NOT HANDLED
+- server: NOT HANDLED · seen in play 2853×
 - writer: FUN_142fdc110
 - built in: FUN_142fe6340, FUN_1433b9530
 - layout:
 ```
 FUN_142d66360 -> +0x20
     [loop 1: list elements]
-  u32   *(undefined4 *)(param_2 + lVar2 * 4)
+  u32   <computed>
     [loop 2: list elements]
-  u32   *puVar1
+  u32   <element>
     [loop 3: list elements]
-  u32   *puVar1
+  u32   <element>
     [loop 4: list elements]
-  u32   *puVar1
+  u32   <element>
 u32   +0x60
 str   +0x68
 u64   +0x80
@@ -77,18 +77,18 @@ u64   +0x80
 ```
 
 ## C2S WorldEditingSelectionUpdate  `0x10C, 0x4`
-- server: NOT HANDLED
+- server: NOT HANDLED · seen in play 3198× · received 2×
 
 ## C2S WorldEditingPreviewSetupPacket  `0x10C, 0x5`
-- server: NOT HANDLED
+- server: NOT HANDLED · seen in play 1×
 - writer: FUN_142fdbdd0
 - built in: FUN_1433b9530, FUN_1436d8c70
 - layout:
 ```
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 FUN_142f0a340 -> +0x30
-  i32   iVar3
+  i32   <local>
     [loop 1: list elements]
   FUN_142f09280 -> +0x30
     u64   +0x30
@@ -105,7 +105,7 @@ FUN_142f0a340 -> +0x30
     u32   +0x60
     u32   +0x64
     FUN_142f0a660 -> +0x80
-      i32   iVar3
+      i32   <local>
         [loop 1: list elements]
       FUN_142f09e00 -> +0x80
         u32   +0x80
@@ -116,7 +116,7 @@ FUN_142f0a340 -> +0x30
     u64   +0x70
     u32   +0x78
     FUN_142f0a5a0 -> +0x98
-      i32   iVar4
+      i32   <local>
         [loop 1: list elements]
       FUN_142f09d50 -> +0x98
         u32   +0x98
@@ -130,7 +130,7 @@ FUN_142f0a340 -> +0x30
     u32   +0xec
     u32   +0xf0
   [loop 2: list elements]
-u32   *puVar1
+u32   <element>
 str   +0x60
 u64   +0x78
 ```
@@ -140,22 +140,22 @@ u64   +0x78
 ```
 
 ## C2S WorldEditingPreviewUpdatePacket  `0x10C, 0x6`
-- server: NOT HANDLED
+- server: NOT HANDLED · seen in play 2×
 - writer: FUN_142fdbf40
 - built in: FUN_1433b9530, FUN_1436dbb00
 - layout:
 ```
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 FUN_142d66360 -> +0x30
     [loop 1: list elements]
-  u32   *(undefined4 *)(param_2 + lVar2 * 4)
+  u32   <computed>
     [loop 2: list elements]
-  u32   *puVar1
+  u32   <element>
     [loop 3: list elements]
-  u32   *puVar1
+  u32   <element>
     [loop 4: list elements]
-  u32   *puVar1
+  u32   <element>
 bool  +0x70
 str   +0x78
 u64   +0x90
@@ -166,7 +166,7 @@ u64   +0x90
 ```
 
 ## C2S WorldEditingFillUpdatePacket  `0x10C, 0x7`
-- server: NOT HANDLED
+- server: NOT HANDLED · seen in play 5529×
 - writer: FUN_142fdf0b0
 - built in: FUN_142fe3ae0, FUN_1433b9530, FUN_1436ca380
 - layout:

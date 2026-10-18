@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 1 (1 not handled) · S2C 3 (1 never sent / opcode unknown)
 
 ## C2S ActivityPacketJoinActivityRequest  `0xA0, 0x1`
-- server: NOT HANDLED · seen in play 2× · received 2×
+- server: NOT HANDLED · seen in play 8×
 - built in: FUN_142da26b0
 - sent by Lua natives: RequestToJoinActivity
 - code (builder in FUN_142da26b0):
@@ -15,18 +15,18 @@ C2S 1 (1 not handled) · S2C 3 (1 never sent / opcode unknown)
 ```
 
 ## S2C ActivityPacketListOfActivities  `0xA0, 0x1`
-- server: SENT (102× in opcode_stats) · seen in play 102×
+- server: SENT (16× in opcode_stats) · seen in play 325×
 - reader: FUN_142d993f0
 - built in: FUN_142d9ec20
 - layout:
 ```
 u32   +0x20
-i32   iVar2
+i32   <local>
   [loop 1: list elements]
 ```
 
 ## S2C ActivityPacketUpdateActivityFeaturedStatus  `0xA0, 0x1`
-- server: SENT (102× in opcode_stats) · seen in play 102×
+- server: SENT (16× in opcode_stats) · seen in play 325×
 - reader: FUN_142d9a7d0
 - built in: FUN_142d9efc0
 
@@ -63,6 +63,6 @@ FUN_142b9a6c0 -> +0x68
   u32   +0x7c
   u32   +0x80
 u64   +0x88
-i32   iVar2
+i32   <local>
   [loop 1: list elements]
 ```

@@ -6,12 +6,12 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 0 (0 not handled) · S2C 3 (0 never sent / opcode unknown)
 
 ## S2C ReferenceDataPacketItemClassDefinitions  `0x2F, 0x1`
-- server: SENT (102× in opcode_stats) · seen in play 102×
+- server: SENT (18× in opcode_stats) · seen in play 327×
 - built in: FUN_142c4ce20
 - text keys: Character.Materials
 
 ## S2C ReferenceDataPacketItemCategoryDefinitions  `0x2F, 0x2`
-- server: SENT (102× in opcode_stats) · seen in play 102×
+- server: SENT (18× in opcode_stats) · seen in play 327×
 - reader: FUN_143ac1da0
 - built in: FUN_142c4ce20, FUN_143ac2b20
 - data sources: ptr:ItemCategories_txt_1452100e8 · ptr:ItemCategory_1452100f8 · ptr:ItemCategories_log_1452100e0 · ptr:ItemCategoryGroups_txt_1452100f0 · ptr:ItemCategoryGroup_145210100
@@ -19,4 +19,4 @@ C2S 0 (0 not handled) · S2C 3 (0 never sent / opcode unknown)
 - log lines: ItemCategoryManager::LoadDefinitions, %d item category definitions loaded · ItemCategoryManager::LoadDefinitions, %d item category group definitions loaded
 
 ## S2C ReferenceDataPacketClientProfileData  `0x2F, 0x3`
-- server: SENT (102× in opcode_stats) · seen in play 102×
+- server: SENT (18× in opcode_stats) · seen in play 327×

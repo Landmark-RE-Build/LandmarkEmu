@@ -21,6 +21,9 @@ namespace LandmarkEmulator.WorldServer.Game
     {
         private static readonly ILogger log = LogManager.GetCurrentClassLogger();
 
+        /// <summary>The voxel store behind every edit (the Environment Server; terrain-service.md).</summary>
+        private static IEnvironmentServer Env => EnvironmentServer.Instance;
+
         public const byte ApplyDiffSub = 1;
         /// <summary>
         /// Upper bound on cells in one edit (sanity only). The client's big brushes touch 140+ cells (2026-10-13); the
@@ -91,6 +94,28 @@ namespace LandmarkEmulator.WorldServer.Game
                 }
             }
             return true;
+        }
+
+        /// <summary>
+        /// The player's building materials for the Environment Server's check (terrain-service.md §5.2 / §5.5): per
+        /// material item the count in the bag and the voxel credit (what <see cref="PayFor"/> works with), so the service
+        /// can refuse an unaffordable edit before it writes anything; the zone then charges exactly the returned delta.
+        /// </summary>
+        internal static MaterialBudget Budget(WorldSession session)
+        {
+            var budget = new MaterialBudget();
+            IReadOnlyCollection<uint> materialItems = BuildMaterials.Items;
+            foreach (var item in session.Inventory.Items)
+                if (materialItems.Contains(item.ItemDefinitionId))
+                {
+                    (uint held, int c) = budget.Items.GetValueOrDefault(item.ItemDefinitionId);
+                    budget.Items[item.ItemDefinitionId] = ((uint)Math.Min(uint.MaxValue, held + (long)item.Count), c);
+                }
+            lock (sync)
+                foreach (((ulong player, uint item), int c) in credit)
+                    if (player == session.PlayerGuid && c != 0)
+                        budget.Items[item] = (budget.Items.GetValueOrDefault(item).Held, c);
+            return budget;
         }
 
         /// <summary>Response (sub 7) result codes the client knows (FUN_1430b6560).</summary>
@@ -176,14 +201,7 @@ namespace LandmarkEmulator.WorldServer.Game
             SendUndoStack(session);
         }
 
-        /// <summary>
-        /// ToolBase from the client: sub 1 Activate (FUN_1433aa0c0) when the player switches build tool. The client
-        /// switches by itself and the Tool family has no reply, so it is only informational.
-        /// </summary>
-        [Network.Message.ZoneMessageHandler(Network.Message.ZoneMessageOpcode.ToolBase)]
-        public static void HandleTool(Network.WorldSession session, Network.Message.Model.ToolRequest request)
-        {
-        }
+        // ToolBase sub 1 ToolPacketActivate (the tool switch) is handled in Building.Tools.cs (HandleTool).
 
         /// <summary>
         /// ToolBase 0x117 sub 2 UndoStackChange (reader FUN_1433b4760, handler in FUN_1433ba050): {u32 undo count,
@@ -240,6 +258,8 @@ namespace LandmarkEmulator.WorldServer.Game
                 bool moved = Props.UndoMove(session, propMove.Guid, redo ? propMove.After : propMove.Before);
                 SendResponse(session, UndoRedoSub, moved ? 0 : InsufficientPermissions);
                 SendUndoStack(session);
+                if (moved)
+                    Achievements.UndoRedone(session, redo);   // Modular Thinking (Achievements.Tutorial.cs)
                 log.Debug($"{session.CharacterName} {(redo ? "redid" : "undid")} a move of prop 0x{propMove.Guid:X}: {(moved ? "ok" : "refused")}.");
                 return;
             }
@@ -248,24 +268,42 @@ namespace LandmarkEmulator.WorldServer.Game
                 var mask = new byte[BlockData.Count / 8];
                 foreach (TerrainEdits.VoxelValue v in cell.Before)
                     mask[v.Index >> 3] |= (byte)(1 << (7 - (v.Index & 7)));
-                if (!TerrainEdits.MayApply(cell.Cell, mask, session.PlayerGuid, zone))
+                if (!ZoneTerrain.MayApply(cell.Cell, mask, session.PlayerGuid, zone))
                 {
                     SendResponse(session, UndoRedoSub, InsufficientPermissions);
                     return;
                 }
             }
-            var delta = new Dictionary<ushort, int>();
-            foreach (var cell in edit.Cells)
-                foreach ((ushort material, int n) in TerrainEdits.MaterialDelta(cell.Cell, redo ? cell.After : cell.Before, zone))
-                    delta[material] = delta.GetValueOrDefault(material) + n;
-            if (!PayFor(session, delta))
+            // The voxels back (or forward) in one Environment Server operation, the cost checked there against the bag
+            // (job type 9 "Construction Undo Redo"; the history itself stays here: it also holds pasted props and prop moves).
+            WriteResult written = edit.Cells.Count == 0 ? new WriteResult()
+                : Env.WriteCells(zone, session.PlayerGuid, edit.Cells.Select(c => (c.Cell, redo ? c.After : c.Before)).ToList(), Budget(session), false);
+            if (written.Unavailable)
             {
-                SendResponse(session, UndoRedoSub, InsufficientMaterials);
+                // A remote Environment Server away (spec §6): the step stays where it was, so it can be tried again.
+                lock (sync)
+                    if (history.TryGetValue(session.PlayerGuid, out var h) && (redo ? h.Undo : h.Redo).Remove(edit))
+                        (redo ? h.Redo : h.Undo).Add(edit);
+                SendResponse(session, UndoRedoSub, Failed);
+                ZoneTerrain.SendUnavailable(session);
                 return;
             }
-            foreach (var cell in edit.Cells)
-                TerrainEdits.Write(cell.Cell, redo ? cell.After : cell.Before, zone, session.PlayerGuid);
-            // A paste's props: undo picks them up (their items come back), redo places them again from the bag.
+            if (written.Result == InsufficientMaterials)
+            {
+                // Nothing was written: the step stays where it was, as above, so it can be tried again once the player has
+                // the materials. It used to stay moved to the other stack, so the next undo went past it to the step before
+                // and the refused one could only be "redone", which changes nothing (bughunt-build B8).
+                lock (sync)
+                    if (history.TryGetValue(session.PlayerGuid, out var h) && (redo ? h.Undo : h.Redo).Remove(edit))
+                        (redo ? h.Redo : h.Undo).Add(edit);
+                SendResponse(session, UndoRedoSub, InsufficientMaterials);
+                SendUndoStack(session);
+                return;
+            }
+            if (!PayFor(session, written.Delta))
+                log.Warn($"{session.CharacterName}'s {(redo ? "redo" : "undo")} was written but its materials could not be taken any more.");
+            // A paste's props: undo picks them up (what paid for each comes back: its bag item, or its recipe materials,
+            // Props.Refund.AsPlaced), redo places them again (bag item first, else materials: Props.PlaceDesignProp).
             for (int i = 0; i < edit.PastedProps.Count; i++)
             {
                 var placed = edit.PastedProps[i];
@@ -279,11 +317,12 @@ namespace LandmarkEmulator.WorldServer.Game
                     edit.PastedProps[i] = (placed.Prop, placed.Position, placed.Rotation,
                         Props.PlaceDesignProp(session, placed.Prop, placed.Position, placed.Rotation, out _));
             }
-            TerrainEdits.Broadcast(edit.Cells.Select(c => c.Cell), zone);
+            ZoneTerrain.Broadcast(edit.Cells.Select(c => c.Cell), zone);
             // ClientUndoRedoRequest (FUN_1430bc070 undo / FUN_1430ba020 redo) changes nothing on the client; the OK
             // Response refreshes its open Voxel Vision ownership view (FUN_1430bc0d0), as after a build.
             SendResponse(session, UndoRedoSub, 0);
             SendUndoStack(session);
+            Achievements.UndoRedone(session, redo);   // Modular Thinking (Achievements.Tutorial.cs)
             log.Debug($"{session.CharacterName} {(redo ? "redid" : "undid")} an edit of {edit.Cells.Count} cell(s).");
         }
 
@@ -299,50 +338,42 @@ namespace LandmarkEmulator.WorldServer.Game
         private static void Heal(WorldSession session, List<(ulong Id, byte[] Changed)> heals, uint zone)
         {
             foreach ((ulong id, byte[] changed) in heals)
-                if (!TerrainEdits.MayApply(id, changed, session.PlayerGuid, zone))
+                if (!ZoneTerrain.MayApply(id, changed, session.PlayerGuid, zone))
                 {
                     SendResponse(session, ApplyDiffSub, InsufficientPermissions);
                     SendCellResponses(session, heals.Select(h => h.Id));
                     foreach ((ulong refused, _) in heals)
-                        TerrainEdits.Resend(session, refused);
+                        ZoneTerrain.Resend(session, refused);
                     return;
                 }
-            // Placed blocks that go come back as materials (negative cost), as Remove does.
-            var refund = new Dictionary<ushort, int>();
-            foreach ((ulong id, byte[] changed) in heals)
-                foreach ((ushort material, int n) in TerrainEdits.MaterialDelta(id,
-                    TerrainEdits.Read(id, changed, zone).Where(v => v.Flags != 0).Select(v => new TerrainEdits.VoxelValue(v.Index, 0, 0, 0, 0, 0)).ToList(), zone))
-                    refund[material] = refund.GetValueOrDefault(material) + n;
-            PayFor(session, refund);
-            var record = new Edit(zone, "Heal");
-            int repaired = 0;
-            foreach ((ulong id, byte[] changed) in heals)
+            // One Environment Server operation (LocalEnvironmentServer.ClearCells: the loop that was here): every overridden
+            // voxel under the brush cleared; placed blocks that go come back as materials (negative cost), as Remove does.
+            ClearResult cleared = Env.ClearCells(zone, session.PlayerGuid, heals);
+            if (cleared.Unavailable)
             {
-                List<TerrainEdits.VoxelValue> before = TerrainEdits.Read(id, changed, zone);
-                var cleared = before.Where(v => v.Flags != 0)
-                    .Select(v => new TerrainEdits.VoxelValue(v.Index, 0, 0, 0, 0, 0)).ToList();
-                if (cleared.Count == 0)
-                    continue;
-                var mask = new byte[BlockData.Count / 8];
-                foreach (TerrainEdits.VoxelValue v in cleared)
-                    mask[v.Index >> 3] |= (byte)(1 << (7 - (v.Index & 7)));
-                List<TerrainEdits.VoxelValue> old = TerrainEdits.Read(id, mask, zone);
-                TerrainEdits.Write(id, cleared, zone, session.PlayerGuid);
-                record.Cells.Add((id, old, cleared));
-                repaired += cleared.Count;
+                SendResponse(session, ApplyDiffSub, Failed);
+                SendCellResponses(session, heals.Select(h => h.Id));
+                foreach ((ulong refused, _) in heals)
+                    ZoneTerrain.Resend(session, refused);
+                ZoneTerrain.SendUnavailable(session);
+                return;
             }
+            PayFor(session, cleared.Delta);
+            var record = new Edit(zone, "Heal");
+            record.Cells.AddRange(cleared.Cells);
+            int repaired = cleared.Voxels;
             if (record.Cells.Count > 0)
                 Remember(session, record);
             SendResponse(session, ApplyDiffSub, 0);
             SendCellResponses(session, heals.Select(h => h.Id));
             // Back to the server's truth for the healer (placed blocks reappear) and the change to everyone else.
             foreach ((ulong id, _) in heals)
-                if (TerrainEdits.Has(id, zone))
-                    TerrainEdits.Resend(session, id);
+                if (Env.Has(id, zone))
+                    ZoneTerrain.Resend(session, id);
             if (record.Cells.Count > 0)
             {
-                TerrainEdits.Broadcast(record.Cells.Select(c => c.Cell), session, zone);
-                Observe(session, zone, ObservedHeal, record);
+                ZoneTerrain.Broadcast(record.Cells.Select(c => c.Cell), session, zone);
+                Observe(session, zone, ObservedHeal, record, stamp: true);   // bool unused for Heal (operation 4)
             }
             log.Debug($"{session.CharacterName} healed {repaired} voxels in {heals.Count} cell(s).");
         }
@@ -371,7 +402,7 @@ namespace LandmarkEmulator.WorldServer.Game
         private static void UndoLocalEdit(WorldSession session, IEnumerable<ulong> cells)
         {
             foreach (ulong cell in cells)
-                TerrainEdits.Resend(session, cell);
+                ZoneTerrain.Resend(session, cell);
         }
 
         /// <summary>
@@ -436,15 +467,22 @@ namespace LandmarkEmulator.WorldServer.Game
 
         /// <summary>
         /// The ResponseObserved operation for an edit. The request's operation kind (ApplyDiffRequest +0xe0, set by the
-        /// client per operation: 1 box/fill placement without an aimed cell and 2 with one, FUN_1430bb0e0; 3 any
-        /// sculpting brush, FUN_1430ba210; 4–9 the other operations) does not say which sculpting brush was used, so
-        /// that comes from what the edit did: only removed voxels is Delete, only new materials on solid voxels is Paint,
-        /// only added voxels is a placement, anything else (moved surfaces) Smooth.
+        /// client per operation: 1 box/fill placement without an aimed cell and 2 with one, FUN_1430bb0e0 (0.695
+        /// FUN_143165f30, request +0x118); 3 any sculpting brush, FUN_1430ba210 (0.695 FUN_143164e90); 4–9 the other
+        /// operations) does not say which sculpting brush was used. That comes from the tool the player last switched
+        /// to (ToolPacketActivate, Building.Tools.cs: Add / Fill / Paste → placement, Remove → Delete, Heal, Smooth,
+        /// Paint) and, when no tool is known (an item activation, or a client that never sent the switch), from what the
+        /// edit did: only removed voxels is Delete, only new materials on solid voxels is Paint, only added voxels is a
+        /// placement, anything else (moved surfaces) Smooth. <paramref name="stamp"/> is the packet's bool: the Stamp
+        /// placement effect (Add tool, Mesh Shapes, paste) rather than the Fill Brush's no-destroy one.
         /// </summary>
-        private static uint ObservedOperation(uint kind, Edit record)
+        private static uint ObservedOperation(WorldSession session, uint kind, Edit record, out bool stamp)
         {
+            bool known = ObservedByTool(ActiveTool(session), out uint byTool, out stamp);
             if (kind == 1 || kind == 2)
                 return kind;
+            if (known)
+                return byTool;
             int added = 0, removed = 0, painted = 0, other = 0;
             foreach ((_, List<TerrainEdits.VoxelValue> before, List<TerrainEdits.VoxelValue> after) in record.Cells)
                 for (int i = 0; i < before.Count && i < after.Count; i++)
@@ -473,9 +511,9 @@ namespace LandmarkEmulator.WorldServer.Game
         /// ResponseObserved (reader FUN_1430b11e0): u8 sub, u32 operation, the edit's bounds as two double×4 (global
         /// VoxelFarm units, dm; the client subtracts its scene origin and scales by 0.1 to metres), u32×3 placement
         /// direction (the client's own box effects use 0,1,0), bool placement replaces what was there
-        /// (ShapePlacement vs ShapePlacementNoDestroy).
+        /// (ShapePlacement vs ShapePlacementNoDestroy; brush 4 Stamp vs 11 FillStamp in the client's FUN_143166bd0).
         /// </summary>
-        private static void Observe(WorldSession session, uint zone, uint operation, Edit record)
+        private static void Observe(WorldSession session, uint zone, uint operation, Edit record, bool stamp)
         {
             double minX = double.MaxValue, minY = double.MaxValue, minZ = double.MaxValue;
             double maxX = double.MinValue, maxY = double.MinValue, maxZ = double.MinValue;
@@ -498,12 +536,16 @@ namespace LandmarkEmulator.WorldServer.Game
             var centre = new System.Numerics.Vector3((float)(minX + maxX) / 20f, (float)(minY + maxY) / 20f, (float)(minZ + maxZ) / 20f);
             SendObserved(PlayerManager.InZone(zone).Where(viewer => viewer != session
                 && System.Numerics.Vector3.Distance(viewer.Position, centre) <= ObservedRange),
-                operation, (minX, minY, minZ), (maxX, maxY, maxZ));
+                operation, (minX, minY, minZ), (maxX, maxY, maxZ), stamp);
         }
 
-        /// <summary>Sends ResponseObserved (layout on <see cref="Observe"/>) for an edit box in global dm.</summary>
+        /// <summary>
+        /// Sends ResponseObserved (layout on <see cref="Observe"/>) for an edit box in global dm. <paramref name="stamp"/>
+        /// is the trailing bool: true for the Stamp placement effect (brush 4), false for the Fill Brush's (brush 11,
+        /// no-destroy); it only matters for operations 0-2.
+        /// </summary>
         public static void SendObserved(IEnumerable<WorldSession> viewers, uint operation, (double X, double Y, double Z) min,
-            (double X, double Y, double Z) max)
+            (double X, double Y, double Z) max, bool stamp = true)
         {
             var output = new List<byte>();
             var writer = new GamePacketWriter(output);
@@ -514,7 +556,7 @@ namespace LandmarkEmulator.WorldServer.Game
             writer.Write(0u);
             writer.Write(1u);
             writer.Write(0u);
-            writer.Write(true);
+            writer.Write(stamp);
             byte[] packet = output.ToArray();
             foreach (WorldSession viewer in viewers)
                 viewer.EnqueueMessage(Network.Message.ZoneMessageOpcode.VoxelConstructionBase, packet);
@@ -557,7 +599,13 @@ namespace LandmarkEmulator.WorldServer.Game
             if (sub == VoxelOwnership.RequestSub)
             {
                 // ClientOwnershipRequest: Voxel Vision's builders of a site (VoxelOwnership.cs).
-                VoxelOwnership.HandleRequest(session, body);
+                ZoneTerrain.HandleOwnershipRequest(session, body);
+                return;
+            }
+            if (sub == OffGridPasteSub)
+            {
+                // OffGridPasteClientRequest: a paste at a free position and turn (BuildingOffGridPaste.cs).
+                HandleOffGridPaste(session, body);
                 return;
             }
             if (sub == AddTemporaryBlockSub)
@@ -575,7 +623,7 @@ namespace LandmarkEmulator.WorldServer.Game
             uint zone = session.ZoneId;   // every landscape keeps its own edits (TerrainEdits)
             var watch = System.Diagnostics.Stopwatch.StartNew();
             long vertexOnlyBefore = System.Threading.Interlocked.Read(ref BlockData.VertexOnlySeen);
-            var edits = new List<(ulong Id, byte[] Changed, BlockData Result)>();
+            var edits = new List<(ulong Id, byte[] Changed, BlockData Result, byte[] Packed)>();
             var heals = new List<(ulong Id, byte[] Changed)>();
             var seen = new List<ulong>();
             Dictionary<ulong, (uint Base, uint New)> versions = null;
@@ -596,6 +644,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     uint type = BitConverter.ToUInt32(body, p + 16);
                     int length = BitConverter.ToInt32(body, p + 20);
                     p += 24;
+                    int blob = p;
                     byte[] raw = TerrainStore.Unpack(body, p, length);
                     p += length;
                     if (type - 2u < 2u)
@@ -606,7 +655,9 @@ namespace LandmarkEmulator.WorldServer.Game
                     if (raw.Length == changed.Length)
                         heals.Add((id, changed));
                     else
-                        edits.Add((id, changed, BlockData.Deserialize(raw, changed.Length)));
+                        // The packed blob as it came goes to a remote Environment Server unchanged (spec §8, no re-encoding).
+                        edits.Add((id, changed, BlockData.Deserialize(raw, changed.Length),
+                            EnvironmentServer.IsRemote ? body.AsSpan(blob, length).ToArray() : null));
                 }
                 versions = ReadEditVersions(body, p, out kind);
             }
@@ -630,8 +681,8 @@ namespace LandmarkEmulator.WorldServer.Game
             }
 
             // All or nothing: every cell must be allowed and the materials for the whole edit paid for.
-            foreach ((ulong id, byte[] changed, _) in edits)
-                if (!TerrainEdits.MayApply(id, changed, session.PlayerGuid, zone))
+            foreach ((ulong id, byte[] changed, _, _) in edits)
+                if (!ZoneTerrain.MayApply(id, changed, session.PlayerGuid, zone))
                 {
                     log.Info($"{session.CharacterName} tried to build in cell {id:X} without permission.");
                     SendResponse(session, ApplyDiffSub, InsufficientPermissions);
@@ -640,92 +691,80 @@ namespace LandmarkEmulator.WorldServer.Game
                     return;
                 }
             long tCheck = watch.ElapsedMilliseconds;
-            // One read pass per cell: the undo record's "before" and the material cost (TerrainEdits.Prepare).
-            var delta = new Dictionary<ushort, int>();
-            var prepared = new List<(ulong Id, int[] Indices, List<TerrainEdits.VoxelValue> Before, BlockData Result)>();
-            var stale = new List<ulong>();
-            foreach ((ulong id, byte[] changed, BlockData result) in edits)
+            // The edit as one transaction in the Environment Server (terrain-service.md §5.5): cells edited from an older
+            // copy left out, the material cost checked against the player's bag (the budget, PayFor's arithmetic), then
+            // one write pass per cell (LocalEnvironmentServer.ApplyEdit: TerrainEdits.Prepare / Commit, as here before).
+            var request = new EditRequest
             {
-                // Edited from an older copy (someone else changed the cell meanwhile): not applied or charged; the
-                // client gets the server's cell, which replaces its own drawing of it.
-                if (versions != null && versions.TryGetValue(id, out var v)
-                    && TerrainEdits.LayerVersion(id, zone, TerrainEdits.BuildLayer) is uint server && v.Base != server)
+                Zone = zone, Owner = session.PlayerGuid, Budget = Budget(session), Compare = CompareWithClient && log.IsDebugEnabled
+            };
+            foreach ((ulong id, byte[] changed, BlockData result, byte[] packed) in edits)
+            {
+                (uint Base, uint New) v = default;
+                bool has = versions != null && versions.TryGetValue(id, out v);
+                request.Cells.Add(new EditCell
                 {
-                    log.Debug($"{session.CharacterName}: edit of cell {id:X} based on version {v.Base:X}, server has {server:X}; not applied.");
-                    stale.Add(id);
-                    continue;
-                }
-                (int[] indices, List<TerrainEdits.VoxelValue> before) = TerrainEdits.Prepare(id, changed, result, zone, delta);
-                prepared.Add((id, indices, before, result));
+                    Cell = id, Changed = changed, Result = result, Packed = packed, HasVersions = has, BaseVersion = v.Base, NewVersion = v.New
+                });
             }
-            if (!PayFor(session, delta))
+            EditResult done = Env.ApplyEdit(request);
+            long tApply = watch.ElapsedMilliseconds;
+            if (done.Unavailable)
+            {
+                // A remote Environment Server away (spec §6): refused at once, every cell answered, the server's copy back
+                // where the zone has it, and the reason shown (LostClaimServerConnection 0xF9/0x12 → text 562155).
+                log.Info($"{session.CharacterName}'s build edit refused: the Environment Server is unreachable.");
+                SendResponse(session, ApplyDiffSub, Failed);
+                SendCellResponses(session, edits.Select(e => e.Id));
+                UndoLocalEdit(session, edits.Select(e => e.Id));
+                ZoneTerrain.SendUnavailable(session);
+                return;
+            }
+            foreach (ulong id in done.Stale)
+                log.Debug($"{session.CharacterName}: edit of cell {id:X} based on version "
+                    + $"{(versions != null && versions.TryGetValue(id, out var sv) ? sv.Base : 0):X}, server has "
+                    + $"{Env.LayerVersion(id, zone, TerrainEdits.BuildLayer):X}; not applied.");
+            if (done.Result == InsufficientMaterials)
             {
                 SendResponse(session, ApplyDiffSub, InsufficientMaterials);
                 SendCellResponses(session, edits.Select(e => e.Id));
                 UndoLocalEdit(session, edits.Select(e => e.Id));
                 return;
             }
-            foreach ((ushort material, int n) in delta)
+            // The budget covered it; the bag can only have changed if something else took items in between (logged).
+            if (!PayFor(session, done.Delta))
+                log.Warn($"{session.CharacterName}'s edit was written but its materials could not be taken any more.");
+            foreach ((ushort material, int n) in done.Delta)
                 if (n > 0)
                     Achievements.BlocksPlaced(session, BuildMaterials.NameOf(material), (uint)n);
                 else if (n < 0)
                     Achievements.BlocksRemoved(session, BuildMaterials.NameOf(material), (uint)-n);
-            long tDelta = watch.ElapsedMilliseconds;
-            var cells = new List<ulong>();
             var record = new Edit(zone);
-            int voxels = 0;
-            long tBefore = 0, tWrite = 0, tAfter = 0;
-            // One write pass per cell (permission was checked for the whole edit above, MayApply); the written values
-            // are the undo record's "after".
-            foreach ((ulong id, int[] indices, List<TerrainEdits.VoxelValue> before, BlockData result) in prepared)
-            {
-                if (indices.Length == 0)
-                    continue;
-                long t0 = watch.ElapsedTicks;
-                uint clientVersion = versions != null && versions.TryGetValue(id, out var v) ? v.New : 0;
-                List<TerrainEdits.VoxelValue> after = TerrainEdits.Commit(id, indices, result, zone, session.PlayerGuid,
-                    clientVersion: clientVersion);
-                tWrite += watch.ElapsedTicks - t0;
-                voxels += indices.Length;
-                cells.Add(id);
-                record.Cells.Add((id, before, after));
-            }
-            long tApply = watch.ElapsedMilliseconds;
-            if (CompareWithClient && log.IsDebugEnabled)
-            {
-                // Does the server now hold exactly the client's cell? (first 16 cells; TerrainEdits.Compare)
-                int cf = 0, cm = 0, co = 0, outside = 0, compared = 0;
-                lock (TerrainEdits.LastOutside)
-                    TerrainEdits.LastOutside.Clear();
-                foreach ((ulong id, byte[] changed, BlockData result) in edits.Take(16))
-                {
-                    if (stale.Contains(id))
-                        continue;
-                    var c = TerrainEdits.Compare(id, zone, result, changed);
-                    cf += c.Flags; cm += c.Materials; co += c.Offsets; outside += c.OutsideMask; compared++;
-                }
-                log.Debug($"{session.CharacterName}: client vs server cell after edit ({compared} cells): {cf} flag, {cm} material, "
-                    + $"{co} offset differences, {outside} outside the changed mask"
-                    + (outside > 0 ? " (client/server flags: " + string.Join(", ", TerrainEdits.LastOutside.Select(p => $"{p.Key.Client}/{p.Key.Server}×{p.Value}")) + ")." : "."));
-            }
+            record.Cells.AddRange(done.Cells);
+            List<ulong> cells = done.Cells.Select(c => c.Cell).ToList();
+            if (done.CompareReport != null)
+                log.Debug($"{session.CharacterName}: {done.CompareReport}");
             // The client waits for this before it sends its next edit (an error code shows its own message).
             SendResponse(session, ApplyDiffSub, 0);
             SendCellResponses(session, edits.Select(e => e.Id));
-            UndoLocalEdit(session, stale);
-            long tAfterStart = watch.ElapsedTicks;
+            UndoLocalEdit(session, done.Stale);
             if (record.Cells.Count > 0)
+            {
                 Remember(session, record);
-            tAfter = watch.ElapsedTicks - tAfterStart;
-            double ms = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+                Achievements.BuildEdit(session, kind);   // Building Block Basics paint step (Achievements.Tutorial.cs)
+            }
             if (cells.Count == 0)
                 return;
-            TerrainEdits.Broadcast(cells, session, zone);
-            Observe(session, zone, ObservedOperation(kind, record), record);
+            ZoneTerrain.Broadcast(cells, session, zone);
+            // The effect others see: from the tool the builder switched to (Add / Mesh Shapes = Stamp, Fill Brush =
+            // FillStamp, Remove, Heal, Smooth, Paint), else from what the edit did.
+            uint operation = ObservedOperation(session, kind, record, out bool stamp);
+            Observe(session, zone, operation, record, stamp);
             // Nothing goes back to the builder: their client committed the edit to layer 1 and updated its own
             // manifest when the per-cell reply confirmed it (FUN_143f52b60), the same layer the server keeps it in.
-            log.Debug($"{session.CharacterName} built: {voxels} voxels in {cells.Count} cell(s) ({watch.ElapsedMilliseconds} ms: "
-                + $"read {tParse}, checks {tCheck - tParse}, cost {tDelta - tCheck}, apply {tApply - tDelta} [undo-before {tBefore * ms:0}, write {tWrite * ms:0}, "
-                + $"undo-after {tAfter * ms:0}], rest {watch.ElapsedMilliseconds - tApply}); vertex-only voxels "
+            log.Debug($"{session.CharacterName} built: {done.Voxels} voxels in {cells.Count} cell(s) ({watch.ElapsedMilliseconds} ms: "
+                + $"read {tParse}, checks {tCheck - tParse}, store {tApply - tCheck}{(EnvironmentServer.IsRemote ? " (Environment Server)" : "")}, "
+                + $"rest {watch.ElapsedMilliseconds - tApply}); vertex-only voxels "
                 + $"{System.Threading.Interlocked.Read(ref BlockData.VertexOnlySeen) - vertexOnlyBefore} ({(BlockData.KeepVertexOnly ? "kept" : "dropped")}).");
         }
     }

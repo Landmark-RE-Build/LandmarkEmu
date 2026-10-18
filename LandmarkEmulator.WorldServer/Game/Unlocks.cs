@@ -1,4 +1,4 @@
-using LandmarkEmulator.Database.Character.Model;
+﻿using LandmarkEmulator.Database.Character.Model;
 using LandmarkEmulator.Shared.Database;
 using LandmarkEmulator.WorldServer.Network;
 using System.Collections.Concurrent;
@@ -22,13 +22,43 @@ namespace LandmarkEmulator.WorldServer.Game
         /// seen, 10 first-time events turned off (value 1; see <see cref="FirstTimeEvents"/>), 11 a build site the player
         /// rated (value: the claim id; see <see cref="Ratings"/>), 12 the music chosen for the player's build site,
         /// 13 the build site timer in days and 14 the last login day (days since 2000; see <see cref="SiteUpkeep"/>),
-        /// 15 daily goals, 16 a Player Studio design the player has taken (value: the product id; see <see cref="Commerce"/>).
+        /// 15 daily goals, 16 a Player Studio design the player has taken (value: the product id; see <see cref="Commerce"/>),
+        /// 17 the unique days the player has logged in and 18 an absence already warned about (see <see cref="SiteUpkeep"/>),
+        /// 19 Build Site Expansions used (extra site slots; see <see cref="Claims.SlotsOf"/>), 20 a Starter Castle design
+        /// the character has beyond the defaults (value: its ExportedTemplate id 1119-1324, the client's
+        /// ExportedTemplateCategoryMap category 1; value 0 marks the one-time grant of all pieces to characters made
+        /// before 2026-10-16; see <see cref="Templates.HasStarterPiece"/>).
         /// Sizes are single rows
         /// holding the current size.
+        /// 21 a Lost Crystal loot lockout (outpost index and end hour; see Outposts.LockedOut).
+        /// 22 a Reward Chest of the character's that was emptied while they were offline, not yet counted towards goal
+        /// objective 2209 (value: the chest guid folded to 32 bits; see <see cref="RewardChests"/>).
+        /// 23 Crimson Parlor customization knowledge from an unlocker item (value: type &lt;&lt; 24 | id, type 3 a
+        /// CharacterCreateOptions id, 4 an ArtTint id, as in CharacterCustomization 0x11C sub 2; see <see cref="Unlockers"/>).
+        /// 24 an armour / weapon recipe that dropped today (value: day since 2000 &lt;&lt; 2 | 1 armour, 2 weapon; only
+        /// today's rows are kept; see <see cref="Pacing.NoteRecipeDrop"/>).
+        /// 25 a Lost Crystal loot lockout at an outpost of another landscape than the home continent (outpost index ≥ 128
+        /// in the top 12 bits, end hour since 2016 in the low 20; kind 21 keeps the home continent's rows unchanged; see
+        /// Outposts.LockedOut).
+        /// 26 an entitlement package already granted (value: the package id, 1 founder, 2 Year Zero, 3 promotional; see
+        /// <see cref="Entitlements"/>).
+        /// 27-31 the grief state (single rows; see <see cref="Grief"/>): 27 grief points, 28 damage points, 29 grief level,
+        /// 30 the minute (since 2016) grief last decayed, 31 the minute a grief suspension ends.
+        /// 32 a Player Studio creator share (commerce service CommercePayout) already mailed to this character (value: the
+        /// payout id): written straight to the database with <c>CharacterDatabase.TryClaimUnlock</c> before the mail, so a
+        /// share handed to two worlds, or handed again after its confirmation was lost, is mailed once (review 2026-10-18 #1).
+        /// 33 the Lumens this character spent on the store and on Player Studio designs (single row; the Player Studio
+        /// reviewer rule, <see cref="Commerce.MayReview"/>).
+        /// 34 the starter kit was given (value 1; a character holding items at its first login after 2026-10-18 is marked
+        /// too), so an emptied inventory gets no second kit (<see cref="Inventory.Inventory"/>).
         /// </summary>
         public const uint TitleOwned = 1, TitleShown = 2, BagSize = 3, PropTaught = 4, VaultSize = 5, DesignStorage = 6,
             SiteContents = 7, TrackedAchievement = 8, FirstTimeEventSeen = 9, FirstTimeEventsOff = 10,
-            ClaimVote = 11, SiteMusic = 12, UpkeepDays = 13, UpkeepLastLoginDay = 14, DailyGoal = 15, StudioDesign = 16;
+            ClaimVote = 11, SiteMusic = 12, UpkeepDays = 13, UpkeepLastLoginDay = 14, DailyGoal = 15, StudioDesign = 16,
+            UpkeepLoginDays = 17, UpkeepWarned = 18, SiteExpansions = 19, StarterDesign = 20, CrystalLockout = 21,
+            RewardChestThanks = 22, ParlorKnowledge = 23, RecipeDropDay = 24, CrystalLockoutWide = 25,
+            EntitlementGranted = 26, GriefPoints = 27, GriefDamagePoints = 28, GriefLevel = 29, GriefDecayedAt = 30,
+            GriefSuspendedUntil = 31, StudioPayoutMailed = 32, StoreSpent = 33, StarterKitGiven = 34;
 
         private static readonly ConcurrentDictionary<ulong, HashSet<(uint Kind, uint Value)>> cache = new();
 

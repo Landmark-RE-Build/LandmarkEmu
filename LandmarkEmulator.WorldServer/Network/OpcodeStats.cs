@@ -37,7 +37,46 @@ namespace LandmarkEmulator.WorldServer.Network
                 return;
             string key = direction + "\t" + Convert.ToHexString(data[..Math.Min(4, data.Length)]);
             counts.AddOrUpdate(key, 1, (_, n) => n + 1);
+            // The admin monitor's packet table (/admin/monitor, the server-side analogue of the client's page 27
+            // PACKET MONITOR): counts and bytes since start, never flushed. Bounded so odd first bytes can't grow it forever.
+            if (!live.TryGetValue(key, out LiveStat stat))
+            {
+                if (live.Count >= MaxLiveKeys)
+                    return;
+                stat = live.GetOrAdd(key, _ => new LiveStat());
+            }
+            Interlocked.Increment(ref stat.Count);
+            Interlocked.Add(ref stat.Bytes, data.Length);
+            long worst;
+            while (data.Length > (worst = Interlocked.Read(ref stat.Worst)) && Interlocked.CompareExchange(ref stat.Worst, data.Length, worst) != worst)
+            {
+            }
         }
+
+        private sealed class LiveStat
+        {
+            public long Count, Bytes, Worst;
+        }
+
+        private const int MaxLiveKeys = 4096;
+        private static readonly ConcurrentDictionary<string, LiveStat> live = new();
+        private static readonly DateTime started = DateTime.UtcNow;
+
+        /// <summary>One row of the admin monitor's packet table: direction ("in" / "out"), the first wire bytes (hex).</summary>
+        public sealed record Row(string Direction, string Bytes, long Count, long TotalBytes, long WorstBytes);
+
+        /// <summary>Since when the live counts run (the server start).</summary>
+        public static DateTime Since => started;
+
+        /// <summary>The live counts (admin monitor), heaviest first.</summary>
+        public static List<Row> Snapshot() => live
+            .Select(p =>
+            {
+                int tab = p.Key.IndexOf('\t');
+                return new Row(p.Key[..tab], p.Key[(tab + 1)..], Interlocked.Read(ref p.Value.Count),
+                    Interlocked.Read(ref p.Value.Bytes), Interlocked.Read(ref p.Value.Worst));
+            })
+            .OrderByDescending(r => r.TotalBytes).ToList();
 
         /// <summary>Adds the counts gathered since the last flush to the file (lines: direction, first bytes, count).</summary>
         public static void Flush()

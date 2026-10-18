@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 1 (0 not handled) · S2C 2 (0 never sent / opcode unknown)
 
 ## C2S PreferencePacketClientXml  `0x3`
-- server: handled · seen in play 9×
+- server: handled · seen in play 147×
 - writer: FUN_142be4a60
 - built in: FUN_142cb1090, FUN_1432b62f0
 - sent by Lua natives: Logout

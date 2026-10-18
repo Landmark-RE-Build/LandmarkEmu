@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 3 (1 not handled) · S2C 8 (1 never sent / opcode unknown)
 
 ## C2S TerrainCellPacketClientCellRequest  `0xEC, 0x1`
-- server: handled · seen in play 81× · received 81×
+- server: handled · seen in play 1426× · received 50×
 - built in: FUN_1430acba0
 - code (builder in FUN_1430acba0):
 ```
@@ -14,7 +14,7 @@ C2S 3 (1 not handled) · S2C 8 (1 never sent / opcode unknown)
 ```
 
 ## C2S TerrainCellPacketClientPendingRequestTimeout  `0xEC, 0x2`
-- server: handled
+- server: handled · seen in play 3016×
 - built in: FUN_1430aca10
 - code (builder in FUN_1430aca10):
 ```
@@ -30,22 +30,22 @@ C2S 3 (1 not handled) · S2C 8 (1 never sent / opcode unknown)
 ```
 
 ## S2C TerrainCellPacketDetectVeins  `0xEC, 0x10`
-- server: SENT (80× in opcode_stats) · seen in play 80×
+- server: SENT (88× in opcode_stats) · seen in play 684×
 - reader: FUN_14309bd90
 - built in: FUN_1430a8410
 - layout:
 ```
 u16   +0x8
 u32   +0x10
-i32   iVar2
+i32   <local>
   [loop 1: list elements]
 u32   +0x3c
 u32   +0x40
 u32   +0x44
 FUN_14309db50 -> +0x48
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
-  u32   uVar5
+  u32   <local>
 u32   +0x38
 ```
 - handled in FUN_1430a8410 (its switch case for this message)
@@ -55,7 +55,7 @@ u32   +0x38
 ```
 
 ## S2C TerrainCellPacketClientCellUpdateResponse  `0xEC, 0x3`
-- server: SENT (opcode used in the server code)
+- server: SENT (769× in opcode_stats) · seen in play 15045×
 - reader: FUN_14309bcc0
 - built in: FUN_1430a8410
 - layout:
@@ -74,7 +74,7 @@ str   +0x28
 ```
 
 ## S2C TerrainCellPacketUpToDateCells  `0xEC, 0x4`
-- server: SENT (opcode used in the server code)
+- server: SENT (opcode used in the server code) · seen in play 1443×
 - reader: FUN_14309f380
 - built in: FUN_1430a8410
 - handled in FUN_1430a8410 (its switch case for this message)
@@ -84,7 +84,7 @@ str   +0x28
 ```
 
 ## S2C TerrainCellPacketCellsUpdate  `0xEC, 0x5`
-- server: SENT (3185× in opcode_stats) · seen in play 3185×
+- server: SENT (1274× in opcode_stats) · seen in play 74129×
 - reader: FUN_14309bbd0
 - built in: FUN_1430a8410
 - layout:
@@ -92,22 +92,22 @@ str   +0x28
 u16   +0x8
 u32   +0x10
 FUN_14309e030 -> +0x18
-  i32   iVar3
+  i32   <local>
     [loop 1: list elements]
   FUN_14309ba00 -> +0x18
     u64   +0x18
     u32   +0x20
-    i32   iVar3
+    i32   <local>
       [loop 1: list elements]
     FUN_14309c3d0 -> +0x18
       u32   +0x18
       u32   +0x1c
       u8    +0x20
-      i32   iVar3
+      i32   <local>
 FUN_14309e260 -> +0x30
-  i32   iVar5
+  i32   <local>
     [loop 1: list elements]
-  u64   *puVar2
+  u64   <element>
 bool  +0x48
 bool  +0x49
 ```
@@ -127,7 +127,7 @@ u16   +0x8
 u32   +0x10
 u16   +0x18
 FUN_14309e3f0 -> +0x20
-  i32   iVar7
+  i32   <local>
     [loop 1: list elements]
 u64   +0x70
 ```
@@ -146,9 +146,9 @@ u64   +0x70
 u16   +0x8
 u32   +0x10
 FUN_14309df20 -> +0x18
-  i32   iVar5
+  i32   <local>
     [loop 1: list elements]
-  u64   *puVar3
+  u64   <element>
 u64   +0x30
 ```
 - handled in FUN_1430a8410 (its switch case for this message)
@@ -158,14 +158,14 @@ u64   +0x30
 ```
 
 ## S2C TerrainCellPacketModifiedCellManifest  `0xEC, 0xA`
-- server: SENT (222× in opcode_stats) · seen in play 222×
+- server: SENT (24× in opcode_stats) · seen in play 1159×
 - reader: FUN_14309c0c0
 - built in: FUN_1430a8410
 - layout:
 ```
 u16   +0x8
 u32   +0x10
-i32   iVar2
+i32   <local>
 FUN_142cb21a0 -> +0x0
   FUN_143734c80 -> +0x0
       [loop 1: list elements]
@@ -183,7 +183,7 @@ FUN_142cb21a0 -> +0x0
 ```
 
 ## S2C TerrainCellPacketModifiedCellManifestUpdate  `0xEC, 0xB`
-- server: SENT (1158× in opcode_stats) · seen in play 1158×
+- server: SENT (127× in opcode_stats) · seen in play 35754×
 - reader: FUN_14309c1b0
 - built in: FUN_1430a8410
 - layout:

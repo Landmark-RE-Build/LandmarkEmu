@@ -15,7 +15,7 @@ C2S 5 (4 not handled) · S2C 16 (16 never sent / opcode unknown)
 ```
 
 ## C2S UIEventTriggeredPacket  `0x32, 0x17`
-- server: handled (sub in handler) · seen in play 9× · received 9×
+- server: handled (sub in handler) · seen in play 861× · received 91×
 - built in: FUN_1430b6910, FUN_143517ca0, FUN_14352b2e0
 - sent by Lua natives: Paste, UIEventTriggered
 - UI using them: BuildModePaletteWidget, BuildModeWidget, BuildModeWidget, CharacterEquipment, ClaimManagementWindow, ClaimWalkO
@@ -106,7 +106,7 @@ u32   +0x28
 u64   +0x30
 u32   +0x38
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 u32   +0x50
 ```
 - handled in FUN_143346ad0 (its switch case for this message)
@@ -169,7 +169,7 @@ bool  +0x20
 ```
 
 ## S2C ActivityProfileListPacket  `0x32, 0x10000000E`
-- server: NOT SENT (not in opcode_stats, not in the server code) · seen in play 102×
+- server: NOT SENT (not in opcode_stats, not in the server code) · seen in play 325×
 - reader: FUN_142c57d80
 - built in: FUN_142d9e8d0
 - Lua events/calls: ActivityPortal:OnJoinError

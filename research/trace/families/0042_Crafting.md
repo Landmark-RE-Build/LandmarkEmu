@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 16 (8 not handled) · S2C 20 (16 never sent / opcode unknown)
 
 ## C2S Crafting::RecipeStartRequestPacket  `0x42, 0x1`
-- server: handled (sub in handler)
+- server: handled (sub in handler) · seen in play 3×
 - built in: FUN_142e9e1a0, FUN_142e9f810
 - code (builder in FUN_142e9e1a0):
 ```
@@ -73,7 +73,7 @@ C2S 16 (8 not handled) · S2C 20 (16 never sent / opcode unknown)
 - server: handled (sub in handler)
 
 ## C2S Crafting::RecipecComponentImageSetIdsRequestPacket  `0x42, 0x1C`
-- server: handled (sub in handler) · seen in play 102× · received 102×
+- server: handled (sub in handler) · seen in play 327× · received 16×
 - built in: FUN_1434a7a20
 - code (builder in FUN_1434a7a20):
 ```
@@ -93,7 +93,7 @@ C2S 16 (8 not handled) · S2C 20 (16 never sent / opcode unknown)
 ```
 
 ## C2S Crafting::RecipePacketPlayerOpenCraftingWindow  `0x42, 0x23`
-- server: handled (sub in handler)
+- server: handled (sub in handler) · seen in play 1×
 - built in: FUN_142ea0fe0
 - code (builder in FUN_142ea0fe0):
 ```
@@ -101,7 +101,7 @@ C2S 16 (8 not handled) · S2C 20 (16 never sent / opcode unknown)
 ```
 
 ## C2S Crafting::RecipeCraftWindowEnableRequestPacket  `0x42, 0x24`
-- server: handled (sub in handler)
+- server: handled (sub in handler) · seen in play 8×
 - built in: FUN_142e99610, FUN_142ea0f80
 - code (builder in FUN_142e99610):
 ```
@@ -113,7 +113,7 @@ C2S 16 (8 not handled) · S2C 20 (16 never sent / opcode unknown)
 ```
 
 ## C2S Crafting::RecipeCancelRequestPacket  `0x42, 0x3`
-- server: handled (sub in handler)
+- server: handled (sub in handler) · seen in play 2×
 - built in: FUN_142e9f790
 - code (builder in FUN_142e9f790):
 ```
@@ -150,7 +150,7 @@ C2S 16 (8 not handled) · S2C 20 (16 never sent / opcode unknown)
 
 ## S2C Crafting::BaseRecipePacket  `0x42`
 - resolved by hand: placed by placeclasses.py (opcode only): FUN_142e9acd0
-- server: SENT (102× in opcode_stats)
+- server: SENT (16× in opcode_stats)
 - built in: FUN_142e9acd0
 
 ## S2C Crafting::RecipeRefiningProcessResponsePacket  `0x42, 0x10`
@@ -161,7 +161,7 @@ C2S 16 (8 not handled) · S2C 20 (16 never sent / opcode unknown)
 ```
 u16   +0x8
 u32   +0x10
-i32   iVar3
+i32   <local>
   [loop 1: list elements]
 FUN_142e91fb0 -> +0x0
   u32   +0x0
@@ -211,23 +211,23 @@ u64   +0x28
 - server: probably sent (static check: sent by server (sub in payload)); not in opcode_stats
 
 ## S2C Crafting::RecipecComponentImageSetIdsResponsePacket  `0x42, 0x1D`
-- server: SENT (102× in opcode_stats) · seen in play 102×
+- server: SENT (16× in opcode_stats) · seen in play 327×
 - reader: FUN_142e91e20
 - built in: FUN_142e9acd0
 - layout:
 ```
 u16   +0x8
 FUN_142b9b410 -> +0x18
-  i32   iVar8
+  i32   <local>
     [loop 1: list elements]
-  u32   uVar5
-  u32   *puVar4
+  u32   <local>
+  u32   <element>
 u32   +0x10
 FUN_142b9b410 -> +0x18
-  i32   iVar8
+  i32   <local>
     [loop 1: list elements]
-  u32   uVar5
-  u32   *puVar4
+  u32   <local>
+  u32   <element>
 ```
 - handled in FUN_142e9acd0 (its switch case for this message)
 - code (handler case in FUN_142e9acd0):
@@ -351,7 +351,7 @@ bool  +0x1c
 ```
 
 ## S2C Crafting::RecipeCraftWindowEnableResponsePacket  `0x42, 0x7`
-- server: NOT SENT (not in opcode_stats, not in the server code)
+- server: NOT SENT (not in opcode_stats, not in the server code) · seen in play 10×
 - reader: FUN_142e91340
 - built in: FUN_142e9acd0
 - layout:

@@ -3802,7 +3802,7 @@ SoeUtil::StringFixed<2048>	FUN_142b97860
 SoeUtil::IStringFixed<char,2048>	FUN_142b97860
 SoeUtil::StringFixed<2048>	FUN_142b97b10
 SoeUtil::IStringFixed<char,2048>	FUN_142b97b10
-param_1,iVar5,param_3,param_4,0xfffffffffffffffe,ItemInstanceMetaData	FUN_142b98ad0
+ItemInstanceMetaData	FUN_142b98ad0
 SoeUtil::StringFixed<2048>	FUN_142b98b80
 SoeUtil::IStringFixed<char,2048>	FUN_142b98b80
 SoeUtil::Array<ArtTintOverrideEntry,4,1>	FUN_142b9ba20
@@ -7651,9 +7651,8 @@ Groups::GroupPacketLeave	FUN_142d4e560
 Groups::GroupPacketMapPing	FUN_142d4e620
 SoeUtil::Array<ClientLuaParam,2,1>	FUN_142d4e620
 SoeUtil::Array<ClientLuaParam,0,1>	FUN_142d4e620
-lVar2,uVar6,puVar7,
 
-                          0xfffffffffffffffe,Groups::GroupPacketRemoveGroup	FUN_142d4e890
+Groups::GroupPacketRemoveGroup	FUN_142d4e890
 Groups::GroupPacketRemoveInvitation	FUN_142d4ea30
 Groups::GroupPacketRemoveMember	FUN_142d4edd0
 SoeUtil::IString<char>	FUN_142d4edd0
@@ -7662,7 +7661,7 @@ SoeUtil::StringFixed<128>	FUN_142d4f530
 SoeUtil::IStringFixed<char,128>	FUN_142d4f530
 Groups::GroupPacketSetGroupFlags	FUN_142d4f670
 Groups::GroupPacketSetGroupOwner	FUN_142d4f7d0
-piVar6,0xfffffffffffffffe,Groups::GroupPacketSetPrimaryTarget	FUN_142d4fa20
+Groups::GroupPacketSetPrimaryTarget	FUN_142d4fa20
 Groups::GroupPacketUpdateMember	FUN_142d4fb50
 SoeUtil::StringFixed<128>	FUN_142d4ff20
 Raids::RaidPacketAddGroup	FUN_142d4ff20
@@ -7675,7 +7674,6 @@ Raids::RaidPacketDisband	FUN_142d505a0
 Raids::RaidPacketKickGroup	FUN_142d506d0
 Raids::RaidPacketKickMember	FUN_142d50760
 Raids::RaidPacketLeave	FUN_142d507f0
-param_1,lVar6,puVar8,puVar9,0xfffffffffffffffe,
 
                   Raids::RaidPacketRemoveGroup	FUN_142d508b0
 Raids::RaidPacketRemoveRaid	FUN_142d50a00
@@ -8286,7 +8284,6 @@ BasePacket	FUN_142d97840
 SoeUtil::IString<char>	FUN_142d97870
 AcquireTimers::AcquireTimerAdminPacketListAcquireTimers	FUN_142d97870
 BasePacket	FUN_142d97870
-param_1,param_2,param_3,piVar1,0xfffffffffffffffe,
 
                   AcquireTimers::BaseAcquireTimerAdminPacket	FUN_142d981d0
 AcquireTimers::AcquireTimerAdminPacketListAcquireTimers	FUN_142d984a0
@@ -8346,10 +8343,8 @@ SoeUtil::StringFixed<64>	FUN_142d9ced0
 SoeUtil::IStringFixed<char,64>	FUN_142d9ced0
 SoeUtil::IString<char>	FUN_142d9ced0
 SoeUtil::StringFixed<64>	FUN_142d9d0a0
-param_3,0xfffffffffffffffe,
 
                       BasePacket	FUN_142d9e710
-param_1,param_2,param_3,pcVar5,0xfffffffffffffffe,
 
                         BaseActivityPacket	FUN_142d9e800
 ActivityManagerBasePacket	FUN_142d9e8d0
@@ -8358,7 +8353,6 @@ ActivityJoinErrorPacket	FUN_142d9e8d0
 SoeUtil::Array<ClientLuaParam,1,1>	FUN_142d9e8d0
 ActivityPacketListOfActivities	FUN_142d9ec20
 ScheduledActivityPacketListOfActivities	FUN_142d9ed60
-param_1,param_2,param_3,pcVar5,0xfffffffffffffffe,
 
                       BaseScheduledActivityPacket	FUN_142d9ef00
 ActivityPacketUpdateActivityFeaturedStatus	FUN_142d9efc0
@@ -8521,15 +8515,12 @@ BasePacket	FUN_142db18e0
 SoeUtil::IString<char>	FUN_142db19f0
 Currency::CurrencyAdminPacketListCurrencyDiscounts	FUN_142db19f0
 Currency::CurrencyAdminPacketRequestSetCurrencyDiscount	FUN_142db1bc0
-param_1,param_2,param_3,piVar4,0xfffffffffffffffe,
 
                   Currency::BaseCurrencyAdminPacket	FUN_142db1d40
 SoeUtil::IString<char>	FUN_142db1e30
-param_1,param_2,param_3,pcVar1,0xfffffffffffffffe,
 
                   Currency::BaseCurrencyPacket	FUN_142db1fb0
 Currency::CurrencyPacketSetCurrencyRateTier	FUN_142db1fb0
-param_1,uVar2,uVar5,pcVar4,0xfffffffffffffffe,
 
                 Currency::CurrencyPacketSetCurrencyDiscount	FUN_142db2090
 Currency::CurrencyPacketSetCurrencyRateTier	FUN_142db2150
@@ -8548,7 +8539,6 @@ DefinitionFilters::DefinitionVariableDefinitionSource	FUN_142db2ba0
 DefinitionFilters::DefinitionVariableManagerHandler	FUN_142db2bd0
 DefinitionFilters::BaseDefinitionFilterPacket	FUN_142db30a0
 DefinitionFilters::DefinitionFilterPacketSetDefinitionIntSet	FUN_142db31b0
-x18,puVar2,uVar5,
 
                DefinitionFilters::DefinitionFilterPacketSetDefinitionVariable	FUN_142db3340
 GraphicsDllWrapper	FUN_142db3a80
@@ -9189,9 +9179,8 @@ BasePacket	FUN_142e32720
 BasePacket	FUN_142e32750
 SoeUtil::IString<char>	FUN_142e32a60
 DeployableActionResponsePacket	FUN_142e33330
-puVar5 < puVar1,
 
-                        0xfffffffffffffffe,DeployableBasePacket	FUN_142e33330
+DeployableBasePacket	FUN_142e33330
 SoeUtil::Array<ClientLuaParam,1,1>	FUN_142e339f0
 SoeUtil::Array<ClientLuaParam,0,1>	FUN_142e339f0
 SoeUtil::IString<char>	FUN_142e339f0
@@ -9651,13 +9640,11 @@ Items::ItemAdminPacketListItemLineTimers	FUN_142e618d0
 BasePacket	FUN_142e618d0
 SoeUtil::StringFixed<256>	FUN_142e62b70
 SoeUtil::IStringFixed<char,256>	FUN_142e62b70
-param_1,param_2,param_3,piVar1,0xfffffffffffffffe,
 
                   Items::BaseItemAdminPacket	FUN_142e62cb0
 SoeUtil::IString<char>	FUN_142e62d80
 Items::ItemPacketRequestTrialItemLine	FUN_142e630f0
-x18,puVar1,0,uVar3,Items::ItemPacketSetItemLineTimers	FUN_142e631b0
-x90,puVar1,0,uVar3,
+Items::ItemPacketSetItemLineTimers	FUN_142e631b0
 
                 Items::ItemPacketSetItemLineTrialTimers	FUN_142e632b0
 Items::ItemPacketSetItemTimerManager	FUN_142e634e0
@@ -9685,7 +9672,6 @@ ___ptr64>	FUN_142e65110
 SoeUtil::IString<char>	FUN_142e65310
 KnownPropBasePacket	FUN_142e654e0
 KnownPropPacketAddPropResponse	FUN_142e654e0
-local_38,local_20,local_20 < ppuVar1,0xfffffffffffffffe,
 
                               KnownPropBasePacket	FUN_142e654e0
 ___ptr64>	FUN_142e655d0
@@ -9729,10 +9715,8 @@ Loadouts::LoadoutPacketCreateLoadout	FUN_142e68270
 SoeUtil::IString<char>	FUN_142e68360
 Loadouts::LoadoutPacketDeleteLoadout	FUN_142e685d0
 Loadouts::LoadoutPacketCreateLoadout	FUN_142e68900
-param_1,iVar8,3,piVar5,0xfffffffffffffffe,
 
                     Loadouts::LoadoutPacketDeleteLoadout	FUN_142e68ae0
-puVar1,uVar7,uVar8,puVar9,0xfffffffffffffffe,
 
                         Loadouts::LoadoutPacketSetAbility	FUN_142e68e00
 Loadouts::LoadoutPacketSetCustomName	FUN_142e68f60
@@ -9803,7 +9787,6 @@ Missions::MissionManagerHandler	FUN_142e6e5f0
 BasePacket	FUN_142e6e620
 BasePacket	FUN_142e6e650
 Missions::ClientMissionPacketSetMissionManager	FUN_142e6e7d0
-local_28,pcVar1,0xfffffffffffffffe,
 
                   Missions::BaseMissionPacket	FUN_142e6e7d0
 Missions::MissionPacketAddGlobalAvailableMission	FUN_142e6e8d0
@@ -10694,7 +10677,6 @@ Skills::SkillAdminPacketResetSkillSet	FUN_142eb6e50
 Skills::SkillAdminPacketSetSkillPointRateTierValue	FUN_142eb6fe0
 Skills::SkillAdminPacketSpendSkillPoints	FUN_142eb7100
 Skills::SkillPacketUpdateClassPoints	FUN_142eb7220
-local_38,param_2,0xfffffffffffffffe,
 
                   Skills::BaseSkillPacket	FUN_142eb7220
 Skills::SkillPacketAddSkill	FUN_142eb73f0
@@ -10703,7 +10685,6 @@ SoeUtil::Array<ClientLuaParam,0,1>	FUN_142eb73f0
 Skills::SkillPacketReportSkillGrant	FUN_142eb7820
 SoeUtil::Array<ClientLuaParam,4,1>	FUN_142eb7820
 SoeUtil::IString<char>	FUN_142eb7820
-local_30,puVar1,param_1,0xfffffffffffffffe,
 
                 Skills::SkillPacketSetSkillPointManager	FUN_142eb8010
 SoeUtil::IString<char>	FUN_142eb85c0
@@ -10756,7 +10737,7 @@ SoeUtil::List<CharacterAttachmentData,16>	FUN_142ebc700
 BasePacket	FUN_142ebc7f0
 SoeUtil::IString<char>	FUN_142ebc850
 BasePacket	FUN_142ebc850
-param_1,param_2,param_3,psVar2,0xfffffffffffffffe,BaseFotomatPacket	FUN_142ebd7d0
+BaseFotomatPacket	FUN_142ebd7d0
 PacketPlayerImageData	FUN_142ebd850
 SoeUtil::IString<char>	FUN_142ebd850
 SoeUtil::Array<unsigned_char,0,1>	FUN_142ebd850
@@ -10881,11 +10862,9 @@ SoeUtil::IString<char>	FUN_142ec6e00
 SocialDeleteWallEvent	FUN_142ec7650
 SoeUtil::IString<char>	FUN_142ec7760
 SoeUtil::IString<char>	FUN_142ec8280
-local_30,psVar1,0,uVar3,
 
                   SocialPacketFriendsGameTopScores	FUN_142ec84a0
-local_30,psVar1,0,uVar3,SocialPacketGameTopScores	FUN_142ec8580
-x14fe0,psVar1,0,0xfffffffffffffffe,
+SocialPacketGameTopScores	FUN_142ec8580
 
                   SocialPacketGamesPlayedCount	FUN_142ec8660
 SocialPacketHighScoreUpdate	FUN_142ec8730
@@ -12251,7 +12230,6 @@ BasePacket	FUN_142f77cd0
 VehicleDefinitionManager	FUN_142f795c0
 DataManagement::DataLoaderHandler	FUN_142f795c0
 BasePacket	FUN_142f79630
-local_18,0xfffffffffffffffe,
 
                 VehiclePacketLoadVehicleDefinitionManager	FUN_142f7ba10
 SoeUtil::IString<char>	FUN_142f7cc90
@@ -14618,7 +14596,6 @@ SoeUtil::IString<char>	FUN_1430c60e0
 SoeUtil::IString<char>	FUN_1430c6140
 PacketTeleportCancelQueue	FUN_1430c6430
 PacketLoginQueueStatus	FUN_1430c69a0
-local_10,pcVar5,pcVar6,0xfffffffffffffffe,
 
                           PacketTeleportActivateTerminal	FUN_1430c6a80
 PacketTeleportLocations	FUN_1430c6ba0
@@ -16547,7 +16524,7 @@ SoeUtil::StringFixed<64>	FUN_143192650
 PacketInGamePurchaseBundlePriceUpdate	FUN_143192710
 PacketInGamePurchaseCommerceProductCreate	FUN_1431928c0
 SoeUtil::IString<char>	FUN_1431928c0
-x18,SoeUtil::IString<char>	FUN_1431928c0
+SoeUtil::IString<char>	FUN_1431928c0
 PacketInGamePurchaseCommerceProductUpdated	FUN_143192b00
 PacketInGamePurchaseCommerceReviewProductResponse	FUN_143192be0
 PacketInGamePurchaseCountryCodesRequest	FUN_143192cd0
@@ -16948,9 +16925,8 @@ PacketInGamePurchaseCountryCodesResponse	FUN_1431a8910
 SoeUtil::StringFixed<8>	FUN_1431a8910
 SoeUtil::IStringFixed<char,8>	FUN_1431a8910
 PacketInGamePurchaseDisplayMannequinStoreBundles	FUN_1431a94e0
-param_3,param_4,
 
-                0xfffffffffffffffe,PacketInGamePurchaseEnableMarketplace	FUN_1431a9710
+PacketInGamePurchaseEnableMarketplace	FUN_1431a9710
 _>	FUN_1431a97f0
 PacketInGamePurchaseModifyScreenshotsResponse	FUN_1431a9a70
 SoeUtil::Array<ClientLuaParam,1,1>	FUN_1431a9a70
@@ -16993,16 +16969,12 @@ PacketInGamePurchaseStateCodesResponse	FUN_1431abd10
 PacketInGamePurchaseStationCashProductsResponse	FUN_1431abee0
 SoeUtil::Array<ClientLuaParam,1,1>	FUN_1431abee0
 SoeUtil::Array<ClientLuaParam,0,1>	FUN_1431abee0
-local_30,psVar5,lVar1,0xfffffffffffffffe,
 
                     PacketInGamePurchaseStoreBundleCategories	FUN_1431ac780
-local_30,lVar2,psVar1,0,0xfffffffffffffffe,
 
                   PacketInGamePurchaseStoreBundleCategoryGroups	FUN_1431ac880
-local_30,lVar2,psVar7,psVar1,0xfffffffffffffffe,
 
                     PacketInGamePurchaseStoreBundleGroups	FUN_1431ac990
-local_30,lVar2,psVar1,lVar2,0xfffffffffffffffe,
 
                   PacketInGamePurchaseStoreBundleTags	FUN_1431acb10
 PacketInGamePurchaseStoreBundleBase	FUN_1431acc10
@@ -17016,7 +16988,6 @@ SoeUtil::Array<ClientLuaParam,1,1>	FUN_1431ad260
 SoeUtil::Array<ClientLuaParam,0,1>	FUN_1431ad260
 PacketInGamePurchaseCommerceIsTemplateValidResponse	FUN_1431ad850
 SoeUtil::IString<char>	FUN_1431ad850
-bVar5,0xfffffffffffffffe,
 
                       PacketInGamePurchaseWalletBalanceUpdate	FUN_1431ada10
 PacketInGamePurchaseWalletInfoResponse	FUN_1431adaf0
@@ -21668,15 +21639,13 @@ BasePacket	FUN_14324eb40
 BasePacket	FUN_14324eb70
 SoeUtil::IStringFixed<char,32>	FUN_14324ec00
 SoeUtil::IString<char>	FUN_14324ec00
-uVar12,uVar1,
 
-                0xfffffffffffffffe,ClientActivityLaunchPacketActivityCanceled	FUN_14324f300
+ClientActivityLaunchPacketActivityCanceled	FUN_14324f300
 _>	FUN_14324f4b0
 SoeUtil::StringFixed<32>	FUN_14324f4b0
 SoeUtil::IStringFixed<char,32>	FUN_14324f4b0
 SoeUtil::IString<char>	FUN_14324f4b0
 SoeUtil::StringFixed<32>	FUN_14324f860
-param_1,param_2,param_3,iVar9,0xfffffffffffffffe,
 
                     ClientActivityLaunchBasePacket	FUN_14324fc00
 SoeUtil::IStringFixed<char,32>	FUN_14324ff30
@@ -22459,7 +22428,6 @@ SoeUtil::IString<char>	FUN_1432a4390
 SoeUtil::IString<char>	FUN_1432a45a0
 BasePacket	FUN_1432a5590
 BasePacket	FUN_1432a56c0
-local_30,param_1,0,local_18,0xfffffffffffffffe,
 
                 ReferenceDataPacketClientProfileData	FUN_1432a5b00
 SoeUtil::IString<unsigned_short>	FUN_1432a5bc0
@@ -23874,10 +23842,8 @@ SoeUtil::Array<ClientLuaParam,1,1>	FUN_14330fd00
 EncounterMatchmaking::QueueStatsResponsePacket	FUN_14330fd00
 EncounterMatchmaking::RemoveParticipantFromQueueResponsePacket	FUN_14330fd00
 BaseEncounterPacket	FUN_143310250
-psVar1,0,
 
-                      0xfffffffffffffffe,CommandPacketEndDialog	FUN_1433114b0
-piVar5 < piVar1,0xfffffffffffffffe,
+CommandPacketEndDialog	FUN_1433114b0
 
                         CommandPacketInteractionClaim	FUN_143311590
 SoeUtil::IString<char>	FUN_1433117e0
@@ -23892,7 +23858,6 @@ CommandPacketInteractionString	FUN_143311c90
 SoeUtil::Array<CommandPacketInteractionString::SocketInteraction,16,1>	FUN_143311c90
 SoeUtil::IString<char>	FUN_143311c90
 CommandPacketInteractionTool	FUN_143311fa0
-psVar3 < psVar1,0xfffffffffffffffe,
 
                       CommandPacketInteractionVault	FUN_1433120f0
 CommandPacketPlayDialogEffect	FUN_1433121f0
@@ -24040,9 +24005,8 @@ CombatPacketBlockBroken	FUN_14331def0
 CombatPacketAttackTargetBlocked	FUN_14331dfb0
 SoeUtil::IString<char>	FUN_14331dfb0
 CombatPacketAttackTargetDamage	FUN_14331e1d0
-psVar4 < psVar1,
 
-                      0xfffffffffffffffe,CombatPacketLastDamageTime	FUN_14331e310
+CombatPacketLastDamageTime	FUN_14331e310
 CombatPacketAttackTargetDodged	FUN_14331e400
 SoeUtil::IString<char>	FUN_14331e400
 CombatPacketEnableBossDisplay	FUN_14331e620
@@ -24050,7 +24014,6 @@ CombatPacketAttackAttackerMissed	FUN_14331e730
 SoeUtil::IString<char>	FUN_14331e730
 CombatPacketAttackTargetParried	FUN_14331e950
 SoeUtil::IString<char>	FUN_14331e950
-local_18 < psVar1,0xfffffffffffffffe,
 
                       CombatReviveFallenComradePacket	FUN_14331eb70
 CombatPacketSingleAttackTarget	FUN_14331ece0
@@ -24245,14 +24208,12 @@ SoeUtil::IStringFixed<char,32>	FUN_143330000
 SoeUtil::IString<char>	FUN_143330000
 Notifications::ListNotificationsPacket	FUN_1433302e0
 SoeUtil::Array<Notifications::Data,0,1>	FUN_1433302e0
-uVar10,param_4,0xfffffffffffffffe,
 
                       Notifications::BaseNotificationPacket	FUN_143336df0
 Notifications::ListNotificationsPacket	FUN_143336df0
 SoeUtil::Array<Notifications::Data,0,1>	FUN_143336df0
-uVar9,
 
-                param_4,0xfffffffffffffffe,Notifications::BaseNotificationPacket	FUN_143336df0
+Notifications::BaseNotificationPacket	FUN_143336df0
 SoeUtil::IStringFixed<char,256>	FUN_143337590
 SoeUtil::StringFixed<256>	FUN_143337590
 Notifications::UpdateNotificationPacket	FUN_143338890
@@ -24807,7 +24768,6 @@ BasePacket	FUN_14336deb0
 BasePacket	FUN_14336dec0
 BasePacket	FUN_14336def0
 Factions::FactionPacketLoadFactionDefinitionManager	FUN_14336dfc0
-local_28,0,0xfffffffffffffffe,
 
                   Factions::BaseFactionPacket	FUN_14336dfc0
 Factions::FactionPacketLoadFactionDefinitionManager	FUN_14336e070
@@ -26618,7 +26578,6 @@ BasePacket	FUN_14344cca0
 BasePacket	FUN_14344ccb0
 BasePacket	FUN_14344cce0
 BaseDesignBasedStateMachinePacketPacket	FUN_14344cd10
-local_50,puVar2,0,
 
                     DesignBasedStateMachinePacketHandleTransitionAction	FUN_14344cd10
 CameraEntity	FUN_14344ce60
@@ -26716,7 +26675,7 @@ SoeUtil::IString<char>	FUN_143452280
 SoeUtil::IString<char>	FUN_143452b60
 WarpNetwork::WarpNetworkPacketBase	FUN_1434530c0
 WarpNetwork::WarpNetworkZoneNetworkPacket	FUN_1434530c0
-local_238,0,0x200,param_4,WarpNetwork::WarpNetworkPacketBase	FUN_1434530c0
+WarpNetwork::WarpNetworkPacketBase	FUN_1434530c0
 SoeUtil::IString<char>	FUN_143453bf0
 WarpNetwork::WarpNetworkClientRequestPacket	FUN_1434545a0
 WarpNetwork::WarpNetworkClientRequestPacket	FUN_143454620
@@ -27486,9 +27445,8 @@ CoinStoreSellToClientAndGiftRequestPacket	FUN_1434b7040
 CoinStoreBuyBackResponsePacket	FUN_1434b7110
 SoeUtil::Array<ClientLuaParam,2,1>	FUN_1434b7110
 SoeUtil::Array<ClientLuaParam,0,1>	FUN_1434b7110
-param_3,param_4,
 
-                0xfffffffffffffffe,CoinStoreClearTransactionHistoryPacket	FUN_1434b7420
+CoinStoreClearTransactionHistoryPacket	FUN_1434b7420
 CoinStoreGiftTransactionCompletePacket	FUN_1434b7500
 SoeUtil::IStringFixed<char,32>	FUN_1434b7500
 SoeUtil::StringFixed<32>	FUN_1434b7500
@@ -30849,18 +30807,14 @@ SoeUtil::StringFixed<32>	FUN_14365a8e0
 SoeUtil::IStringFixed<char,32>	FUN_14365a8e0
 ClientActivityLaunchPacketKickMemberEvent	FUN_14365ab20
 SoeUtil::StringFixed<32>	FUN_14365ab20
-puVar6,0xfffffffffffffffe,
 
                   ClientActivityLaunchPacketOnMatchmakingCancel	FUN_14365acb0
-puVar6,0xfffffffffffffffe,
 
                   ClientActivityLaunchPacketOnMatchmakingLaunch	FUN_14365ad90
-puVar6,0xfffffffffffffffe,
 
                   ClientActivityLaunchPacketOnMatchmakingStart	FUN_14365ae70
-puVar5,
 
-               0xfffffffffffffffe,ClientActivityLaunchPacketPlayerHasBeenAccepted	FUN_14365af50
+ClientActivityLaunchPacketPlayerHasBeenAccepted	FUN_14365af50
 ClientActivityLaunchPacketUpdateMemberState	FUN_14365b150
 SoeUtil::StringFixed<32>	FUN_14365b3f0
 SoeUtil::IStringFixed<char,32>	FUN_14365b6f0
@@ -33512,9 +33466,8 @@ SoeUtil::Array<unsigned_char,0,1>	FUN_1439559b0
 ClientServerCore::BasePacket	FUN_143955a30
 ClientServerCore::BasePacket	FUN_143955a70
 SoeUtil::Array<unsigned_char,8192,1>	FUN_143955aa0
-local_res10,2,ClientServerCore::BasePacket	FUN_143955aa0
+ClientServerCore::BasePacket	FUN_143955aa0
 SoeUtil::Array<unsigned_char,0,1>	FUN_143955aa0
-iVar4,param_2,0xfffffffffffffffe,
 
              ClientServerCore::BasePacket	FUN_1439560b0
 SoeUtil::StringFixed<128>	FUN_143956360
@@ -34566,7 +34519,6 @@ SoeUtil::StringFixed<256>	FUN_1439a4100
 SoeUtil::IStringFixed<char,256>	FUN_1439a4100
 SoeUtil::IString<char>	FUN_1439a4100
 SoeUtil::IStringFixed<char,8192>	FUN_1439a4100
-param_1,param_2,param_3,FUN_1439a31d0,0xfffffffffffffffe,
 
                   Login::ExternalPackets::BasePacket	FUN_1439a4750
 SoeUtil::IStringFixed<char,32>	FUN_1439a48b0
@@ -35560,7 +35512,7 @@ AssetManagement::_anon_BDEFD089::TagSearcher	FUN_143a6ffb0
 SoeUtil::StringFixed<64>	FUN_143a70090
 AssetManagement::AssetDeliveryIndirect::PendingRequest	FUN_143a70180
 SoeUtil::StringFixed<64>	FUN_143a70180
-uVar4,SoeUtil::StringFixed<64>	FUN_143a70180
+SoeUtil::StringFixed<64>	FUN_143a70180
 SoeUtil::List<AssetManagement::AssetDeliveryInterface::PendingEntryData,16>	FUN_143a705a0
 SoeUtil::List<AssetManagement::AssetDeliveryInterface::PendingEntryError,16>	FUN_143a70600
 AssetManagement::AssetDeliveryIndirect	FUN_143a70720
@@ -37374,8 +37326,7 @@ BasePacket	FUN_143b361f0
 DataManagement::DataLoaderHandler	FUN_143b36220
 DataManagement::DataLoaderHandler	FUN_143b36250
 DataManagement::DataLoaderHandler	FUN_143b36280
-param_1,param_2,param_3,pcVar3,0xfffffffffffffffe,Skills::BaseSkillPacket	FUN_143b38390
-local_30,0,local_18,0xfffffffffffffffe,
+Skills::BaseSkillPacket	FUN_143b38390
 
                 Skills::SkillPacketLoadSkillDefinitionManager	FUN_143b38430
 Skills::SkillPointRateTableLoadFunc	FUN_143b39c60
@@ -47391,7 +47342,7 @@ SoeUtil::Array<int,0,1>	FUN_1441255d0
 SoeUtil::Array<int,0,1>	FUN_144125f70
 Social::WallEvent	FUN_144126ae0
 SoeUtil::IString<char>	FUN_144126ae0
-x18,SoeUtil::IString<char>	FUN_144126ae0
+SoeUtil::IString<char>	FUN_144126ae0
 Social::WallEvent	FUN_144126b70
 SoeUtil::IString<char>	FUN_144126b70
 Social::WallEventDefinition	FUN_144126c20
@@ -48255,7 +48206,7 @@ SoeUtil::IStringFixed<char,1024>	FUN_144322cc0
 SoeUtil::IString<char>	FUN_144322cc0
 VersionedResourceCache::PendingRequest	FUN_144323f30
 SoeUtil::StringFixed<64>	FUN_144323f30
-uVar4,SoeUtil::StringFixed<64>	FUN_144323f30
+SoeUtil::StringFixed<64>	FUN_144323f30
 SoeUtil::IString<char>	FUN_1443245a0
 SoeUtil::HashListMap<int,VersionedResourceCache::PendingRequest,8192,128>	FUN_144324720
 SoeUtil::HashList<VersionedResourceCache::PendingRequest,8192,128>	FUN_144324720

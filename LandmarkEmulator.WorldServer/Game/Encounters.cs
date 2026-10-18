@@ -1,6 +1,9 @@
+using LandmarkEmulator.Internal.WorldChannel;
 using LandmarkEmulator.Shared.Network;
+using LandmarkEmulator.WorldServer.Game.WorldChannel;
 using LandmarkEmulator.WorldServer.Network;
 using LandmarkEmulator.WorldServer.Network.Message;
+using LandmarkEmulator.WorldServer.Network.Message.Model.Shared;
 using NLog;
 using System;
 using System.Collections.Generic;
@@ -14,12 +17,40 @@ namespace LandmarkEmulator.WorldServer.Game
     /// starts {i16 sub, u32 pending id (client manager +0x3e0c), u32 encounter id}; the client keeps the encounter id
     /// (game +0x32f28) and echoes it in its requests. The client's game handler FUN_142c428b0 takes 0x7D / 0x7E (the
     /// death window) itself and passes every other sub to its encounter manager (FUN_143310250).
+    /// <para>
+    /// 0.695 (verified 2026-10-17, docs/encounters.md "0.695 dispatch"): game handler FUN_142cdc370, manager vtable
+    /// +0x18 FUN_1433bd040, whose jump table (byte index 0x1433be214, offsets 0x1433be1e0, sub − 2 &lt; 0x81) has the
+    /// same cases as 0.589 (2, 3, 4, 5, 6, 0x66, 0x6A, 0x6B, 0x72, 0x78, 0x79, 0x82). Every body this class and the
+    /// broker send matches its 0.695 reader field for field, and every reader drops a packet that is not consumed
+    /// exactly [P]. Changed then: Terminate's bool is false (see <see cref="End"/>), and a player taken out gets
+    /// Terminate before Shutdown too (<see cref="Leave"/>).
+    /// </para>
     ///
     /// Lifecycle as the client drives it: the server announces the encounter's zone as ready (0x6B), the client asks
     /// to enter (0x6C), the server confirms with PlayerEnter (2) and the encounter's state (0x6A); leaving is
     /// RequestExit (0x6D) or a server Terminate (0x79) + Shutdown (6). Invitations (0x66) reach an empty function in
     /// 0.589 (FUN_14332da10), so the client answers only through its own prompts (0x67 / 0x69); duels, the one encounter
     /// kind the 0.589 data names (StaticZoneData DUEL_ENCOUNTER_ID), start from the /duel and /duelaccept commands.
+    /// <para>
+    /// Two places run the lifecycle (trace/architecture/world-channel-service.md §3.4, §4 "Encounters / duels", §6.5;
+    /// build step 7). Every encounter request the client sends goes on the World channel, so live's World back end owned
+    /// the lifecycle while the zone, which has positions and health, owned the combat.
+    /// <list type="bullet">
+    /// <item><b>In-process</b> (no world-channel service — the default — or while it is away and the gateway sends
+    /// channel 1 here, spec §7): this class does everything as before (<see cref="Handle"/>, <see cref="Challenge"/>,
+    /// <see cref="Answer"/>, <see cref="Leave"/>); ids count up from 1.</item>
+    /// <item><b>World-channel broker</b> (LandmarkEmulator.WorldChannel, EncounterBroker; <see cref="WorldChannelLink"/>
+    /// linked): the service answers the client's requests and sends the lifecycle packets (Details, ZoneIsReady,
+    /// PlayerEnter, State, Terminate, Shutdown; ids from 0x40000001, EncounterMessages.FirstBrokerEncounterId). This
+    /// class keeps a <b>mirror</b> of its encounters from the EncounterParticipants pushes (<see cref="BrokerParticipants"/>)
+    /// so the combat rules — <see cref="Duelling"/>, <see cref="Hit"/>, the range / landscape check of <see cref="Update"/>,
+    /// the death window's encounter id (<see cref="IdOf"/>) — work unchanged; what it decides goes back as
+    /// EncounterCreateDuel (/duel, after the zone's own range check), EncounterDuelAnswer (/duelaccept, /dueldecline) and
+    /// EncounterForfeit (a killing blow, out of range, /duelleave, logout); the duel chat lines come back as
+    /// EncounterNotice and are printed by <see cref="Notice"/>. When that service's link goes, its encounters end here
+    /// (<see cref="BrokerLost"/>: Terminate + Shutdown to the clients), as brokered trades are canceled (spec §7).</item>
+    /// </list>
+    /// </para>
     /// </summary>
     public static class Encounters
     {
@@ -43,6 +74,11 @@ namespace LandmarkEmulator.WorldServer.Game
             public readonly List<WorldSession> Participants = new();
             public readonly HashSet<WorldSession> Entered = new();
             public DateTime Started = DateTime.UtcNow;
+            /// <summary>
+            /// The world-channel broker generation that runs it (WorldChannelLink), 0 when this zone runs the lifecycle
+            /// itself. A brokered encounter's packets come from the service; this zone only mirrors its participants.
+            /// </summary>
+            public int Broker;
         }
 
         private static readonly object sync = new();
@@ -89,22 +125,11 @@ namespace LandmarkEmulator.WorldServer.Game
             });
 
         /// <summary>
-        /// An empty RewardBundle (client reader FUN_142b95550, 81 bytes when its lists are empty): bool, u32,
-        /// u32 list (FUN_142b9b7a0), u32 × 3, i64, u32 × 5, u64 × 2, u32 × 2, entry list {u32 type, entry}, u32.
+        /// An empty RewardBundle (client reader 0.589 FUN_142b95550 / 0.695 FUN_142c2f040, 81 bytes when its lists are
+        /// empty; fields in Model.Shared.RewardBundle). Written by the model so it carries the live empty-bundle values:
+        /// icon and name text 0xFFFFFFFF ("use the first entry's"), everything else 0 (docs/unknowns.md).
         /// </summary>
-        private static void WriteRewardBundle(GamePacketWriter w)
-        {
-            w.Write(false);
-            w.Write(0u);
-            w.Write(0u);                                  // list
-            for (int i = 0; i < 3; i++) w.Write(0u);
-            w.Write(0L);
-            for (int i = 0; i < 5; i++) w.Write(0u);
-            w.Write(0ul); w.Write(0ul);
-            w.Write(0u); w.Write(0u);
-            w.Write(0u);                                  // reward entries
-            w.Write(0u);
-        }
+        private static void WriteRewardBundle(GamePacketWriter w) => new RewardBundle().Write(w);
 
         /// <summary>
         /// EncounterDetailsCommon (FUN_1432d6ea0): u32, u32, two lists (FUN_1432db690 / FUN_1432db8f0), u32 +0x50
@@ -259,7 +284,13 @@ namespace LandmarkEmulator.WorldServer.Game
                     Chat.System(p, $"Duel: {string.Join(" vs ", all.Select(x => x.CharacterName))}. Fight!");
         }
 
-        /// <summary>A participant leaves; an encounter left with fewer than two (duel) or none ends.</summary>
+        /// <summary>
+        /// A participant leaves; an encounter left with fewer than two (duel) or none ends. <paramref name="why"/>:
+        /// "left" (/duelleave, RequestExit), "defeated" (<see cref="Hit"/>), "range" (<see cref="Update"/>: apart or on
+        /// different landscapes), "logout" (PlayerManager), "declined". A brokered encounter is left through the
+        /// service instead (EncounterForfeit; it sends Shutdown / Terminate and the chat lines, and pushes the new list),
+        /// after taking the player out of the mirror here so the combat rules stop at once.
+        /// </summary>
         public static void Leave(WorldSession session, string why)
         {
             Encounter e;
@@ -267,10 +298,26 @@ namespace LandmarkEmulator.WorldServer.Game
             {
                 challenges.Remove(session);
                 if (!encounterOf.Remove(session, out e))
+                {
+                    // Gone from the world with no encounter: the service drops any duel challenge of theirs.
+                    if (why == "logout" && WorldChannelLink.IsLinked)
+                        WorldChannelLink.Send(new EncounterForfeit { EncounterId = 0, Character = session.PlayerGuid, Reason = EncounterMessages.ReasonLogout });
                     return;
+                }
                 e.Participants.Remove(session);
                 e.Entered.Remove(session);
             }
+            if (e.Broker != 0)
+            {
+                if (!WorldChannelLink.SendTo(e.Broker, new EncounterForfeit { EncounterId = e.Id, Character = session.PlayerGuid, Reason = ReasonOf(why) }))
+                    log.Warn($"{session.CharacterName} left brokered encounter {e.Id} ({why}) but its world channel is gone.");
+                return;
+            }
+            // Terminate {bool false} first, as End sends it to the one left in: the client's Shutdown handler only fires
+            // the mini-game UI's ":exit" event (0.695 FUN_143315580), while Terminate resets its encounter state
+            // (FUN_142ca6d90 + FUN_142d06480: game +0x327c8 / +0x327cc / +0x3286c, the manager). [P] for what each does;
+            // [I] that live sent it to a player it took out, since no live capture of an encounter exists.
+            Send(session, SubTerminate, e.Id, w => w.Write(false));
             Send(session, SubShutdown, e.Id, w => { w.Write(session.PlayerGuid); w.Write(0u); w.Write(0u); });
             if (e.Kind == "duel")
             {
@@ -287,7 +334,14 @@ namespace LandmarkEmulator.WorldServer.Game
                 End(e);
         }
 
-        /// <summary>Ends an encounter: Terminate (0x79) then Shutdown (6) to everyone still in it.</summary>
+        /// <summary>
+        /// Ends an encounter: Terminate (0x79) then Shutdown (6) to everyone still in it. Terminate's bool is "took too
+        /// long" [P, 0.695 jump-table case 0x79 at 0x1433bdbcd]: when set the client prints the code string
+        /// "TookTooLong" (looked up by name, ClientStringProvider vtable +0x28 FUN_142fdeba0; the name is in neither
+        /// build's CodeStringMappings.txt, so it prints text id 0), so a normal end sends false. Either way the client
+        /// then cancels its encounter (FUN_142ca6d90(game, 0)) and leaves it (FUN_142d06480 → FUN_14331a850, which
+        /// sends one RequestExit 0x6D when it was a participant; <see cref="Leave"/> then finds nothing to do).
+        /// </summary>
         private static void End(Encounter e)
         {
             List<WorldSession> rest;
@@ -301,7 +355,7 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             foreach (WorldSession p in rest)
             {
-                Send(p, SubTerminate, e.Id, w => w.Write(true));
+                Send(p, SubTerminate, e.Id, w => w.Write(false));   // not "took too long"
                 Send(p, SubShutdown, e.Id, w => { w.Write(p.PlayerGuid); w.Write(0u); w.Write(0u); });
             }
             log.Info($"Encounter {e.Id} ({e.Kind}) ended.");
@@ -329,20 +383,47 @@ namespace LandmarkEmulator.WorldServer.Game
                 Chat.System(session, "One of you is already in an encounter.");
                 return;
             }
+            // With the world-channel service linked the challenge is held there (spec §6.5 EncounterCreateDuel: "the
+            // /duel zone command checked range"); it prints the two chat lines back through EncounterNotice.
+            if (WorldChannelLink.IsLinked && WorldChannelLink.Send(new EncounterCreateDuel
+            {
+                Challenger = session.PlayerGuid, Target = target.PlayerGuid,
+                ChallengerConnection = session.Link.ConnectionId, ChallengerName = session.CharacterName ?? "",
+                TargetConnection = target.Link.ConnectionId, TargetName = target.CharacterName ?? ""
+            }))
+            {
+                log.Info($"{session.CharacterName} challenged {target.CharacterName} to a duel (through the world channel).");
+                return;
+            }
             lock (sync)
                 challenges[target] = (session, DateTime.UtcNow);
             Chat.System(session, $"You challenged {target.CharacterName} to a duel.");
             Chat.System(target, $"{session.CharacterName} challenges you to a duel. Type /duelaccept or /dueldecline.");
         }
 
-        /// <summary>/duelaccept, /dueldecline, or the client's DuelInvitationResponse (0x69).</summary>
+        /// <summary>
+        /// /duelaccept, /dueldecline, or the client's DuelInvitationResponse (0x69). A challenge this zone holds (made
+        /// in-process) is answered here; otherwise, with the world-channel service linked, the answer goes to it
+        /// (EncounterDuelAnswer: /duelaccept is a zone command, the service holds the challenge), which prints "You have
+        /// no duel challenge to answer." itself when there is none.
+        /// </summary>
         public static void Answer(WorldSession session, ulong inviterGuid, bool accept)
         {
             WorldSession from;
             lock (sync)
             {
-                if (!challenges.Remove(session, out var c) || DateTime.UtcNow - c.At > ChallengeLifetime
-                    || (inviterGuid != 0 && c.From.PlayerGuid != inviterGuid))
+                if (!challenges.TryGetValue(session, out var c))
+                {
+                    if (WorldChannelLink.IsLinked && WorldChannelLink.Send(new EncounterDuelAnswer
+                    {
+                        Character = session.PlayerGuid, Inviter = inviterGuid, Accept = accept
+                    }))
+                        return;
+                    Chat.System(session, "You have no duel challenge to answer.");
+                    return;
+                }
+                challenges.Remove(session);
+                if (DateTime.UtcNow - c.At > ChallengeLifetime || (inviterGuid != 0 && c.From.PlayerGuid != inviterGuid))
                 {
                     Chat.System(session, "You have no duel challenge to answer.");
                     return;
@@ -353,6 +434,17 @@ namespace LandmarkEmulator.WorldServer.Game
             {
                 Chat.System(from, $"{session.CharacterName} declined your duel.");
                 Chat.System(session, "Duel declined.");
+                return;
+            }
+            // Challenge checked this, but either side may have entered another duel since (accepting someone else's
+            // challenge): Start would take them out of that one without ending it, leaving its other duellist alone in an
+            // encounter nothing ends — no range check (Update needs two), every new challenge refused "already in an
+            // encounter" — until they left by hand (bughunt-combat.md B6). Gone players can't start one either.
+            if (from.Disconnected || session.Disconnected || IdOf(from) != 0 || IdOf(session) != 0)
+            {
+                Chat.System(session, "One of you is already in an encounter.");
+                if (!from.Disconnected)
+                    Chat.System(from, $"{session.CharacterName} couldn't accept your duel: one of you is already in an encounter.");
                 return;
             }
             Start("duel", from, session);
@@ -421,7 +513,94 @@ namespace LandmarkEmulator.WorldServer.Game
                 }
             }
             foreach (WorldSession s in forfeits)
-                Leave(s, "left");
+                Leave(s, "range");
+        }
+
+        // ---- the world-channel encounter broker (world-channel-service.md §6.5; WorldChannelLink, world thread) ---------
+
+        /// <summary>The EncounterForfeit reason for a <see cref="Leave"/> cause.</summary>
+        private static byte ReasonOf(string why) => why switch
+        {
+            "defeated" => EncounterMessages.ReasonDefeated,
+            "range" => EncounterMessages.ReasonRange,
+            "logout" => EncounterMessages.ReasonLogout,
+            "declined" => EncounterMessages.ReasonDeclined,
+            _ => EncounterMessages.ReasonLeft
+        };
+
+        /// <summary>
+        /// EncounterParticipants from the world channel (spec §6.5, pushed on every state change): the mirror of one of
+        /// its encounters. State Ended removes it (no packets: the service sent Terminate / Shutdown); Open / Running
+        /// (re)builds its participant list from the online sessions, with every participant counted as entered when
+        /// Running, which is what <see cref="Duelling"/> and <see cref="Hit"/> test. A participant moved here from an
+        /// encounter of this zone's own is taken out of that one.
+        /// </summary>
+        public static void BrokerParticipants(int broker, uint id, string kind, uint state, IReadOnlyList<ulong> characters)
+        {
+            lock (sync)
+            {
+                if (state == EncounterMessages.StateEnded)
+                {
+                    if (encounters.Remove(id, out Encounter gone))
+                        foreach (WorldSession p in gone.Participants)
+                            if (encounterOf.TryGetValue(p, out Encounter f) && f == gone)
+                                encounterOf.Remove(p);
+                    log.Info($"Encounter {id} ({kind}) ended by the world channel.");
+                    return;
+                }
+                if (!encounters.TryGetValue(id, out Encounter e))
+                    encounters[id] = e = new Encounter { Id = id, Kind = kind, Broker = broker };
+                else if (e.Broker != broker)
+                {
+                    log.Warn($"Encounter {id} is held by world-channel generation {e.Broker}, not {broker}: push ignored.");
+                    return;
+                }
+                foreach (WorldSession p in e.Participants)
+                    if (encounterOf.TryGetValue(p, out Encounter f) && f == e)
+                        encounterOf.Remove(p);
+                e.Participants.Clear();
+                e.Entered.Clear();
+                foreach (ulong guid in characters)
+                {
+                    WorldSession p = PlayerManager.FindByGuid(guid);
+                    if (p == null)
+                        continue;
+                    if (encounterOf.TryGetValue(p, out Encounter old) && old != e)
+                    {
+                        old.Participants.Remove(p);
+                        old.Entered.Remove(p);
+                    }
+                    e.Participants.Add(p);
+                    encounterOf[p] = e;
+                    if (state == EncounterMessages.StateRunning)
+                        e.Entered.Add(p);
+                }
+                log.Info($"Encounter {id} ({kind}) from the world channel: state {state}, {string.Join(", ", e.Participants.Select(p => p.CharacterName))}.");
+            }
+        }
+
+        /// <summary>EncounterNotice from the world channel: one of the duel chat lines, printed as the in-process code did.</summary>
+        public static void Notice(ulong character, string text)
+        {
+            WorldSession session = PlayerManager.FindByGuid(character);
+            if (session != null)
+                Chat.System(session, text);
+        }
+
+        /// <summary>
+        /// The world channel of <paramref name="broker"/> is gone (its link closed): every encounter it ran ends here
+        /// with Terminate + Shutdown to the clients, so their encounter state is clean for the next one (spec §7, as
+        /// brokered trades are canceled); a restarted service starts with an empty registry.
+        /// </summary>
+        public static void BrokerLost(int broker)
+        {
+            List<Encounter> gone;
+            lock (sync)
+                gone = encounters.Values.Where(e => e.Broker == broker).ToList();
+            foreach (Encounter e in gone)
+                End(e);
+            if (gone.Count > 0)
+                log.Warn($"World channel gone: {gone.Count} brokered encounter(s) ended.");
         }
     }
 }

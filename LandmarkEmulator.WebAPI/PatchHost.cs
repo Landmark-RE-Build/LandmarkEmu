@@ -1,249 +1,319 @@
+using LandmarkEmulator.PatchPacks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using System.Threading;
 
 namespace LandmarkEmulator.WebAPI
 {
     /// <summary>
-    /// Serves the server owner's patch pack to LandmarkEmu LaunchPad (LandmarkEmulator.LaunchPad/ServerPatches.cs). Players'
-    /// LaunchPad has this switched off for now (ServerPatches.Enabled, 2026-10-15); the host stays so it can come back.
+    /// The server's patch folder (<see cref="Configuration.WebApiConfig.PatchFolder"/>): the server owner drops (uploads)
+    /// the update pack there, as LaunchPad makes it (Settings > Patch packs > Create update pack, or LaunchPad.exe
+    /// --make-update), and players' LaunchPad offers it to them (LandmarkEmulator.PatchPacks/ServerPatches.cs).
     ///
-    /// The owner puts the pack, as LaunchPad.exe --make-update makes it, in <see cref="Configuration.WebApiConfig.PatchFolder"/>:
-    ///   patches\01-update-0695.lmpatch
-    /// Packs apply in file-name order. The only pack served is the verified update from the Steam build to a known build
-    /// of 0.695 (<see cref="NotTheUpdate"/>; players' LaunchPad checks it again in full). The launcher only patches a
-    /// verified Steam copy of the game and only downloads the update, never the game itself.
+    /// Nothing in the folder is served until it has passed the same check every player's LaunchPad runs
+    /// (LandmarkEmulator.PatchPacks: Patching.CheckUpdate and PackCheck.Verify): it must be the verified update from the
+    /// Steam build to a known 0.695 build; every entry is unpacked (never past its declared size) and checked; every whole
+    /// file's SHA-256 must be the genuine file's (the embedded strong list); every edit and patch must lead to a genuine
+    /// file's size and CRC32, whose SHA-256 is in the list. The server has no 0.589 game files, so it can't replay edits
+    /// and patches on them; each player's LaunchPad does that on their own Steam copy before anything changes. With
+    /// <see cref="Configuration.WebApiConfig.PatchVerifySteamDir"/> (a Steam 0.589 copy, read only) the server replays them
+    /// too and so checks every result's SHA-256 itself.
     ///
-    ///   GET /patches                          the packs in order: id, name, version, requires, files, bytes, packBytes, sha256
-    ///   GET /patches/{id}/pack.json           a pack's list (the launcher checks it against the sha256 above before downloading)
+    /// The check runs on start-up and whenever the folder changes (a file watcher, and a size / write-time check every
+    /// minute). For each pack passed it keeps the file's size, write time and SHA-256: /info advertises that SHA-256, and
+    /// a pack whose size or write time changed afterwards is not served until it has passed again. A pack that fails is
+    /// logged with the reason and moved to <c>rejected\</c> (with a .reason.txt), never served.
+    ///
+    ///   GET /patches                          the verified packs in file-name order (as in /info "patches")
+    ///   GET /patches/{id}/pack.json           a pack's list (LaunchPad checks it against the sha256 above, then against its
+    ///                                         own lists, before it downloads the pack)
     ///   GET /patches/{id}/pack.lmpatch        the pack; ranges supported (a broken-off download continues)
+    /// {id} is the file name without .lmpatch. HTTP is fine for all of it: LaunchPad trusts the embedded lists, not the
+    /// server or the connection.
     /// </summary>
-    public static class PatchHost
+    public sealed class PatchLibrary : IDisposable
     {
-        public sealed class PackFile
-        {
-            [JsonPropertyName("path")] public string Path { get; set; } = "";
-            [JsonPropertyName("size")] public long Size { get; set; }
-            [JsonPropertyName("crc32")] public string Crc32 { get; set; } = "";
-            [JsonPropertyName("how")] public string How { get; set; } = "whole";
-
-            /// <summary>Its entry in the .lmpatch (LaunchPad Patching.PackFile.Entry).</summary>
-            public string Entry => How switch
-            {
-                "edit" => "edits/" + Path.Replace('\\', '/') + ".lme",
-                "patch" => "patches/" + Path.Replace('\\', '/') + ".lmd",
-                _ => Path.Replace('\\', '/')
-            };
-        }
-
-        public sealed class Manifest
-        {
-            [JsonPropertyName("format")] public int Format { get; set; } = 1;
-            [JsonPropertyName("name")] public string Name { get; set; } = "";
-            [JsonPropertyName("version")] public string Version { get; set; } = "";
-            [JsonPropertyName("requires")] public string Requires { get; set; } = "";
-            [JsonPropertyName("description")] public string Description { get; set; } = "";
-            [JsonPropertyName("files")] public List<PackFile> Files { get; set; } = new();
-            [JsonPropertyName("delete")] public List<string> Delete { get; set; } = new();
-        }
-
-        /// <summary>A pack as loaded from its .lmpatch (re-read when the file changes).</summary>
+        /// <summary>A pack that passed the check, as it was when it passed.</summary>
         public sealed class Pack
         {
             public string Id { get; init; } = "";
             public string FilePath { get; init; } = "";
             public long FileBytes { get; init; }
-            public Manifest Manifest { get; init; } = new();
-            /// <summary>Its pack.json text as stored in the .lmpatch (served as is; the launcher checks its SHA-256).</summary>
-            public byte[] ManifestBytes { get; init; } = Array.Empty<byte>();
-            public string Sha256 { get; init; } = "";
             public DateTime Written { get; init; }
+            /// <summary>SHA-256 of the whole .lmpatch file as checked (advertised in /info: packSha256).</summary>
+            public string FileSha256 { get; init; } = "";
+            public Patching.Manifest Manifest { get; init; } = new();
+            /// <summary>Its pack.json text as stored in the .lmpatch (served as is; LaunchPad checks its SHA-256).</summary>
+            public byte[] ManifestBytes { get; init; } = Array.Empty<byte>();
+            /// <summary>SHA-256 of the pack.json text: the pack's identity (sha256 in /info).</summary>
+            public string Sha256 { get; init; } = "";
+            public string Build { get; init; } = "";
+            public int Replayed { get; init; }
+            public int NotReplayed { get; init; }
         }
 
         private static readonly Regex packId = new("^[A-Za-z0-9._-]{1,64}$");
 
-        /// <summary>The build the update must lead to (Daybreak's final build).</summary>
-        public const string FinalBuild = "0.695.1.132647";
+        public string Folder { get; }
+        private readonly string? steamDir;
+        private readonly Action<string> log;
+        private readonly object gate = new();
+        private readonly Dictionary<string, Pack> verified = new(StringComparer.OrdinalIgnoreCase);
+        /// <summary>Files that couldn't be read yet (still being copied in): retried on the next scan.</summary>
+        private readonly HashSet<string> waiting = new(StringComparer.OrdinalIgnoreCase);
+        private readonly List<(string File, string Reason, DateTime When)> refused = new();
+        private FileSystemWatcher? watcher;
+        private Timer? timer;
+        private int scanning;
+        private bool disposed;
 
-        private static Dictionary<string, (long Size, string Crc)>? finalList;
+        /// <param name="folder">The patch folder; empty = no patches.</param>
+        /// <param name="steamDir">A Steam 0.589 copy to replay edits and patches on (read only); empty or not a game folder = none.</param>
+        public PatchLibrary(string folder, string? steamDir, Action<string> log)
+        {
+            Folder = string.IsNullOrWhiteSpace(folder) ? "" : Path.GetFullPath(folder);
+            this.log = log;
+            if (!string.IsNullOrWhiteSpace(steamDir))
+            {
+                if (GameFolder.IsGameFolder(steamDir) && GameFolder.Build(steamDir) == Patching.SteamBuild)
+                    this.steamDir = Path.GetFullPath(steamDir);
+                else if (File.Exists(Path.Combine(steamDir, "Landmark64.exe")))
+                    log($"Patch packs: {steamDir} is not a Steam {Patching.SteamBuild} copy of Landmark, so edits and patches are checked by their headers only.");
+            }
+        }
 
-        /// <summary>Daybreak's final-build file list (embedded): path ("\", any case) -> size, CRC32.</summary>
-        private static Dictionary<string, (long Size, string Crc)> FinalList
+        /// <summary>The first check (in the background) and the watcher. Nothing is served before a pack has passed.</summary>
+        public void Start()
+        {
+            if (Folder.Length == 0)
+                return;
+            Directory.CreateDirectory(Folder);
+            log($"Patch packs: checking {Folder}{(steamDir != null ? $" (replaying edits and patches on {steamDir})" : "")}.");
+            try
+            {
+                watcher = new FileSystemWatcher(Folder, "*" + PatchFile.Extension)
+                {
+                    NotifyFilter = NotifyFilters.FileName | NotifyFilters.Size | NotifyFilters.LastWrite,
+                    IncludeSubdirectories = false
+                };
+                FileSystemEventHandler changed = (_, _) => ScanSoon();
+                watcher.Created += changed;
+                watcher.Changed += changed;
+                watcher.Deleted += changed;
+                watcher.Renamed += (_, _) => ScanSoon();
+                watcher.EnableRaisingEvents = true;
+            }
+            catch (Exception e) when (e is IOException or ArgumentException or PlatformNotSupportedException)
+            {
+                // Some mounted folders can't be watched: the timer below still finds every change within a minute.
+                log($"Patch packs: can't watch {Folder} ({e.Message}); checking it every minute instead.");
+            }
+            // The first scan now, then one a minute (size / write-time check; a changed pack is checked again).
+            timer = new Timer(_ => Scan(), null, TimeSpan.Zero, TimeSpan.FromMinutes(1));
+        }
+
+        /// <summary>A change was seen: scan a few seconds later (a file being copied in raises many events).</summary>
+        private void ScanSoon() => timer?.Change(TimeSpan.FromSeconds(5), TimeSpan.FromMinutes(1));
+
+        /// <summary>Checks every pack in the folder that is new or changed since it was checked. One scan at a time.</summary>
+        public void Scan()
+        {
+            if (Folder.Length == 0 || disposed || Interlocked.Exchange(ref scanning, 1) == 1)
+                return;
+            try
+            {
+                if (!Directory.Exists(Folder))
+                    return;
+                var files = Directory.EnumerateFiles(Folder, "*" + PatchFile.Extension).Select(Path.GetFullPath).ToList();
+                lock (gate)
+                    foreach (string gone in verified.Keys.Where(k => !files.Contains(k, StringComparer.OrdinalIgnoreCase)).ToList())
+                    {
+                        verified.Remove(gone);
+                        log($"Patch packs: {Path.GetFileName(gone)} was removed; no longer offered.");
+                    }
+                foreach (string file in files.OrderBy(f => Path.GetFileName(f), StringComparer.OrdinalIgnoreCase))
+                {
+                    if (disposed)
+                        return;
+                    var info = new FileInfo(file);
+                    lock (gate)
+                        if (verified.TryGetValue(file, out Pack? known) && known.FileBytes == info.Length && known.Written == info.LastWriteTimeUtc)
+                            continue;
+                    lock (gate)
+                        verified.Remove(file);
+                    Check(file);
+                }
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                log($"Patch packs: can't read {Folder}: {e.Message}");
+            }
+            finally
+            {
+                Interlocked.Exchange(ref scanning, 0);
+            }
+        }
+
+        /// <summary>Checks one pack (see the class) and keeps it, or refuses it (logged, moved to rejected\).</summary>
+        private void Check(string file)
+        {
+            string name = Path.GetFileName(file);
+            string id = Path.GetFileNameWithoutExtension(file);
+            if (!packId.IsMatch(id))
+            {
+                Refuse(file, "its file name may only use letters, digits, '.', '_' and '-' (at most 64)");
+                return;
+            }
+            try
+            {
+                var info = new FileInfo(file);
+                // Open it shared for reading only: while it is open nobody can write to it, so what is checked is what
+                // gets recorded. A file still being copied in can't be opened that way yet: it is checked on a later scan.
+                using var pack = new Patching.Pack(file);
+                info.Refresh();
+                string fileSha;
+                using (var s = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read))
+                    fileSha = Convert.ToHexString(SHA256.HashData(s));
+                bool wasWaiting;
+                lock (gate)
+                    wasWaiting = waiting.Remove(file);
+                log($"Patch packs: checking {name} ({info.Length:N0} bytes){(wasWaiting ? " now that it is complete" : "")}...");
+                PackCheck.Result result = PackCheck.Verify(pack, steamDir);
+                byte[] manifestBytes = System.Text.Encoding.UTF8.GetBytes(PackManifestText(pack));
+                var passed = new Pack
+                {
+                    Id = id, FilePath = file, FileBytes = info.Length, Written = info.LastWriteTimeUtc, FileSha256 = fileSha,
+                    Manifest = pack.Manifest, ManifestBytes = manifestBytes, Sha256 = pack.Id, Build = result.Build.Label,
+                    Replayed = result.Replayed, NotReplayed = result.NotReplayed
+                };
+                lock (gate)
+                {
+                    verified[file] = passed;
+                    refused.RemoveAll(r => r.File.Equals(name, StringComparison.OrdinalIgnoreCase));
+                }
+                log($"Patch packs: {name} PASSED: the verified update to {result.Build.Label}, {result.Entries} files, " +
+                    $"pack SHA-256 {fileSha}. " + (result.NotReplayed > 0
+                        ? $"{result.NotReplayed} edits/patches checked by their headers (no Steam copy here to replay them on; each player's LaunchPad replays them before installing)."
+                        : $"{result.Replayed} edits/patches replayed and matched."));
+            }
+            catch (Exception e) when (e is InvalidDataException or JsonException or InvalidOperationException)
+            {
+                Refuse(file, e.Message);
+            }
+            catch (IOException e)
+            {
+                lock (gate)
+                    if (waiting.Add(file))
+                        log($"Patch packs: {name} can't be read yet ({e.Message}); checking it again once it is complete.");
+            }
+        }
+
+        /// <summary>The pack.json text exactly as stored (its SHA-256 is the pack's id).</summary>
+        private static string PackManifestText(Patching.Pack pack)
+        {
+            using var reader = new PatchFile.Reader(pack.FilePath);
+            return reader.Manifest;
+        }
+
+        private void Refuse(string file, string reason)
+        {
+            string name = Path.GetFileName(file);
+            log($"Patch packs: {name} REFUSED and never served: {reason}");
+            lock (gate)
+            {
+                refused.RemoveAll(r => r.File.Equals(name, StringComparison.OrdinalIgnoreCase));
+                refused.Add((name, reason, DateTime.UtcNow));
+                waiting.Remove(file);
+            }
+            try
+            {
+                string rejected = Path.Combine(Folder, "rejected");
+                Directory.CreateDirectory(rejected);
+                string to = Path.Combine(rejected, name);
+                if (File.Exists(to))
+                    to = Path.Combine(rejected, $"{Path.GetFileNameWithoutExtension(name)}-{DateTime.UtcNow:yyyyMMdd-HHmmss}{PatchFile.Extension}");
+                File.Move(file, to);
+                File.WriteAllText(to + ".reason.txt", $"{DateTime.UtcNow:u} refused: {reason}{Environment.NewLine}");
+                log($"Patch packs: moved {name} to {to}.");
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // A read-only folder: it stays where it is, still never served (it isn't in the verified list).
+                log($"Patch packs: couldn't move {name} to rejected\\ ({e.Message}); it stays there, not served.");
+            }
+        }
+
+        /// <summary>
+        /// The verified packs, in file-name order, that are still exactly as checked (size and write time; one that changed
+        /// is checked again soon and left out until it passes).
+        /// </summary>
+        public List<Pack> Packs
         {
             get
             {
-                if (finalList != null)
-                    return finalList;
-                var list = new Dictionary<string, (long, string)>(StringComparer.OrdinalIgnoreCase);
-                using Stream s = typeof(PatchHost).Assembly.GetManifestResourceStream("final-file-list.csv")!;
-                using var reader = new StreamReader(s);
-                reader.ReadLine();
-                while (reader.ReadLine() is string line)
-                {
-                    string[] f = line.Split(',');
-                    if (f.Length >= 3 && long.TryParse(f[^2], out long size))
-                        list[string.Join(",", f[..^2]).Replace('/', '\\')] = (size, f[^1].Trim().ToUpperInvariant());
-                }
-                return finalList = list;
+                List<Pack> all;
+                lock (gate)
+                    all = verified.Values.OrderBy(p => Path.GetFileName(p.FilePath), StringComparer.OrdinalIgnoreCase).ToList();
+                return all.Where(Unchanged).ToList();
             }
         }
 
-        private static List<string>? updateFiles;
+        /// <summary>The packs refused since start-up (file, reason), newest last.</summary>
+        public List<(string File, string Reason, DateTime When)> Refused
+        {
+            get { lock (gate) return refused.ToList(); }
+        }
+
+        private bool Unchanged(Pack p)
+        {
+            var info = new FileInfo(p.FilePath);
+            if (info.Exists && info.Length == p.FileBytes && info.LastWriteTimeUtc == p.Written)
+                return true;
+            lock (gate)
+                verified.Remove(p.FilePath);
+            log($"Patch packs: {Path.GetFileName(p.FilePath)} changed after it was checked; not served until it passes again.");
+            ScanSoon();
+            return false;
+        }
+
+        public Pack? Find(string id) => Packs.FirstOrDefault(p => p.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
 
         /// <summary>
-        /// The files the update must carry (embedded update-0589-to-0695-files.csv): every final-build file a verified
-        /// Steam copy of 0.589 doesn't already have with the same size and CRC32 (583 new, 511 changed).
+        /// Opens a verified pack for sending: the file is opened first (shared for reading only, so it can't be written while
+        /// it is sent) and only served if it is still exactly the file that was checked. null = not served (unknown, or it
+        /// changed: then it is checked again).
         /// </summary>
-        private static List<string> UpdateFiles
+        public FileStream? OpenForServing(string id, out Pack? pack)
         {
-            get
+            pack = null;
+            Pack? p;
+            lock (gate)
+                p = verified.Values.FirstOrDefault(v => v.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+            if (p == null)
+                return null;
+            FileStream s;
+            try
             {
-                if (updateFiles != null)
-                    return updateFiles;
-                var list = new List<string>();
-                using Stream s = typeof(PatchHost).Assembly.GetManifestResourceStream("update-files.csv")!;
-                using var reader = new StreamReader(s);
-                reader.ReadLine();
-                while (reader.ReadLine() is string line)
-                {
-                    string[] f = line.Split(',');
-                    if (f.Length >= 4)
-                        list.Add(string.Join(",", f[..^3]));
-                }
-                return updateFiles = list;
+                s = new FileStream(p.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
             }
-        }
-
-        /// <summary>
-        /// The second accepted build of 0.695 (LaunchPad Patching.Targets): Daybreak's final list, but with the January 2017
-        /// exe and English text files from before Daybreak's last update (14 Feb 2017).
-        /// </summary>
-        private static readonly Dictionary<string, (long Size, string Crc)> JanuaryFiles = new(StringComparer.OrdinalIgnoreCase)
-        {
-            ["Landmark64.exe"] = (91222528, "2FF380AE"),
-            ["Locale\\en_us_data.dat"] = (1394253, "FFF22327"),
-            ["Locale\\en_us_data.dir"] = (636370, "6166AEA1")
-        };
-
-        /// <summary>
-        /// Why a pack isn't an update to one known build of 0.695, or null when it is (checked against each build). Players'
-        /// LaunchPad only installs that update (LaunchPad Patching.CheckUpdate, which also checks deletions against the
-        /// Steam build and that the result is the whole build), so the host refuses anything else up front: the owner sees
-        /// why in the server log instead of their players.
-        /// </summary>
-        private static string? NotTheUpdate(Manifest m)
-        {
-            string? final = NotTheUpdate(m, FinalList.TryGetValue);
-            if (final == null)
-                return null;
-            string? january = NotTheUpdate(m, (string path, out (long Size, string Crc) entry) =>
-                JanuaryFiles.TryGetValue(path, out entry) || FinalList.TryGetValue(path, out entry));
-            if (january == null)
-                return null;
-            // Report the build the pack is closer to: one carrying the January exe is meant to be the January build.
-            bool meantJanuary = m.Files.Any(f => f.Path.Equals("Landmark64.exe", StringComparison.OrdinalIgnoreCase)
-                && f.Crc32.Equals(JanuaryFiles["Landmark64.exe"].Crc, StringComparison.OrdinalIgnoreCase));
-            return meantJanuary ? "(January 2017 build) " + january : "(final build) " + final;
-        }
-
-        private delegate bool Lookup(string path, out (long Size, string Crc) entry);
-
-        private static string? NotTheUpdate(Manifest m, Lookup build)
-        {
-            if (m.Version != FinalBuild)
-                return $"version is \"{m.Version}\", not {FinalBuild}";
-            if (m.Files.Count == 0)
-                return "no files";
-            PackFile? foreign = m.Files.FirstOrDefault(f => !build(f.Path.Replace('/', '\\'), out var o) || o.Size != f.Size
-                || !o.Crc.Equals(f.Crc32, StringComparison.OrdinalIgnoreCase));
-            if (foreign != null)
-                return $"{foreign.Path} is not a file of a known 0.695 build (size or CRC32 differs, or it isn't in Daybreak's list)";
-            var carried = new HashSet<string>(m.Files.Select(f => f.Path.Replace('/', '\\')), StringComparer.OrdinalIgnoreCase);
-            List<string> missing = UpdateFiles.Where(f => !carried.Contains(f)).ToList();
-            if (missing.Count > 0)
-                return $"incomplete: {missing.Count} of the update's {UpdateFiles.Count} files are missing (first: {missing[0]})";
-            string? kept = m.Delete.FirstOrDefault(d => build(d.Replace('/', '\\'), out _));
-            return kept != null ? $"it deletes {kept}, which the build has" : null;
-        }
-
-        private static readonly Dictionary<string, Pack> cache = new(StringComparer.OrdinalIgnoreCase);
-        private static readonly object cacheLock = new();
-
-        private static string? Safe(string path)
-        {
-            string p = path.Replace('/', '\\').Trim();
-            if (p.Length == 0 || System.IO.Path.IsPathRooted(p) || p.StartsWith('\\') || p.Contains(':'))
-                return null;
-            string[] parts = p.Split('\\', StringSplitOptions.RemoveEmptyEntries);
-            return parts.Any(x => x == "." || x == ".." || x.Trim().Length == 0) ? null : string.Join("\\", parts);
-        }
-
-        /// <summary>The packs (.lmpatch) in <paramref name="folder"/>, in order. A pack that isn't the update is left out (logged once).</summary>
-        public static List<Pack> Packs(string folder)
-        {
-            var packs = new List<Pack>();
-            if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
-                return packs;
-            folder = System.IO.Path.GetFullPath(folder);
-            foreach (string packPath in Directory.EnumerateFiles(folder, "*.lmpatch").OrderBy(f => System.IO.Path.GetFileName(f), StringComparer.OrdinalIgnoreCase))
+            catch (IOException)
             {
-                string id = System.IO.Path.GetFileNameWithoutExtension(packPath);
-                if (!packId.IsMatch(id))
-                    continue;
-                var info = new FileInfo(packPath);
-                lock (cacheLock)
-                {
-                    if (cache.TryGetValue(id, out Pack? known) && known.Written == info.LastWriteTimeUtc && known.FilePath == packPath)
-                    {
-                        packs.Add(known);
-                        continue;
-                    }
-                }
-                try
-                {
-                    (string manifestText, Dictionary<string, long> entries) = ReadIndex(packPath);
-                    byte[] bytes = System.Text.Encoding.UTF8.GetBytes(manifestText);
-                    Manifest m = JsonSerializer.Deserialize<Manifest>(bytes) ?? throw new InvalidDataException("empty pack.json");
-                    if (NotTheUpdate(m) is string why)
-                        throw new InvalidDataException($"not a verified update to {FinalBuild}: {why}");
-                    // Every listed file has its entry (LaunchPad checks each entry's SHA-256 and each result's CRC32).
-                    foreach (PackFile f in m.Files)
-                    {
-                        if (Safe(f.Path) == null)
-                            throw new InvalidDataException($"unsafe path {f.Path}");
-                        if (!entries.ContainsKey(f.Entry))
-                            throw new InvalidDataException($"{f.Entry} is missing from the pack");
-                    }
-                    var pack = new Pack
-                    {
-                        Id = id, FilePath = packPath, FileBytes = info.Length, Manifest = m, ManifestBytes = bytes,
-                        Written = info.LastWriteTimeUtc, Sha256 = Convert.ToHexString(SHA256.HashData(bytes))
-                    };
-                    lock (cacheLock)
-                        cache[id] = pack;
-                    packs.Add(pack);
-                }
-                catch (Exception e) when (e is IOException or JsonException or InvalidDataException)
-                {
-                    lock (cacheLock)
-                        if (!cache.ContainsKey("!" + id))
-                        {
-                            cache["!" + id] = new Pack();
-                            Console.WriteLine($"Patch pack {id} is left out: {e.Message}");
-                        }
-                    // Stop here: later packs build on this one.
-                    break;
-                }
+                return null;
             }
-            return packs;
+            if (!Unchanged(p) || s.Length != p.FileBytes)
+            {
+                s.Dispose();
+                return null;
+            }
+            pack = p;
+            return s;
         }
 
         /// <summary>What /info and /patches list for a pack.</summary>
@@ -251,51 +321,42 @@ namespace LandmarkEmulator.WebAPI
         {
             id = p.Id, name = p.Manifest.Name, version = p.Manifest.Version, requires = p.Manifest.Requires,
             description = p.Manifest.Description, files = p.Manifest.Files.Count, bytes = p.Manifest.Files.Sum(f => f.Size),
-            packBytes = p.FileBytes, delete = p.Manifest.Delete.Count, sha256 = p.Sha256
+            packBytes = p.FileBytes, packSha256 = p.FileSha256, delete = p.Manifest.Delete.Count, sha256 = p.Sha256, build = p.Build
         };
 
-        public static void Map(WebApplication app, Func<string> folder)
+        public void Dispose()
         {
-            app.MapGet("/patches", () => Results.Ok(Packs(folder()).Select(Describe)));
+            disposed = true;
+            watcher?.Dispose();
+            timer?.Dispose();
+        }
+    }
+
+    /// <summary>The patch endpoints (see <see cref="PatchLibrary"/>).</summary>
+    public static class PatchHost
+    {
+        public static void Map(WebApplication app, Func<PatchLibrary> library)
+        {
+            app.MapGet("/patches", () => Results.Ok(library().Packs.Select(PatchLibrary.Describe)));
 
             app.MapGet("/patches/{id}/pack.json", (string id) =>
             {
-                Pack? pack = Packs(folder()).FirstOrDefault(p => p.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
-                return pack == null ? Results.NotFound() : Results.Bytes(pack.ManifestBytes, "application/json");
+                PatchLibrary.Pack? pack = library().Find(id);
+                return pack == null ? Unavailable(library(), id) : Results.Bytes(pack.ManifestBytes, "application/json");
             });
 
             app.MapGet("/patches/{id}/pack.lmpatch", (string id) =>
             {
-                Pack? pack = Packs(folder()).FirstOrDefault(p => p.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
-                return pack == null ? Results.NotFound()
-                    : Results.File(pack.FilePath, "application/octet-stream", enableRangeProcessing: true);
+                FileStream? stream = library().OpenForServing(id, out _);
+                return stream == null ? Unavailable(library(), id)
+                    : Results.Stream(stream, "application/octet-stream", enableRangeProcessing: true);
             });
         }
 
-        /// <summary>
-        /// The manifest text and entry sizes of an .lmpatch (LaunchPad PatchFile.cs): "LMPATCH1", u64 index offset,
-        /// u64 index length, then the Brotli-compressed JSON index { manifest, entries: [{ name, offset, stored, size, sha256 }] }.
-        /// </summary>
-        private static (string Manifest, Dictionary<string, long> Entries) ReadIndex(string path)
-        {
-            using FileStream file = File.OpenRead(path);
-            byte[] header = new byte[24];
-            file.ReadExactly(header);
-            if (System.Text.Encoding.ASCII.GetString(header, 0, 8) != "LMPATCH1")
-                throw new InvalidDataException("not an .lmpatch file");
-            long at = BitConverter.ToInt64(header, 8), length = BitConverter.ToInt64(header, 16);
-            if (at < 24 || length <= 0 || at + length > file.Length || length > 256 << 20)
-                throw new InvalidDataException("damaged index");
-            byte[] stored = new byte[length];
-            file.Position = at;
-            file.ReadExactly(stored);
-            using var decoder = new System.IO.Compression.BrotliStream(new MemoryStream(stored), System.IO.Compression.CompressionMode.Decompress);
-            using JsonDocument index = JsonDocument.Parse(decoder);
-            string manifest = index.RootElement.GetProperty("manifest").GetString() ?? "";
-            var entries = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
-            foreach (JsonElement e in index.RootElement.GetProperty("entries").EnumerateArray())
-                entries[e.GetProperty("name").GetString() ?? ""] = e.GetProperty("size").GetInt64();
-            return (manifest, entries);
-        }
+        /// <summary>404 for a pack the folder doesn't have; 503 while a pack that was verified is being checked again.</summary>
+        private static IResult Unavailable(PatchLibrary library, string id)
+            => File.Exists(Path.Combine(library.Folder, id + PatchFile.Extension)) && library.Folder.Length > 0
+                && Regex.IsMatch(id, "^[A-Za-z0-9._-]{1,64}$")
+                ? Results.StatusCode(503) : Results.NotFound();
     }
 }

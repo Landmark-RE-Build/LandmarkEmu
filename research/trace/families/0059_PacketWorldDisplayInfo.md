@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 0 (0 not handled) · S2C 1 (0 never sent / opcode unknown)
 
 ## S2C PacketWorldDisplayInfo  `0x59`
-- server: SENT (102× in opcode_stats)
+- server: SENT (16× in opcode_stats)
 - reader: FUN_142bb1520
 - handled in the zone dispatcher Zone_DispatchPacket (0x26)
 - code (handler case in Zone_DispatchPacket):

@@ -82,7 +82,9 @@ namespace LandmarkEmulator.WorldServer.Game
         {
             var output = new List<byte>();
             var w = new GamePacketWriter(output);
-            w.Write(ImageDataSub);
+            // The sub is an i16 (reader FUN_142ebab00: u16 opcode, i16 sub, u64 character, …). Write(short) has no overload
+            // and picked Write(int) — 4 bytes, which shifted the character and every later field (fixed 2026-10-16).
+            w.WriteUShort((ushort)ImageDataSub);
             w.Write(character);
             w.Write(kind);
             w.Write(true);

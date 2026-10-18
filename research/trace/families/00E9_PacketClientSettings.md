@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 0 (0 not handled) · S2C 1 (0 never sent / opcode unknown)
 
 ## S2C PacketClientSettings  `0xE9`
-- server: SENT (102× in opcode_stats) · seen in play 102×
+- server: SENT (16× in opcode_stats) · seen in play 325×
 - reader: FUN_142bb06d0
 - handled in the zone dispatcher Zone_DispatchPacket (0x6f)
 - code (handler case in Zone_DispatchPacket):

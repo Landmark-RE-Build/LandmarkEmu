@@ -12,7 +12,8 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
         private static readonly ILogger log = LogManager.GetCurrentClassLogger();
 
         /// <summary>
-        /// Passes chat messages (sub 1) to <see cref="Game.Chat.Handle"/>; other subs are only logged.
+        /// Passes chat messages (sub 1) to <see cref="Game.Chat.Handle"/> and room requests to the social service; other
+        /// subs are only logged.
         /// </summary>
         [ZoneMessageHandler(ZoneMessageOpcode.ChatBase)]
         public static void HandleChat(WorldSession session, ChatRequest request)
@@ -20,7 +21,7 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
             if (request.SubOpcode == 1)
                 Game.Chat.Handle(session, request.Body);
             else if (request.SubOpcode == Game.ChatRooms.JoinRequest || request.SubOpcode == Game.ChatRooms.LeaveRequest)
-                Game.ChatRooms.Handle(session, (ushort)request.SubOpcode, request.Body);
+                Game.Social.SocialServices.Service.ChatRoom(session, (ushort)request.SubOpcode, request.Body);
             else
             {
                 Network.OpcodeStats.Unanswered("Chat 0x13", request.SubOpcode);

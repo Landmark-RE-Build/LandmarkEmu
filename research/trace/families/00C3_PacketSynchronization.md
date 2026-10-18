@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 1 (0 not handled) · S2C 0 (0 never sent / opcode unknown)
 
 ## C2S PacketSynchronization  `0xC3`
-- server: handled · seen in play 9998× · received 9998×
+- server: handled · seen in play 54979× · received 1864×
 - built in: FUN_142c3b490
 - code (builder in FUN_142c3b490):
 ```

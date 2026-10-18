@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 3 (0 not handled) · S2C 2 (0 never sent / opcode unknown)
 
 ## C2S FirstTimeEventTriggerRequest  `0x6D, 0x1`
-- server: handled (sub in handler)
+- server: handled (sub in handler) · seen in play 3× · received 6×
 
 ## C2S FirstTimeEventClearRequest  `0x6D, 0x3`
 - server: handled (sub in handler)
@@ -20,7 +20,7 @@ C2S 3 (0 not handled) · S2C 2 (0 never sent / opcode unknown)
 ```
 
 ## S2C FirstTimeEventScriptPacket  `0x6D`
-- server: SENT (564× in opcode_stats) · seen in play 564×
+- server: SENT (145× in opcode_stats) · seen in play 2308×
 - reader: FUN_14357f000
 - built in: FUN_143580480
 - layout:
@@ -35,7 +35,7 @@ bool  +0x1c
 - log lines: First time event %d cleared.
 
 ## S2C FirstTimeEventStatePacket  `0x6D`
-- server: SENT (564× in opcode_stats) · seen in play 564×
+- server: SENT (145× in opcode_stats) · seen in play 2308×
 - reader: FUN_14357f100
 - built in: FUN_143580480
 - layout:

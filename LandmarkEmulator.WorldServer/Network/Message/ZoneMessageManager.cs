@@ -13,7 +13,7 @@ using System.Reflection;
 
 namespace LandmarkEmulator.WorldServer.Network.Message
 {
-    public delegate void ZoneMessageHandlerDelegate(NetworkSession session, IReadable message);
+    public delegate void ZoneMessageHandlerDelegate(WorldSession session, IReadable message);
 
     public class ZoneMessageManager : Singleton<ZoneMessageManager>
     {
@@ -76,7 +76,7 @@ namespace LandmarkEmulator.WorldServer.Network.Message
                     if (!attribute.ProtocolVersion.HasFlag(version))
                         continue;
 
-                    ParameterExpression sessionParameter = Expression.Parameter(typeof(NetworkSession));
+                    ParameterExpression sessionParameter = Expression.Parameter(typeof(WorldSession));
                     ParameterExpression messageParameter = Expression.Parameter(typeof(IReadable));
 
                     ParameterInfo[] parameterInfo = method.GetParameters();
@@ -85,7 +85,7 @@ namespace LandmarkEmulator.WorldServer.Network.Message
                     {
                         #region Debug
                         Debug.Assert(parameterInfo.Length == 2);
-                        Debug.Assert(typeof(NetworkSession).IsAssignableFrom(parameterInfo[0].ParameterType));
+                        Debug.Assert(typeof(WorldSession).IsAssignableFrom(parameterInfo[0].ParameterType));
                         Debug.Assert(typeof(IReadable).IsAssignableFrom(parameterInfo[1].ParameterType));
                         #endregion
 
@@ -102,7 +102,7 @@ namespace LandmarkEmulator.WorldServer.Network.Message
                     {
                         #region Debug
                         Debug.Assert(parameterInfo.Length == 1);
-                        Debug.Assert(typeof(NetworkSession).IsAssignableFrom(type));
+                        Debug.Assert(typeof(WorldSession).IsAssignableFrom(type));
                         Debug.Assert(typeof(IReadable).IsAssignableFrom(parameterInfo[0].ParameterType));
                         #endregion
 

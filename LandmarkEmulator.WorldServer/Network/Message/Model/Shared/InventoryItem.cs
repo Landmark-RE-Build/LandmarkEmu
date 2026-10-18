@@ -1,12 +1,20 @@
 ﻿using LandmarkEmulator.Shared.Network;
 using LandmarkEmulator.Shared.Network.Message;
-using System;
 using System.Collections.Generic;
 using NLog;
 using LandmarkEmulator.Shared.Game;
 
 namespace LandmarkEmulator.WorldServer.Network.Message.Model.Shared
 {
+    /// <summary>
+    /// One item record, the client's ClientItem (RTTI; base ItemRecord). Reader 0.695 FUN_142c208e0 (0.589
+    /// FUN_142b87110, same code). The inventory takes the record over with FUN_143b78d70; the client's item print
+    /// FUN_143b793d0 names several fields ("Guid, Definition, Name, TintOverride, Count, ConsumedCount, LastCastTime,
+    /// RentalExpirationTime, RentalUpsellsSent, MarketplaceBundleId"), the other print FUN_143b79490 (ClientItem vtable
+    /// +0x10) the rest (Tint, OwnerType, InventoryIndex, InventoryId, Slot, ChestOwnerGuid, ChestSlot). Offsets below are
+    /// ClientItem offsets.
+    /// Live values: the captured login packet (Resources/PacketDumps/SendSelf.bin, 24 items; docs/unknowns.md).
+    /// </summary>
     public class InventoryItem : IReadable, IWritable
     {
         protected static readonly ILogger log = LogManager.GetCurrentClassLogger();
@@ -19,7 +27,10 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model.Shared
         /// </summary>
         public class DefinitionData : IReadable, IWritable
         {
-            // sub_142C20E60
+            /// <summary>
+            /// The item's "random component" (ItemRecord::SetRandomComponent, FUN_143b780f0; reader 0.695 FUN_142c20e60):
+            /// ItemRandom +0x0 quality, four u32, the StatInfo list and the CatalystRandomInfo list.
+            /// </summary>
             public class RandomData : IReadable, IWritable
             {
                 /// <summary>
@@ -62,54 +73,68 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model.Shared
                     }
                 }
 
-                /// <summary>ItemRandom::CatalystRandomInfo: 3 × u32.</summary>
+                /// <summary>
+                /// ItemRandom::CatalystRandomInfo (RTTI): 3 × u32 (list reader FUN_142c38c90, element FUN_142c18530; kept
+                /// at ClientItem +0x48). No reader of the three values found yet (searched: the item row and tooltip
+                /// builders, the ItemRecord compare / copy, every function naming CatalystRandomInfo). Live: no captured
+                /// item has one. The client's SQLite cache names a catalyst row catalyst_definition_id, slot_no, stat_id,
+                /// upgrade_amount, so likely three of those [I, weak].
+                /// </summary>
                 public class CatalystInfo : IReadable, IWritable
                 {
-                    public uint Unknown0 { get; set; }
-                    public uint Unknown1 { get; set; }
-                    public uint Unknown2 { get; set; }
+                    public uint Slot00 { get; set; }
+                    public uint Slot04 { get; set; }
+                    public uint Slot08 { get; set; }
 
                     public void Read(GamePacketReader reader)
                     {
-                        Unknown0 = reader.ReadUInt();
-                        Unknown1 = reader.ReadUInt();
-                        Unknown2 = reader.ReadUInt();
+                        Slot00 = reader.ReadUInt();
+                        Slot04 = reader.ReadUInt();
+                        Slot08 = reader.ReadUInt();
                     }
 
                     public void Write(GamePacketWriter writer)
                     {
-                        writer.Write(Unknown0);
-                        writer.Write(Unknown1);
-                        writer.Write(Unknown2);
+                        writer.Write(Slot00);
+                        writer.Write(Slot04);
+                        writer.Write(Slot08);
                     }
                 }
 
+                /// <summary>ItemRandom +0x0 (ClientItem +0x10): the quality ("Quality"; must match for two items to stack).</summary>
                 public uint Quality { get; set; }
-                public uint Unknown1 { get; set; }
-                public uint Unknown2 { get; set; }
-                public uint Unknown3 { get; set; }
-                public uint Unknown4 { get; set; }
+                /// <summary>
+                /// ItemRandom +0x4 (ClientItem +0x14): must be equal for two items to stack (ItemRecord compare
+                /// FUN_143b77f90) [P]; nothing else reads it. Live: 0 on every item, in both blocks.
+                /// </summary>
+                public uint Slot04 { get; set; }
+                /// <summary>ItemRandom +0x8. Copied with the block (FUN_143b780f0), never read [P]. Live: 0.</summary>
+                public uint Slot08 { get; set; }
+                /// <summary>ItemRandom +0xc. Copied, never read [P]. Live: 0.</summary>
+                public uint Slot0C { get; set; }
+                /// <summary>ItemRandom +0x10. Copied, never read [P]. Live: 0.</summary>
+                public uint Slot10 { get; set; }
                 public List<StatInfo> Stats { get; set; } = new();
                 public List<CatalystInfo> Catalysts { get; set; } = new();
 
                 public void Read(GamePacketReader reader)
                 {
                     Quality = reader.ReadUInt();
-                    Unknown1 = reader.ReadUInt();
-                    Unknown2 = reader.ReadUInt();
-                    Unknown3 = reader.ReadUInt();
-                    Unknown4 = reader.ReadUInt();
+                    Slot04 = reader.ReadUInt();
+                    Slot08 = reader.ReadUInt();
+                    Slot0C = reader.ReadUInt();
+                    Slot10 = reader.ReadUInt();
 
-                    uint unknown5Count = reader.ReadUInt();
-                    for (int i = 0; i < unknown5Count; i++)
+                    uint statCount = reader.ReadUInt();
+                    for (int i = 0; i < statCount; i++)
                     {
                         StatInfo obj = new();
                         obj.Read(reader);
                         Stats.Add(obj);
                     }
 
-                    uint unknown6Count = reader.ReadUInt();
-                    for (int i = 0; i < unknown6Count; i++)
+                    uint catalystCount = reader.ReadUInt();
+                    for (int i = 0; i < catalystCount; i++)
                     {
                         CatalystInfo obj = new();
                         obj.Read(reader);
@@ -120,10 +145,10 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model.Shared
                 public void Write(GamePacketWriter writer)
                 {
                     writer.Write(Quality);
-                    writer.Write(Unknown1);
-                    writer.Write(Unknown2);
-                    writer.Write(Unknown3);
-                    writer.Write(Unknown4);
+                    writer.Write(Slot04);
+                    writer.Write(Slot08);
+                    writer.Write(Slot0C);
+                    writer.Write(Slot10);
 
                     writer.Write((uint)Stats.Count);
                     foreach (StatInfo stats in Stats)
@@ -165,104 +190,154 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model.Shared
             }
         }
 
-        /// <summary>Optional block at ClientItem +0x120 (FUN_142b86340): u64, u32, u32. Not seen in the capture.</summary>
-        public class SubData : IReadable, IWritable
+        /// <summary>
+        /// Optional rental block, ClientItem +0x120 (FUN_142c1fb10), named by the client's item print (FUN_143b793d0:
+        /// "RentalExpirationTime: %lld, RentalUpsellsSent: %d, MarketplaceBundleId: %d") [P]. A rented item does not
+        /// stack with an unrented one (FUN_143b789b0 / FUN_143b78c10). Live: no captured item has one; not sent.
+        /// </summary>
+        public class RentalData : IReadable, IWritable
         {
-            public ulong Unknown0 { get; set; }
-            public uint Unknown1 { get; set; }
-            public uint Unknown2 { get; set; }
+            /// <summary>+0x0 when the rental runs out ("RentalExpirationTime").</summary>
+            public ulong RentalExpirationTime { get; set; }
+            /// <summary>+0x8 "RentalUpsellsSent" (set through FUN_143b79ff0).</summary>
+            public uint RentalUpsellsSent { get; set; }
+            /// <summary>+0xc the store bundle it was rented from ("MarketplaceBundleId", set through FUN_143b79d20).</summary>
+            public uint MarketplaceBundleId { get; set; }
 
             public void Read(GamePacketReader reader)
             {
-                Unknown0 = reader.ReadULong();
-                Unknown1 = reader.ReadUInt();
-                Unknown2 = reader.ReadUInt();
+                RentalExpirationTime = reader.ReadULong();
+                RentalUpsellsSent = reader.ReadUInt();
+                MarketplaceBundleId = reader.ReadUInt();
             }
 
             public void Write(GamePacketWriter writer)
             {
-                writer.Write(Unknown0);
-                writer.Write(Unknown1);
-                writer.Write(Unknown2);
+                writer.Write(RentalExpirationTime);
+                writer.Write(RentalUpsellsSent);
+                writer.Write(MarketplaceBundleId);
             }
         }
 
         /// <summary>
-        /// Optional block at ClientItem +0x128 (FUN_142b9fa70): the design a Player Design item holds. Live:
+        /// Optional block at ClientItem +0x128 (FUN_142c395e0; the inventory copy keeps the u64 at +0x0 and the two
+        /// strings at +0x8 / +0x20 through FUN_143b797f0 / FUN_143b796b0): the design a Player Design item holds. Live:
         /// {design guid, "1 - EW Section", "Zhang"} = design id, design name, author name.
         /// </summary>
-        public class SubData2 : IReadable, IWritable
+        public class DesignData : IReadable, IWritable
         {
-            public ulong Unknown0 { get; set; }
-            public string Unknown1 { get; set; }
-            public string Unknown2 { get; set; }
+            public ulong DesignId { get; set; }
+            public string DesignName { get; set; }
+            public string AuthorName { get; set; }
 
             public void Read(GamePacketReader reader)
             {
-                Unknown0 = reader.ReadULong();
-                Unknown1 = reader.ReadString();
-                Unknown2 = reader.ReadString();
+                DesignId = reader.ReadULong();
+                DesignName = reader.ReadString();
+                AuthorName = reader.ReadString();
             }
 
             public void Write(GamePacketWriter writer)
             {
-                writer.Write(Unknown0);
-                writer.Write(Unknown1);
-                writer.Write(Unknown2);
+                writer.Write(DesignId);
+                writer.Write(DesignName);
+                writer.Write(AuthorName);
             }
         }
 
+        /// <summary>
+        /// Body of metadata type 1, ItemInstanceMetaCharacaterGuid (RTTI, sic; made by FUN_143b79230, read by
+        /// FUN_142c20cb0 into its +0x10 / +0x18 / +0x1c). Only the item writer FUN_14350c1c0 reads it back [P].
+        /// </summary>
+        public class MetaCharacterGuid : IReadable, IWritable
+        {
+            /// <summary>+0x10 the character guid the class is named after.</summary>
+            public ulong CharacterGuid { get; set; }
+            /// <summary>+0x18 u32. Never read [P].</summary>
+            public uint Slot18 { get; set; }
+            /// <summary>+0x1c u32. Never read [P].</summary>
+            public uint Slot1C { get; set; }
+
+            public void Read(GamePacketReader reader)
+            {
+                CharacterGuid = reader.ReadULong();
+                Slot18 = reader.ReadUInt();
+                Slot1C = reader.ReadUInt();
+            }
+
+            public void Write(GamePacketWriter writer)
+            {
+                writer.Write(CharacterGuid);
+                writer.Write(Slot18);
+                writer.Write(Slot1C);
+            }
+        }
+
+        /// <summary>
+        /// Item instance metadata, ClientItem +0x130 (ItemInstanceMetaData; reader 0.695 FUN_142c32650, 0.589
+        /// FUN_142b98ad0): u8 present; when non-zero a u32 type (FUN_143b79230 makes the object: 1 =
+        /// ItemInstanceMetaCharacaterGuid, any other type none) and, for type 1 only, its body [P]. Live: absent on every
+        /// item.
+        /// </summary>
         public class SubData3 : IReadable, IWritable
         {
-            public byte Unknown0 { get; set; }
-            public uint Unknown1 { get; set; }
-            public SubData Unknown2 { get; set; } = new();
+            /// <summary>Non-zero = a metadata block follows.</summary>
+            public byte HasMetaData { get; set; }
+            /// <summary>The metadata class: 1 = ItemInstanceMetaCharacaterGuid.</summary>
+            public uint MetaDataType { get; set; }
+            /// <summary>Type 1's body.</summary>
+            public MetaCharacterGuid CharacterGuidData { get; set; } = new();
 
             public void Read(GamePacketReader reader)
             {
-                Unknown0 = reader.ReadByte();
-                if (Unknown0 == 0)
+                HasMetaData = reader.ReadByte();
+                if (HasMetaData == 0)
                     return;
 
-                Unknown1 = reader.ReadUInt();
-                if (Unknown0 != 1)
+                MetaDataType = reader.ReadUInt();
+                // The client reads the body for type 1 only (FUN_142c32650). This used to test the present byte
+                // instead, which agreed only while both were 1.
+                if (MetaDataType != 1)
                     return;
 
-                Unknown2.Read(reader);
+                CharacterGuidData.Read(reader);
             }
 
             public void Write(GamePacketWriter writer)
             {
-                writer.Write(Unknown0);
-                if (Unknown0 == 0)
+                writer.Write(HasMetaData);
+                if (HasMetaData == 0)
                     return;
 
-                writer.Write(Unknown1);
-                if (Unknown0 != 1)
+                writer.Write(MetaDataType);
+                if (MetaDataType != 1)
                     return;
 
-                Unknown2.Write(writer);
+                CharacterGuidData.Write(writer);
             }
         }
 
-        // sub_14361AAD0
+        /// <summary>
+        /// The byte after each item of the SendSelf inventory list: the list reader (0.695 FUN_142c47af0) adds the item
+        /// and then calls the item's vtable +0x38 with the stream (lambda FUN_142d609d0), which for a ClientItem is
+        /// FUN_142e46670: one bool into ClientItem +0x161 [P]. No reader of ClientItem +0x161 found (the other +0x161
+        /// readers in the decompile belong to other classes). Live: 1 on Lightstone (231) and Cozy Campfire (3894), 0
+        /// on the other 22 items: both are right-click consumables with an ability, but the meaning is not proven yet.
+        /// The server sends 0.
+        /// </summary>
         public class ExtraData : IReadable, IWritable
         {
-            public byte Unknown0 { get; set; }
+            /// <summary>ClientItem +0x161.</summary>
+            public bool Flag161 { get; set; }
 
             public void Read(GamePacketReader reader)
             {
-                // This data may parse different based on whether it's a weapon or not
-                Unknown0 = reader.ReadByte();
+                Flag161 = reader.ReadBool();
             }
 
             public void Write(GamePacketWriter writer)
             {
-                writer.Write(Unknown0);
-
-                // TODO: Handle ExtraData not being 0.
-                //if (Unknown0 != 0)
-                //    throw new NotImplementedException();
+                writer.Write(Flag161);
             }
         }
 
@@ -272,12 +347,24 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model.Shared
         public ulong Guid { get; set; }
         /// <summary>Stack count (+0xd0).</summary>
         public uint Count { get; set; }
-        /// <summary>ClientItem +0xd4.</summary>
-        public uint Unknown2 { get; set; }
-        /// <summary>ClientItem +0xd8.</summary>
-        public uint Unknown3 { get; set; }
-        /// <summary>ClientItem +0xdc (bool).</summary>
-        public byte Unknown4 { get; set; }
+        /// <summary>
+        /// ClientItem +0xd4 "ConsumedCount" (the client's item print FUN_143b793d0) [P]: how many of the stack are used
+        /// up; kept between 0 and the count, and added together when stacks merge (FUN_143b789b0). Live: 0 on every item.
+        /// </summary>
+        public uint ConsumedCount { get; set; }
+        /// <summary>
+        /// ClientItem +0xd8 u32: a positive value keeps the item from stacking with items without one, the same rule as
+        /// the rental block (FUN_143b789b0 / FUN_143b78c10) [P]; nothing else reads it. Live: 0 on every item.
+        /// </summary>
+        public uint Slot0D8 { get; set; }
+        /// <summary>
+        /// ClientItem +0xdc: auto-resupply on. The client flips it and sends Inventory 0x2D sub 0x0D
+        /// InventoryPacketToggleAutoResupply {u64 item guid, bool} (FUN_142f261b0) [P]. Live: false on every item. The
+        /// server sends the switch it saved for the item (CharacterItemModel.AutoResupply; InventoryHandler
+        /// HandleToggleAutoResupply). Kept by the record copies (FUN_143b78d70, FUN_143f8a080) and written back by the
+        /// client's item record writers (FUN_14350baa0, FUN_143b818d0); only the uncalled getter FUN_142f21ff0 reads it [P].
+        /// </summary>
+        public bool AutoResupply { get; set; }
         /// <summary>
         /// Inventory index (+0xe8, the client's InventoryIndex): 0 = bag, 2 = equipment, 5 = collection.
         /// </summary>
@@ -287,26 +374,39 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model.Shared
         public uint SlotId { get; set; }
         /// <summary>Owner type (+0xfc): 1 the player; 3 a chest (moved with TransferItemWithOwner).</summary>
         public uint OwnerType { get; set; }
-        /// <summary>ClientItem +0x100 (u64).</summary>
-        public ulong Unknown9 { get; set; }
+        /// <summary>
+        /// u64 the reader puts at +0x100 of its temporary record; the inventory copy (FUN_143b78d70) does not take it
+        /// over, so nothing reads it [P]. Live: 0 on every item.
+        /// </summary>
+        public ulong Slot100 { get; set; }
         /// <summary>The chest holding the item (+0x108), ChestOwnerGuid in the client's item print.</summary>
         public ulong ChestOwnerGuid { get; set; }
         /// <summary>Slot in that chest (+0x110).</summary>
         public uint ChestSlot { get; set; }
-        /// <summary>ClientItem +0x148: wear as float bits (Condition = (max - wear) / max, FUN_1435585b0).</summary>
-        public uint Unknown12 { get; set; }
-        /// <summary>ClientItem +0x14c (byte).</summary>
-        public byte Unknown13 { get; set; }
+        /// <summary>
+        /// ClientItem +0x148: the wear, as float bits. The item row's "Condition" comes from it and the definition's
+        /// durability (+0x168) through FUN_14360c0b0 (FUN_142f258f0) [P]. Live: 0 (unworn).
+        /// </summary>
+        public uint Wear { get; set; }
+        /// <summary>
+        /// ClientItem +0x14c flags [P]. 0x80: stacks of one only, the definition's stack size is ignored (FUN_143b79610,
+        /// FUN_142e4aa70; FUN_143b79950 sets it from a bool). 0x40: no warning when the item lands in the overflow
+        /// inventory (container 7; without it the client opens "Inventory Warning!", FUN_142f22d40 → FUN_142f1e580).
+        /// Live: 0 on every item, so the overflow warning shows; the server sends 0.
+        /// </summary>
+        public byte Flags { get; set; }
         /// <summary>Seconds since the item's ability was last used (FUN_142b98a50 stores now - value as the last cast time; 0x7FFFFFFF = never). Feeds item ability cooldowns.</summary>
         public uint SecondsSinceLastCast { get; set; }
-        public byte subData1Flag { get; set; }
-        public SubData SubDataItem { get; set; }
-        public SubData2 SubData2Item { get; set; }
-        /// <summary>Item instance metadata (FUN_142b98ad0, ItemInstanceMetaData): bool present, u32 type, type 1 has a body.</summary>
+        /// <summary>Rental block (ClientItem +0x120), sent when not null.</summary>
+        public RentalData Rental { get; set; }
+        /// <summary>Player Design block (ClientItem +0x128), sent when not null.</summary>
+        public DesignData Design { get; set; }
+        /// <summary>Item instance metadata (ClientItem +0x130), see <see cref="SubData3"/>.</summary>
         public SubData3 MetaData { get; set; } = new();
         /// <summary>Seconds until the item is deleted (+0x138, clamped at 0 and timestamped on read); matches the client's items.timed_delete_offset column.</summary>
         public uint TimedDeleteSeconds { get; set; }
-        public ExtraData _ExtraData { get; set; } = new();
+        /// <summary>The byte the SendSelf inventory list reads after the record (<see cref="ExtraData"/>).</summary>
+        public ExtraData Extra { get; set; } = new();
 
         public void Read(GamePacketReader reader)
         {
@@ -314,50 +414,47 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model.Shared
 
             Guid = reader.ReadULong();
             Count = reader.ReadUInt();
-            Unknown2 = reader.ReadUInt();
-            Unknown3 = reader.ReadUInt();
-            Unknown4 = reader.ReadByte();
+            ConsumedCount = reader.ReadUInt();
+            Slot0D8 = reader.ReadUInt();
+            AutoResupply = reader.ReadBool();
             ContainerId = reader.ReadUInt();
             InventoryId = reader.ReadULong();
             SlotId = reader.ReadUInt();
             OwnerType = reader.ReadUInt();
-            Unknown9 = reader.ReadULong();
+            Slot100 = reader.ReadULong();
             ChestOwnerGuid = reader.ReadULong();
             ChestSlot = reader.ReadUInt();
-            Unknown12 = reader.ReadUInt();
-            Unknown13 = reader.ReadByte();
+            Wear = reader.ReadUInt();
+            Flags = reader.ReadByte();
             SecondsSinceLastCast = reader.ReadUInt();
 
-            byte hasSubData = reader.ReadByte();
-            subData1Flag = hasSubData;
-            if (hasSubData != 0)
+            if (reader.ReadByte() != 0)
             {
-                SubDataItem = new();
-                SubDataItem.Read(reader);
+                Rental = new();
+                Rental.Read(reader);
             }
 
-            byte hasSubData2 = reader.ReadByte();
-            if (hasSubData2 != 0)
+            if (reader.ReadByte() != 0)
             {
-                SubData2Item = new();
-                SubData2Item.Read(reader);
+                Design = new();
+                Design.Read(reader);
             }
 
             MetaData.Read(reader);
 
             TimedDeleteSeconds = reader.ReadUInt();
 
-            _ExtraData.Read(reader);
+            Extra.Read(reader);
         }
 
         /// <summary>
-        /// The record plus the one byte the live server put after each item in the login packet (_ExtraData; the
-        /// captured SendSelfToClient parses exactly with it).
+        /// The record plus the one byte the client reads after each item of the login packet's inventory list
+        /// (<see cref="Extra"/>; the captured SendSelfToClient parses exactly with it).
         /// </summary>
         public void Write(GamePacketWriter writer)
         {
             WriteRecord(writer);
-            _ExtraData.Write(writer);
+            Extra.Write(writer);
         }
 
         /// <summary>
@@ -372,37 +469,25 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model.Shared
 
             writer.Write(Guid);
             writer.Write(Count);
-            writer.Write(Unknown2);
-            writer.Write(Unknown3);
-            writer.Write(Unknown4);
+            writer.Write(ConsumedCount);
+            writer.Write(Slot0D8);
+            writer.Write(AutoResupply);
             writer.Write(ContainerId);
             writer.Write(InventoryId);
             writer.Write(SlotId);
             writer.Write(OwnerType);
-            writer.Write(Unknown9);
+            writer.Write(Slot100);
             writer.Write(ChestOwnerGuid);
             writer.Write(ChestSlot);
-            writer.Write(Unknown12);
-            writer.Write(Unknown13);
+            writer.Write(Wear);
+            writer.Write(Flags);
             writer.Write(SecondsSinceLastCast);
 
-            if (SubDataItem == null)
-                writer.Write((byte)0);
-            else
-            {
-                // TODO: Writer flag to indicate to client there is SubData1
-                writer.Write((byte)1);
-                SubDataItem.Write(writer);
-            }
+            writer.Write((byte)(Rental == null ? 0 : 1));
+            Rental?.Write(writer);
 
-            if (SubData2Item == null)
-                writer.Write((byte)0);
-            else
-            {
-                // TODO: Writer flag to indicate to client there is SubData1
-                writer.Write((byte)1);
-                SubData2Item.Write(writer);
-            }
+            writer.Write((byte)(Design == null ? 0 : 1));
+            Design?.Write(writer);
 
             MetaData.Write(writer);
 

@@ -13,7 +13,7 @@ C2S 0 (0 not handled) · S2C 1 (1 never sent / opcode unknown)
 u16   +0x8
 u8    +0x10
 u32   +0x18
-u32   *puVar1
+u32   <element>
 ```
 - handled in the zone dispatcher Zone_DispatchPacket (0x40)
 - code (handler case in Zone_DispatchPacket):

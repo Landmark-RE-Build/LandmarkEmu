@@ -16,7 +16,15 @@ namespace LandmarkEmulator.AuthServer.Network.Message.Model
             public ulong Guid { get; set; }
             public string AccountName { get; set; } = "";
             public string CharacterName { get; set; } = "";
-            public string Unknown0 { get; set; } = "";
+            /// <summary>
+            /// The URL the client opens when the game closes [P]. The reply's payload reader FUN_1430ad6e0 stores it at
+            /// login state +0x170 and FUN_1430b4ad0 copies it to game +0x325a8; when the game closes (game state 0x18 in
+            /// FUN_142cd4e60) FUN_142d56760 opens a non-empty one in the player's web browser (ShellExecuteA "open",
+            /// FUN_143b0e840), then exits the process. Name from the client's own term [I]: the reward entry
+            /// RewardBundleEntryClientExitUrl prints "ClientExitUrl=%s" (FUN_143b84e60). Kept empty: the server never
+            /// opens the player's browser.
+            /// </summary>
+            public string ClientExitUrl { get; set; } = "";
 
             public uint GetSize()
             {
@@ -27,7 +35,7 @@ namespace LandmarkEmulator.AuthServer.Network.Message.Model
                     8u +
                     4u + AccountName.Length +
                     4u + CharacterName.Length +
-                    4u + Unknown0.Length);
+                    4u + ClientExitUrl.Length);
             }
 
             public void Read(GamePacketReader reader)
@@ -45,7 +53,7 @@ namespace LandmarkEmulator.AuthServer.Network.Message.Model
                 Guid = reader.ReadULong();
                 AccountName = reader.ReadString();
                 CharacterName = reader.ReadString();
-                Unknown0 = reader.ReadString();
+                ClientExitUrl = reader.ReadString();
             }
 
             public void Write(GamePacketWriter writer)
@@ -60,7 +68,7 @@ namespace LandmarkEmulator.AuthServer.Network.Message.Model
                 writer.Write(Guid);
                 writer.Write(AccountName);
                 writer.Write(CharacterName);
-                writer.Write(Unknown0);
+                writer.Write(ClientExitUrl);
             }
         }
 

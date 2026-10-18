@@ -15,5 +15,7 @@ namespace LandmarkEmulator.Database.Character.Model
         public string AppData { get; set; } = "";
         /// <summary>Custom ranks as JSON ({Id, Level, Name, Permissions}); null / empty = the default three.</summary>
         public string Ranks { get; set; }
+        /// <summary>The guild window's News: the newest log rows as JSON ({Id, Type, Source, Target, Time, Rank, NewRank}).</summary>
+        public string Log { get; set; }
     }
 }

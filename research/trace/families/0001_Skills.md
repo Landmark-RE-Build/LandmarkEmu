@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 18 (12 not handled) · S2C 11 (0 never sent / opcode unknown)
 
 ## C2S Notifications::ListNotificationsPacket  `0x1, 0x1`
-- server: sub NOT handled · seen in play 1× · received 1×
+- server: sub NOT handled · seen in play 60× · received 1×
 - writer: FUN_14332a300
 - built in: FUN_1433302e0, FUN_143336df0
 - code (builder in FUN_1433302e0):
@@ -19,7 +19,7 @@ C2S 18 (12 not handled) · S2C 11 (0 never sent / opcode unknown)
 ```
 
 ## C2S Skills::SkillAdminPacketEcho  `0x1, 0x1`
-- server: sub NOT handled · seen in play 1× · received 1×
+- server: sub NOT handled · seen in play 60× · received 1×
 - writer: FUN_142eab1f0
 - built in: FUN_142eb2c90, FUN_142eb5d50
 - layout:
@@ -51,7 +51,7 @@ u64   +0x30
 ```
 
 ## C2S Notifications::AddNotificationPacket  `0x1, 0x2`
-- server: handled (sub in handler) · seen in play 5× · received 5×
+- server: handled (sub in handler) · seen in play 49×
 - built in: FUN_14332de20
 - code (builder in FUN_14332de20):
 ```
@@ -59,7 +59,7 @@ u64   +0x30
 ```
 
 ## C2S Skills::SkillAdminPacketListSkills  `0x1, 0x2`
-- server: handled (sub in handler) · seen in play 5× · received 5×
+- server: handled (sub in handler) · seen in play 49×
 - writer: FUN_142eab1f0
 - built in: FUN_142eb2340, FUN_142eb6510
 - layout:
@@ -81,7 +81,7 @@ u64   +0x30
 ```
 
 ## C2S Notifications::UpdateNotificationPacket  `0x1, 0x3`
-- server: handled (sub in handler) · seen in play 3× · received 3×
+- server: handled (sub in handler) · seen in play 38×
 - built in: FUN_14332f4b0, FUN_143338890
 - code (builder in FUN_14332f4b0):
 ```
@@ -93,7 +93,7 @@ u64   +0x30
 ```
 
 ## C2S Skills::SkillAdminPacketListSkillPoints  `0x1, 0x3`
-- server: handled (sub in handler) · seen in play 3× · received 3×
+- server: handled (sub in handler) · seen in play 38×
 - writer: FUN_142eab1f0
 - built in: FUN_142eb1d80, FUN_142eb6370
 - layout:
@@ -115,7 +115,7 @@ u64   +0x30
 ```
 
 ## C2S Skills::SkillAdminPacketAddSkillPoints  `0x1, 0x4`
-- server: sub NOT handled
+- server: handled (sub in handler)
 - writer: FUN_142eab1f0
 - built in: FUN_142eb19d0, FUN_142eb5c30
 - layout:
@@ -247,7 +247,7 @@ u64   +0x30
 ```
 
 ## C2S Skills::SkillAdminPacketGrantSkillSet  `0x1, 0xB`
-- server: handled (sub in handler)
+- server: sub NOT handled
 - writer: FUN_142eab1f0
 - built in: FUN_142eb1cb0, FUN_142eb6230
 - layout:
@@ -357,7 +357,7 @@ u64   +0x30
 ```
 
 ## S2C PropPacketListReply  `0x1`
-- server: SENT (1× in opcode_stats) · seen in play 1×
+- server: SENT (opcode used in the server code) · seen in play 13×
 - reader: FUN_142f0bc80 -> FUN_142f09c10
 - built in: FUN_142f1b980
 - layout:
@@ -374,7 +374,7 @@ u64   +0x28
 ```
 
 ## S2C PropPacketVolumeReply  `0x1`
-- server: SENT (1× in opcode_stats) · seen in play 1×
+- server: SENT (opcode used in the server code) · seen in play 13×
 - reader: FUN_142f0be10 -> FUN_142f09c10
 - built in: FUN_142f1b980
 - layout:
@@ -390,11 +390,11 @@ u64   +0x28
 ```
 
 ## S2C RemoteAssetDelivery::AssetRequestPacket  `0x1`
-- server: SENT (1× in opcode_stats) · seen in play 1×
+- server: SENT (opcode used in the server code) · seen in play 13×
 - built in: FUN_143a80050
 
 ## S2C RemoveLobbyGamePacket  `0x1`
-- server: SENT (1× in opcode_stats) · seen in play 1×
+- server: SENT (opcode used in the server code) · seen in play 13×
 - reader: FUN_142b95ad0
 - built in: FUN_142c43130
 - layout:
@@ -412,17 +412,17 @@ u32   +0x1c
 ```
 
 ## S2C RewardBundlePacket  `0x1`
-- server: SENT (1× in opcode_stats) · seen in play 1×
+- server: SENT (opcode used in the server code) · seen in play 13×
 - reader: FUN_143136da0
 - built in: FUN_143137c10
 - data sources: ptr:RewardPatternOne_14465a6f7_1_145166818
 - log lines: Global.Text.%d
 
 ## S2C Scaleform::GFx::AMP::Message  `0x1`
-- server: SENT (1× in opcode_stats) · seen in play 1×
+- server: SENT (opcode used in the server code) · seen in play 13×
 
 ## S2C SendLeaveLobbyToClientPacket  `0x1`
-- server: SENT (1× in opcode_stats) · seen in play 1×
+- server: SENT (opcode used in the server code) · seen in play 13×
 - reader: FUN_142b95ad0
 - built in: FUN_142c43130
 - layout:
@@ -439,16 +439,16 @@ u32   +0x1c
 ```
 
 ## S2C UdpLibrary::LogicalPacket  `0x1`
-- server: SENT (1× in opcode_stats) · seen in play 1×
+- server: SENT (opcode used in the server code) · seen in play 13×
 
 ## S2C UdpLibrary::PooledLogicalPacket  `0x1`
-- server: SENT (1× in opcode_stats) · seen in play 1×
+- server: SENT (opcode used in the server code) · seen in play 13×
 
 ## S2C UdpLibrary::SimpleLogicalPacket  `0x1`
-- server: SENT (1× in opcode_stats) · seen in play 1×
+- server: SENT (opcode used in the server code) · seen in play 13×
 
 ## S2C UpdateLobbyGamePacket  `0x1`
-- server: SENT (1× in opcode_stats) · seen in play 1×
+- server: SENT (opcode used in the server code) · seen in play 13×
 - built in: FUN_142c43130
 - handled in FUN_142c43130 (its switch case for this message)
 - Lua events/calls: Lobby:JoinedGame

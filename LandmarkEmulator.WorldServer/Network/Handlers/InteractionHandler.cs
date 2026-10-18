@@ -16,6 +16,9 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
     {
         private static readonly ILogger log = LogManager.GetCurrentClassLogger();
 
+        /// <summary>CommandPacketHexPermissions (Command 0x1E sub 0x34, 0.695 FUN_142d10ad0) [P].</summary>
+        private const ushort HexPermissionsSub = 0x34;
+
         /// <summary>
         /// InteractionInfoRequest (0x26/0x69): the client asks what it can do with flagged entities; answered by
         /// <see cref="Game.Props.SendInteractionInfo"/> (crafting stations are interactable within range).
@@ -39,6 +42,8 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                 {
                     ulong guid = new GamePacketReader(request.Body).ReadULong();
                     uint station = Game.Props.StationAt(guid);
+                    if (Game.RewardChests.Click(session, guid))
+                        break;                           // a reward chest: looted in Play Mode by visitors (before site access)
                     if (!Game.Props.MayUse(session, guid))
                     {
                         // "No Touching": visitors may look around and talk with creatures but use nothing.
@@ -55,11 +60,15 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                         Game.Vaults.Open(session, guid);
                     else if (Game.Spire.IsMailbox(guid) || Game.Props.IsMailbox(guid))
                         Game.Mail.OpenFor(session);
-                    else if (Game.Spire.IsBarber(guid))
+                    else if (Game.Spire.IsBarber(guid) || Game.Props.IsParlor(guid))
                         Game.ClientLua.Run(session, "CharacterCustomization.StartCustomization");
+                    else if (Game.Spire.IsResupplyChest(guid))
+                        Game.Spire.Resupply(session);
+                    else if (Game.Spire.IsFounderChest(guid))
+                        Game.Entitlements.RestoreFounderItems(session);
                     else if (Game.Spire.IsCrystal(guid))
                         // The Spire's Portal Crystal: the player stands at the hub (Spire menu: World / Local Travel).
-                        Game.WarpNetwork.ActivateTerminal(session, Game.WarpNetwork.HubNode, false);
+                        Game.WarpNetwork.ActivateTerminal(session, Game.WarpNetwork.HubNodeOn(session.ZoneId), false);
                     else if (Game.LootChests.IsChest(guid))
                         Game.LootChests.OpenChest(session, guid);
                     else if (Game.Outposts.IsChest(guid))
@@ -85,10 +94,14 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                     break;
                 }
                 case CommandRequest.AddFriendRequest:
-                    Game.Friends.HandleAdd(session, request.Body);
+                    Game.Social.SocialServices.Service.AddFriend(session, request.Body);
+                    break;
+                case Game.Friends.ConfirmResponseSub:
+                    // ConfirmFriendResponse: Accept / Refuse on the client's "Friend Invite" popup (Game/Friends.cs).
+                    Game.Social.SocialServices.Service.ConfirmFriend(session, request.Body);
                     break;
                 case CommandRequest.RemoveFriendRequest:
-                    Game.Friends.HandleRemove(session, request.Body);
+                    Game.Social.SocialServices.Service.RemoveFriend(session, request.Body);
                     break;
                 case CommandRequest.SelectPlayer:
                     break;
@@ -99,7 +112,7 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                         Game.BuildModeHolster.BuildMode(session, request.Body[0] != 0);
                     break;
                 case CommandRequest.IgnoreRequest:
-                    Game.Ignores.Handle(session, request.Body);
+                    Game.Social.SocialServices.Service.Ignore(session, request.Body);
                     break;
                 case CommandRequest.FreeInteractionNpc:
                     // CommandPacketFreeInteractionNpc: the client let go of the entity it was interacting with (window
@@ -109,6 +122,10 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                 case CommandRequest.ClientCommand:
                     Game.Emotes.HandleCommand(session, request.Body);
                     break;
+                case CommandRequest.ExecuteCommand:
+                    // A command added by AddWorldCommand / AddZoneCommand (0x45 / 0x46), sent on channel 1 or 0.
+                    Game.DynamicCommands.HandleExecute(session, request.Body);
+                    break;
                 case CommandRequest.ItemDefinitionRequest:
                     // The client lacks a definition (FUN_14335a2e0: "Item definition not found or pending, will issue
                     // new request"): answer with that one definition (0x4A), which drops it from its pending list.
@@ -116,6 +133,94 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                     break;
                 case CommandRequest.InteractionItem:
                     UseItem(session, new GamePacketReader(request.Body).ReadULong());
+                    break;
+                case Game.PublicChannels.ChannelOnSub:
+                case Game.PublicChannels.ChannelOffSub:
+                    // CommandPacketChatChannelOn / Off {string} (Lua Ui.ChannelOn / Ui.ChannelOff): join / leave General.
+                    Game.Social.SocialServices.Service.ChatChannel(session, request.SubOpcode, request.Body);
+                    break;
+                case Game.ChatBubbleColor.Sub:
+                    // CommandPacketSetChatBubbleColor (Lua Ui.SetChatColorFgBgSz): see Game.ChatBubbleColor.
+                    Game.ChatBubbleColor.Handle(session, request.Body);
+                    break;
+                case CommandRequest.AfkRequest:
+                    // CommandPacketAFKRequest (/afk): see Game.Afk.
+                    Game.Afk.Toggle(session);
+                    break;
+                case Game.FriendPositions.RequestSub:
+                    // CommandPacketFriendsPositionRequest (map): friends' positions, FriendBase sub 5.
+                    Game.FriendPositions.Handle(session);
+                    break;
+                case Game.PlayerPositions.RequestSub:
+                    // CommandPacketRequestPlayerPositions (Lua Ui.RequestPlayerPositions): answered with 0x25, which the
+                    // client reads and drops; see Game.PlayerPositions.
+                    Game.PlayerPositions.Handle(session, request.Body);
+                    break;
+                case Game.RandomRoll.Sub:
+                    // CommandPacketRandom (/random): the server rolls; see Game.RandomRoll.
+                    Game.RandomRoll.Handle(session, request.Body);
+                    break;
+                // Admin slash commands of the retail client (unlocked by SendSelf's admin-player flag): /goto 0x42E,
+                // /goto waypoint 0x430, /target 0x4B5, /hideme 0x458, /runspeed 0x4D8, /servertime & /zonetime 0x429,
+                // /clienttime 0x42A, /prop 0x4EA / 0x4ED, /vehicle 0x49C, /setmodel 0x4F0, /ammo 0x499, /weaponset 0x4EE,
+                // /placedeffect 0x4EF, free-fly hide 0x4F1, /friend forceadd|remove 0x4CF / 0x4D0, /profile 0x3EC.
+                // Gated again server-side by Game.Admin.IsAdmin (trace/0695/admin-commands-695.md).
+                case Game.AdminCommands.GotoSub:
+                case Game.AdminCommands.GotoWaypointSub:
+                case Game.AdminCommands.VerifyTargetSub:
+                case Game.AdminCommands.HideMeSub:
+                case Game.AdminCommands.RunspeedSub:
+                case Game.AdminCommands.GameTimeSub:
+                case Game.AdminCommands.ClientTimeSub:
+                case Game.AdminCommands.SpawnPropSub:
+                case Game.AdminCommands.DeleteAllPropsSub:
+                case Game.AdminCommands.SpawnVehicleSub:
+                case Game.AdminCommands.SetModelSub:
+                case Game.AdminCommands.AddAmmoSub:
+                case Game.AdminCommands.WeaponSetSub:
+                case Game.AdminCommands.PlacedEffectSub:
+                case Game.AdminCommands.FreeFlyHideSub:
+                case Game.AdminCommands.ForceAddFriendSub:
+                case Game.AdminCommands.ForceRemoveFriendSub:
+                case Game.AdminCommands.ProfileSub:
+                // /item add | delete | undelete | list | check | random | vault | collect | overflow | buyback … (AdminCommands.Items.cs)
+                case Game.AdminCommands.AddItemSub:
+                case Game.AdminCommands.DeleteItemSub:
+                case Game.AdminCommands.DeleteItemByIdSub:
+                case Game.AdminCommands.GetItemListSub:
+                case Game.AdminCommands.GetItemInfoSub:
+                case Game.AdminCommands.VaultItemSub:
+                case Game.AdminCommands.RandomItemSub:
+                case Game.AdminCommands.CollectionItemSub:
+                case Game.AdminCommands.VaultCollectionItemSub:
+                case Game.AdminCommands.OverflowItemSub:
+                case Game.AdminCommands.BuybackItemSub:
+                case Game.AdminCommands.GriefAdminSub:
+                // Admin monitor requests (log only) and the PathFindVisualize tool's path query (AdminCommands.Monitor.cs).
+                case Game.AdminCommands.DebugPathQuerySub:
+                case Game.AdminCommands.PathingDataMonitorSub:
+                case Game.AdminCommands.ZonePlayerCountSub:
+                case Game.AdminCommands.StorybricksDiagnosticsSub:
+                    Game.AdminCommands.Handle(session, request.SubOpcode, request.Body);
+                    break;
+                case 0x3F:
+                    // CommandPacketRendererDump (header only): a renderer report; recorded (Game.Telemetry).
+                    Game.Telemetry.Record(session, "RendererDump", request.Body);
+                    break;
+                case Game.TeleportRequests.ToLocationSub:
+                case Game.TeleportRequests.ToLocationExSub:
+                case Game.TeleportRequests.ManagedToLocationSub:
+                    // TeleportToLocation / …Ex / TeleportManagedToLocation (FUN_1433c80a0): the Escape menu's "Evac to
+                    // Safety", /location, /teleporttocamera, the admin map teleport. The client stops moving until a
+                    // TeleportToLocation answers it, so every one is answered (Game.TeleportRequests).
+                    Game.TeleportRequests.Handle(session, request.SubOpcode, request.Body);
+                    break;
+                case HexPermissionsSub:
+                    // CommandPacketHexPermissions {4-byte bitset} (FUN_142d10ad0, at zone-in / teleport): sent only by a
+                    // non-admin client whose config string (global 0x1451f5a20, from a client-config field) is non-empty,
+                    // which the retail config leaves empty; PlanetSide 2 hex territory, nothing in Landmark. Accepted, no
+                    // reply (agent-l140.md B4).
+                    log.Debug($"{session.CharacterName}: HexPermissions {BitConverter.ToString(request.Body)} (ignored).");
                     break;
                 default:
                     Network.OpcodeStats.Unanswered("Command", request.SubOpcode);
@@ -159,15 +264,18 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
         /// <summary>
         /// GuildBase 0x83 (u16 sub): create, invite, invite reply, MOTD, quit (see <see cref="Game.Guilds"/>).
         /// </summary>
-        /// <summary>Encounter requests (entrance, exit, invitation / duel answers; docs/encounters.md).</summary>
+        /// <summary>
+        /// Encounter requests (entrance, exit, invitation / duel answers; docs/encounters.md). All of them come on the
+        /// World channel: the world-channel back end runs the encounter lifecycle (<see cref="Game.WorldChannel.IWorldChannelService"/>).
+        /// </summary>
         [ZoneMessageHandler(ZoneMessageOpcode.EncounterBase)]
         public static void HandleEncounter(WorldSession session, EncounterRequest request)
-            => Game.Encounters.Handle(session, request.SubOpcode, request.Body);
+            => Game.WorldChannel.WorldChannelServices.WorldChannel.EncounterRequest(session, request.SubOpcode, request.Body);
 
         [ZoneMessageHandler(ZoneMessageOpcode.GuildBase)]
         public static void HandleGuild(WorldSession session, GuildRequest request)
         {
-            Game.Guilds.Handle(session, request.SubOpcode, request.Body);
+            Game.Social.SocialServices.Service.Guild(session, request.SubOpcode, request.Body);
         }
 
         /// <summary>
@@ -189,12 +297,19 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
         }
 
         /// <summary>
-        /// TradeBase 0x3E (u8 sub): player trades (see <see cref="Game.Trades"/>).
+        /// TradeBase 0x3E (u8 sub): player trades (see <see cref="Game.Trades"/>). The invitation subs come on the World
+        /// channel and go to the world-channel trade broker (<see cref="Game.Trades.IsWorldChannelSub"/>); the exchange
+        /// (offer, coins, accept) comes on Zone and stays with the zone, which holds the inventories. With the
+        /// world-channel container running the invitation subs are answered there and never arrive here
+        /// (world-channel-service.md §6.4; Game/WorldChannel/WorldChannelLink).
         /// </summary>
         [ZoneMessageHandler(ZoneMessageOpcode.TradeBase)]
         public static void HandleTrade(WorldSession session, TradeRequest request)
         {
-            Game.Trades.Handle(session, request.SubOpcode, request.Body);
+            if (Game.Trades.IsWorldChannelSub(request.SubOpcode))
+                Game.WorldChannel.WorldChannelServices.WorldChannel.TradeRequest(session, request.SubOpcode, request.Body);
+            else
+                Game.Trades.Handle(session, request.SubOpcode, request.Body);
         }
 
         /// <summary>
@@ -259,38 +374,49 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
         }
 
         /// <summary>
-        /// In-game store (cash shop). 0x0B WalletInfoRequest → 0x0C WalletInfoResponse {u32 result (1 ok), wallet
-        /// {u8, u32 balance, u32, string, string, u8}} (client FUN_143185620): an empty wallet.
+        /// In-game store (cash shop) and Player Studio, InGamePurchase 0x45: build site upkeep (PointOfNeed type 1) and
+        /// the zone's own subs (<see cref="Game.Commerce.IsZoneSub"/>) are answered here; the rest (wallet, account,
+        /// products, reviews, account store) goes to the shared commerce back end
+        /// (<see cref="Game.WorldChannel.ICommerceService"/>).
         /// </summary>
+        /// <summary>
+        /// PointOfNeedRequest (0.695 0x47, 0.589 0x46; reader FUN_143235ff0; id table cIdPointOfNeedRequest 0x47) [P].
+        /// </summary>
+        private const ushort PointOfNeedRequestSub = 0x47;
+
         [ZoneMessageHandler(ZoneMessageOpcode.InGamePurchaseBase)]
         public static void HandleInGamePurchase(WorldSession session, InGamePurchaseRequest request)
         {
-            if (request.SubOpcode == 0x46 && request.Body.Length >= 9 && BitConverter.ToUInt32(request.Body, 0) == 1)
+            // 0.695 numbers as sent (TemplateProductCreate 0x30 taken as ProductCreate 0x2F: Game.Commerce.FromWire).
+            ushort sub = Game.Commerce.FromWire(session, request.SubOpcode);
+            if (sub == 0x2A)
+            {
+                // SpiceWebAuthUrlRequest: the reply would send the client to an outside web service; recorded only.
+                Game.Telemetry.Record(session, "SpiceWebAuthUrlRequest", request.Body);
+                return;
+            }
+            if (sub == PointOfNeedRequestSub && request.Body.Length >= 9 && BitConverter.ToUInt32(request.Body, 0) == 1)
             {
                 // PointOfNeedRequest type 1: build site upkeep {u32 1, u8 flag, u32 days, u64, u64}.
                 Game.Claims.PayUpkeep(session, BitConverter.ToUInt32(request.Body, 5));
                 return;
             }
-            if (request.SubOpcode != 0x0B)
+            if (Game.Commerce.IsZoneSub(sub))
             {
-                Game.Commerce.Handle(session, request.SubOpcode, request.Body);
+                Game.Commerce.HandleZone(session, sub, request.Body);
                 return;
             }
-            var output = new System.Collections.Generic.List<byte>();
-            var w = new GamePacketWriter(output);
-            // WalletInfoResponse (0x0C; reader FUN_143185620, handler FUN_1431adaf0): u32 result, bool, u32 balance
-            // (manager +0x22bc10, checked against the Player Studio listing fee), u32, string, string, bool "zip code on
-            // file" (manager +0x22bc18): with it a US account may create Player Studio products (FUN_1431b4c10).
-            w.WriteUShort(0x0C);
-            w.Write(1u);
-            w.Write((byte)0);
-            w.Write(0u);
-            w.Write(0u);
-            w.Write("");
-            w.Write("");
-            w.Write((byte)1);
-            session.EnqueueMessage(ZoneMessageOpcode.InGamePurchaseBase, output.ToArray());
+            Game.WorldChannel.WorldChannelServices.Commerce.InGamePurchaseRequest(session, sub, request.Body);
         }
+
+        /// <summary>
+        /// PacketClientInGamePurchase 0xD0 (Lua InGamePurchaseStoreScreen.PurchaseBundleWithInGameCurrency): a bundle of the
+        /// client's store bought with in-game currency — Lumens here, through the Showcase store's purchase (see
+        /// <see cref="Game.StoreBundles.HandlePurchase"/>). Zone channel, in both commerce modes (the Lumens are this world's).
+        /// </summary>
+        [ZoneMessageHandler(ZoneMessageOpcode.InGamePurchase)]
+        public static void HandleClientInGamePurchase(WorldSession session, ClientInGamePurchase request)
+            => Game.StoreBundles.HandlePurchase(session, request.First, request.Second, request.Third);
 
         /// <summary>
         /// Command InteractionItem: using an item through its interaction (right-click). Only the Build Site Flag does

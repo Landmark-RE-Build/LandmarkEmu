@@ -26,11 +26,24 @@ namespace LandmarkEmulator.WorldServer.Game
     /// Contests are defined by the server's operators in Contests/contests.json (created with one open contest, the
     /// "Community Showcase"); entries are kept in Contests/entries.json and screenshots in Contests/shots. Votes come
     /// through the claim rating (<see cref="Ratings"/>, category "Contests").
+    ///
+    /// Gallery rule (client text 576478 Claims.Error.CannotEnterCompetition, "You must publish your Build Site to the
+    /// gallery before submitting to a competition."): the 0.695 Claims.EnterContest native (FUN_1435e5e70) looks the
+    /// site's listing up in the account store first and shows that message when there is none; with a listing it sends
+    /// ProductUpdate (contest tag + the entry's description, "enter contest" byte) and then SubmitContestEntry.
+    /// <see cref="Submit"/> checks the listing again and takes the description handed over by <see cref="Commerce"/>.
+    /// Leave Competition (Claims.RemoveFromContest) only sends ProductUpdate with the "leave contest" byte →
+    /// <see cref="Withdraw"/>. trace/0695/gallery-695.md §4.
     /// </summary>
     public static class Contests
     {
         private static readonly ILogger log = LogManager.GetCurrentClassLogger();
         private static readonly object sync = new();
+
+        /// <summary>Contest tag words start with this (the client refuses them in site tags, Claims.Error.TagsAreInvalid).</summary>
+        public const string TagPrefix = "contest_";
+        /// <summary>Entry descriptions from EnterContest's ProductUpdate, waiting for the SubmitContestEntry that follows.</summary>
+        private static readonly Dictionary<ulong, string> pendingDescriptions = new();
 
         public class Contest
         {
@@ -54,6 +67,8 @@ namespace LandmarkEmulator.WorldServer.Game
             public ulong OwnerGuid { get; set; }
             public string Owner { get; set; } = "";
             public string Site { get; set; } = "";
+            /// <summary>The entry's description (the Contest window's text, sent in EnterContest's ProductUpdate).</summary>
+            public string Description { get; set; } = "";
             public int Screenshots { get; set; }
             public DateTime Submitted { get; set; }
             /// <summary>Players who voted for this entry (one vote each, never the owner).</summary>
@@ -189,10 +204,16 @@ namespace LandmarkEmulator.WorldServer.Game
             ClaimModel site = Claims.Get(claimId);
             bool allowed = session.ContestLimiter.TryTake();
             Contest contest;
+            string description;
             lock (sync)
+            {
                 contest = contests.FirstOrDefault(c => string.Equals(c.Name, contestName, StringComparison.OrdinalIgnoreCase)
                     || string.Equals(c.Key, contestName, StringComparison.OrdinalIgnoreCase));
-            bool ok = allowed && site != null && site.OwnerGuid == session.PlayerGuid && contest != null && Phase(contest) == TakingEntries;
+                pendingDescriptions.Remove(claimId, out description);
+            }
+            // Only a site listed in the gallery may enter (text 576478); the client checks its own listing cache first.
+            bool listed = Commerce.IsOnGallery(claimId);
+            bool ok = allowed && site != null && site.OwnerGuid == session.PlayerGuid && listed && contest != null && Phase(contest) == TakingEntries;
             if (ok)
             {
                 lock (sync)
@@ -201,7 +222,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     entries.Add(new Entry
                     {
                         ContestId = contest.Id, ClaimId = claimId, OwnerGuid = session.PlayerGuid, Owner = session.CharacterName ?? "",
-                        Site = site.Name ?? "", Screenshots = shots.Count, Submitted = DateTime.UtcNow
+                        Site = site.Name ?? "", Description = description ?? "", Screenshots = shots.Count, Submitted = DateTime.UtcNow
                     });
                     Save();
                 }
@@ -217,7 +238,46 @@ namespace LandmarkEmulator.WorldServer.Game
             w.Write(site?.Name ?? "");
             w.Write(contest?.Name ?? contestName);
             session.EnqueueMessage(ZoneMessageOpcode.ClaimsBase, output.ToArray());
-            log.Info($"{session.CharacterName} entered site {claimId} into \"{contestName}\": {(ok ? $"ok ({shots.Count} screenshot(s))" : allowed ? "refused" : "refused (too many entries too fast)")}.");
+            log.Info($"{session.CharacterName} entered site {claimId} into \"{contestName}\": {(ok ? $"ok ({shots.Count} screenshot(s))" : !allowed ? "refused (too many entries too fast)" : !listed ? "refused (not published to the gallery)" : "refused")}.");
+        }
+
+        /// <summary>
+        /// EnterContest's ProductUpdate carried the entry's description (Commerce.UpdateProduct, "enter contest" byte):
+        /// kept for the SubmitContestEntry that follows it.
+        /// </summary>
+        public static void EntryDescription(ulong claimId, string description)
+        {
+            lock (sync)
+                pendingDescriptions[claimId] = description ?? "";
+        }
+
+        /// <summary>
+        /// Leave Competition (Claims.RemoveFromContest's ProductUpdate, "leave contest" byte), or the site was taken off
+        /// the gallery: the owner's entries for the site are withdrawn from contests still taking entries or voting.
+        /// </summary>
+        public static void Withdraw(WorldSession session, ulong claimId)
+        {
+            EnsureLoaded();
+            int removed;
+            lock (sync)
+            {
+                removed = entries.RemoveAll(e => e.ClaimId == claimId && e.OwnerGuid == session.PlayerGuid
+                    && contests.FirstOrDefault(c => c.Id == e.ContestId) is { } c && Phase(c) is TakingEntries or Voting);
+                pendingDescriptions.Remove(claimId);
+                if (removed > 0)
+                    Save();
+            }
+            if (removed > 0)
+                log.Info($"{session.CharacterName} withdrew site {claimId} from {removed} contest(s).");
+        }
+
+        /// <summary>The names of the contests a site is entered in (for its gallery entry).</summary>
+        public static List<string> NamesOf(ulong claimId)
+        {
+            EnsureLoaded();
+            lock (sync)
+                return entries.Where(e => e.ClaimId == claimId)
+                    .Select(e => contests.FirstOrDefault(c => c.Id == e.ContestId)?.Name).Where(n => !string.IsNullOrEmpty(n)).Distinct().ToList();
         }
 
         private static void Save()

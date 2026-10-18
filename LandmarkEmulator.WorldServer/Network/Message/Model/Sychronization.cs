@@ -23,7 +23,12 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
         public ulong ServerTime { get; set; }
         public ulong ServerTime2 { get; set; }
         public ulong Time3 { get; set; }
-        public bool Unknown0 { get; set; }
+        /// <summary>
+        /// +0x40 the client's answer to a server Synchronization: the 0.695 handler FUN_142ce7090 applies a server one
+        /// (FUN_143bf9610) and sends it back with +0x40 = 1, while its own five-second request (FUN_142cd4e60) has 0 [P].
+        /// The server answers only requests (false) and sends false.
+        /// </summary>
+        public bool IsReply { get; set; }
 
         public void Read(GamePacketReader reader)
         {
@@ -33,7 +38,7 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
             ServerTime = reader.ReadULong();
             ServerTime2 = reader.ReadULong();
             Time3 = reader.ReadULong();
-            Unknown0 = reader.ReadBool();
+            IsReply = reader.ReadBool();
         }
 
         public void Write(GamePacketWriter writer)
@@ -44,7 +49,7 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
             writer.Write(ServerTime);
             writer.Write(ServerTime2);
             writer.Write(Time3);
-            writer.Write(Unknown0);
+            writer.Write(IsReply);
         }
     }
 }

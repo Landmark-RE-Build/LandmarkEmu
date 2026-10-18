@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 0 (0 not handled) · S2C 3 (1 never sent / opcode unknown)
 
 ## S2C Experience::ExperiencePacketSetExperienceRateTier  `0xBE`
-- server: SENT (102× in opcode_stats) · seen in play 102×
+- server: SENT (16× in opcode_stats) · seen in play 325×
 - built in: FUN_142e39230
 
 ## S2C Experience::ExperiencePacketSetExperience  `0xBE, 0x1`
@@ -25,7 +25,7 @@ FUN_142b86260 -> +0x0
   u32   +0xc
   u32   +0x10
 FUN_142e363b0 -> +0x0
-  i32   iVar4
+  i32   <local>
     [loop 1: list elements]
   FUN_142e35f40 -> +0x0
     u32   +0x0
@@ -37,5 +37,5 @@ u32   +0x34
 - log lines: You have received %d xp. · Bad xp message, prevXp=%d, newXp=%d. ·     amount: %d ·     membership: %d ·     population: %d ·     implant: %d ·     squad: %d ·     defend: %d
 
 ## S2C Experience::ExperiencePacketSetExperienceRanks  `0xBE, 0x2`
-- server: SENT (102× in opcode_stats) · seen in play 102×
+- server: SENT (16× in opcode_stats) · seen in play 325×
 - built in: FUN_142e39070

@@ -74,7 +74,7 @@ u64   +0x18
 FUN_1434aff40 -> +0x38
   u64   +0x38
   u64   +0x40
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
 ```
 
@@ -103,13 +103,13 @@ u16   +0x8
 i16   +0x10
 u32   +0x18
 u64   +0x20
-u32   *puVar1
-u64   *(undefined8 *)(puVar1 + 2)
-u32   puVar1[4]
-u64   *(undefined8 *)(puVar1 + 6)
-u32   puVar1[0x3a]
-u32   puVar1[0x3b]
-bool  *(bool *)(puVar1 + 0x3c)
+u32   <element>
+u64   <computed>
+u32   <computed>
+u64   <computed>
+u32   <computed>
+u32   <computed>
+bool  <computed>
 ```
 - data sources: ptr:CoinStore_log_14518dc00
 - log lines: Successfully transaction type: %d, tid: %d, item(s): %s, quantity: %d. · Failed transaction type: %d, result: %d, tid: %d, item(s): %s, quantity: %d.

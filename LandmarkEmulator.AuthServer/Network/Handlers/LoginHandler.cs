@@ -79,7 +79,10 @@ namespace LandmarkEmulator.AuthServer.Network.Handlers
                     session.EnqueueMessage(new LoginReply
                     {
                         LoggedIn = loggedIn,
-                        Status = Convert.ToByte(loggedIn)
+                        Status = Convert.ToByte(loggedIn),
+                        // The account's membership (TASKS 3.12) [I: what the 0.695 client does with LoginReply's IsMember
+                        // (+0x1c, FUN_143a57cb0 only logs it) is not traced yet; trace/0695/agent-membership.md lead M1].
+                        IsMember = account?.MemberTypeAt(DateTime.UtcNow) > 0
                     });
 
                     if (account == null)
@@ -106,6 +109,15 @@ namespace LandmarkEmulator.AuthServer.Network.Handlers
         /// <summary>The equipped items' container (WorldServer Game.Inventory.Inventory.EquippedContainer).</summary>
         private const uint EquippedContainer = 2;
 
+        /// <summary>The account's characters and, for those not deleted, their friends lists (CharacterSelectFriends).</summary>
+        private static async System.Threading.Tasks.Task<(List<CharacterModel>, IReadOnlyDictionary<ulong, List<CharacterSelectInfoReply.Character.CharacterPayload.Friend>>)>
+            LoadCharacterList(ulong accountId)
+        {
+            List<CharacterModel> characters = await DatabaseManager.Instance.CharacterDatabase.GetCharacters(accountId);
+            var friends = await CharacterSelectFriends.ForCharacters(characters.Where(c => c.DeleteTime == null).Select(c => c.Id).ToList());
+            return (characters, friends);
+        }
+
         [AuthMessageHandler(AuthMessageOpcode.CharacterSelectInfoRequest, ProtocolVersion.LoginUdp_10)]
         public static void HandleCharacterSelectInfoRequest(AuthSession session, CharacterSelectInfoRequest request)
         {
@@ -123,9 +135,11 @@ namespace LandmarkEmulator.AuthServer.Network.Handlers
                 }
             }
 
-            session.EnqueueEvent(new TaskGenericEvent<List<CharacterModel>>(DatabaseManager.Instance.CharacterDatabase.GetCharacters(session.Account.Id),
-                characters =>
+            session.EnqueueEvent(new TaskGenericEvent<(List<CharacterModel>, IReadOnlyDictionary<ulong, List<CharacterSelectInfoReply.Character.CharacterPayload.Friend>>)>(
+                LoadCharacterList(session.Account.Id),
+                list =>
                 {
+                    (List<CharacterModel> characters, var friends) = list;
                     session.Characters.Clear();
                     session.Characters.AddRange(characters);
 
@@ -143,7 +157,11 @@ namespace LandmarkEmulator.AuthServer.Network.Handlers
                             Race = model.Race,
                             Gender = model.Gender,
                             ProfileId = model.ProfileTypeId,
-                            ModelId = GetModelForGenderFromProfile(model.ProfileTypeId, (Gender)model.Gender)
+                            ModelId = GetModelForGenderFromProfile(model.ProfileTypeId, (Gender)model.Gender),
+                            // The world the client selects for this character (data source column ServerId, used by
+                            // CharacterSelection.lua): its last world while that world is in the list, else 0 (the client
+                            // picks the best world).
+                            ServerId = ZoneServerManager.Instance.ZoneServers.Any(z => z.Id == model.LastServerId) ? model.LastServerId : 0ul
                         };
                         characterPayload.Model.SkinId = model.SkinTint;
                         characterPayload.Model.Race = model.Race;
@@ -165,9 +183,13 @@ namespace LandmarkEmulator.AuthServer.Network.Handlers
                                 characterPayload.CharacterAttachments.Add(new CharacterSelectInfoReply.Character.CharacterPayload.CharacterAttachment
                                 {
                                     ModelName = look.Model,
-                                    SemanticTint = look.TintAlias,
+                                    TintAlias = look.TintAlias,
                                     Slot = (AttachmentSlot)look.EquipSlot,
                                 });
+
+                        // Its friends list (CharacterSelectFriends.cs): the client counts each world's online friends.
+                        if (friends.TryGetValue(model.Id, out var characterFriends))
+                            characterPayload.Friends.AddRange(characterFriends);
 
                         // Add character to payload
                         characterSelect.Characters.Add(new CharacterSelectInfoReply.Character
@@ -196,9 +218,11 @@ namespace LandmarkEmulator.AuthServer.Network.Handlers
                 return 21u;
             }
 
-            session.EnqueueEvent(new TaskGenericEvent<List<CharacterModel>>(DatabaseManager.Instance.CharacterDatabase.GetCharacters(session.Account.Id),
-                characters =>
+            session.EnqueueEvent(new TaskGenericEvent<(List<CharacterModel>, IReadOnlyDictionary<ulong, List<CharacterSelectInfoReply.Character.CharacterPayload.Friend>>)>(
+                LoadCharacterList(session.Account.Id),
+                list =>
             {
+                (List<CharacterModel> characters, var friends) = list;
                 session.Characters.Clear();
                 session.Characters.AddRange(characters);
 
@@ -214,7 +238,7 @@ namespace LandmarkEmulator.AuthServer.Network.Handlers
                     {
                         Name     = model.Name,
                         Gender   = (Gender)model.Gender,
-                        HeadId   = 1,
+                        Unused20 = 1,
                         ModelId  = GetModelId((Gender)model.Gender),
                         SkinTint = model.SkinTint
                     };
@@ -244,6 +268,9 @@ namespace LandmarkEmulator.AuthServer.Network.Handlers
                         ModelName = $"Char_Biped_{(Race)model.Race}{(Gender)model.Gender}_Entities_{randomName[new Random().Next(randomName.Count)]}_Chest.adr",
                         Slot = AttachmentSlot.Chest,
                     });
+
+                    if (friends.TryGetValue(model.Id, out var characterFriends))
+                        characterPayload.Friends.AddRange(characterFriends);
 
                     // Add character to payload
                     characterSelect.Characters.Add(new CharacterSelectInfoReply9.Character
@@ -277,16 +304,14 @@ namespace LandmarkEmulator.AuthServer.Network.Handlers
                         }
                     });
                     break;
+                case QueueCancel:
+                    // The queue dialog's Cancel (TASKS E.8): leave the login queue.
+                    Zone.LoginQueue.Cancel(session);
+                    break;
                 case LoginInit loginInit:
-                    session.EnqueueMessage(new TunnelPacketServerToClient
-                    {
-                        ServerId = 0,
-                        Type = TunnelDataType.Unknown7,
-                        Data = new Unknown7
-                        {
-                            String = "Welcome to Landmark RE:Build! We're happy to have you!"
-                        }
-                    });
+                    // Answered with the account's sites per world (type 9). The welcome line sent here before (type 7,
+                    // Model/TunnelData/LoginMessage) was dropped unread by the client (FUN_1430b2d50 → an empty
+                    // function, 0.695 and 0.589), so it is no longer sent.
                     session.EnqueueMessage(new TunnelPacketServerToClient
                     {
                         ServerId = 0,
@@ -490,6 +515,8 @@ namespace LandmarkEmulator.AuthServer.Network.Handlers
         [AuthMessageHandler(AuthMessageOpcode.CharacterLoginRequest)]
         public static void HandleCharacterLoginRequest(AuthSession session, CharacterLoginRequest request)
         {
+            if (request.GatewayId != 0)
+                log.Info($"Character login asks for gateway {request.GatewayId} (locale id {request.LocaleId}); this server has one gateway per world.");
             ZoneServer server = ZoneServerManager.Instance.ZoneServers.SingleOrDefault(x => x.Id == request.ServerId);
             CharacterModel character = session.Characters.SingleOrDefault(x => x.Id == request.CharacterId);
             if (server == null || character == null)
@@ -512,13 +539,18 @@ namespace LandmarkEmulator.AuthServer.Network.Handlers
                     return;
                 }
 
+                // A full world: the login waits in the queue (result 8, then tunnel 3 / 4; Zone.LoginQueue, TASKS E.8).
+                ZoneServerManager.Refresh(server, row);
+                if (LoginQueue.Queue(session, server, character.Id))
+                    return;
+
                 string serverTicket = RandomProvider.GetBytes(16u).ToHexString();
                 // A client signed in with a relogin key ("R...", issued by a world when it went to character select) is
                 // the same running client coming back: its world ticket says so ("R" is not a hex digit), so the world
                 // can skip resending the item definitions it still holds. Launcher and direct logins get plain tickets.
                 if (session.Account.SessionKey?.StartsWith("R", StringComparison.Ordinal) == true)
                     serverTicket = "R" + serverTicket[1..];
-                session.EnqueueEvent(new TaskEvent(DatabaseManager.Instance.AuthDatabase.UpdateServerTicket(session.Account, serverTicket),
+                session.EnqueueEvent(new TaskEvent(DatabaseManager.Instance.AuthDatabase.UpdateServerTicket(session.Account, serverTicket, (uint)server.Id),
                     () =>
                 {
                     CharacterLoginReply.ServerInfo serverInfo = new CharacterLoginReply.ServerInfo

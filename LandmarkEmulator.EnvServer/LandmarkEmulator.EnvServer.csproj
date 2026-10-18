@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The Environment Server as its own process (trace/architecture/terrain-service.md section 7 steps 3-6): the world's
+    voxel back end in the `envserver` container. The store code is LandmarkEmulator.EnvServer.Core, the same library the
+    world server runs in-process when ENVSERVER_ADDRESS is not set.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LandmarkEmulator.EnvServer.Core\LandmarkEmulator.EnvServer.Core.csproj" />
+    <ProjectReference Include="..\LandmarkEmulator.Internal\LandmarkEmulator.Internal.csproj" />
+    <ProjectReference Include="..\LandmarkEmulator.Shared\LandmarkEmulator.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="EnvServer.example.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

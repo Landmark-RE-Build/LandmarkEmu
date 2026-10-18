@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 1 (0 not handled) · S2C 0 (0 never sent / opcode unknown)
 
 ## C2S PacketClientInitializationDetails  `0xA2`
-- server: handled · seen in play 102× · received 102×
+- server: handled · seen in play 325× · received 16×
 - built in: FUN_142c3b490
 - code (builder in FUN_142c3b490):
 ```

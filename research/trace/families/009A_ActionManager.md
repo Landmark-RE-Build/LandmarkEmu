@@ -16,7 +16,7 @@ C2S 4 (0 not handled) · S2C 1 (0 never sent / opcode unknown)
 ```
 
 ## C2S ActionManagerPacketRequestSetSlot  `0x9A, 0x2`
-- server: handled (sub in handler)
+- server: handled (sub in handler) · seen in play 2×
 - built in: FUN_1433a0b80, FUN_1433a1260
 - sent by Lua natives: SetSlot
 - UI using them: ActionBar, BuildModeHotbarWidget, BuildModePaletteWidget, CharacterCre, ActionBar.lua
@@ -50,7 +50,7 @@ C2S 4 (0 not handled) · S2C 1 (0 never sent / opcode unknown)
 ```
 
 ## S2C ActionManagerPacketUpdateSlot  `0x9A`
-- server: SENT (opcode used in the server code)
+- server: SENT (opcode used in the server code) · seen in play 2×
 - reader: FUN_142b7d3a0
 - built in: FUN_142c3f580
 - layout:

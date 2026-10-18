@@ -6,10 +6,15 @@
 # That starts, in order:
 #   setup  copies the data tables the servers read from your Landmark folder into server-data/gamedata, then exits
 #          (your game folder is mounted read-only and never changed);
+#   icons  exports the item icons the in-game store pages show from your Landmark folder into
+#          server-data/gamedata/icons (first start about 2 minutes, then only what is new), then exits;
 #   db     MariaDB: accounts, characters and each world's own database;
 #   auth   the login server and the account service LaunchPad talks to;
 #   web    the account sign-up website;
 #   world  the first world server.
+# Optional (compose profile "social", see .env): social, the friends / ignore / presence service shared by all worlds.
+# Optional (compose profile "commerce"): commerce, Player Studio / contests / portraits shared by all worlds.
+# Optional (compose profile "envserver"): envserver, the first world's terrain store in its own container.
 #
 # Everyday use: "docker compose logs -f world" (the world's console), "docker compose down" (stop; all data stays),
 # "docker compose up -d --build" (after updating the code). More worlds and every setting: docs/docker.md.
@@ -29,6 +34,24 @@ services:
     # The script is read through sed so a Windows (CRLF) checkout still runs.
     command: ["sh", "-c", "sed 's/\\r$$//' /project/docker/setup.sh | sh"]
 
+  # The item icons for the world's web pages (Showcase store: GET /icons/<id>.png), made from your own game folder
+  # (read-only) by the world server's icon export (LandmarkEmulator.WorldServer/Game/IconExport.cs, docs/showcase.md
+  # "Icons"). Icons already there are kept, and a later start with the same game files returns at once. Nothing waits
+  # for it: the world serves each icon as soon as it is written, and a failed export only leaves the pages without icons.
+  icons:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: world
+    image: ${WORLD_IMAGE:-landmarkemu-world}
+    network_mode: none
+    volumes:
+      - ${GAME_DIR:?Set GAME_DIR in .env to your Landmark folder}:/game:ro
+      - ./server-data/gamedata:/gamedata
+    entrypoint: ["sh", "-c", "dotnet /app/LandmarkEmulator.WorldServer.dll --export-icons /game /gamedata/icons || echo 'icons: the export failed; the store pages show no icons until it works.'"]
+    depends_on:
+      setup: { condition: service_completed_successfully }
+
   db:
     extends: { file: docker/auth/docker-compose.yml, service: db }
 
@@ -42,6 +65,34 @@ services:
     extends: { file: docker/auth/docker-compose.yml, service: web }
     depends_on: [auth]
 
+  # The shared social service (presence, friends, ignore lists across worlds). Opt-in: only started with the "social"
+  # profile (COMPOSE_PROFILES=social in .env), and the worlds use it only when SOCIAL_ADDRESS=social:20200 is set too.
+  # Without both, everything runs as before. docker/social/docker-compose.yml, docs/docker.md.
+  social:
+    extends: { file: docker/social/docker-compose.yml, service: social }
+    profiles: [social]
+    depends_on:
+      db: { condition: service_healthy }
+
+  # The shared commerce service (Player Studio, contests, portraits across worlds). Opt-in: only started with the
+  # "commerce" profile (COMPOSE_PROFILES=commerce, or social,commerce, in .env), and the worlds use it only when
+  # COMMERCE_ADDRESS=commerce:20400 is set too. Without both, everything runs as before. docker/commerce, docs/docker.md.
+  commerce:
+    extends: { file: docker/commerce/docker-compose.yml, service: commerce }
+    profiles: [commerce]
+    depends_on:
+      db: { condition: service_healthy }
+
+  # The first world's Environment Server (terrain edits, heals, veins, Voxel Vision, LOD copies, stamps). Opt-in: only
+  # started with the "envserver" profile, and the world uses it only when ENVSERVER_ADDRESS=envserver:20500 is set too
+  # (the world waits up to 2 minutes for it at start-up). Without both, the world keeps its terrain itself, as before.
+  # docker/envserver, docs/docker.md "Environment Server".
+  envserver:
+    extends: { file: docker/envserver/docker-compose.yml, service: envserver }
+    profiles: [envserver]
+    depends_on:
+      setup: { condition: service_completed_successfully }
+
   world:
     extends: { file: docker/world/docker-compose.yml, service: world }
     depends_on:
@@ -51,14 +102,16 @@ services:
 
 volumes:
   db:
+  # The commerce service's files (contest screenshots, portraits).
+  commerce-data:
 
 networks:
   # The servers and the database. Extra worlds (docker/world) join it by this name.
   landmarkemu:
-    name: landmarkemu
+    name: ${NETWORK_NAME:-landmarkemu}
   # The website and the auth server only (fixed range: the auth server trusts the website's address).
   landmarkemu-web:
-    name: landmarkemu-web
+    name: ${NETWORK_NAME:-landmarkemu}-web
     ipam:
       config:
-        - subnet: 172.30.77.0/24
+        - subnet: ${WEB_SUBNET_PREFIX:-172.30.77}.0/24

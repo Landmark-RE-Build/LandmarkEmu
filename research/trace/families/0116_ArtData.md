@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 0 (0 not handled) · S2C 1 (0 never sent / opcode unknown)
 
 ## S2C ArtDataPacketTintDefinitionManagerData  `0x116`
-- server: SENT (102× in opcode_stats)
+- server: SENT (16× in opcode_stats)
 - reader: FUN_142bae270
 - handled in the zone dispatcher Zone_DispatchPacket (0x8d)
 - code (handler case in Zone_DispatchPacket):

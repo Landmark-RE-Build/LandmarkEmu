@@ -7,15 +7,15 @@ C2S 0 (0 not handled) · S2C 3 (0 never sent / opcode unknown)
 
 ## S2C IgnoreListPacket  `0x72`
 - resolved by hand: placed by placeclasses.py (opcode only): FUN_143494180 <- FUN_142f2fb30
-- server: SENT (102× in opcode_stats)
+- server: SENT (16× in opcode_stats)
 - built in: FUN_143494180
 
 ## S2C IgnoreRemovePacket  `0x72`
 - resolved by hand: placed by placeclasses.py (opcode only): FUN_143494180 <- FUN_142f2fb30
-- server: SENT (102× in opcode_stats)
+- server: SENT (16× in opcode_stats)
 - built in: FUN_143494180
 
 ## S2C IgnoreAddPacket  `0x72, 0x2`
-- server: probably sent (static check: sent by server (sub in payload)); not in opcode_stats
+- server: probably sent (static check: sent by server (sub in payload)); not in opcode_stats · seen in play 3×
 - reader: FUN_14348dca0
 - built in: FUN_143494180

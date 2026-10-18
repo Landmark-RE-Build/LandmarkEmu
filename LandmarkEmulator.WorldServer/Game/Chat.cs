@@ -16,7 +16,8 @@ namespace LandmarkEmulator.WorldServer.Game
     /// u64 from guid, u64 to guid, name from {u32, u32, u32, string first, string last}, name to (same), string
     /// message, vec4 position, then trailing fields the server passes through unchanged.
     /// The server fills in the real sender (never trusting the client's) and relays: channel 0 (say) to players
-    /// within <see cref="SayRange"/>, everything else to everyone online.
+    /// within <see cref="SayRange"/>, everything else to everyone online. Say / shout / emote / party are the zone's;
+    /// the other channels go through the social service (<see cref="Social.ISocialService.RouteChat"/>).
     /// </summary>
     public static class Chat
     {
@@ -29,8 +30,27 @@ namespace LandmarkEmulator.WorldServer.Game
         /// Party (/party /p /groupsay) and the public / room channels; TellEcho, System, Error, Loot and Combat are lines
         /// only the server or the client itself makes, so a client sending them is dropped.
         /// </summary>
-        public const ushort Say = 0, Tell = 1, Shout = 3, Emote = 4, Party = 8;
+        public const ushort Say = 0, Tell = 1, Shout = 3, Emote = 4, Party = 8, Public = 9;
         private static readonly HashSet<ushort> ServerOnlyChannels = new() { 2, SystemChannelId, 11, 12, 13 };
+
+        /// <summary>
+        /// The client's trailing block after the message (writer FUN_1433562c0, reader FUN_143356a90; same in 0.589
+        /// FUN_1432a93e0): vec4 position (+0x460), u64 (+0x478), u32 (+0x484), u32 (+0x480), u32 (+0x470), u8 (+0x238),
+        /// u8 (+0x488) — 38 bytes — then, on channel 9 only, a u16 public channel id (+0x20) and, on channel 10 only, the
+        /// room name string (+0x28).
+        /// </summary>
+        public const int TrailingFixedLength = 16 + 8 + 4 + 4 + 4 + 1 + 1;
+
+        /// <summary>
+        /// The public channels (wire channel 9, ChatChannels.txt row 10 "Public"): a line names its channel by the u16
+        /// after the fixed trailing block, and the client turns it into a name with FUN_143b67f50, which knows exactly one:
+        /// 0 = "General" (any other id gives no name). The client registers General itself at every login (chat processor
+        /// setup FUN_143367e40 → FUN_14335e8e0(9, 0, "General"): numbered slot 1, so "/1" talks in it; the default tab
+        /// shows channel 9, and a separate "General" tab follows the ChatGeneralChannelSeperateTabEnabled setting) — the
+        /// server sends nothing to "add" it.
+        /// </summary>
+        public const ushort GeneralChannelId = 0;
+        public const string GeneralChannelName = "General";
 
         /// <summary>
         /// PacketChat kinds (the first u16 after the sub, client FUN_1432b7bc0 case 1): 0 a message; 2 "User '[target]' not
@@ -43,7 +63,7 @@ namespace LandmarkEmulator.WorldServer.Game
         private const ushort TellEchoSub = 5;
         private const float SayRange = 100f;
         /// <summary>
-        /// /shout and /yell: "Broadcasts a message to the zone (with limited range)" (2016 wiki, Commands List). The
+        /// /shout and /yell: a message to the zone, within a limited range (2016 wiki, Commands List). The
         /// client has no range constant for it; the server uses a wide radius in the sender's zone.
         /// </summary>
         private const float ShoutRange = 500f;
@@ -55,6 +75,9 @@ namespace LandmarkEmulator.WorldServer.Game
         /// zone, party (8) to the group, guild (5) to the guild, officers (6) to ranks with JoinOfficerChat, rooms (10) to
         /// the room, other channels to everyone. Over-long or empty messages, server-only channels and muted guild
         /// members' guild lines are dropped.
+        /// The zone keeps the range-based channels (say, shout, emote) and party; every other channel is handed to the
+        /// social service (<see cref="Social.ISocialService.RouteChat"/>, the PacketChat forward of social-service.md
+        /// §5.4), which runs <see cref="Route"/> while it is local.
         /// </summary>
         public static void Handle(WorldSession sender, byte[] body)
         {
@@ -74,38 +97,38 @@ namespace LandmarkEmulator.WorldServer.Game
                 ulong to = reader.ReadULong();
                 SkipName(reader);
                 string toName = ReadFirstName(reader);
-                string message = reader.ReadString();
+                // Typed rich-text tokens would become markup in every reader's chat window (L54): made harmless.
+                string message = Shared.Game.RichTextTokens.Neutralize(reader.ReadString());
                 byte[] rest = reader.ReadBytes(reader.BytesRemaining);
                 if (string.IsNullOrWhiteSpace(message) || message.Length > MaxMessageLength)
                     return;
-                if (channel == Tell)
-                {
-                    SendTell(sender, kind, to, toName, message, rest);
-                    return;
-                }
                 if (ServerOnlyChannels.Contains(channel))
                 {
                     log.Debug($"{sender.CharacterName} sent chat on server-only channel {channel}: dropped.");
                     return;
                 }
-                if ((channel == Guilds.ChatChannel || channel == Guilds.OfficerChatChannel) && Guilds.IsMuted(sender, channel))
+                // A public line must name a channel the clients can show: only General (0) has a name (FUN_143b67f50).
+                if (channel == Public && PublicChannelOf(rest) != GeneralChannelId)
                 {
-                    System(sender, $"You are muted in {(channel == Guilds.ChatChannel ? "guild" : "officer")} chat.");
+                    log.Debug($"{sender.CharacterName} sent chat on unknown public channel {PublicChannelOf(rest)}: dropped.");
+                    return;
+                }
+                // Party lines reach the group on every world through the social service while groups live there and
+                // it is reachable (B.9, social-service.md §10); otherwise the zone keeps them to the members it hosts.
+                if (!ZoneChannels.Contains(channel)
+                    || (channel == Party && Social.SocialServices.Groups is { IsConnected: true }))
+                {
+                    Social.SocialServices.Service.RouteChat(sender, new Social.ChatLine(kind, channel, to, toName, message, rest));
                     return;
                 }
                 log.Info($"[chat {channel}] {sender.CharacterName}: {message}");
 
                 byte[] relay = Build(kind, channel, sender, to, message, rest);
-                IEnumerable<WorldSession> recipients = channel == Party ? Groups.MembersOf(sender)
-                    : channel == Guilds.ChatChannel ? Guilds.MembersOf(sender)
-                    : channel == Guilds.OfficerChatChannel ? Guilds.OfficersOf(sender)
-                    : channel == ChatRooms.RoomChannel ? ChatRooms.MembersFor(sender, RoomNameOf(rest))
-                    : PlayerManager.Snapshot();
-                // Say and emotes are heard nearby, shouts across a wide radius of the zone, the rest by everyone the
-                // channel reaches.
+                IEnumerable<WorldSession> recipients = channel == Party ? Groups.MembersOf(sender) : PlayerManager.Snapshot();
+                // Say and emotes are heard nearby, shouts across a wide radius of the zone, party by the whole group.
                 float range = channel == Say || channel == Emote ? SayRange : channel == Shout ? ShoutRange : float.MaxValue;
                 foreach (WorldSession session in recipients)
-                    if (Ignores.Ignoring(session, sender))
+                    if (Social.SocialServices.IgnoreCache.Ignoring(session, sender))
                         continue;
                     else if (range == float.MaxValue || (session.ZoneId == sender.ZoneId
                             && Vector3.Distance(session.Position, sender.Position) <= range))
@@ -115,6 +138,49 @@ namespace LandmarkEmulator.WorldServer.Game
             {
                 log.Debug($"Unreadable chat from {sender.CharacterName}: {e.Message} {BitConverter.ToString(body)}");
             }
+        }
+
+        /// <summary>Channels the zone delivers itself (by range, or to the party); the rest go to the social service.</summary>
+        private static readonly HashSet<ushort> ZoneChannels = new() { Say, Shout, Emote, Party };
+
+        /// <summary>
+        /// The social side of a chat line (<see cref="Social.LocalSocialService.RouteChat"/>): tells to the named player,
+        /// guild (5) to the guild, officers (6) to ranks with JoinOfficerChat, rooms (10) to the room, General (public 9)
+        /// to the online players who have not left it (<see cref="PublicChannels"/>), other channels to everyone online;
+        /// muted guild members' guild lines are dropped and the receivers' ignore lists apply.
+        /// </summary>
+        internal static void Route(WorldSession sender, Social.ChatLine line)
+        {
+            ushort channel = line.Channel;
+            if (channel == Tell)
+            {
+                SendTell(sender, line.Kind, line.To, line.ToName, line.Message, line.Rest);
+                return;
+            }
+            Social.IGuildCache guilds = Social.SocialServices.GuildCache;
+            if ((channel == Guilds.ChatChannel || channel == Guilds.OfficerChatChannel) && guilds.IsMuted(sender, channel))
+            {
+                System(sender, $"You are muted in {(channel == Guilds.ChatChannel ? "guild" : "officer")} chat.");
+                return;
+            }
+            if (channel == Public && !PublicChannels.IsMember(sender))
+            {
+                // Someone who left General talks in it only after joining again [I] (no client text for this case).
+                log.Debug($"{sender.CharacterName} spoke in {GeneralChannelName} after leaving it: dropped.");
+                return;
+            }
+            log.Info($"[chat {channel}] {sender.CharacterName}: {line.Message}");
+
+            byte[] relay = Build(line.Kind, channel, sender, line.To, line.Message, line.Rest);
+            IEnumerable<WorldSession> recipients = channel == Guilds.ChatChannel ? guilds.MembersOf(sender)
+                : channel == Guilds.OfficerChatChannel ? guilds.OfficersOf(sender)
+                : channel == ChatRooms.RoomChannel ? ChatRooms.MembersFor(sender, RoomNameOf(line.Rest))
+                : channel == Public ? PlayerManager.Snapshot().Where(PublicChannels.IsMember)
+                : PlayerManager.Snapshot();
+            // These channels reach everyone they are for, wherever they are.
+            foreach (WorldSession session in recipients)
+                if (!Ignores.Ignoring(session, sender))
+                    session.EnqueueMessage(ZoneMessageOpcode.ChatBase, relay);
         }
 
         /// <summary>
@@ -232,21 +298,16 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>
-        /// The room a channel-10 message is for: the last field of the client's trailing block (writer FUN_1432a93e0:
-        /// vec4 position, string, u32, u32, u32, u8, u8, then the room name for channel 10). Null when unreadable.
+        /// The room a channel-10 message is for: the string after the fixed trailing block (<see cref="TrailingFixedLength"/>;
+        /// the second field there is a u64, not a string — read as a string it shifted every later field by 4 bytes and
+        /// lost the room name). Null when unreadable.
         /// </summary>
         private static string RoomNameOf(byte[] rest)
         {
             try
             {
                 var r = new GamePacketReader(rest);
-                r.ReadBytes(16);
-                r.ReadString();
-                r.ReadUInt();
-                r.ReadUInt();
-                r.ReadUInt();
-                r.ReadByte();
-                r.ReadByte();
+                r.ReadBytes(TrailingFixedLength);
                 return r.ReadString();
             }
             catch
@@ -254,6 +315,13 @@ namespace LandmarkEmulator.WorldServer.Game
                 return null;
             }
         }
+
+        /// <summary>
+        /// The public channel a channel-9 message is for: the u16 after the fixed trailing block (client reader
+        /// FUN_143356a90 → +0x20). <see cref="ushort.MaxValue"/> when missing (the client's default +0x20 is -1).
+        /// </summary>
+        public static ushort PublicChannelOf(byte[] rest)
+            => rest != null && rest.Length >= TrailingFixedLength + 2 ? BitConverter.ToUInt16(rest, TrailingFixedLength) : ushort.MaxValue;
 
         /// <summary>Reads a name block {u32, u32, u32, string first, string last}, returning the first name.</summary>
         private static string ReadFirstName(GamePacketReader reader)

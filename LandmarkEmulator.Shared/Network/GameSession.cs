@@ -1,4 +1,4 @@
-using LandmarkEmulator.Shared.Network.Cryptography;
+﻿using LandmarkEmulator.Shared.Network.Cryptography;
 using LandmarkEmulator.Shared.Network.Message;
 using LandmarkEmulator.Shared.Network.Message.Model;
 using LandmarkEmulator.Shared.Network.Packets;
@@ -171,6 +171,11 @@ namespace LandmarkEmulator.Shared.Network
                 outgoingPacketThread.Start();
             }
 
+            // Too short for an SOE opcode: not a packet (ProtocolPacket would throw reading the u16). Dropped before it
+            // counts as a heartbeat, so stray bytes don't keep a dead session alive.
+            if (data == null || data.Length < 2)
+                return;
+
             Heartbeat.OnHeartbeat();
 
             var packet = new ProtocolPacket(data, new PacketOptions
@@ -256,6 +261,7 @@ namespace LandmarkEmulator.Shared.Network
             if (hasAuthed && outputStream.ProcessRtoResends())
             {
                 log.Warn($"Oldest unacked reliable packet exceeded {DataStreamOutput.OldestUnackedTimeoutMs}ms; disconnecting");
+                MarkTimedOut();
                 SendDisconnect(DisconnectReasonUnacknowledgedTimeout);
                 return;
             }
@@ -312,7 +318,17 @@ namespace LandmarkEmulator.Shared.Network
 
             var reader = new ProtocolPacketReader(payload);
 
-            message.Read(reader, packet.PacketOptions);
+            try
+            {
+                // Inside the try: a truncated packet (a SessionRequest cut short, a Data packet with no sequence) throws
+                // here, and used to leave this method unhandled, up through OnData into the UDP receive loop.
+                message.Read(reader, packet.PacketOptions);
+            }
+            catch (Exception exception)
+            {
+                log.Warn($"Unreadable protocol packet {packet.Opcode}(0x{packet.Opcode:X}) ({payload.Length} bytes): {exception.Message}");
+                return;
+            }
             if (reader.BytesRemaining > 0 && message is not Ping)
                 log.Warn($"Failed to read entire contents of packet {packet.Opcode} ({reader.BytesRemaining} bytes remaining)");
 
@@ -464,7 +480,7 @@ namespace LandmarkEmulator.Shared.Network
                 EncryptionMethod   = encryptionMethod,
                 EncryptionMethod2  = encryptionMethod2,
                 UdpLength          = serverUdpLength,
-                Unknown0           = request.ProtocolVersion != 0 ? request.ProtocolVersion : 3u
+                ProtocolVersion    = request.ProtocolVersion != 0 ? request.ProtocolVersion : 3u
             }, new PacketOptions
             {
                 IsSubpacket = false,
@@ -527,25 +543,31 @@ namespace LandmarkEmulator.Shared.Network
                 SendPacket(dataPacket);
         }
 
+        /// <summary>
+        /// SOE Disconnect reason the client's UdpLibrary names DisconnectReasonTimeout (index 2 of its table FUN_142b67110:
+        /// None, IcmpError, Timeout, OtherSideTerminated ...). The client logs the other side's reason after its own
+        /// ("reason=DisconnectReasonOtherSideTerminated,DisconnectReasonTimeout").
+        /// </summary>
+        public const ushort DisconnectReasonTimeout = 2;
+
+        /// <summary>The reason the next Disconnect carries (0 = none: a logout, a kick, a close by either side).</summary>
+        private ushort disconnectReason;
+
+        /// <summary>
+        /// Ends the session with a Disconnect carrying <paramref name="reason"/>. Through the virtual
+        /// <see cref="OnDisconnect"/>, so the owners' overrides run (the separate gateway tells the zone the connection
+        /// closed there: before, this path called the base class directly and the zone never heard of a connection dropped
+        /// for an unacknowledged timeout).
+        /// </summary>
         private void SendDisconnect(ushort reason)
         {
-            if (Disconnected || !WasConnected)
-            {
-                OnDisconnect();
-                return;
-            }
-
-            SendPacket(new ProtocolPacket(ProtocolMessageOpcode.Disconnect, new Disconnect
-            {
-                SessionId = SoeSessionId,
-                Reason    = reason
-            }, true, new PacketOptions
-            {
-                IsPriority  = true,
-                Compression = SoeCompressionFlag
-            }));
-            base.OnDisconnect();
+            if (!Disconnected)
+                disconnectReason = reason;
+            OnDisconnect();
         }
+
+        /// <summary>The client went silent: the Disconnect says Timeout, in case it is still there to read it.</summary>
+        public override void OnTimedOutDisconnect() => SendDisconnect(DisconnectReasonTimeout);
 
         public override void OnDisconnect()
         {
@@ -559,7 +581,7 @@ namespace LandmarkEmulator.Shared.Network
                 SendPacket(new ProtocolPacket(ProtocolMessageOpcode.Disconnect, new Disconnect
                 {
                     SessionId = SoeSessionId,
-                    Reason    = 0
+                    Reason    = disconnectReason
                 }, true, new PacketOptions
                 {
                     IsPriority  = true,

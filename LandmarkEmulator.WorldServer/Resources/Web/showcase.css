@@ -58,9 +58,30 @@ button.alt { background: #2b3b4a; border-color: #45607a; }
 .site .title { font-size: 15px; color: #f3d98f; }
 .site .meta { font-size: 12px; color: #8ea2b3; }
 .site .desc { font-size: 13px; color: #b9c7d3; margin-top: 3px; }
-.site .rating { width: 90px; text-align: center; color: #e8c46a; }
+.site .rating { width: 100px; text-align: center; color: #e8c46a; font-size: 13px; line-height: 1.6; }
+.site .rating a { color: #9fb0bf; font-size: 12px; }
+.site .rating a:hover { color: #f3d98f; }
+.site.open { border-color: #e8c46a; margin-bottom: 0; border-radius: 4px 4px 0 0; }
+.site .shot.noshot { background: #0e161d; }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 4px; background: #4e5d6b; margin-right: 4px; }
 .dot.on { background: #6fd16f; }
+
+/* Gallery: tag drop-downs, Play Mode filter, tags, comments */
+.filters { margin: 0 0 12px; }
+.gsel { background: #0c131a; color: #d9e2ea; border: 1px solid #2b3b4a; border-radius: 3px; padding: 5px 6px; margin: 0 6px 6px 0; font-size: 13px; }
+.filters button { vertical-align: top; }
+.tag { display: inline-block; padding: 1px 7px; margin: 3px 4px 0 0; background: #223344; border: 1px solid #34495e; border-radius: 10px; font-size: 11px; color: #c3d0db; }
+.badge { display: inline-block; padding: 0 6px; margin-left: 6px; border-radius: 3px; font-size: 11px; color: #8ea2b3; background: #1f2d3a; vertical-align: middle; }
+.badge.play { color: #e8f5df; background: #3b5a2a; }
+#side a.dim { color: #6f8396; }
+.comments { margin: 0 0 8px; padding: 10px 12px; background: #131d26; border: 1px solid #e8c46a; border-top: 0; border-radius: 0 0 4px 4px; }
+.comment { padding: 6px 0; border-top: 1px solid #1f2d3a; font-size: 13px; color: #c3d0db; }
+.comment:first-child { border-top: 0; }
+.comment b { color: #f3d98f; font-weight: normal; }
+.comment .when { color: #6f8396; font-size: 12px; }
+.comment .del { float: right; color: #8a4343; font-size: 12px; }
+.comments .post { display: -webkit-flex; display: flex; margin-top: 8px; }
+.comments .post input { -webkit-flex: 1; flex: 1; margin-right: 6px; padding: 5px 8px; background: #0c131a; color: #d9e2ea; border: 1px solid #2b3b4a; border-radius: 3px; font-size: 13px; }
 
 #detail {
   position: fixed; left: 50%; top: 50%; width: 380px; margin: -150px 0 0 -190px; padding: 18px;

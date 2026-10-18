@@ -15,17 +15,34 @@ namespace LandmarkEmulator.WorldServer.Game
     /// - At 0 the server sends EncounterBase 0x2C {i16 0x7D, u32 pending, u32 encounter} (Encounters.SendDeathWindow) → "You have died." window (RespawnHandler:Show);
     ///   {u16 0x7E} hides it.
     /// - The window answers with PlayerUpdate 0x3B Respawn {u32 type, ...}: 10 = revive here (costs
-    ///   <see cref="ReviveCost"/> Lumen, item 1579, the client checks the count first), 11/12 = nearest safe point / hub.
+    ///   <see cref="ReviveCost"/> Lumen, item 1579, the client checks the count first), 11/12 = nearest safe point / hub:
+    ///   the nearest graveyard of the layer the player died on (<see cref="Graveyards"/>: a cavern graveyard in the Chaos
+    ///   Caverns, a surface graveyard / respawn point / the Spire / their site above ground).
     /// </summary>
     public static class Health
     {
         private static readonly ILogger log = LogManager.GetCurrentClassLogger();
 
         /// <summary>
-        /// Maximum hit points: the player's health resource (Resources.txt id 4, type 1 Health, MAX_VALUE 900), which is
-        /// what the HUD bar shows.
+        /// Base maximum hit points, with no body armour: the player's Life resource (Resources.txt id 4, type 1 Health,
+        /// MAX_VALUE 900). The real maximum is <see cref="Max"/> (armour weight raises it, Combat.GearStats); this
+        /// constant is what the client falls back to when the Life record carries no MAX_VALUE variable.
         /// </summary>
         public const uint MaxHealth = 900;
+
+        /// <summary>
+        /// The player's maximum hit points now: 900 plus the worn armour's life bonus (Combat.GearStats, TASKS 5.1).
+        /// This is what the HUD bar, the character sheet's Health line and other players' views of this player show
+        /// (sent as the Life record's MAX_VALUE variable, see <see cref="SendHitpoints"/>).
+        /// </summary>
+        public static uint Max(WorldSession session) => Combat.GearStats.MaxHealth(session);
+
+        /// <summary>
+        /// Resources.txt Life (row 4) PACKET_BROADCAST_RANGE: 30 m. Changes to a player's life go to the other players
+        /// this close as well (their target frame / nameplate bar reads the entity's Life resource, FUN_143711bb0 /
+        /// FUN_143b8c310); farther players get it when they next meet the player (<see cref="IntroduceDead"/>).
+        /// </summary>
+        private const float LifeBroadcastRange = 30f;
         private const uint HealthResourceId = 4, HealthResourceType = 1;
         public const uint LumenItem = 1579, ReviveCost = 15;
 
@@ -55,12 +72,47 @@ namespace LandmarkEmulator.WorldServer.Game
         private static readonly HashSet<WorldSession> dead = new();
 
         /// <summary>
+        /// After a revive creatures ignore the player for a few seconds (hotfix 26 Apr 2016, P4717: a few seconds to
+        /// recover after a revive before creatures attack again), and that short invisibility to creatures ends when
+        /// the player enters combat (16 Jun 2016, P5832). Live's length is unknown (L89): ours.
+        /// </summary>
+        public static readonly TimeSpan ReviveGrace = TimeSpan.FromSeconds(5);
+
+        /// <summary>When each revived player's grace ends.</summary>
+        private static readonly Dictionary<WorldSession, DateTime> graceUntil = new();
+
+        /// <summary>Whether creatures ignore this player (just revived, not yet fighting).</summary>
+        public static bool Unnoticed(WorldSession session)
+        {
+            lock (sync)
+            {
+                if (!graceUntil.TryGetValue(session, out DateTime until))
+                    return false;
+                if (DateTime.UtcNow < until)
+                    return true;
+                graceUntil.Remove(session);
+                return false;
+            }
+        }
+
+        /// <summary>The player attacked a creature: the post-revive invisibility drops (P5832).</summary>
+        public static void EnteredCombat(WorldSession session)
+        {
+            if (session == null)
+                return;
+            lock (sync)
+                graceUntil.Remove(session);
+        }
+
+        /// <summary>
         /// A player's current hit points (full when not tracked yet).
         /// </summary>
         public static uint Current(WorldSession session)
         {
             lock (sync)
-                return current.TryGetValue(session, out uint hp) ? hp : MaxHealth;
+                if (current.TryGetValue(session, out uint hp))
+                    return hp;
+            return Max(session);
         }
 
         /// <summary>
@@ -72,8 +124,16 @@ namespace LandmarkEmulator.WorldServer.Game
                 return dead.Contains(session);
         }
 
-        /// <summary>Sends the health bar on world entry.</summary>
-        public static void SendInitial(WorldSession session) => SendHitpoints(session, Current(session));
+        /// <summary>
+        /// Sends the health bar on world entry (with the armour's maximum) and records the armour stats the client now
+        /// has, so equipment changes later send only what changed (Combat.GearStats.Remember).
+        /// </summary>
+        public static void SendInitial(WorldSession session)
+        {
+            Combat.GearStats.Remember(session);
+            // Others already met this player (PlayerManager.Introduce → IntroduceDead), so only the player is told.
+            SendHitpoints(session, Current(session), broadcast: false);
+        }
 
         /// <summary>
         /// Drops a player's health state when they leave; they come back with full health.
@@ -84,12 +144,14 @@ namespace LandmarkEmulator.WorldServer.Game
             {
                 current.Remove(session);
                 dead.Remove(session);
+                graceUntil.Remove(session);
                 reviveOnArrival.Remove(session);
                 CharacterResources.Forget(session);
                 WeaponAttacks.Forget(session);
                 lastHurt.Remove(session);
                 lastEvacuation.Remove(session);
             }
+            Combat.GearStats.Forget(session);
         }
 
         /// <summary>
@@ -136,6 +198,9 @@ namespace LandmarkEmulator.WorldServer.Game
             if (lost > 0)
                 Outposts.Interrupt(session);
             Durability.Damaged(session, lost, died);
+            // Armour that just wore down to 0 % gives half its life / damage bonus (Combat.GearStats).
+            if (lost > 0 && !died)
+                Combat.GearStats.Refresh(session);
             if (died)
             {
                 // A player in a running site game respawns at the game's spawn points instead (no death window).
@@ -201,12 +266,14 @@ namespace LandmarkEmulator.WorldServer.Game
             if (now < nextRegen)
                 return;
             nextRegen = now.AddSeconds(1);
-            List<WorldSession> wounded;
+            List<(WorldSession Session, uint Hp)> tracked;
             lock (sync)
-                wounded = current.Where(p => p.Value < MaxHealth && !dead.Contains(p.Key)
-                    && (!lastHurt.TryGetValue(p.Key, out DateTime hurt) || now - hurt > RegenDelay)).Select(p => p.Key).ToList();
-            foreach (WorldSession session in wounded)
-                Heal(session, RegenPerSecond);
+                tracked = current.Where(p => !dead.Contains(p.Key)
+                    && (!lastHurt.TryGetValue(p.Key, out DateTime hurt) || now - hurt > RegenDelay)).Select(p => (p.Key, p.Value)).ToList();
+            // The maximum depends on the armour (inventory), so it is read outside the lock.
+            foreach (var (session, hp) in tracked)
+                if (hp < Max(session))
+                    Heal(session, RegenPerSecond);
         }
 
         /// <summary>
@@ -215,12 +282,12 @@ namespace LandmarkEmulator.WorldServer.Game
         /// </summary>
         public static void Heal(WorldSession session, uint amount)
         {
-            uint hp;
+            uint hp, max = Max(session);
             lock (sync)
             {
-                if (dead.Contains(session) || Current(session) >= MaxHealth)
+                if (dead.Contains(session) || Current(session) >= max)
                     return;
-                hp = Math.Min(MaxHealth, Current(session) + amount);
+                hp = Math.Min(max, Current(session) + amount);
                 current[session] = hp;
             }
             SendHitpoints(session, hp);
@@ -231,19 +298,52 @@ namespace LandmarkEmulator.WorldServer.Game
         /// </summary>
         public static void Revive(WorldSession session)
         {
+            uint max = Max(session);
             lock (sync)
             {
                 dead.Remove(session);
-                current[session] = MaxHealth;
+                current[session] = max;
+                graceUntil[session] = DateTime.UtcNow + ReviveGrace;
             }
-            SendHitpoints(session, MaxHealth);
+            SendHitpoints(session, max);
         }
 
-        /// <summary>A newcomer sees a dead player's RevivePoints too (PlayerManager.Introduce).</summary>
+        /// <summary>
+        /// The armour's maximum life changed (equip / unequip / armour broke; Combat.GearStats.Refresh): the player keeps
+        /// the same share of their life (full stays full, so swapping armour neither heals nor hurts; [I] ours), and the
+        /// bar is sent again with the new maximum. A dead player stays at 0.
+        /// </summary>
+        public static void MaxChanged(WorldSession session, uint oldMax, uint newMax)
+        {
+            uint hp;
+            lock (sync)
+            {
+                if (dead.Contains(session))
+                    hp = 0;
+                else if (current.TryGetValue(session, out uint now))
+                {
+                    hp = oldMax == 0 ? newMax : (uint)Math.Round((double)now * newMax / oldMax);
+                    hp = Math.Clamp(hp, 1u, newMax);
+                    current[session] = hp;
+                }
+                else
+                    hp = newMax;                       // untracked = full
+            }
+            SendHitpoints(session, hp);
+        }
+
+        /// <summary>
+        /// Meeting a player (PlayerManager.Introduce): a dead player's RevivePoints, and the player's Life when it isn't
+        /// the default full 900 (hurt, or a maximum raised by armour), so the newcomer's target frame / nameplate shows
+        /// the right bar. A full, unarmoured player costs nothing: the client already assumes Resources.txt's 900.
+        /// </summary>
         public static void IntroduceDead(WorldSession viewer, WorldSession subject)
         {
             if (IsDead(subject))
                 CharacterResources.SendFor(viewer, subject.PlayerGuid, RevivePointsId, RevivePointsType, RevivePoints);
+            uint max = Max(subject), hp = IsDead(subject) ? 0 : Current(subject);
+            if (viewer != subject && (hp != max || max != MaxHealth))
+                SendLife(viewer, subject, hp, max);
         }
 
         /// <summary>A revive in progress: who revives, when the channel ends, and whether ReadyToRevive went out.</summary>
@@ -481,7 +581,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 return;
             Graveyards.Site site = Graveyards.Nearest(session, session.Position);
             if (site != null)
-                Teleport.ToZone(session, site.Position, site.Zone);
+                Teleport.ToZone(session, site.Position, site.Zone, site.Facing, snapToGround: !site.Underground);
             else
                 Teleport.To(session, session.Position, snapToGround: true);
             log.Info($"{session.CharacterName} evacuated to {site?.Name ?? "the ground below"} (safe point request).");
@@ -496,19 +596,22 @@ namespace LandmarkEmulator.WorldServer.Game
                 Chat.System(session, $"You need {ReviveCost} Lumen to revive here.");
                 return;
             }
+            uint max = Max(session);
             lock (sync)
             {
                 dead.Remove(session);
-                current[session] = MaxHealth;
+                current[session] = max;
+                graceUntil[session] = DateTime.UtcNow + ReviveGrace;
             }
             // The graveyard choice: the respawn site nearest to where the player fell.
-            Graveyards.Site site = type != RespawnHere ? Graveyards.Nearest(session, session.Position) : null;
+            Graveyards.Site site = type != RespawnHere ? StoryTools.RespawnSite(session, session.Position, respawning: true) : null;
             if (site != null)
             {
                 // Back at a site's Starting Location: its "When a Luminary respawns at this Build Site..." Links run.
                 if (site.Name == "Build Site" && site.ClaimId != 0)
                     StoryTools.ExpectArrival(session, site.ClaimId, respawn: true);
-                Teleport.ToZone(session, site.Position, site.Zone);
+                // A cavern graveyard: no snap to the terrain (the client would put the player on the surface above).
+                Teleport.ToZone(session, site.Position, site.Zone, site.Facing, snapToGround: !site.Underground);
             }
             log.Info($"{session.CharacterName} respawned (type {type}) at {site?.Name ?? "the spot they fell"}.");
             // Moved: the hit points and the window's close wait until the re-zone has finished (Arrived). Sent in the
@@ -519,7 +622,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     reviveOnArrival.Add(session);
                 return;
             }
-            SendHitpoints(session, MaxHealth);
+            SendHitpoints(session, max);
             Encounters.SendDeathWindow(session, false);
         }
 
@@ -531,7 +634,7 @@ namespace LandmarkEmulator.WorldServer.Game
         /// </summary>
         private static void SendRespawnLocations(WorldSession session)
         {
-            Graveyards.Site site = Graveyards.Nearest(session, session.Position);
+            Graveyards.Site site = StoryTools.RespawnSite(session, session.Position, respawning: false);
             Vector3 at = site?.Position ?? session.Position;
             string name = site?.Name ?? "Respawn";
             var message = new Network.Message.Model.ClientUpdateRespawnLocations();
@@ -547,21 +650,34 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>
-        /// Updates the player's health: the HUD bar (the Health resource) and ClientUpdate Hitpoints {u32 current, u32 max}.
+        /// Updates the player's health: the HUD bar (the Life resource, with the armour's maximum) and ClientUpdate
+        /// Hitpoints {u32 current, u32 max} (FUN_142c1c7c0; the dispatcher only builds a combat-text entry from it, it
+        /// does not move the bar). Other players within <see cref="LifeBroadcastRange"/> get the Life resource too.
         /// </summary>
-        private static void SendHitpoints(WorldSession session, uint hp)
+        private static void SendHitpoints(WorldSession session, uint hp, bool broadcast = true)
         {
-            SendHealthResource(session, hp);
+            uint max = Max(session);
+            SendLife(session, session, hp, max);
             var output = new List<byte>();
             var writer = new GamePacketWriter(output);
             writer.Write(hp);
-            writer.Write(MaxHealth);
+            writer.Write(max);
             session.EnqueueMessage(ZoneMessageOpcode.ClientUpdateHitpoints, output.ToArray());
+            if (!broadcast)
+                return;
+            foreach (WorldSession viewer in PlayerManager.InZone(session.ZoneId))
+                if (viewer != session && Vector3.Distance(viewer.Position, session.Position) <= LifeBroadcastRange)
+                    SendLife(viewer, session, hp, max);
         }
 
-        /// <summary>The Life resource on the HUD (see <see cref="CharacterResources"/>).</summary>
-        private static void SendHealthResource(WorldSession session, uint hp)
-            => CharacterResources.Send(session, HealthResourceId, HealthResourceType, hp);
+        /// <summary>
+        /// The Life resource of <paramref name="subject"/> on <paramref name="viewer"/>'s client (see
+        /// <see cref="CharacterResources"/>). The MAX_VALUE variable rides along only when the maximum isn't the table's
+        /// 900: a Set replaces the record's variables, so leaving it out resets the client to 900 (unequipped armour).
+        /// </summary>
+        private static void SendLife(WorldSession viewer, WorldSession subject, uint hp, uint max)
+            => CharacterResources.SendFor(viewer, subject.PlayerGuid, HealthResourceId, HealthResourceType, hp,
+                max == MaxHealth ? null : (MaxHealth, max));
 
     }
 }

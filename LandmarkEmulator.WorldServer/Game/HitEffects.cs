@@ -52,6 +52,22 @@ namespace LandmarkEmulator.WorldServer.Game
 
         private static string AffinityOf(Inventory.ItemDefinitionManager.ItemDefinition weapon)
         {
+            // The weapon's own affinity first: its kit, else its description (the affinity text 574424 Fire … 574442
+            // Radiance; Combat.WeaponCombat.AffinityOf) [P: the item records]. The word guess below got 10 of the 26 launch
+            // weapons wrong: "Spark" made the Falchion of the Inner Spark Fire (Lightning), "Light" in "Blight" made
+            // Blight-Warden's Pain Radiance (Affliction), "Ice" in "Justice" made Lightbringer's Justice Water (Radiance), and
+            // the Earth weapons (Gunslinger's Six-Shooters, Armored Brawler's Blade, Unflinching Embodiment of Might), Spear of
+            // Piercing Judgment, Desperado's Deadly Arsenal, Frenzied Slayer's Battle-Axe and Katana of Crashing Waves had
+            // none. That fed the Daily "<Affinity> Wielder" goals and "Kills with a(n) <Element> weapon" (an Earth weapon
+            // never counted for Earth Wielder) as well as the hit visuals (bughunt-combat.md B11).
+            string own = Combat.WeaponCombat.AffinityOf(weapon) switch
+            {
+                Combat.Affinity.Fire => "Fire", Combat.Affinity.Water => "Water", Combat.Affinity.Lightning => "Lightning",
+                Combat.Affinity.Radiance => "Radiance", Combat.Affinity.Shadow => "Shadow", Combat.Affinity.Affliction => "Affliction",
+                Combat.Affinity.Earth => "Physical", _ => null
+            };
+            if (own != null)
+                return own;
             string ambient = weapon?.AmbientEffect switch
             {
                 11824 => "Fire", 11825 => "Lightning", 11826 => "Physical", _ => null

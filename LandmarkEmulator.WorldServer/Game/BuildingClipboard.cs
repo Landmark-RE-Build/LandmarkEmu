@@ -76,6 +76,13 @@ namespace LandmarkEmulator.WorldServer.Game
             public string Name = "", Tags = "";
             /// <summary>The box is larger than one cell's 40³ grid (fine for a paste, which places the server's copy).</summary>
             public bool LargerThanCell;
+            /// <summary>
+            /// Paste mode (request +0x148, constructor default 1; the paste writer FUN_1430b96a0 copies the paste cursor's
+            /// +0x2c8: 2 Paste Air, 3 Paste Interior Air, 1 when Remove voxels is set) and the Remove voxels ("Paste as
+            /// Delete") flag (+0x14c, cursor +0x2c4). Read for the tutorial goals only; the paste itself does not apply them.
+            /// </summary>
+            public uint PasteMode;
+            public bool AsDelete;
         }
 
         /// <summary>Reads a request; on a malformed one it throws, leaving what was read (the cell list) in <paramref name="r"/>.</summary>
@@ -133,6 +140,8 @@ namespace LandmarkEmulator.WorldServer.Game
                     p += 4;
             }
             r.BlocksEnd = p;
+            r.PasteMode = BitConverter.ToUInt32(body, p);
+            r.AsDelete = body[p + 4] != 0;
             p += 4 + 1;
             r.Tags = ReadString(body, ref p);
             p += 1;
@@ -213,7 +222,26 @@ namespace LandmarkEmulator.WorldServer.Game
                 // answer them before the new voxels go out.
                 SendCellResponses(session, request.Cells);
                 if (changed != null)
-                    TerrainEdits.Broadcast(changed, session.ZoneId);
+                    ZoneTerrain.Broadcast(changed, session.ZoneId);
+                return;
+            }
+            // Copy and Save Design read what the selection covers: every build site under it must grant the player
+            // Get Inspired (Claims.PermissionCopy); otherwise Response 0xE, the client's "insufficient permissions" line.
+            if (!MayCopy(session, request))
+            {
+                log.Info($"{session.CharacterName} tried to copy from a build site without Get Inspired.");
+                SendResponse(session, AddTemporaryBlockSub, InsufficientPermissions);
+                SendCellResponses(session, request.Cells);
+                return;
+            }
+            // ... and no Player Studio design placed on someone else's site may lie under it (live's template instances,
+            // TemplateInstances; audit-wiki-gaps #5): result 0x1A, the client's 563373 "Only the Build Site owner may place,
+            // copy or create Designs using Designs purchased from the marketplace."
+            if (CoversTemplateInstance(session, request))
+            {
+                log.Info($"{session.CharacterName} tried to copy / save a design over a placed Player Studio design.");
+                SendResponse(session, AddTemporaryBlockSub, OnlyClaimOwnerTemplateInstances);
+                SendCellResponses(session, request.Cells);
                 return;
             }
             if (request.Action == SaveDesignAction)
@@ -239,6 +267,46 @@ namespace LandmarkEmulator.WorldServer.Game
             SendCellResponses(session, request.Cells);   // a copy marks the cells pending too (edits there wait for it)
         }
 
+        /// <summary>Does every cell the selection covers lie where the player may copy (Get Inspired)?</summary>
+        private static bool MayCopy(WorldSession session, SelectionRequest request)
+        {
+            // The selection box itself (world units, as CoversTemplateInstance): the props copied or saved with it are read
+            // from the server's own list inside that box (PropsInSelection), not from the cells the request lists, so a
+            // request listing no cells (or fewer than its box covers) copied the props of a site without Get Inspired
+            // (bughunt-build B9).
+            (double bx, double by, double bz) = TerrainStore.CellOrigin(request.Cell);
+            double voxel = TerrainEdits.VoxelSize;
+            var boxMin = (bx + request.X * voxel, by + request.Y * voxel, bz + request.Z * voxel);
+            var boxMax = (boxMin.Item1 + (request.SizeX + 1) * voxel, boxMin.Item2 + (request.SizeY + 1) * voxel, boxMin.Item3 + (request.SizeZ + 1) * voxel);
+            if (!Claims.MayCopyIn(session.PlayerGuid, session.ZoneId, boxMin, boxMax))
+                return false;
+            double size = TerrainEdits.CellSize;
+            foreach (ulong cell in request.Cells)
+            {
+                (uint level, uint cx, uint cy, uint cz) = TerrainStore.Decode(cell);
+                if (level != TerrainEdits.Level)
+                    continue;
+                double ox = cx * size, oy = cy * size, oz = cz * size;
+                if (!Claims.MayCopyIn(session.PlayerGuid, session.ZoneId, (ox, oy, oz), (ox + size, oy + size, oz + size)))
+                    return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Does the copy / design-save box overlap a placed Player Studio design on a site the player doesn't own
+        /// (<see cref="TemplateInstances.Protects"/>)? The box in world units: from the origin voxel's corner, size + 1
+        /// voxels per axis (as <see cref="SelectionBox"/>).
+        /// </summary>
+        private static bool CoversTemplateInstance(WorldSession session, SelectionRequest request)
+        {
+            (double ox, double oy, double oz) = TerrainStore.CellOrigin(request.Cell);
+            double v = TerrainEdits.VoxelSize;
+            var min = (ox + request.X * v, oy + request.Y * v, oz + request.Z * v);
+            var max = (min.Item1 + (request.SizeX + 1) * v, min.Item2 + (request.SizeY + 1) * v, min.Item3 + (request.SizeZ + 1) * v);
+            return TemplateInstances.Protects(session.PlayerGuid, session.ZoneId, min, max);
+        }
+
         /// <summary>
         /// Test hook (dev "placedesign"): places one of the player's designs unturned with its corner at a point (local
         /// metres), through the same path as the client's paste request.
@@ -259,7 +327,7 @@ namespace LandmarkEmulator.WorldServer.Game
             List<ulong> changed = Paste(session, request);
             if (changed == null)
                 return false;
-            TerrainEdits.Broadcast(changed, session.ZoneId);
+            ZoneTerrain.Broadcast(changed, session.ZoneId);
             return true;
         }
 
@@ -348,6 +416,8 @@ namespace LandmarkEmulator.WorldServer.Game
                 else
                     clipboards.Remove(session.PlayerGuid);
             }
+            if (materials.Count > 0 || props.Count > 0)
+                Achievements.Copied(session);   // Building Block Basics "Copy [Ctrl-C]" (Achievements.Tutorial.cs)
 
             // The box's props go back in the clipboard data; the client loads them into its paste clipboard
             // (FUN_1430b7b10 → FUN_143ad8170), shows them in the preview and sends them back with the paste.
@@ -443,47 +513,81 @@ namespace LandmarkEmulator.WorldServer.Game
             }
 
             uint zone = session.ZoneId;
+            // The box of a placed Player Studio copy (world units), recorded once it is placed (TemplateInstances).
+            (double X, double Y, double Z)? studioMin = null, studioMax = null;
+            // TASKS 6.45: a design bought in Player Studio goes only on the player's own site — placing one on someone
+            // else's site got an error message (13 Apr 2016, P4632; P4954). The
+            // client's message is result 0x1A, Construction.OnlyClaimOwnerMayPlaceOrCopyTemplateInstances 563373 "Only the
+            // Build Site owner may place, copy or create Designs using Designs purchased from the marketplace." (0.589
+            // FUN_1430b6560, 0.695 part_0087.c:32798). Checked against every site the turned box touches.
+            if (request.TemplateGuid != 0 && Templates.IsPlayerStudioCopy(session.PlayerGuid, request.TemplateGuid))
+            {
+                double v = TerrainEdits.VoxelSize;
+                long[] lo = { long.MaxValue, long.MaxValue, long.MaxValue }, hi = { long.MinValue, long.MinValue, long.MinValue };
+                long[] b = { baseX, baseY, baseZ };
+                for (int corner = 0; corner < 8; corner++)
+                {
+                    int[] s = { (corner & 1) != 0 ? size[0] : 0, (corner & 2) != 0 ? size[1] : 0, (corner & 4) != 0 ? size[2] : 0 };
+                    for (int i = 0; i < 3; i++)
+                    {
+                        long g = b[i] + Dot(m, i, s);
+                        lo[i] = Math.Min(lo[i], g);
+                        hi[i] = Math.Max(hi[i], g + 1);
+                    }
+                }
+                if (!Claims.OwnsEverySiteIn(session.PlayerGuid, zone, (lo[0] * v, lo[1] * v, lo[2] * v), (hi[0] * v, hi[1] * v, hi[2] * v)))
+                {
+                    log.Info($"{session.CharacterName} tried to place Player Studio design {request.TemplateGuid} on a site they don't own.");
+                    SendResponse(session, AddTemporaryBlockSub, OnlyClaimOwnerTemplateInstances);
+                    return null;
+                }
+                studioMin = (lo[0] * v, lo[1] * v, lo[2] * v);
+                studioMax = (hi[0] * v, hi[1] * v, hi[2] * v);
+            }
             foreach ((ulong cell, List<TerrainEdits.VoxelValue> values) in byCell)
             {
                 var mask = new byte[BlockData.Count / 8];
                 foreach (TerrainEdits.VoxelValue v in values)
                     mask[v.Index >> 3] |= (byte)(1 << (7 - (v.Index & 7)));
-                if (!TerrainEdits.MayApply(cell, mask, session.PlayerGuid, zone))
+                if (!ZoneTerrain.MayApply(cell, mask, session.PlayerGuid, zone))
                 {
                     log.Info($"{session.CharacterName} tried to paste into cell {cell:X} without permission.");
                     SendResponse(session, AddTemporaryBlockSub, InsufficientPermissions);
                     return null;
                 }
             }
-            var delta = new Dictionary<ushort, int>();
-            foreach ((ulong cell, List<TerrainEdits.VoxelValue> values) in byCell)
-                foreach ((ushort material, int n) in TerrainEdits.MaterialDelta(cell, values, zone))
-                    delta[material] = delta.GetValueOrDefault(material) + n;
-            if (!PayFor(session, delta))
+            // One Environment Server operation (job type 11 "Construction Paste Template/Clipboard"): the cost checked there
+            // against the bag, then every cell written, with each cell's touched voxels before and after for the undo record
+            // (LocalEnvironmentServer.WriteCells: the read / write / read loop that was here).
+            WriteResult written = Env.WriteCells(zone, session.PlayerGuid, byCell.Select(c => (c.Key, c.Value)).ToList(), Budget(session), true);
+            if (written.Unavailable)
+            {
+                SendResponse(session, AddTemporaryBlockSub, Failed);
+                ZoneTerrain.SendUnavailable(session);
+                return null;
+            }
+            if (written.Result == InsufficientMaterials)
             {
                 SendResponse(session, AddTemporaryBlockSub, InsufficientMaterials);
                 return null;
             }
+            if (!PayFor(session, written.Delta))
+                log.Warn($"{session.CharacterName}'s paste was written but its materials could not be taken any more.");
 
             var record = new Edit(zone, request.TemplateGuid != 0 ? "Place design" : "Paste");
-            int voxels = 0;
-            foreach ((ulong cell, List<TerrainEdits.VoxelValue> values) in byCell)
-            {
-                var mask = new byte[BlockData.Count / 8];
-                foreach (TerrainEdits.VoxelValue v in values)
-                    mask[v.Index >> 3] |= (byte)(1 << (7 - (v.Index & 7)));
-                List<TerrainEdits.VoxelValue> before = TerrainEdits.Read(cell, mask, zone);
-                TerrainEdits.Write(cell, values, zone, session.PlayerGuid);
-                record.Cells.Add((cell, before, TerrainEdits.Read(cell, mask, zone)));
-                voxels += values.Count;
-            }
+            record.Cells.AddRange(written.Cells);
+            int voxels = byCell.Values.Sum(v => v.Count);
             PlaceProps(session, clipboard.Props, m, baseX, baseY, baseZ, record);
             Remember(session, record);
+            string designName = request.TemplateGuid != 0 ? Templates.NameOf(session, request.TemplateGuid) : "";
             if (request.TemplateGuid != 0)
-                Achievements.DesignPlaced(session, Templates.NameOf(session, request.TemplateGuid));
+                Achievements.DesignPlaced(session, designName);
+            Achievements.Pasted(session, designName, request.PasteMode, request.AsDelete);   // tutorial goals
+            if (studioMin is { } placedMin && studioMax is { } placedMax)
+                TemplateInstances.Record(session, zone, request.TemplateGuid, placedMin, placedMax);
             SendResponse(session, AddTemporaryBlockSub, 0);
             // Every listed cell the server holds goes out (the paster's client dropped its preview of them).
-            List<ulong> changed = byCell.Keys.Concat(request.Cells.Where(c => TerrainEdits.Has(c, zone))).Distinct().ToList();
+            List<ulong> changed = byCell.Keys.Concat(request.Cells.Where(c => Env.Has(c, zone))).Distinct().ToList();
             log.Debug($"{session.CharacterName} pasted {voxels} voxels into {byCell.Count} cell(s) at {request.X},{request.Y},{request.Z} turned [{m[0]} {m[1]} {m[2]}; {m[4]} {m[5]} {m[6]}; {m[8]} {m[9]} {m[10]}].");
             return changed;
         }
@@ -491,9 +595,18 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <summary>
         /// The props of a paste: each goes where its spot in the box lands (the same turn as the voxels: a point p of
         /// the box, in voxels, goes to base + M·p, plus one voxel on each axis the turn flips), turned with the paste.
-        /// Each is paid with an item of it from the player's bag; the ones the player has none of are listed in
-        /// VoxelConstruction 9 ZoneMissingPropList (reader FUN_1430b31a0, handler FUN_1430b8590: chat
-        /// "Construction.SkippedProps" then "count : name" lines): {u32 n, n × i32 name text, u32 n, n × i32 count}.
+        /// Each is paid with an item of it from the player's bag, else built from its recipe materials when the player
+        /// knows the recipe (<see cref="Props.PlaceDesignProp"/>, TASKS 6.40). The ones left out are listed in the
+        /// client's two messages:
+        /// <list type="bullet">
+        /// <item>VoxelConstruction 9 ZoneMissingPropList (0.589 reader FUN_1430b31a0, handler FUN_1430b8590: chat
+        /// "Construction.SkippedProps" then "count : name" lines): {u32 n, n × i32 name text, u32 n, n × i32 count} —
+        /// no item and not enough materials;</item>
+        /// <item>VoxelConstruction 8 ZoneUnknownPropList (0.589 reader FUN_1430b3240 → FUN_1430b20f0, handler
+        /// FUN_1430b87a0; 0.695 FUN_14315d360 / FUN_1431633e0, same shape): a hash list {u32 n, n × (u32 key, u32 name
+        /// text, i32 count)}, shown as "Construction.MissingPropKnowledge" then "count : name" lines — no item and the
+        /// recipe unknown. The key is only the list's hash key (the prop id here).</item>
+        /// </list>
         /// </summary>
         private static void PlaceProps(WorldSession session, List<Props.DesignProp> props, int[] m, long baseX, long baseY, long baseZ, Edit record)
         {
@@ -503,8 +616,7 @@ namespace LandmarkEmulator.WorldServer.Game
             var origin = TerrainStore.ZoneOrigin;
             var turn = System.Numerics.Quaternion.CreateFromRotationMatrix(new System.Numerics.Matrix4x4(
                 m[0], m[4], m[8], 0, m[1], m[5], m[9], 0, m[2], m[6], m[10], 0, 0, 0, 0, 1));
-            var skipped = new Dictionary<uint, int>();
-            foreach (Props.DesignProp prop in props)
+            PlaceProps(session, props, prop =>
             {
                 double[] p = { prop.Offset.X * 10 / v, prop.Offset.Y * 10 / v, prop.Offset.Z * 10 / v };
                 double[] g = new double[3];
@@ -520,21 +632,55 @@ namespace LandmarkEmulator.WorldServer.Game
                     }
                 }
                 var at = new System.Numerics.Vector3((float)((g[0] * v - origin.X) / 10), (float)((g[1] * v - origin.Y) / 10), (float)((g[2] * v - origin.Z) / 10));
+                return (at, turn);
+            }, record);
+        }
+
+        /// <summary>
+        /// Places a paste's props where <paramref name="place"/> puts each (local metres, and the paste's turn, which is
+        /// applied after the prop's own rotation) and reports the ones left out (see the overload above).
+        /// </summary>
+        private static void PlaceProps(WorldSession session, List<Props.DesignProp> props,
+            Func<Props.DesignProp, (System.Numerics.Vector3 At, System.Numerics.Quaternion Turn)> place, Edit record)
+        {
+            if (props.Count == 0)
+                return;
+            var skipped = new Dictionary<uint, int>();
+            var unknown = new Dictionary<uint, (uint Name, int Count)>();
+            foreach (Props.DesignProp prop in props)
+            {
+                (System.Numerics.Vector3 at, System.Numerics.Quaternion turn) = place(prop);
                 var q = new System.Numerics.Quaternion(prop.Rotation.X, prop.Rotation.Y, prop.Rotation.Z, prop.Rotation.W);
                 if (q.LengthSquared() < 1e-6f)
                     q = System.Numerics.Quaternion.Identity;
                 q = System.Numerics.Quaternion.Normalize(System.Numerics.Quaternion.Concatenate(q, turn));
                 var rotation = new System.Numerics.Vector4(q.X, q.Y, q.Z, q.W);
-                ulong guid = Props.PlaceDesignProp(session, prop, at, rotation, out bool missing);
+                ulong guid = Props.PlaceDesignProp(session, prop, at, rotation, out Props.DesignPropShortfall shortfall);
                 if (guid != 0)
                     record.PastedProps.Add((prop, at, rotation, guid));
-                else if (missing)
+                else if (shortfall == Props.DesignPropShortfall.Missing)
                 {
                     uint name = Props.NameIdOf(prop.PropId);
                     skipped[name] = skipped.GetValueOrDefault(name) + 1;
                 }
+                else if (shortfall == Props.DesignPropShortfall.Unknown)
+                    unknown[prop.PropId] = (Props.NameIdOf(prop.PropId), unknown.GetValueOrDefault(prop.PropId).Count + 1);
                 else
                     log.Debug($"{session.CharacterName}: pasted prop {prop.PropId} not placed at {at} (no model, or no build permission there).");
+            }
+            if (unknown.Count > 0)
+            {
+                var output = new List<byte>();
+                var w = new LandmarkEmulator.Shared.Network.GamePacketWriter(output);
+                w.Write(ZoneUnknownPropListSub);
+                w.Write((uint)unknown.Count);
+                foreach ((uint propId, (uint name, int count)) in unknown)
+                {
+                    w.Write(propId);
+                    w.Write(name);
+                    w.Write(count);
+                }
+                session.EnqueueMessage(Network.Message.ZoneMessageOpcode.VoxelConstructionBase, output.ToArray());
             }
             if (skipped.Count > 0)
             {
@@ -549,10 +695,11 @@ namespace LandmarkEmulator.WorldServer.Game
                     w.Write(n);
                 session.EnqueueMessage(Network.Message.ZoneMessageOpcode.VoxelConstructionBase, output.ToArray());
             }
-            log.Debug($"{session.CharacterName} pasted {record.PastedProps.Count} of {props.Count} props ({skipped.Values.Sum()} skipped).");
+            log.Debug($"{session.CharacterName} pasted {record.PastedProps.Count} of {props.Count} props ({skipped.Values.Sum()} skipped, "
+                + $"{unknown.Values.Sum(u => u.Count)} without the recipe).");
         }
 
-        public const byte ZoneMissingPropListSub = 9;
+        public const byte ZoneUnknownPropListSub = 8, ZoneMissingPropListSub = 9;
 
         private static int Dot(int[] m, int row, int[] v) => m[row * 4] * v[0] + m[row * 4 + 1] * v[1] + m[row * 4 + 2] * v[2];
 

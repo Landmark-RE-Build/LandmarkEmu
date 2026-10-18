@@ -37,7 +37,7 @@ namespace LandmarkEmulator.Parser
         public string ServerAddress { get; set; }
         public string CharacterName { get; set; }
 
-        /// <summary>Spawn / enter-world position from SendSelfToClient (Unknown3).</summary>
+        /// <summary>Spawn / enter-world position from SendSelfToClient.Position.</summary>
         public float? WorldX { get; set; }
         public float? WorldY { get; set; }
         public float? WorldZ { get; set; }

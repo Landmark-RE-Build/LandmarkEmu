@@ -19,7 +19,7 @@ C2S 1 (1 not handled) · S2C 2 (1 never sent / opcode unknown)
 - server: NOT SENT (not in opcode_stats, not in the server code)
 
 ## S2C KnownPropPacketAddPropResponse  `0x115`
-- server: probably sent (static check: sent by server); not in opcode_stats
+- server: probably sent (static check: sent by server); not in opcode_stats · seen in play 8×
 - reader: FUN_142e64760
 - built in: FUN_142e654e0
 - layout:

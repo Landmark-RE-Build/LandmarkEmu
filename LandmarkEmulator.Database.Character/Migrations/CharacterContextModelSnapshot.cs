@@ -128,11 +128,68 @@ namespace LandmarkEmulator.Database.Character.Migrations
                     b.ToTable("character_ignore", (string)null);
                 });
 
+            modelBuilder.Entity("LandmarkEmulator.Database.Character.Model.CharacterInventoryFilterModel", b =>
+                {
+                    b.Property<ulong>("CharacterId")
+                        .HasColumnType("bigint(20) unsigned")
+                        .HasColumnName("characterId");
+
+                    b.Property<uint>("FilterId")
+                        .HasColumnType("int(10) unsigned")
+                        .HasColumnName("filterId");
+
+                    b.Property<string>("FilterString")
+                        .IsRequired()
+                        .HasColumnType("varchar(2048)")
+                        .HasColumnName("filterString");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("name");
+
+                    b.HasKey("CharacterId", "FilterId")
+                        .HasName("PRIMARY");
+
+                    b.ToTable("character_inventory_filter", (string)null);
+                });
+
+            modelBuilder.Entity("LandmarkEmulator.Database.Character.Model.CharacterPreferenceModel", b =>
+                {
+                    b.Property<ulong>("CharacterId")
+                        .HasColumnType("bigint(20) unsigned")
+                        .HasColumnName("characterId");
+
+                    b.Property<uint>("Kind")
+                        .HasColumnType("int(10) unsigned")
+                        .HasColumnName("kind");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("updatedAt");
+
+                    b.Property<byte[]>("Xml")
+                        .IsRequired()
+                        .HasColumnType("blob")
+                        .HasColumnName("xml");
+
+                    b.HasKey("CharacterId", "Kind")
+                        .HasName("PRIMARY");
+
+                    b.ToTable("character_preference", (string)null);
+                });
+
             modelBuilder.Entity("LandmarkEmulator.Database.Character.Model.CharacterItemModel", b =>
                 {
                     b.Property<ulong>("Id")
                         .HasColumnType("bigint(20) unsigned")
                         .HasColumnName("id");
+
+                    b.Property<bool>("AutoResupply")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false)
+                        .HasColumnName("autoResupply");
 
                     b.Property<ulong>("CharacterId")
                         .ValueGeneratedOnAdd()
@@ -152,6 +209,10 @@ namespace LandmarkEmulator.Database.Character.Migrations
                         .HasDefaultValue(0u)
                         .HasColumnName("count");
 
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("expiresAt");
+
                     b.Property<uint>("ItemDefinitionId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int(10) unsigned")
@@ -163,6 +224,10 @@ namespace LandmarkEmulator.Database.Character.Migrations
                         .HasColumnType("int(10) unsigned")
                         .HasDefaultValue(0u)
                         .HasColumnName("slot");
+
+                    b.Property<DateTime?>("TradeableAfter")
+                        .HasColumnType("datetime")
+                        .HasColumnName("tradeableAfter");
 
                     b.Property<float>("Wear")
                         .ValueGeneratedOnAdd()
@@ -218,6 +283,31 @@ namespace LandmarkEmulator.Database.Character.Migrations
                         .HasColumnType("bigint(20) unsigned")
                         .HasDefaultValue(0ul)
                         .HasColumnName("lastServerId");
+
+                    b.Property<string>("Bio")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(512)")
+                        .HasDefaultValue("")
+                        .HasColumnName("bio");
+
+                    b.Property<uint>("ChatBubbleBackground")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int(10) unsigned")
+                        .HasDefaultValue(13951728u)
+                        .HasColumnName("chatBubbleBg");
+
+                    b.Property<uint>("ChatBubbleForeground")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int(10) unsigned")
+                        .HasDefaultValue(16777215u)
+                        .HasColumnName("chatBubbleFg");
+
+                    b.Property<uint>("ChatBubbleSize")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int(10) unsigned")
+                        .HasDefaultValue(1u)
+                        .HasColumnName("chatBubbleSize");
 
                     b.Property<uint>("LoginCount")
                         .ValueGeneratedOnAdd()
@@ -386,6 +476,35 @@ namespace LandmarkEmulator.Database.Character.Migrations
                     b.ToTable("claim_vendor_item", (string)null);
                 });
 
+            modelBuilder.Entity("LandmarkEmulator.Database.Character.Model.WorldAreaModel", b =>
+                {
+                    b.Property<ulong>("Id")
+                        .HasColumnType("bigint(20) unsigned")
+                        .HasColumnName("id");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("blob")
+                        .HasColumnName("data");
+
+                    b.Property<ulong>("OwnerId")
+                        .HasColumnType("bigint(20) unsigned")
+                        .HasColumnName("ownerId");
+
+                    b.Property<ulong>("PropId")
+                        .HasColumnType("bigint(20) unsigned")
+                        .HasColumnName("propId");
+
+                    b.Property<uint>("ZoneId")
+                        .HasColumnType("int(10) unsigned")
+                        .HasColumnName("zoneId");
+
+                    b.HasKey("Id")
+                        .HasName("PRIMARY");
+
+                    b.ToTable("world_area", (string)null);
+                });
+
             modelBuilder.Entity("LandmarkEmulator.Database.Character.Model.WorldPropSettingModel", b =>
                 {
                     b.Property<ulong>("PropId")
@@ -500,6 +619,12 @@ namespace LandmarkEmulator.Database.Character.Migrations
                         .HasColumnType("bigint(20) unsigned")
                         .HasColumnName("id");
 
+                    b.Property<bool>("AutoResupply")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false)
+                        .HasColumnName("autoResupply");
+
                     b.Property<ulong>("ChestGuid")
                         .HasColumnType("bigint(20) unsigned")
                         .HasColumnName("chestGuid");
@@ -508,6 +633,12 @@ namespace LandmarkEmulator.Database.Character.Migrations
                         .HasColumnType("int(10) unsigned")
                         .HasColumnName("count");
 
+                    b.Property<ulong>("DepositorGuid")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint(20) unsigned")
+                        .HasDefaultValue(0ul)
+                        .HasColumnName("depositorGuid");
+
                     b.Property<uint>("ItemDefinitionId")
                         .HasColumnType("int(10) unsigned")
                         .HasColumnName("itemDefinitionId");
@@ -515,6 +646,12 @@ namespace LandmarkEmulator.Database.Character.Migrations
                     b.Property<uint>("Slot")
                         .HasColumnType("int(10) unsigned")
                         .HasColumnName("slot");
+
+                    b.Property<float>("Wear")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("float")
+                        .HasDefaultValue(0f)
+                        .HasColumnName("wear");
 
                     b.HasKey("Id")
                         .HasName("PRIMARY");
@@ -531,6 +668,12 @@ namespace LandmarkEmulator.Database.Character.Migrations
                         .HasColumnType("bigint(20) unsigned")
                         .HasColumnName("id");
 
+                    b.Property<ulong>("AdventureFlags")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint(20) unsigned")
+                        .HasDefaultValue(0ul)
+                        .HasColumnName("adventureFlags");
+
                     b.Property<uint>("DefaultPermissions")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int(10) unsigned")
@@ -538,10 +681,23 @@ namespace LandmarkEmulator.Database.Character.Migrations
                         .HasColumnName("defaultPermissions");
 
                     b.Property<string>("Description")
+                        .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("varchar(512)")
                         .HasDefaultValue("")
                         .HasColumnName("description");
+
+                    b.Property<uint>("GroupPermissions")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int(10) unsigned")
+                        .HasDefaultValue(0u)
+                        .HasColumnName("groupPermissions");
+
+                    b.Property<uint>("GuildPermissions")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int(10) unsigned")
+                        .HasDefaultValue(0u)
+                        .HasColumnName("guildPermissions");
 
                     b.Property<string>("Tags")
                         .IsRequired()
@@ -597,6 +753,19 @@ namespace LandmarkEmulator.Database.Character.Migrations
                         .HasColumnType("bigint(20) unsigned")
                         .HasDefaultValue(0ul)
                         .HasColumnName("ownerGuid");
+
+                    b.Property<string>("Inventory")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(4096)")
+                        .HasDefaultValue("")
+                        .HasColumnName("inventory");
+
+                    b.Property<bool>("PlayMode")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false)
+                        .HasColumnName("playMode");
 
                     b.Property<int>("TimeHour")
                         .ValueGeneratedOnAdd()
@@ -657,6 +826,48 @@ namespace LandmarkEmulator.Database.Character.Migrations
                         .HasName("PRIMARY");
 
                     b.ToTable("claim_permission", (string)null);
+                });
+
+            modelBuilder.Entity("LandmarkEmulator.Database.Character.Model.GalleryCommentModel", b =>
+                {
+                    b.Property<ulong>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint(20) unsigned")
+                        .HasColumnName("id");
+
+                    b.Property<ulong>("AuthorGuid")
+                        .HasColumnType("bigint(20) unsigned")
+                        .HasColumnName("authorGuid");
+
+                    b.Property<string>("AuthorName")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("authorName")
+                        .HasDefaultValue("");
+
+                    b.Property<ulong>("ClaimId")
+                        .HasColumnType("bigint(20) unsigned")
+                        .HasColumnName("claimId");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("createdAt");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(512)")
+                        .HasColumnName("text")
+                        .HasDefaultValue("");
+
+                    b.HasKey("Id")
+                        .HasName("PRIMARY");
+
+                    b.HasIndex("ClaimId")
+                        .HasDatabaseName("claimId");
+
+                    b.ToTable("gallery_comment", (string)null);
                 });
 
             modelBuilder.Entity("LandmarkEmulator.Database.Character.Model.GuildMemberModel", b =>
@@ -722,6 +933,10 @@ namespace LandmarkEmulator.Database.Character.Migrations
                         .HasColumnType("varchar(64)")
                         .HasColumnName("name");
 
+                    b.Property<string>("Log")
+                        .HasColumnType("mediumtext")
+                        .HasColumnName("log");
+
                     b.Property<string>("Ranks")
                         .HasColumnType("text")
                         .HasColumnName("ranks");
@@ -744,12 +959,14 @@ namespace LandmarkEmulator.Database.Character.Migrations
                         .HasColumnName("id");
 
                     b.Property<string>("Attachments")
+                        .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("varchar(256)")
                         .HasDefaultValue("")
                         .HasColumnName("attachments");
 
                     b.Property<string>("Body")
+                        .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("varchar(4096)")
                         .HasDefaultValue("")
@@ -774,6 +991,7 @@ namespace LandmarkEmulator.Database.Character.Migrations
                         .HasColumnName("senderGuid");
 
                     b.Property<string>("SenderName")
+                        .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("varchar(64)")
                         .HasDefaultValue("")
@@ -784,6 +1002,7 @@ namespace LandmarkEmulator.Database.Character.Migrations
                         .HasColumnName("sentAt");
 
                     b.Property<string>("Subject")
+                        .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("varchar(128)")
                         .HasDefaultValue("")
@@ -900,6 +1119,10 @@ namespace LandmarkEmulator.Database.Character.Migrations
                         .HasColumnType("datetime")
                         .HasColumnName("createdAt");
 
+                    b.Property<DateTime?>("ListedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("listedAt");
+
                     b.HasKey("Id")
                         .HasName("PRIMARY");
 
@@ -912,6 +1135,139 @@ namespace LandmarkEmulator.Database.Character.Migrations
                     b.ToTable("player_studio_product", (string)null);
                 });
 
+            modelBuilder.Entity("LandmarkEmulator.Database.Character.Model.ShowcaseDigestRunModel", b =>
+                {
+                    b.Property<ulong>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint(20) unsigned")
+                        .HasColumnName("id");
+
+                    b.Property<uint>("Mails")
+                        .HasColumnType("int(10) unsigned")
+                        .HasColumnName("mails");
+
+                    b.Property<DateTime>("RanAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("ranAt");
+
+                    b.Property<string>("Slot")
+                        .IsRequired()
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("slot");
+
+                    b.HasKey("Id")
+                        .HasName("PRIMARY");
+
+                    b.HasIndex("Slot")
+                        .IsUnique()
+                        .HasDatabaseName("slot");
+
+                    b.ToTable("showcase_digest_run", (string)null);
+                });
+
+            modelBuilder.Entity("LandmarkEmulator.Database.Character.Model.ShowcaseFollowModel", b =>
+                {
+                    b.Property<ulong>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint(20) unsigned")
+                        .HasColumnName("id");
+
+                    b.Property<ulong>("CreatorGuid")
+                        .HasColumnType("bigint(20) unsigned")
+                        .HasColumnName("creatorGuid");
+
+                    b.Property<string>("CreatorName")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(64)")
+                        .HasDefaultValue("")
+                        .HasColumnName("creatorName");
+
+                    b.Property<DateTime>("FollowedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("followedAt");
+
+                    b.Property<ulong>("FollowerGuid")
+                        .HasColumnType("bigint(20) unsigned")
+                        .HasColumnName("followerGuid");
+
+                    b.Property<string>("Tags")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(160)")
+                        .HasDefaultValue("")
+                        .HasColumnName("tags");
+
+                    b.HasKey("Id")
+                        .HasName("PRIMARY");
+
+                    b.HasIndex("FollowerGuid", "CreatorGuid", "Tags")
+                        .IsUnique()
+                        .HasDatabaseName("follow");
+
+                    b.ToTable("showcase_follow", (string)null);
+                });
+
+            modelBuilder.Entity("LandmarkEmulator.Database.Character.Model.SiteTemplateInstanceModel", b =>
+                {
+                    b.Property<ulong>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint(20) unsigned")
+                        .HasColumnName("id");
+
+                    b.Property<double>("MaxX")
+                        .HasColumnType("double")
+                        .HasColumnName("maxX");
+
+                    b.Property<double>("MaxY")
+                        .HasColumnType("double")
+                        .HasColumnName("maxY");
+
+                    b.Property<double>("MaxZ")
+                        .HasColumnType("double")
+                        .HasColumnName("maxZ");
+
+                    b.Property<double>("MinX")
+                        .HasColumnType("double")
+                        .HasColumnName("minX");
+
+                    b.Property<double>("MinY")
+                        .HasColumnType("double")
+                        .HasColumnName("minY");
+
+                    b.Property<double>("MinZ")
+                        .HasColumnType("double")
+                        .HasColumnName("minZ");
+
+                    b.Property<DateTime>("PlacedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("placedAt");
+
+                    b.Property<ulong>("PlacedBy")
+                        .HasColumnType("bigint(20) unsigned")
+                        .HasColumnName("placedBy");
+
+                    b.Property<ulong>("SiteGuid")
+                        .HasColumnType("bigint(20) unsigned")
+                        .HasColumnName("siteGuid");
+
+                    b.Property<ulong>("TemplateGuid")
+                        .HasColumnType("bigint(20) unsigned")
+                        .HasColumnName("templateGuid");
+
+                    b.Property<uint>("ZoneId")
+                        .HasColumnType("int(10) unsigned")
+                        .HasColumnName("zoneId");
+
+                    b.HasKey("Id")
+                        .HasName("PRIMARY");
+
+                    b.HasIndex("ZoneId", "SiteGuid")
+                        .HasDatabaseName("site");
+
+                    b.ToTable("site_template_instance", (string)null);
+                });
+
             modelBuilder.Entity("LandmarkEmulator.Database.Character.Model.TemplateModel", b =>
                 {
                     b.Property<ulong>("Id")
@@ -920,12 +1276,14 @@ namespace LandmarkEmulator.Database.Character.Migrations
                         .HasColumnName("id");
 
                     b.Property<string>("AuthorName")
+                        .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("varchar(64)")
                         .HasDefaultValue("")
                         .HasColumnName("authorName");
 
                     b.Property<byte[]>("Blocks")
+                        .IsRequired()
                         .HasColumnType("longblob")
                         .HasColumnName("blocks");
 
@@ -934,12 +1292,14 @@ namespace LandmarkEmulator.Database.Character.Migrations
                         .HasColumnName("createdAt");
 
                     b.Property<string>("Materials")
+                        .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("varchar(1024)")
                         .HasDefaultValue("")
                         .HasColumnName("materials");
 
                     b.Property<string>("Name")
+                        .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("varchar(128)")
                         .HasDefaultValue("")
@@ -962,6 +1322,7 @@ namespace LandmarkEmulator.Database.Character.Migrations
                         .HasColumnName("sizeZ");
 
                     b.Property<string>("Tags")
+                        .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("varchar(512)")
                         .HasDefaultValue("")
@@ -1055,18 +1416,21 @@ namespace LandmarkEmulator.Database.Character.Migrations
                         .HasColumnName("scale");
 
                     b.Property<string>("TintAlias")
+                        .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("varchar(64)")
                         .HasDefaultValue("")
                         .HasColumnName("tintAlias");
 
                     b.Property<string>("CustomName")
+                        .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("varchar(128)")
                         .HasDefaultValue("")
                         .HasColumnName("customName");
 
                     b.Property<string>("Text")
+                        .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("varchar(1024)")
                         .HasDefaultValue("")
@@ -1078,6 +1442,29 @@ namespace LandmarkEmulator.Database.Character.Migrations
                         .HasDefaultValue(false)
                         .HasColumnName("disabled");
 
+                    b.Property<ulong>("PackGroup")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint(20) unsigned")
+                        .HasDefaultValue(0ul)
+                        .HasColumnName("packGroup");
+
+                    b.Property<uint>("PackSpawner")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int(10) unsigned")
+                        .HasDefaultValue(0u)
+                        .HasColumnName("packSpawner");
+
+                    b.Property<uint>("PaidByItem")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int(10) unsigned")
+                        .HasDefaultValue(0u)
+                        .HasColumnName("paidByItem");
+
+                    b.Property<ulong>("PaidByItemGuid")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint(20) unsigned")
+                        .HasDefaultValue(0ul)
+                        .HasColumnName("paidByItemGuid");
 
                     b.Property<uint>("ZoneId")
                         .ValueGeneratedOnAdd()

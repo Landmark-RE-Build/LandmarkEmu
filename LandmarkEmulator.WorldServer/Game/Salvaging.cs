@@ -95,8 +95,13 @@ namespace LandmarkEmulator.WorldServer.Game
             };
         }
 
+        /// <summary>
+        /// A bag item that may go into a salvage slot. Not a picked-up chest that still holds items: the keyword slots
+        /// (type 6 / 7) take any unstackable item, and salvaging such a chest deleted it while its contents stayed keyed to
+        /// its guid (lost).
+        /// </summary>
         private static CharacterItemModel BagItem(WorldSession session, ulong guid)
-            => session.Inventory.Get(guid) is { Container: Inventory.Inventory.BagContainer } item ? item : null;
+            => session.Inventory.Get(guid) is { Container: Inventory.Inventory.BagContainer } item && !Chests.HasItems(item.Id) ? item : null;
 
         public static void Handle(WorldSession session, uint sub, byte[] body)
         {

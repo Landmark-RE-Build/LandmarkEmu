@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 1 (0 not handled) · S2C 1 (0 never sent / opcode unknown)
 
 ## C2S WarpNetwork::WarpNetworkClientRequestPacket  `0x113, 0x4`
-- server: handled (sub in handler) · seen in play 114× · received 114×
+- server: handled (sub in handler) · seen in play 335× · received 16×
 - built in: FUN_1434545a0, FUN_143454620
 - code (builder in FUN_1434545a0):
 ```
@@ -18,7 +18,7 @@ C2S 1 (0 not handled) · S2C 1 (0 never sent / opcode unknown)
 ```
 
 ## S2C WarpNetwork::WarpNetworkZoneNetworkPacket  `0x113, 0x2`
-- server: SENT (105× in opcode_stats) · seen in play 105×
+- server: SENT (20× in opcode_stats) · seen in play 677×
 - reader: FUN_1434504c0
 - built in: FUN_1434530c0
 - layout:
@@ -28,9 +28,9 @@ u32   +0x10
 u32   +0x24c
 u32   +0x248
 FUN_1434507f0 -> +0x18
-  i32   iVar3
+  i32   <local>
     [loop 1: list elements]
-  u32   local_res18[0]
-  u32   *(undefined4 *)(lVar4 + 0x228)
+  u32   <local>
+  u32   <computed>
 u32   +0x240
 ```

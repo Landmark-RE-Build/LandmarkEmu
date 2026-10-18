@@ -20,6 +20,8 @@ namespace LandmarkEmulator.AuthServer.Zone
         /// <summary>Is the world server running (its heartbeat is fresh)? See <see cref="ZoneServerManager.Update"/>.</summary>
         public bool Up { get; set; }
         public uint PlayersOnline { get; set; }
+        /// <summary>The world's player limit from its heartbeat (0 = none, uint.MaxValue = full); see <see cref="LoginQueue"/>.</summary>
+        public uint MaxPlayers { get; set; }
 
         /// <summary>
         /// Creates a new <see cref="ZoneServer"/> from a <see cref="ZoneServerModel"/>.

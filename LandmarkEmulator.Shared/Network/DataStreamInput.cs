@@ -48,8 +48,13 @@ namespace LandmarkEmulator.Shared.Network
 
         private void ReadyDataForProcessing(ushort sequence, byte[] data, bool isFragment)
         {
+            // The client's reliable stream starts at sequence 0, as ours does (DataStreamOutput: the first packed packet is
+            // 0) and as the parse cursor below assumes (_lastProcessedFragment = -1 → slot 0 first). This used to start
+            // at whatever sequence arrived first: when packet 0 was lost or overtaken, expected became 1+, the parser
+            // still waited for slot 0, and the resent 0 was then "behind" expected and only answered with an AckAll —
+            // the client counted it delivered, nothing was ever parsed, and the session hung until it timed out.
             if (NextSequence == null)
-                NextSequence = sequence;
+                NextSequence = (ushort)((_lastProcessedFragment + 1) & 0xFFFF);
 
             ushort expected = NextSequence.Value;
             // Match session compression framing (Auth flag byte; Gateway none).
@@ -110,17 +115,28 @@ namespace LandmarkEmulator.Shared.Network
 
                 LastAck = ack;
                 NextSequence = (ushort)((ack + 1) & 0xFFFF);
-                ParseDataFragments();
+                // Everything now contiguous is parsed, not just the first packet: when a gap fills, the packets held
+                // behind it are complete too. Parsing one per arrival (as before) left the rest waiting for later
+                // arrivals, so after every loss or reordering each client packet was handled one (then two, three...)
+                // packets late — and the last packet of a burst (a ClientIsReady, a logout) not at all until the client
+                // happened to send something else.
+                while (ParseDataFragments())
+                {
+                }
             }
         }
 
-        private void ParseDataFragments()
+        /// <summary>
+        /// Parses the next whole packet or complete fragment group after the last one parsed; false when it isn't all
+        /// here yet (or nothing is waiting).
+        /// </summary>
+        private bool ParseDataFragments()
         {
             var nextFragment = (_lastProcessedFragment + 1) & 0xFFFF;
             List<byte[]> finishedData = new();
 
             if (DataPackets[nextFragment] == null)
-                return;
+                return false;
 
             var dataPacket = DataPackets[nextFragment];
 
@@ -130,7 +146,7 @@ namespace LandmarkEmulator.Shared.Network
                 _lastProcessedFragment = nextFragment;
                 finishedData = ParseChannelData(dataPacket.Data.ToList());
                 DecryptData(finishedData, (ushort)nextFragment);
-                return;
+                return true;
             }
             
             bool dataReady = false;
@@ -174,6 +190,7 @@ namespace LandmarkEmulator.Shared.Network
 
             if (dataReady)
                 DecryptData(finishedData, fragmentIndices[0]);
+            return dataReady;
         }
 
         /// <summary>

@@ -10,11 +10,15 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
     [ZoneMessage(ZoneMessageOpcode.AbilityCasterInfoRequest)]
     public class AbilityCasterInfoRequest : IReadable
     {
-        public uint Unknown0 { get; set; }
+        /// <summary>
+        /// The ability id: the 0.695 client sends it from FUN_142e234c0 when its caster-info cache (keyed by this id) has
+        /// no entry for the ability [P].
+        /// </summary>
+        public uint AbilityId { get; set; }
 
         public void Read(GamePacketReader reader)
         {
-            Unknown0 = reader.ReadUInt();
+            AbilityId = reader.ReadUInt();
         }
     }
 }

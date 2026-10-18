@@ -1,0 +1,43 @@
+# The shared social service (trace/architecture/social-service.md, LandmarkEmulator.SocialServer): presence, friends
+# and ignore lists for every world at once (guilds, chat and mail follow). One container for all worlds; the worlds
+# dial it on the internal network (port 20200, never published) when their SOCIAL_ADDRESS is set.
+#
+# Opt-in: the project's docker-compose.yml runs it only with the "social" profile. In .env:
+#   COMPOSE_PROFILES=social
+#   SOCIAL_ADDRESS=social:20200
+# then "docker compose up -d --build". With SOCIAL_ADDRESS empty the worlds keep running the social code themselves.
+#
+# Its database lmemu_social is on the auth stack's database server; on its first start it copies today's friends,
+# ignore lists and character names from lmemu_character (SOCIAL_IMPORT_FROM; once, while its tables are empty; back up
+# first). An existing database volume needs the grant once (docs/docker.md "Social service"):
+#   GRANT ALL PRIVILEGES ON lmemu_social.* TO 'landmarkemu'@'%';
+services:
+  social:
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile
+      target: social
+    # SOCIAL_IMAGE: another tag for this build, so a second build can stand beside the running one
+    # without replacing its image (e.g. a project started with its own -p name and env file, as in
+    # docker/worlds/extra-world.env.example).
+    image: ${SOCIAL_IMAGE:-landmarkemu-social}
+    restart: unless-stopped
+    environment:
+      Database__Social__ConnectionString: server=landmarkemu-db;port=3306;user=landmarkemu;password=${DB_PASSWORD:?Set DB_PASSWORD in .env};database=lmemu_social
+      Database__Social__Provider: MySql
+      Network__Host: 0.0.0.0
+      Network__Port: 20200
+      # The one-time copy from the shared character database (empty = none).
+      ImportFrom: ${SOCIAL_IMPORT_FROM-lmemu_character}
+      # Seconds a character who left still counts as online, so a change of world shows no offline / online note.
+      PresenceGraceSeconds: ${SOCIAL_PRESENCE_GRACE_SECONDS:-30}
+    expose:
+      - "20200"
+    networks:
+      landmarkemu:
+        aliases: [social]
+
+networks:
+  landmarkemu:
+    external: true
+    name: ${NETWORK_NAME:-landmarkemu}

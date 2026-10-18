@@ -6,5 +6,5 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 0 (0 not handled) · S2C 1 (0 never sent / opcode unknown)
 
 ## S2C PlayerUpdatePacketUpdatePositionZoneToClient  `0x7F`
-- server: SENT (197428× in opcode_stats) · seen in play 197428×
+- server: SENT (43493× in opcode_stats) · seen in play 297896×
 - case functions (dispatcher): FUN_142bcf2e0 FUN_142bb4530

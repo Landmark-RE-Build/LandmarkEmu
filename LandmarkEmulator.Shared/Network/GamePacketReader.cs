@@ -58,17 +58,24 @@ namespace LandmarkEmulator.Shared.Network
             return BinaryPrimitives.ReadUInt16LittleEndian(GetDataBits(bits));
         }
 
+        /// <summary>
+        /// The client's 2-bit-length uint (GamePacketWriter.WriteUIntWith2BitLength): little endian, the low 2 bits of the
+        /// first byte are the number of bytes that follow, the value is the whole thing shifted right by 2. The first
+        /// byte's upper 6 bits are part of the value: they used to be dropped, so every id below 64 read as 0 and larger
+        /// ones lost their low 6 bits (SendSelfToClient's transient id, the capture parser).
+        /// </summary>
         public uint ReadUInt2BitLength()
         {
-            var length = (GetDataBits(8u)[0] & 3);
-            var value = 0;
+            uint first = GetDataBits(8u)[0];
+            uint length = first & 3;
+            uint value = first;
 
             for (int i = 0; i < length; i++)
             {
-                value += GetDataBits(8u)[0] << ((i + 1) * 8);
+                value |= (uint)GetDataBits(8u)[0] << ((i + 1) * 8);
             }
 
-            return (uint)(value >> 2);
+            return value >> 2;
         }
 
         public uint ReadUInt(uint bits = 32u)

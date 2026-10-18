@@ -16,10 +16,16 @@ namespace LandmarkEmulator.WorldServer.Game
     /// 128 thumbnail (FUN_143148b50, GameEvents:OnClaimScreenshotTaken) and upload them like design shots: MarketplaceImage
     /// 0x107 sub 1 {u64 image id ((character &lt;&lt; 32) | time), u64 site, string folder (empty), string "large" /
     /// "small", u32, u32 index, u32 length + JPEG} (<see cref="Templates.StoreImage"/> hands those here).</item>
-    /// <item>Then InGamePurchase 0x45 sub 0x49 ModifyScreenshots {u32 action (1 taken, 2 clear, 3 make primary), u32 index,
-    /// u64 site, u32 n images}; Claims.ClearScreenshots / MakePrimaryScreenshot send actions 2 / 3. The window keeps its
-    /// close button hidden until ModifyScreenshotsResponse 0x45 sub 0x45 {u64 site, u64, bool success} (reader
-    /// FUN_143183890, handler FUN_1431a9a70 → GameEvents:OnScreenshotResponse).</item>
+    /// <item>Then InGamePurchase 0x45 sub 0x4A ModifyScreenshots (0.589 0x49) {u32 action (1 taken, 2 clear, 3 make
+    /// primary), u32 index, u64 site, u64 image id, u32 n × ClaimsImage (FUN_1435e6670, 0x30 bytes each in memory)}
+    /// [P, 0.695 serializer FUN_1435e7280 → body FUN_1435e6a30: header FUN_14322b8a0 (u16 0x45, u16 sub), u32 +0x18,
+    /// u32 +0x1c, u64 +0x20, u64 +0x28, array +0x30 (FUN_1435e6c40: u32 count, elements); 0.589 FUN_143534a60 the same].
+    /// The Lua natives Claims.TakeScreenshot FUN_1435e5500 / ClearScreenshots FUN_1435e3b70 / MakePrimaryScreenshot
+    /// FUN_1435e3c60 (re/out/luabind_695.tsv) send actions 1 / 2 / 3 with an empty array; only TakeScreenshot fills the
+    /// image id (the upload's (character &lt;&lt; 32) | time) — the other two leave that u64 uninitialised (stack, never
+    /// stored: disassembly of FUN_1435e3b70), so the server reads only action, index and site. The window keeps its
+    /// close button hidden until ModifyScreenshotsResponse 0x45 sub 0x46 (0.589 0x45) {u64 site, u64, bool success}
+    /// (0.589 reader FUN_143183890, 0.695 FUN_14322e350; handler FUN_1431a9a70 → GameEvents:OnScreenshotResponse).</item>
     /// <item>Served at /uploads/lm/images/claims[N]/(small|large)/(site guid as 24 digits, "/" every 3).jpg, as design
     /// shots are (<see cref="WebPages"/>).</item>
     /// </list>
@@ -28,7 +34,8 @@ namespace LandmarkEmulator.WorldServer.Game
     {
         private static readonly ILogger log = LogManager.GetCurrentClassLogger();
 
-        public const ushort ModifyRequestSub = 0x49, ModifyResponseSub = 0x45;
+        /// <summary>0.695 numbers [P] (coverage-695.md §0x45; id table cIdModifyScreenshots 0x4A, cIdCommerceModifyScreenShotsResponse 0x46).</summary>
+        public const ushort ModifyRequestSub = 0x4A, ModifyResponseSub = 0x46;
         private const uint ActionTaken = 1, ActionClear = 2, ActionMakePrimary = 3;
         private const int MaxImages = 4, MaxImageBytes = 1024 * 1024;
 
@@ -56,6 +63,13 @@ namespace LandmarkEmulator.WorldServer.Game
             return File.Exists(file) ? File.ReadAllBytes(file) : null;
         }
 
+        /// <summary>Whether a shot is stored (the gallery page shows the primary "small" one).</summary>
+        public static bool HasImage(ulong site, int index, string size) => File.Exists(FileOf(site, index, size));
+
+        /// <summary>The web path of a shot, as <see cref="WebPages"/> serves it (index 0 = "claims", else "claimsN").</summary>
+        public static string ImagePath(ulong site, int index, string size)
+            => $"/uploads/lm/images/claims{(index == 0 ? "" : index.ToString())}/{size}/{site}.jpg";
+
         /// <summary>ModifyScreenshots from Site Management: taken / clear / make primary, then the window's answer.</summary>
         public static void HandleModify(WorldSession session, byte[] body)
         {
@@ -63,6 +77,8 @@ namespace LandmarkEmulator.WorldServer.Game
             ulong site = 0;
             try
             {
+                // {u32 action, u32 index, u64 site, u64 image id, u32 n × ClaimsImage}: the first three are all the
+                // server needs (the image id is garbage for actions 2 / 3, and the images arrive as uploads).
                 var r = new GamePacketReader(body);
                 uint action = r.ReadUInt();
                 uint index = r.ReadUInt();

@@ -5,38 +5,25 @@ using System.Collections.Generic;
 namespace LandmarkEmulator.WorldServer.Network.Message.Model
 {
     /// <summary>
-    /// ClientUpdate ZonePopulation (S→C): a list of population levels (one byte each) and three u32s.
+    /// ClientUpdate ZonePopulation (S→C): exactly four u32 (reader FUN_142c49410, 0.589 the same; leftover bytes make
+    /// the client drop the packet) [P]. The old model wrote a count + byte list + three u32, which only matched while the
+    /// list was empty (trace/0695/audit-wire-d.md). Meanings unknown; all 0 as before.
     /// </summary>
     [ZoneMessage(ZoneMessageOpcode.ClientUpdateZonePopulation)]
     public class ClientUpdateZonePopulation : IReadable, IWritable
     {
-        public List<byte> Populations { get; set; } = new();
-        public uint Unknown0 { get; set; }
-        public uint Unknown1 { get; set; }
-        public uint Unknown2 { get; set; }
+        public uint[] Values { get; set; } = new uint[4];
 
         public void Read(GamePacketReader reader)
         {
-            ulong populationCount = reader.ReadUInt();
-
-            for (ulong i = 0; i < populationCount; i++)
-                Populations.Add(reader.ReadByte());
-
-            Unknown0 = reader.ReadUInt();
-            Unknown1 = reader.ReadUInt();
-            Unknown2 = reader.ReadUInt();
+            for (int i = 0; i < 4; i++)
+                Values[i] = reader.ReadUInt();
         }
 
         public void Write(GamePacketWriter writer)
         {
-            writer.Write((uint)Populations.Count);
-
-            foreach (byte i in Populations)
-                writer.Write(i);
-
-            writer.Write(Unknown0);
-            writer.Write(Unknown1);
-            writer.Write(Unknown2);
+            for (int i = 0; i < 4; i++)
+                writer.Write(i < Values.Length ? Values[i] : 0u);
         }
     }
 }

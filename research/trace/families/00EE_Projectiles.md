@@ -48,13 +48,13 @@ u64   +0x38
 bool  +0x40
 u32   +0x48
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 u32   +0x44
 u64   +0x58
 u32   +0x60
 FUN_142b9e610 -> +0x64
     [loop 1: list elements]
-  u32   *(undefined4 *)(param_2 + lVar1 * 4)
+  u32   <computed>
 u64   +0x70
 ```
 
@@ -85,7 +85,7 @@ u16   +0x8
 i16   +0x10
 u32   +0x18
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 u32   +0x30
 bool  +0x34
 u64   +0x38

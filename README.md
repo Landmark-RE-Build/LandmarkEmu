@@ -1,69 +1,121 @@
 # LandmarkEmu
 
-A server emulator for **Landmark**, the voxel building MMO that was shut down in 2017, written in C#. It talks to the
-Steam client build **0.589.1.128895** (Landmark's 2016 launch build) and aims to recreate the live game: the world you
-can dig and build in, build sites, designs, props, crafting, gathering, gear and combat, creatures and caverns,
-chat / friends / groups / guilds / mail / trade / vendors, achievements and daily goals, site games and the story
-tools. See [docs/gameplay.md](docs/gameplay.md) for what each system does.
+A server emulator for **Landmark**, the voxel building MMO by Daybreak Game Company that shut down in February 2017,
+written in C#. The goal is to bring back the Landmark server as it was at shutdown, for the last client build,
+**0.695.1.132647**: the world you dig and build in, build sites, designs, props, crafting, gathering, gear and combat,
+creatures and the Chaos Caverns, chat / friends / groups / guilds / mail / trade, goals, site games, the story tools
+and the Showcase. Older 0.589 clients are refused.
 
-The servers run in **Docker**. Players connect with **LaunchPad**, a replacement for the game's own launcher that logs
-in to LandmarkEmu servers.
+Everything was worked out from the retail client itself: how it reads each packet, what it expects back, and what
+the live game's patch notes and wiki say it did. The [docs](docs/README.md) explain the formats and how each system
+works; see the project wiki for guides.
 
-> Everyone needs their own copy of Landmark (the Steam version). This repository contains **no game files**: the server
-> copies the data tables it needs from your own install, and LaunchPad works on your own install.
+> **You need your own copy of Landmark** (the Steam version). This repository contains **no game files**. The server
+> copies the data tables it needs from your own install, and LaunchPad only updates your own install from 0.589 to
+> 0.695 with Daybreak's genuine files.
+
+---
+
+## Project status
+
+**What works.** Almost every system of the live game is built: logging in and character creation, the world and its
+islands, digging and building with every tool, build sites (placing, permissions, upkeep, the new-player Pioneer
+lands), designs and the Player Studio, props and their settings, crafting stations and the Lumen Station, gathering
+and ore veins, weapons, abilities, armour and accessory effects, creatures, outposts and graveyards in the Chaos
+Caverns, travel (the Spire, the Landscapes window, Teleport to Friend, Lost Crystals), chat channels, friends, groups,
+guilds, mail, trade and storage chests, goals and daily goals, the story tools and Play Mode, site games and the Game
+Finder, the Showcase store and gallery, membership and the trial key, admin commands, scheduled restarts and the login
+queue.
+
+**What is still open.**
+
+- Many features are built but have not been checked in the game yet, or only with one player. The feature list in
+  `research/trace/0695/FEATURES.md` marks each one.
+- Some numbers lived only on Daybreak's servers (combat values, loot rates, creature stats, which weapon each creature
+  held). Where no source survives, the server uses its own values, and the setting or the docs say so.
+- The live game split its server into several services (gateway, world channel, social, commerce, Environment Server).
+  They are built and can each run in their own container, but they are opt-in and still being tested. Splitting one
+  world over several machines (one process per landscape) is not built.
+- A few client systems have no server side yet: the NPC merchant window, rendered character portraits, royalty shares
+  for designs with several contributors.
+
+Every gameplay setting defaults to how live Landmark behaved, and server owners can change each one (`.env`).
+
+---
+
+## Playing
+
+1. **Get LaunchPad:** download `LaunchPad.exe` from this project's [Releases](../../releases) (always from here,
+   never from a server owner).
+2. **Put it in your Landmark folder** (`steamapps\common\Landmark`, next to `Landmark64.exe`). Rename the game's own
+   `LaunchPad.exe` to `LaunchPad.exe.orig` first. LaunchPad only runs from that folder.
+3. **Start it** from the folder, a desktop shortcut, or as a non-Steam game in Steam. Steam's own Play button can no
+   longer start Landmark: it stops at "getting legacy key", because Daybreak's key service is gone.
+4. **Add the server:** Settings → Servers, type the server's address (on the host's own PC, `127.0.0.1`) and save.
+   LaunchPad gets everything else from the server.
+5. **Update the game to 0.695.** The Steam copy is 0.589. LaunchPad installs the 0.695 update from an `.lmpatch` file
+   you have (Settings → Patch packs), or from the server you play on: it shows **UPDATE** and asks first, every time.
+   LaunchPad never downloads the game itself; it only patches a complete, unchanged Steam install. Every file it writes
+   must match the SHA-256 of Daybreak's genuine file, and every change is backed up, so "Back to the Steam game" undoes
+   it. Details: [docs/launchpad.md](docs/launchpad.md).
+6. **Create an account** (Log in ▾ → Create account), or use the server's sign-up website. Your password never leaves
+   your PC: logins use SRP.
+7. **Press PLAY.**
 
 ---
 
 ## Hosting a server
 
-The servers run with **Docker Compose**: a database, the login server, an account sign-up website and the world
-server, each in its own container.
+The servers run in **Docker**. Each part of the server is its own container:
+
+| Service | |
+|---|---|
+| `setup` | Copies the data tables from your Landmark folder into `server-data/gamedata`, then exits |
+| `icons` | Exports the item icons the in-game store pages show from your Landmark folder into `server-data/gamedata/icons`, then exits |
+| `db` | MariaDB: accounts, characters, and each world's own database |
+| `auth` | The login server and the account service LaunchPad talks to (it also serves the 0.695 update) |
+| `web` | The account sign-up website |
+| `world` | The world server (a "server" in the game's list) |
+| `social`, `commerce`, `envserver` | Optional: friends / guilds / chat / mail, Player Studio / contests, and the terrain store, each in its own container and shared by all your worlds (`COMPOSE_PROFILES` in `.env`) |
+
+A world can also run its gateway and world channel in their own containers, and more worlds can join the same
+database. All of that is in [docs/docker.md](docs/docker.md).
 
 ### 1. What you need
 
-- **[Docker](https://docs.docker.com/get-docker/)**: Docker Desktop on Windows or macOS (install it, start it once,
-  accept its terms), or Docker Engine with the compose plugin on Linux. About 10 GB free and 16 GB of RAM or more.
-- **Landmark** from Steam (build 0.589.1.128895), on the PC running the servers.
+- **[Docker](https://docs.docker.com/get-docker/)**: Docker Desktop on Windows or macOS, or Docker Engine with the
+  compose plugin on Linux. About 10 GB free disk and 16 GB of RAM or more.
+- **Landmark** from Steam on the PC running the servers, updated to 0.695 (LaunchPad does that, see above).
 - This project: **Code → Download ZIP** (or `git clone`), unpacked anywhere, e.g. `C:\LandmarkEmu`.
-- Recommended: **`LandmarkEmu-terrain-heights.zip`** from this project's [Releases](../../releases). Put it in the
-  project folder (next to `docker-compose.yml`), still zipped. It holds a ground-height grid for each landscape, which
-  the server uses for trees, creature footing and starting build sites. Without it those stay off.
+- Recommended: **`LandmarkEmu-terrain-heights.zip`** from [Releases](../../releases), put in the project folder (next
+  to `docker-compose.yml`), still zipped. It holds a ground-height grid for each landscape, which the server uses for
+  trees, creature footing and new players' build sites. Without it those stay off.
 
-### 2. Settings: `.env`
+### 2. Settings: one `.env` file
 
-Copy **`.env.example`** to **`.env`** in the project folder and open it in a text editor. Every setting is explained
-in the file; the ones to fill in are:
+Copy **`.env.example`** to **`.env`** and open it in a text editor. Every setting is explained in the file. Fill in:
 
 | Setting | |
 |---|---|
-| `GAME_DIR` | Your Landmark folder, the one with `Landmark64.exe` (forward slashes, e.g. `C:/Program Files (x86)/Steam/steamapps/common/Landmark`). It is only read: nothing in it is changed. |
+| `GAME_DIR` | Your Landmark folder, the one with `Landmark64.exe` (forward slashes, e.g. `C:/Program Files (x86)/Steam/steamapps/common/Landmark`). It is mounted read-only: nothing in it is changed. |
 | `DB_ROOT_PASSWORD`, `DB_PASSWORD` | Two long random passwords of your choice (letters and digits). Only the containers use them. |
-| `PUBLIC_HOST` | The address other players use to reach this PC. Empty: only this PC can play. See [Playing with others](#4-playing-with-others). |
-| `ADMIN_ACCOUNT` | Your account name, to be an admin on your world (you create the account in LaunchPad). |
-
-The network settings are all together at the top of the file:
-
-| Setting | Default | What it is |
-|---|---|---|
-| `PUBLIC_HOST` | *(empty: this PC only)* | The address other players use to reach this PC |
-| `LOGIN_PORT` | 20042 (UDP) | The login server |
-| `ACCOUNT_PORT` | 5000 (TCP) | Accounts and logins (LaunchPad, the website) |
-| `WORLD_PORT` | 19000 (UDP) | The game world |
-| `WEB_PAGES_PORT` | 19001 (TCP) | The in-game Showcase, store and Player Studio pages |
-| `WEBSITE_PORT` | 8080 (TCP) | The account sign-up website |
-| `DB_PORT` | 3307 (TCP) | The database, for tools on this PC only |
+| `PUBLIC_HOST` | The address other players use to reach this PC. Empty: only this PC can play. |
+| `ADMIN_ACCOUNT` | `account:` and your account name (e.g. `account:Alice`) to be an admin on your world. |
 
 ### 3. Start it
 
-In a terminal in the project folder:
+**With `start.bat` (Windows, optional):** on its first run it asks for your Landmark folder, your account name and the
+address, writes `.env` with random passwords, offers to open the firewall ports, runs `docker compose up` and tells you
+when the world is up. Later: `start.bat`, `start.bat -Stop`, `start.bat -Logs`, `start.bat -Update` (after downloading a
+new version), `start.bat -Setup` (ask the questions again). `start.ps1` is the same script for PowerShell.
+
+**By hand**, in a terminal in the project folder:
 
 ```
 docker compose up -d --build
 ```
 
-The first time builds the servers and takes several minutes. A `setup` step copies the game's data tables from
-`GAME_DIR` into `server-data\gamedata` (and unpacks the terrain heights), then the servers start. The world is ready
-about a minute later: `docker compose logs -f world` shows its console (Ctrl+C leaves it).
+The first run builds the servers and takes several minutes; the world is ready a minute or two after that.
 
 | Command | |
 |---|---|
@@ -72,96 +124,125 @@ about a minute later: `docker compose logs -f world` shows its console (Ctrl+C l
 | `docker compose logs -f world` | Watch the world server's console |
 | `docker compose up -d --build` | Rebuild after downloading a new version of this project |
 
-Everything is kept between runs: accounts, characters and builds in the database, and each world's files in
-`server-data\worlds\`.
+Accounts, characters and builds are kept in the database volume, and each world's files in `server-data/worlds/`.
 
-**On Windows, `start.bat` does all of this for you** (optional): on its first run it asks for your Landmark folder,
-admin name and address, writes `.env` with random passwords, offers to open the firewall ports, then runs
-`docker compose up` and tells you when the world is up. Later: `start.bat`, `start.bat -Stop`, `start.bat -Logs`,
-`start.bat -Update`, `start.bat -Setup` (ask the questions again).
+### 4. Ports
 
-### 4. Playing with others
+| Setting | Default | What it is |
+|---|---|---|
+| `LOGIN_PORT` | 20042 (UDP) | The login server |
+| `ACCOUNT_PORT` | 5000 (TCP) | Accounts, logins and the update (LaunchPad, the website) |
+| `WORLD_PORT` | 19000 (UDP) | The game world |
+| `WEB_PAGES_PORT` | 19001 (TCP) | The in-game Showcase, store and Player Studio pages |
+| `WEBSITE_PORT` | 8080 (TCP) | The account sign-up website |
+| `DB_PORT` | 3307 (TCP) | The database, for tools on this PC only (never open it to others) |
 
-1. **Choose the address** and put it in `.env` as `PUBLIC_HOST`:
-   - **Same home network:** this PC's LAN address. `ipconfig` shows it as "IPv4 Address", e.g. `192.168.1.20`.
-   - **Friends elsewhere:** the easiest and safest way is a VPN app such as [Tailscale](https://tailscale.com/) or
-     [ZeroTier](https://www.zerotier.com/). Everyone joins your network, and you use the address it gives this PC.
-     The other way is your public IP address with the ports forwarded on your router (see below).
-2. **Run `docker compose up -d` again.**
-3. **Open the ports** in the firewall: UDP `LOGIN_PORT` and `WORLD_PORT`, TCP `ACCOUNT_PORT`, `WEB_PAGES_PORT` and
-   `WEBSITE_PORT` (`start.bat` offers to do it on Windows).
-4. **Router (internet without a VPN only):** forward the same ports to this PC.
-5. **Tell players the address.** They add it in LaunchPad.
+### 5. Playing with others
 
-### 5. Admins
+1. Put the address they reach this PC on in `.env` as `PUBLIC_HOST`: this PC's LAN address for players on your home
+   network (`ipconfig` shows it as "IPv4 Address"), or for friends elsewhere a VPN address
+   ([Tailscale](https://tailscale.com/), [ZeroTier](https://www.zerotier.com/)) or your public address with the ports
+   forwarded on your router.
+2. Run `docker compose up -d` again.
+3. Open the ports in the firewall: UDP `LOGIN_PORT` and `WORLD_PORT`, TCP `ACCOUNT_PORT`, `WEB_PAGES_PORT` and
+   `WEBSITE_PORT` (`start.bat` offers to do it).
+4. Players add that address in LaunchPad.
 
-Admins type **`/admin`** in chat to open the admin page: god mode, revive, coins and items, travel, claiming a site,
-time of day, creatures, a server shutdown countdown, and any developer command, for themselves, everyone or one player.
-Set admins in `.env` (`ADMIN_ACCOUNT`, `ADMIN_2`, `ADMIN_3`: account or character names), then run
-`docker compose up -d` again.
+### 6. Admins and the update
 
-More worlds, the account website, backups and every detail: [docs/docker.md](docs/docker.md).
+- Admins type **`/admin`** in chat for the admin page: god mode, revive, coins and items, travel, time of day,
+  creatures, broadcasts, kicks, a shutdown countdown and any developer command. Set them in `.env` (`ADMIN_ACCOUNT`,
+  `ADMIN_2`, `ADMIN_3`, `ADMINS`), see [docs/admin.md](docs/admin.md).
+- To offer players the 0.695 update, put the update pack (`.lmpatch`) in `docker/launcher/patches`. The server checks
+  it with the same rules every LaunchPad uses before it serves it (refused packs go to `rejected/` with the reason).
+  A player who has a 0.695 copy can make the pack in LaunchPad (Settings → Patch packs → Create update pack).
 
----
+### Troubleshooting
 
-## Playing (every player, including the host)
-
-1. **Get LaunchPad:** download `LaunchPad.exe` from this project's [Releases](../../releases).
-2. **Put it in your Landmark folder.** Rename the game's own `LaunchPad.exe` to `LaunchPad.exe.orig` first, then copy
-   the new one in. LaunchPad only runs from that folder (next to `Landmark64.exe`).
-3. **Start it** from the folder, or from a desktop shortcut to it. Steam's own Play button can no longer start Landmark:
-   Steam stops at "getting legacy key", because the old Daybreak key service is gone. You can also add `LaunchPad.exe`
-   to Steam as a non-Steam game.
-4. **Add the server:** in LaunchPad, **Settings → Servers**, type the server's address (just the address, e.g.
-   `192.168.1.20`; on the host's own PC, `127.0.0.1`) and save. LaunchPad gets everything else from the server.
-5. **Create an account** (Log in ▾ → Create account), or use the server's sign-up website. Your password never leaves
-   your PC: logins use SRP.
-6. **Press PLAY.**
-
-LaunchPad also checks your game files against Steam's own list (Settings → Game folder), and comes back to the front
-when the game closes or crashes. See [docs/launchpad.md](docs/launchpad.md).
-
----
-
-## Troubleshooting
-
-- **`docker compose` can't connect to Docker:** start Docker Desktop, wait until it says it is running, and try again.
-- **"Set GAME_DIR / DB_PASSWORD in .env":** `.env` is missing or that setting is empty (see step 2).
+- **`docker compose` can't connect to Docker:** start Docker Desktop, wait until it says it is running, try again.
+- **"Set GAME_DIR / DB_PASSWORD in .env":** `.env` is missing or that setting is empty.
 - **"GAME_DIR in .env is not your Landmark folder":** `docker compose logs setup` shows it; fix `GAME_DIR`.
-- **The world doesn't come up:** `docker compose logs world` shows the world server's console; the error is usually
-  near the end.
+- **The world doesn't come up:** `docker compose logs world` shows its console; the error is usually near the end.
 - **LaunchPad: "No answer from <address>":** the servers aren't running, the address is wrong, or TCP `ACCOUNT_PORT`
-  is blocked (firewall, router).
-- **Another PC gets stuck on the loading screen:** `PUBLIC_HOST` is empty or wrong (it must be the address *they*
-  reach this PC on), or UDP `WORLD_PORT` is blocked. Run `docker compose up -d` after changing `.env`.
+  is blocked.
+- **Another PC gets stuck on the loading screen:** `PUBLIC_HOST` is empty or wrong (it must be the address *they* reach
+  this PC on), or UDP `WORLD_PORT` is blocked. Run `docker compose up -d` after changing `.env`.
 - **The in-game Showcase / store pages are empty:** TCP `WEB_PAGES_PORT` is blocked for that player.
-- **Names missing in game:** the Landmark folder had no `Locale\en_us_data.dat`; check `GAME_DIR`, then run
-  `docker compose up -d` again.
-- The world server's console log and its saved files are in `server-data\worlds\main\`.
+- **Names missing in game:** the Landmark folder had no `Locale\en_us_data.dat`; check `GAME_DIR`.
+- The world's console log (`console.log`, the five runs before it as `console.0.log` .. `console.4.log`) and its saved
+  files are in `server-data/worlds/main/`.
 
 ---
 
-## What's here
+## For developers
 
-| Folder | |
+Needs the **.NET 10 SDK**. LaunchPad is a Windows program (WebView2); everything else also builds on Linux.
+
+```
+dotnet build LandmarkEmulator.sln
+dotnet test LandmarkEmulator.sln
+```
+
+| Project | |
 |---|---|
-| `LandmarkEmulator.AuthServer`, `LandmarkEmulator.WorldServer`, `LandmarkEmulator.Shared`, `LandmarkEmulator.Database.*`, `LandmarkEmulator.WebAPI`, `LandmarkEmulator.Gateway` | The servers |
+| `LandmarkEmulator.AuthServer` | Login server: login, server list, character list and creation, the login queue |
+| `LandmarkEmulator.WebAPI` | The account service inside the auth server: SRP sign-up and login, `/info` for LaunchPad, the patch folder |
+| `LandmarkEmulator.WorldServer` | The world (zone) server: every game system |
+| `LandmarkEmulator.Gateway` | The client-facing gateway: SOE UDP session, RC4, gateway login, client build check |
+| `LandmarkEmulator.GatewayServer` | The gateway in its own process, routing each client channel to its back end |
+| `LandmarkEmulator.WorldChannel` | The world-channel service: trade invitations, duels, build-site likes |
+| `LandmarkEmulator.SocialServer` | The shared social service: presence, friends, ignore lists, groups, guilds, chat, mail |
+| `LandmarkEmulator.CommerceServer` | The shared commerce service: Player Studio, contests, portraits, Showcase following |
+| `LandmarkEmulator.EnvServer` | The Environment Server in its own process (the terrain store of one world) |
+| `LandmarkEmulator.EnvServer.Core` | The terrain store itself: edits, heals, ore veins, ownership, coarse copies, stamps |
+| `LandmarkEmulator.Internal` | The messages the server processes exchange with each other |
+| `LandmarkEmulator.Shared` | Code all servers share: networking, cryptography, configuration, game tables |
+| `LandmarkEmulator.Database` | Database plumbing shared by the database projects |
+| `LandmarkEmulator.Database.Auth` | Accounts, server list and login tickets (`lmemu_auth`) |
+| `LandmarkEmulator.Database.Character` | Characters and world data (`lmemu_character`, `lmemu_world_<key>`) |
+| `LandmarkEmulator.Database.Social` | The social service's database (`lmemu_social`) |
 | `LandmarkEmulator.LaunchPad` | LaunchPad, the players' launcher |
-| `docker-compose.yml`, `.env.example`, `docker/` | How the servers run in Docker (setup, database, login server, account website, worlds) |
-| `docs/` | How the client and server talk (packet layouts), terrain formats, and how each system works |
-| `research/` | The reverse-engineering notes: each client message family with its reader / handler functions and field layouts, the client's Lua bindings, classes, data sources and rules, and the system specs the server follows |
-| `data/` | Small tables the server needs that were derived from the client |
-| `tools/terrain/` | Optional: bakes the ground-height grid from the running client |
+| `LandmarkEmulator.PatchPacks` | The 0.695 update: pack format, the built-in file lists, checks and install (LaunchPad and the server) |
+| `LandmarkEmulator.Parser` | Reads packet captures of the live game and decodes them with the server's models |
+| `LandmarkEmulator.Tests` | Unit tests: packet layouts against live captures, game rules, patch pack security |
 
-The `research/` notes name client functions by address (`FUN_14xxxxxxx`, build 0.589.1.128895) and describe what they
-read and do. Decompiled client code itself is not included; load your own copy of `Landmark64.exe` in Ghidra to follow
-them. [docs/docker.md](docs/docker.md) explains the Docker setup in detail, including running more than one world.
+Other folders: `docker/` and `docker-compose.yml` (the containers), `data/` (small tables derived from the client),
+`tools/` (the terrain height bake and the strong hash list), `docs/` (below) and, in the published repository,
+`research/` (the reverse-engineering notes: each client message family with its reader and handler functions and
+field layouts, the client's Lua bindings, classes and data sources, and the specs the server follows). The notes name
+client functions by address (`FUN_14xxxxxxx` in `Landmark64.exe`, build 0.695.1.132647, older notes 0.589.1.128895);
+no decompiled client code is included, so load your own copy in Ghidra to follow them.
+
+### Documentation
+
+| Document | What it covers |
+|---|---|
+| [docs/README.md](docs/README.md) | Index of the docs and their conventions |
+| [docs/docker.md](docs/docker.md) | Running the servers in Docker: every setting, more worlds, the optional services, backups |
+| [docs/launchpad.md](docs/launchpad.md) | LaunchPad, the 0.695 update and its checks, the server's patch folder |
+| [docs/protocol.md](docs/protocol.md) | The network protocol and the layout of every packet family the server handles |
+| [docs/gameplay.md](docs/gameplay.md) | How each server system works |
+| [docs/terrain.md](docs/terrain.md) | The VoxelFarm terrain: formats, edits, heals, veins, stamps, the Environment Server |
+| [docs/sendself.md](docs/sendself.md) | The login character record (SendSelfToClient) field by field |
+| [docs/client-reference.md](docs/client-reference.md) | Where things are in the client, the client data the server reads, client logs |
+| [docs/admin.md](docs/admin.md) | Admin players, the client's admin commands, broadcasts, kicks, the server monitor |
+| [docs/commerce.md](docs/commerce.md) | Player Studio and in-game commerce (InGamePurchase 0x45) |
+| [docs/showcase.md](docs/showcase.md) | The Showcase window: store, gallery, following, sign-in, web API, likes |
+| [docs/membership.md](docs/membership.md) | Membership and the trial key |
+| [docs/vendors.md](docs/vendors.md) | Build site vendors, the NPC merchant window, Point-of-Need purchases |
+| [docs/instanced-games.md](docs/instanced-games.md) | Site games, the game editor and the Game Finder |
+| [docs/story-tools.md](docs/story-tools.md) | Story tools: Links, Play Mode, the prop settings window |
+| [docs/encounters.md](docs/encounters.md) | Encounters (EncounterBase 0x2C): duels and the death window |
+| [docs/unknowns.md](docs/unknowns.md) | How the once-unknown packet fields were named, and what is still open |
+
+---
 
 ## Credits and licence
 
 Based on [kirmmin/LandmarkEmu](https://github.com/kirmmin/LandmarkEmu) and the
-[PheebeUK](https://github.com/PheebeUK/LandmarkEmu) fork; extended for the 0.589 client. Licensed under the GNU AGPL
-v3 (see `LICENSE`).
+[PheebeUK](https://github.com/PheebeUK/LandmarkEmu) fork; extended for the 0.589 and 0.695 clients. Licensed under the
+GNU Affero General Public License v3 (see [LICENSE](LICENSE)).
 
-LandmarkEmu is a fan project. It is not affiliated with or endorsed by Daybreak Game Company; Landmark is a trademark of
-its owners. It contains no game files, and everyone needs their own copy of the game.
+**Legal note.** LandmarkEmu is a fan project. It is not affiliated with or endorsed by Daybreak Game Company; Landmark
+is a trademark of its owners. This repository contains no game files, no extracted assets and no decompiled code.
+Everyone needs their own copy of the game.

@@ -22,7 +22,32 @@ namespace LandmarkEmulator.Shared.Network
         /// <summary>Server-assigned identity for edge↔zone routing (independent of UDP endpoint).</summary>
         public Guid BackendSessionId { get; private set; }
 
-        public SocketHeartbeat Heartbeat { get; } = new SocketHeartbeat();
+        public SocketHeartbeat Heartbeat { get; protected set; } = new SocketHeartbeat();
+
+        /// <summary>
+        /// The connection ended because the client went silent (<see cref="SocketHeartbeat.Flatline"/>) or stopped
+        /// acknowledging (GameSession's unacknowledged timeout), not by a logout or a close from either side.
+        /// </summary>
+        public bool TimedOut { get; private set; }
+
+        /// <summary>
+        /// The client has gone silent for its timeout: marked <see cref="TimedOut"/> and disconnected (owners hear of it in
+        /// <see cref="OnDisconnect"/> / <see cref="OnRemoved"/> like any other close). Tick thread.
+        /// </summary>
+        public void OnTimedOut()
+        {
+            if (Disconnected)
+                return;
+            TimedOut = true;
+            log.Info($"Client {endPointRef} silent for {Heartbeat.SilentSeconds:0} s (timeout {Heartbeat.TimeoutSeconds:0} s); disconnecting.");
+            OnTimedOutDisconnect();
+        }
+
+        /// <summary>How a silent connection is closed (GameSession: a Disconnect saying Timeout).</summary>
+        public virtual void OnTimedOutDisconnect() => OnDisconnect();
+
+        /// <summary>Marks the close as a timeout without the silence check (GameSession's unacknowledged timeout).</summary>
+        protected void MarkTimedOut() => TimedOut = true;
         public EndPoint Endpoint { get; private set; }
         private string endPointRef;
 
@@ -72,7 +97,7 @@ namespace LandmarkEmulator.Shared.Network
         {
             Heartbeat.Update(lastTick);
             if (Heartbeat.Flatline)
-                OnDisconnect();
+                OnTimedOut();
 
             lock (_eventLock)
             {
@@ -126,6 +151,16 @@ namespace LandmarkEmulator.Shared.Network
             Disconnected = true;
 
             log.Debug($"Client disconnected: {endPointRef}");
+        }
+
+        /// <summary>
+        /// The network manager dropped this session from its table (it disconnected or timed out). Runs on the thread
+        /// that updates the sessions (the server tick), once, after <see cref="OnDisconnect"/> — which itself may run on
+        /// the UDP receive thread (the client's own SOE Disconnect) — so owners can clean up on the tick.
+        /// </summary>
+        public virtual void OnRemoved()
+        {
+            // deliberately empty
         }
 
         public void TogglePacketProcessing(bool allowed)

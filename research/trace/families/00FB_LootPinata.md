@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 2 (2 not handled) · S2C 4 (2 never sent / opcode unknown)
 
 ## C2S LootPinataPacketPickupLoot  `0xFB, 0x5`
-- server: sub NOT handled · seen in play 20× · received 20×
+- server: sub NOT handled · seen in play 732× · received 79×
 - built in: FUN_14307d0f0
 - code (builder in FUN_14307d0f0):
 ```
@@ -22,7 +22,7 @@ C2S 2 (2 not handled) · S2C 4 (2 never sent / opcode unknown)
 ```
 
 ## S2C LootPinataPacketSpawnLoot  `0xFB, 0x1`
-- server: SENT (28× in opcode_stats) · seen in play 28×
+- server: SENT (79× in opcode_stats) · seen in play 1065×
 - reader: FUN_1430775a0
 - built in: FUN_14307a920
 - layout:
@@ -32,7 +32,7 @@ u8    +0x10
 u32   +0x18
 u32   +0x1c
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 u32   +0x2c
 u32   +0x30
 u32   +0x34
@@ -46,7 +46,7 @@ u32   +0x6c
 ```
 
 ## S2C LootPinataPacketRemoveLoot  `0xFB, 0x2`
-- server: SENT (8× in opcode_stats) · seen in play 8×
+- server: probably sent (static check: sent by server (sub in payload)); not in opcode_stats · seen in play 333×
 - reader: FUN_1430774e0
 - built in: FUN_14307a920
 - layout:

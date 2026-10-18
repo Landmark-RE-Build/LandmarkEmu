@@ -18,8 +18,23 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\LandmarkEmulator.EnvServer.Core\LandmarkEmulator.EnvServer.Core.csproj" />
     <ProjectReference Include="..\LandmarkEmulator.Gateway\LandmarkEmulator.Gateway.csproj" />
+    <ProjectReference Include="..\LandmarkEmulator.Internal\LandmarkEmulator.Internal.csproj" />
     <ProjectReference Include="..\LandmarkEmulator.Shared\LandmarkEmulator.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- LandmarkEmulator.Tests reads the opcode codec (WorldSession.GetOpcodeBytes) and other internal helpers. -->
+    <InternalsVisibleTo Include="LandmarkEmulator.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The admin Settings page's groups, help texts and .env names (Game/ServerSettings.Docs.cs): read from the project's
+         own files so the page never drifts from them. -->
+    <EmbeddedResource Include="..\.env.example" LogicalName="Settings.env.example" />
+    <EmbeddedResource Include="..\docker\world\docker-compose.yml" LogicalName="Settings.world-compose.yml" />
+    <EmbeddedResource Include="..\docker\gateway\world.override.yml" LogicalName="Settings.gateway-override.yml" />
   </ItemGroup>
 
   <ItemGroup>

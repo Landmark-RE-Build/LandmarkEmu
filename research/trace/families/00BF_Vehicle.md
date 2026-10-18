@@ -168,7 +168,7 @@ i16   +0x20
 u16   +0x8
 u8    +0x10
 u64   +0x18
-i32   iVar3
+i32   <local>
 ```
 - code (builder in FUN_142ed5770):
 ```
@@ -192,7 +192,7 @@ i32   iVar3
 u16   +0x8
 u8    +0x10
 u64   +0x18
-i32   iVar3
+i32   <local>
 ```
 - handled in FUN_142ed5770 (its switch case for this message)
 - code (handler case in FUN_142ed5770):
@@ -212,11 +212,11 @@ u64   +0x18
 u64   +0x20
 u32   +0x28
 FUN_142ba09f0 -> +0x30
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
 u32   +0x2c
 FUN_142ba09f0 -> +0x30
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
 ```
 - handled in FUN_142ed5770 (its switch case for this message)
@@ -316,19 +316,19 @@ u64   +0x20
 u32   +0x28
 u32   +0x2c
 FUN_142ed0950 -> +0x30
-  i32   iVar3
+  i32   <local>
     [loop 1: list elements]
-  u32   uVar9
-  bool  *puVar6
+  u32   <local>
+  bool  <element>
 FUN_142ba09f0 -> +0x98
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
 FUN_142ba2770 -> +0x820
-  i32   iVar5
+  i32   <local>
     [loop 1: list elements]
-  u64   *puVar2
-i32   iVar2
-i32   iVar3
+  u64   <element>
+i32   <local>
+i32   <local>
 ```
 - handled in FUN_142ed5770 (its switch case for this message)
 - code (handler case in FUN_142ed5770):
@@ -396,9 +396,9 @@ u16   +0x8
 u8    +0x10
 u64   +0x18
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
   [loop 2: list elements]
-u32   *puVar1
+u32   <element>
 ```
 - handled in FUN_142ed5770 (its switch case for this message)
 - code (handler case in FUN_142ed5770):

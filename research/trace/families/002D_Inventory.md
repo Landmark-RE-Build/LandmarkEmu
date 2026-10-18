@@ -16,7 +16,7 @@ C2S 15 (6 not handled) · S2C 8 (2 never sent / opcode unknown)
 ```
 
 ## C2S InventoryPacketItemDefinitionTooltipRequest  `0x2D, 0x11`
-- server: handled (sub in handler)
+- server: handled (sub in handler) · seen in play 142× · received 23×
 - built in: FUN_143467a20, FUN_143468d50
 - sent by Lua natives: RequestDetailsForItem, RequestDetailsForItemByDefId, RequestDetailsForItemInChest, RequestDetailsForItemInMail, RequestDetailsForItemWindowed, RequestDetailsForRecipeByDefId
 - UI using them: ToolTipWidget, ToolTipWidget, TooltipItem
@@ -40,7 +40,7 @@ C2S 15 (6 not handled) · S2C 8 (2 never sent / opcode unknown)
 ```
 
 ## C2S InventoryPacketActivateItem  `0x2D, 0x15`
-- server: handled (sub in handler) · seen in play 8× · received 8×
+- server: handled (sub in handler) · seen in play 71×
 - built in: FUN_1433aa820, FUN_1433ade50
 - sent by Lua natives: DropItemToScene
 - UI using them: Inventory, Vault
@@ -54,7 +54,7 @@ C2S 15 (6 not handled) · S2C 8 (2 never sent / opcode unknown)
 ```
 
 ## C2S InventoryPacketRequestTransferItem  `0x2D, 0x16`
-- server: handled (sub in handler) · seen in play 28× · received 28×
+- server: handled (sub in handler) · seen in play 211× · received 6×
 - built in: FUN_142e86120
 - sent by Lua natives: TransferItem, TransferItemWithOwner
 - UI using them: ActionBar, BuildModeHotbarWidget, BuildModePaletteWidget, CharacterCre
@@ -64,7 +64,7 @@ C2S 15 (6 not handled) · S2C 8 (2 never sent / opcode unknown)
 ```
 
 ## C2S InventoryPacketRequestOverflowAbsorb  `0x2D, 0x1C`
-- server: handled (sub in handler)
+- server: handled (sub in handler) · seen in play 1×
 - built in: FUN_142e81590, FUN_14352da80
 - sent by Lua natives: MoveOverflow
 - UI using them: Inventory
@@ -113,7 +113,7 @@ C2S 15 (6 not handled) · S2C 8 (2 never sent / opcode unknown)
 ```
 
 ## C2S InventoryPacketRequestDeleteItem  `0x2D, 0xB`
-- server: handled (sub in handler)
+- server: handled (sub in handler) · seen in play 5×
 - built in: FUN_142e85dd0
 - sent by Lua natives: DestroyItem
 - UI using them: Inventory.lua
@@ -151,7 +151,7 @@ C2S 15 (6 not handled) · S2C 8 (2 never sent / opcode unknown)
 ```
 
 ## C2S InventoryPacketItemInstanceTooltipRequest  `0x2D, 0xF`
-- server: handled (sub in handler) · seen in play 14× · received 14×
+- server: handled (sub in handler) · seen in play 734× · received 28×
 - built in: FUN_143467470
 - sent by Lua natives: RequestDetailsForItem, RequestDetailsForItemInChest, RequestDetailsForItemWindowed, UpgradeStationAddItem
 - UI using them: CraftingWidget, RecipesList, ToolTipWidget, TooltipItem
@@ -161,7 +161,7 @@ C2S 15 (6 not handled) · S2C 8 (2 never sent / opcode unknown)
 ```
 
 ## S2C InventoryPacketItemTooltipReply  `0x2D, 0x12`
-- server: SENT (12× in opcode_stats) · seen in play 12×
+- server: SENT (51× in opcode_stats) · seen in play 835×
 - reader: FUN_142e784e0
 - built in: FUN_142e81590
 - layout:
@@ -177,22 +177,22 @@ FUN_142e78e10 -> +0x18
   u32   +0x24
   u32   +0x28
   FUN_142b9afe0 -> +0x30
-    i32   iVar5
+    i32   <local>
       [loop 1: list elements]
-    u32   *puVar2
+    u32   <element>
   FUN_142b9afe0 -> +0x48
-    i32   iVar5
+    i32   <local>
       [loop 1: list elements]
-    u32   *puVar2
+    u32   <element>
   FUN_142b9afe0 -> +0x60
-    i32   iVar5
+    i32   <local>
       [loop 1: list elements]
-    u32   *puVar2
+    u32   <element>
   FUN_142b9b0b0 -> +0x78
-    i32   iVar2
+    i32   <local>
       [loop 1: list elements]
-    u32   *puVar3
-  i32   iVar2
+    u32   <element>
+  i32   <local>
   u32   +0x10c
   u32   +0x110
   u32   +0x114
@@ -200,7 +200,7 @@ FUN_142e78e10 -> +0x18
   u32   +0x12c
   u32   +0x130
   FUN_142e79720 -> +0xc0
-    i32   iVar2
+    i32   <local>
       [loop 1: list elements]
   u64   +0x120
   u32   +0x128
@@ -214,7 +214,7 @@ FUN_142e78e10 -> +0x18
   FUN_142e792c0 -> +0x98
     bool  +0x98
     FUN_142e79650 -> +0xa0
-      i32   iVar3
+      i32   <local>
         [loop 1: list elements]
       FUN_142e78af0 -> +0xa0
         u32   +0xa0
@@ -223,7 +223,7 @@ FUN_142e78e10 -> +0x18
         u32   +0xac
     u32   +0x9c
     FUN_142e79650 -> +0xa0
-      i32   iVar3
+      i32   <local>
         [loop 1: list elements]
       FUN_142e78af0 -> +0xa0
 ```
@@ -254,7 +254,7 @@ u32   +0x24
 ```
 
 ## S2C InventoryPacketSetSize  `0x2D, 0x17`
-- server: SENT (1× in opcode_stats) · seen in play 1×
+- server: probably sent (static check: sent by server (sub in payload)); not in opcode_stats · seen in play 4×
 - reader: FUN_142e788b0
 - built in: FUN_142e81590
 - layout:
@@ -274,7 +274,7 @@ u32   +0x1c
 ```
 
 ## S2C InventoryPacketGrapplingHookEquipped  `0x2D, 0x18`
-- server: SENT (102× in opcode_stats)
+- server: SENT (16× in opcode_stats)
 - built in: FUN_142e81590
 - handled in FUN_142e81590 (its switch case for this message)
 - code (handler case in FUN_142e81590):
@@ -283,7 +283,7 @@ u32   +0x1c
 ```
 
 ## S2C InventoryPacketTransferItemResponse  `0x2D, 0x19`
-- server: SENT (28× in opcode_stats) · seen in play 28×
+- server: SENT (6× in opcode_stats) · seen in play 211×
 - reader: FUN_142e78a30
 - built in: FUN_142e81590
 - layout:
@@ -310,7 +310,7 @@ u32   +0x58
 ```
 
 ## S2C InventoryPacketLootNotification  `0x2D, 0x1A`
-- server: SENT (8× in opcode_stats) · seen in play 8×
+- server: SENT (27× in opcode_stats) · seen in play 560×
 - reader: FUN_142e78620
 - built in: FUN_142e81590
 - layout:
@@ -338,7 +338,7 @@ u32   +0x38
 ```
 u16   +0x8
 i16   +0x10
-i32   iVar3
+i32   <local>
 ```
 - handled in FUN_142e81590 (its switch case for this message)
 - code (handler case in FUN_142e81590):
@@ -347,7 +347,7 @@ i32   iVar3
 ```
 
 ## S2C InventoryPacketSetVoxelStorage  `0x2D, 0x1D`
-- server: SENT (1× in opcode_stats) · seen in play 1×
+- server: probably sent (static check: sent by server (sub in payload)); not in opcode_stats · seen in play 4×
 - reader: FUN_142e78970
 - built in: FUN_142e81590
 - layout:

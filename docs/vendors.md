@@ -9,6 +9,11 @@
 
 ## Build site vendor
 
+- **Off by default, as live** (setting `VendorShops`, Docker `VENDOR_SHOPS`, default false): live made the Vendor
+  Booth a decorative prop on 1 Apr 2016 (P4378: its old, unworking window was removed). Off, the booth has
+  no interaction, the Showcase hides **My vendors** and refuses listings, and at start-up any stock left in booths is
+  mailed back to the owners ("Your vendor"); the booth stays and can be picked up. `VENDOR_SHOPS=true` turns on the
+  working shop described below.
 - **Getting one:** the Showcase store, Decorations › Build Site Vendor (free).
 - **Placing it:** on your build site.
 - **Buying:** visitors click the vendor. The server answers with UpdateInventory (show = true) and the client opens
@@ -17,7 +22,9 @@
 - **Stocking:** the 0.589 client has the listing natives (`ListItem`, `SetItemPriceByGuid`, `SetItemPriceBySlot`)
   but no screen that calls them, so owners stock their vendors from the Showcase's **My vendors** tab. From there
   they list bag items with a count and a price per item (a 10% listing fee in coins, as the client's own dialog
-  says), change prices, and take items back (into the bag, or by mail when it is full).
+  says), change prices, and take items back (into the bag, or by mail when it is full). Items that may not change
+  hands can't be listed (result Failed, with a chat line): NO_TRADE items, store purchases still in their waiting
+  period, chests that still hold items and Player Design items (since 2026-10-18).
 - **Picking up:** a vendor that still has stock can't be picked up (PickUpReply error 9,
   `Prop.PickUpErrorVendorInventoryNotEmpty`).
 - **Storage:** listings are kept in the `claim_vendor_item` table (migration `ClaimVendorItem`).
@@ -59,13 +66,13 @@ After world entry, the server runs client Lua (`Game/ClientFixes.cs` through `Cl
 | `POST /api/vendor/price` `listing, price` | change a price |
 | `POST /api/vendor/unlist` `listing` | take a listing back |
 
-Test: `re/test/scenarios/vendor.json` (11 checks, screenshot `shots/vendor_window.png`). Dev commands:
-`vendoropen <guid hex>` (as a click), `prop 1491` (place one).
+Checked in a running client with a scripted run (11 checks and a screenshot of the vendor window; the harness is not
+part of this repository). Dev commands: `vendoropen <guid hex>` (as a click), `prop 1491` (place one).
 
 ## Point-of-Need purchases
 
-The client's "Point of Need" buttons send InGamePurchase 0x46 PointOfNeedRequest:
+The client's "Point of Need" buttons send InGamePurchase 0x47 PointOfNeedRequest (0.589: 0x46):
 - `{u32 1, u8, u32 days, u64, u64}` is build site upkeep (Lua `Claims.PayUpkeepPoN`, the ClaimPoN window). Upkeep
   is free here: the server confirms it in chat and re-sends the upkeep data.
-- `{u32 2, ...}` is the crafting window's recipe query (`Recipe.SelectRecipe`). Its InfoResponse (0x4B) points the
+- `{u32 2, ...}` is the crafting window's recipe query (`Recipe.SelectRecipe`). Its InfoResponse (0x4C; 0.589: 0x4B) points the
   client at a store URL for the missing ingredients; that is not answered yet.

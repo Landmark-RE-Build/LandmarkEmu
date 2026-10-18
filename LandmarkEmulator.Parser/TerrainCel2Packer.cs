@@ -8,18 +8,37 @@ namespace LandmarkEmulator.Parser
 {
     /// <summary>
     /// Builds <c>TerrainCellBlobStore.bin</c> (CEL2) and copies manifest/raws from parsed
-    /// <c>0xEC000500</c> / <c>0xEC000A00</c> capture bins. See <c>docs/packet-dumps-terrain.md</c>.
+    /// <c>0xEC000500</c> / <c>0xEC000A00</c> capture bins. See <c>docs/terrain.md</c> ("CellsUpdate entries").
     /// </summary>
     public static class TerrainCel2Packer
     {
         public const uint Cel2Magic = 0x324C4543; // "CEL2"
 
+        /// <summary>
+        /// One cell of a TerrainCell 5 CellsUpdate, as the 0.695 client reads it [P]: reader FUN_1431464f0 → list
+        /// FUN_143148950 of <c>VoxelFarm::CellIdVersionFlagsAndData</c> (FUN_143146320: u64 cell, u32 version, u32 n ×
+        /// layer), each layer FUN_143146cf0: u32 layer id, u32 layer version, u8 flag, u32 size + size bytes.
+        /// </summary>
         public sealed class CellRecord
         {
             public ulong CellId { get; init; }
-            public uint Unknown0 { get; init; }
+            /// <summary>
+            /// The cell version, entry +0x08 of CellIdVersionFlagsAndData (FUN_143146320) [P]. HandleCellsUpdate
+            /// (FUN_144016a90) takes 0 as block data (voxels the client meshes, FUN_144016150) and any other value as
+            /// finished geometry (FUN_1440164c0).
+            /// </summary>
+            public uint Version { get; init; }
+            /// <summary>The number of layers that follow (FUN_143146320's layer list count) [P].</summary>
             public uint SegmentCount { get; init; }
-            public uint Flags { get; init; }
+            /// <summary>
+            /// The first layer's u32 layer id (FUN_143146cf0 +0x00; 0-3 = Poi / Permanent / Timed Persistent /
+            /// Transient) [P]. Was named "Flags" here: the same 4 bytes. 0 when the cell carries no layer.
+            /// </summary>
+            public uint FirstLayerId { get; init; }
+            /// <summary>
+            /// Everything after <see cref="FirstLayerId"/>: the first layer's version, flag, size and data, then each
+            /// further layer whole (its u32 layer id first).
+            /// </summary>
             public byte[] DataBlob { get; init; }
         }
 
@@ -134,33 +153,41 @@ namespace LandmarkEmulator.Parser
             if (pos + 6 > data.Length)
                 throw new InvalidDataException($"{path}: truncated header");
 
-            // u16 0, u16 count, u16 0
+            // u16 (the high half of the 32-bit sub-opcode), u32 cell count (FUN_1431464f0 → FUN_143148950).
             _ = BitConverter.ToUInt16(data, pos);
-            ushort count = BitConverter.ToUInt16(data, pos + 2);
-            _ = BitConverter.ToUInt16(data, pos + 4);
+            uint count = BitConverter.ToUInt32(data, pos + 2);
             pos += 6;
+            if (count > (data.Length - pos) / 16)
+                throw new InvalidDataException($"{path}: cell count {count} beyond the data");
 
-            var list = new List<CellRecord>(count);
+            var list = new List<CellRecord>((int)count);
             for (int i = 0; i < count; i++)
             {
-                if (pos + 20 > data.Length)
+                if (pos + 16 > data.Length)
                     throw new InvalidDataException($"{path}: eof at cell header {i}/{count} pos={pos}");
 
                 ulong id = BitConverter.ToUInt64(data, pos);
-                uint unknown0 = BitConverter.ToUInt32(data, pos + 8);
-                uint segmentCount = BitConverter.ToUInt32(data, pos + 12);
-                uint flags = BitConverter.ToUInt32(data, pos + 16);
-                pos += 20;
+                uint version = BitConverter.ToUInt32(data, pos + 8);
+                uint layerCount = BitConverter.ToUInt32(data, pos + 12);
+                pos += 16;
+
+                uint firstLayerId = 0;
+                if (layerCount > 0)
+                {
+                    if (pos + 4 > data.Length)
+                        throw new InvalidDataException($"{path}: eof at first layer id cell={i} pos={pos}");
+                    firstLayerId = BitConverter.ToUInt32(data, pos);
+                    pos += 4;
+                }
 
                 int bodyStart = pos;
-                uint segs = segmentCount == 0 ? 1u : segmentCount;
-                for (uint s = 0; s < segs; s++)
+                for (uint s = 0; s < layerCount; s++)
                 {
                     if (s > 0)
                     {
                         if (pos + 4 > data.Length)
-                            throw new InvalidDataException($"{path}: eof tag cell={i} seg={s}");
-                        pos += 4; // inter-segment tag
+                            throw new InvalidDataException($"{path}: eof layer id cell={i} layer={s}");
+                        pos += 4; // the next layer's u32 layer id
                     }
 
                     pos += MeasureSegmentBody(data, pos, path, i);
@@ -172,9 +199,9 @@ namespace LandmarkEmulator.Parser
                 list.Add(new CellRecord
                 {
                     CellId = id,
-                    Unknown0 = unknown0,
-                    SegmentCount = segs,
-                    Flags = flags,
+                    Version = version,
+                    SegmentCount = layerCount,
+                    FirstLayerId = firstLayerId,
                     DataBlob = blob
                 });
             }
@@ -183,30 +210,17 @@ namespace LandmarkEmulator.Parser
         }
 
         /// <summary>
-        /// Length of one segment body. Empty: <c>crc=0, size=0, 7 zeros</c> (15 B).
-        /// Data: <c>u32 crc + byte 0 + u32 sizeLE@+5 + size bytes</c> (9 + size) — size field
-        /// overlaps the payload’s leading <c>0x00</c> before <c>A1 B2 C3 D4</c>.
+        /// Length of one layer after its u32 layer id (FUN_143146cf0) [P]: <c>u32 layer version, u8 flag, u32 size,
+        /// size bytes</c> = 9 + size, so an empty layer is 9 bytes (this read 15 for a layer with version 0 and size 0,
+        /// which only lined up when it was the packet's last layer: the 6 bytes after the last cell are the packet
+        /// tail, u32 transaction count 0 and two bools, FUN_143148b80 / +0x48 / +0x49). The layer version is the CRC32
+        /// of the packed layer (docs/terrain.md).
         /// </summary>
         internal static int MeasureSegmentBody(byte[] data, int pos, string path, int cellIndex)
         {
-            if (pos + 8 > data.Length)
-                throw new InvalidDataException($"{path}: eof seg hdr cell={cellIndex} pos={pos}");
-
-            uint crc = BitConverter.ToUInt32(data, pos);
-            uint sizePlain = BitConverter.ToUInt32(data, pos + 4);
-
-            // Empty form: crc=0, size=0, then 7 pad bytes.
-            if (crc == 0 && sizePlain == 0)
-            {
-                if (pos + 15 > data.Length)
-                    throw new InvalidDataException($"{path}: eof empty body cell={cellIndex}");
-                return 15;
-            }
-
             if (pos + 9 > data.Length)
-                throw new InvalidDataException($"{path}: eof data hdr cell={cellIndex}");
+                throw new InvalidDataException($"{path}: eof layer hdr cell={cellIndex} pos={pos}");
 
-            // Proven walk across 5Jeos multi-MB CellsUpdates (remain == 6 on multi-cell packets).
             uint size = BitConverter.ToUInt32(data, pos + 5);
             if (size > 16 * 1024 * 1024)
                 throw new InvalidDataException($"{path}: bad data size {size} cell={cellIndex} pos={pos}");
@@ -226,9 +240,9 @@ namespace LandmarkEmulator.Parser
             foreach (var c in list)
             {
                 bw.Write(c.CellId);
-                bw.Write(c.Unknown0);
-                bw.Write(c.SegmentCount == 0 ? 1u : c.SegmentCount);
-                bw.Write(c.Flags);
+                bw.Write(c.Version);
+                bw.Write(c.SegmentCount);
+                bw.Write(c.FirstLayerId);
                 var blob = c.DataBlob ?? Array.Empty<byte>();
                 bw.Write(blob.Length);
                 bw.Write(blob);
@@ -251,9 +265,9 @@ namespace LandmarkEmulator.Parser
             for (uint i = 0; i < count; i++)
             {
                 ulong id = br.ReadUInt64();
-                uint unknown0 = br.ReadUInt32();
+                uint version = br.ReadUInt32();
                 uint segmentCount = br.ReadUInt32();
-                uint flags = br.ReadUInt32();
+                uint firstLayerId = br.ReadUInt32();
                 int len = br.ReadInt32();
                 if (len < 0 || len > 16 * 1024 * 1024)
                     throw new InvalidDataException($"{path}: bad blob len {len} at cell {i}");
@@ -264,9 +278,9 @@ namespace LandmarkEmulator.Parser
                 cells[id] = new CellRecord
                 {
                     CellId = id,
-                    Unknown0 = unknown0,
-                    SegmentCount = segmentCount == 0 ? 1u : segmentCount,
-                    Flags = flags,
+                    Version = version,
+                    SegmentCount = segmentCount,
+                    FirstLayerId = firstLayerId,
                     DataBlob = blob
                 };
             }
@@ -356,9 +370,9 @@ namespace LandmarkEmulator.Parser
             return new CellRecord
             {
                 CellId = 0,
-                Unknown0 = meta?.Unknown0 ?? 0,
+                Version = meta?.Version ?? 0,
                 SegmentCount = meta?.SegmentCount ?? 1,
-                Flags = meta?.Flags ?? 2,
+                FirstLayerId = meta?.FirstLayerId ?? 2,
                 DataBlob = blob
             };
         }
@@ -533,9 +547,9 @@ namespace LandmarkEmulator.Parser
                         existing[id] = new CellRecord
                         {
                             CellId = id,
-                            Unknown0 = template.Unknown0,
+                            Version = template.Version,
                             SegmentCount = template.SegmentCount,
-                            Flags = template.Flags,
+                            FirstLayerId = template.FirstLayerId,
                             DataBlob = template.DataBlob
                         };
                         resolvedTemplate++;

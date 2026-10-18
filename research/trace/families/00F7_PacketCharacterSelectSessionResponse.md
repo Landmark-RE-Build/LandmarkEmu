@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 0 (0 not handled) · S2C 1 (0 never sent / opcode unknown)
 
 ## S2C PacketCharacterSelectSessionResponse  `0xF7`
-- server: SENT (opcode used in the server code)
+- server: SENT (opcode used in the server code) · seen in play 74×
 - reader: FUN_142bb57e0
 - handled in the zone dispatcher Zone_DispatchPacket (0x79)
 - Lua events/calls: GameEvents:SetCharacterSelectGameState

@@ -12,7 +12,7 @@ C2S 1 (1 not handled) · S2C 0 (0 never sent / opcode unknown)
 - layout:
 ```
 u16   +0x8
-  u8    *(byte *)param_2
+  u8    <computed>
   u8    +0x11
   u8    +0x11
   u8    +0x12

@@ -105,8 +105,13 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
             /// </summary>
             public uint CursorInReach { get; set; }
             public uint CursorOutOfReach { get; set; }
-            /// <summary>Negative keeps the client's value.</summary>
-            public float Unknown20 { get; set; } = -1f;
+            /// <summary>
+            /// +0x20 the entity's interaction sphere radius in metres: when not negative the 0.695 handler FUN_142f85860
+            /// calls FUN_142ec2b40, which stores it at entity +0x411c and rebuilds the entity's interaction sphere
+            /// (centre +0x4120, radius +0x4130); at 0 FUN_142ea4230 falls back to the zone's default interaction range
+            /// (ClientGameSettings.DefaultInteractionRange) [P use; I name]. Negative keeps the client's value.
+            /// </summary>
+            public float SphereRadius { get; set; } = -1f;
             /// <summary>Interaction range in metres; negative keeps the client's value.</summary>
             public float Range { get; set; } = -1f;
             /// <summary>
@@ -129,7 +134,7 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
                 writer.Write(entry.CursorInReach);
                 writer.Write(entry.CursorOutOfReach);
                 writer.Write(0u);
-                writer.Write(entry.Unknown20);
+                writer.Write(entry.SphereRadius);
                 writer.Write(entry.Range);
                 writer.Write(entry.Outline);
             }
@@ -146,7 +151,7 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
     public class CommandRequest : IReadable
     {
         public const ushort InteractRequest = 0x09, AddFriendRequest = 0x10, RemoveFriendRequest = 0x12, SelectPlayer = 0x16,
-            ItemDefinitionRequest = 0x49, InteractionItem = 0x4C, ClientCommand = 0x43, BuilderMode = 0x5A, FreeInteractionNpc = 0x17, IgnoreRequest = 0x20;
+            ItemDefinitionRequest = 0x49, InteractionItem = 0x4C, AfkRequest = 0x3B, ClientCommand = 0x43, ExecuteCommand = 0x47, BuilderMode = 0x5A, FreeInteractionNpc = 0x17, IgnoreRequest = 0x20;
 
         public ushort SubOpcode { get; private set; }
         public byte[] Body { get; private set; }
@@ -184,6 +189,14 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
     [ZoneMessage(ZoneMessageOpcode.EncounterBase)]
     public class EncounterRequest : SubRequest16 { }
 
+    /// <summary>
+    /// A CombatBase packet from the client (0x24, bytes 24 00): u16 sub (header writer FUN_1433c86c0), then its body. The
+    /// 0.695 client sends 2 AutoAttackTarget {u64}, 3 AutoAttackOff {} and 4 SingleAttackTarget {u64} (see
+    /// Network.Handlers.CombatHandler).
+    /// </summary>
+    [ZoneMessage(ZoneMessageOpcode.CombatBase)]
+    public class CombatRequest : SubRequest16 { }
+
     /// <summary>A GuildBase packet from the client: u16 sub, then its body (see Game.Guilds).</summary>
     [ZoneMessage(ZoneMessageOpcode.GuildBase)]
     public class GuildRequest : SubRequest16 { }
@@ -216,9 +229,65 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
     [ZoneMessage(ZoneMessageOpcode.InGamePurchaseBase)]
     public class InGamePurchaseRequest : SubRequest16 { }
 
+    /// <summary>
+    /// PacketClientInGamePurchase 0xD0 (no sub; wire D0 00), the Lua native InGamePurchaseStoreScreen.
+    /// PurchaseBundleWithInGameCurrency (0.695 FUN_1435e9400, 0.589 FUN_143538f10) [P]: it needs three numbers, and the
+    /// packet carries u32 Lua argument 1 (+0x10), u32 Lua argument 3 (+0x14) and u32 0 (+0x18) — argument 2 is checked
+    /// but not sent; writer FUN_1435ebe10 (u16 opcode, u32, u32, u32), sent by FUN_1435ec120 as a tunnelled packet on
+    /// channel 0 (Zone). Their meaning is not traced (no shipped script, compiled script or UI movie calls the native)
+    /// [I]: see Game.StoreBundles.HandlePurchase.
+    /// </summary>
+    [ZoneMessage(ZoneMessageOpcode.InGamePurchase)]
+    public class ClientInGamePurchase : IReadable
+    {
+        /// <summary>+0x10: Lua argument 1.</summary>
+        public uint First { get; private set; }
+        /// <summary>+0x14: Lua argument 3.</summary>
+        public uint Second { get; private set; }
+        /// <summary>+0x18: always 0 from the client.</summary>
+        public uint Third { get; private set; }
+
+        public void Read(GamePacketReader reader)
+        {
+            First = reader.BytesRemaining >= 4 ? reader.ReadUInt() : 0;
+            Second = reader.BytesRemaining >= 4 ? reader.ReadUInt() : 0;
+            Third = reader.BytesRemaining >= 4 ? reader.ReadUInt() : 0;
+        }
+    }
+
     /// <summary>A ToolBase packet from the client (0x117, wire 17 01): u8 sub (1 Activate: the client switched build tool).</summary>
     [ZoneMessage(ZoneMessageOpcode.ToolBase)]
     public class ToolRequest : SubRequest8 { }
+
+    /// <summary>
+    /// A HeroicMovement packet from the client (base 0x105, wire 05 01): the HeroicMovementBasePacket header
+    /// {u8 sub, u64 entity} (0.695 reader FUN_142c1fd70, writer FUN_142e5eaf0: u16 base, u8 sub, u64), then the sub's
+    /// body (see Game.HeroicMovement for every sub's layout). The entity is the sender's own guid: the writer takes it
+    /// from the same getter (character +0x278, vtable +0x28) the receiving side FUN_142cdc570 compares to skip
+    /// packets about itself [P].
+    /// </summary>
+    [ZoneMessage(ZoneMessageOpcode.HeroicMovement)]
+    public class HeroicMovementRequest : IReadable
+    {
+        public byte SubOpcode { get; private set; }
+        public ulong Entity { get; private set; }
+        public byte[] Body { get; private set; }
+
+        public void Read(GamePacketReader reader)
+        {
+            SubOpcode = reader.ReadByte();
+            Entity = reader.ReadULong();
+            Body = reader.ReadBytes(reader.BytesRemaining);
+        }
+    }
+
+    /// <summary>
+    /// A MarketplaceImageBase packet from the client (base 0x107, wire 07 01): u16 sub (0.695 header writer
+    /// FUN_1431eae30), then its body; sub 1 UploadRequest (writer FUN_1431eaf00) is a design or site screenshot
+    /// (Game.Templates.StoreImage).
+    /// </summary>
+    [ZoneMessage(ZoneMessageOpcode.MarketplaceImageBase)]
+    public class MarketplaceImageRequest : SubRequest16 { }
 
     /// <summary>A PaletteBase packet from the client (0xF5): u16 sub, then its body (see Game.Palettes).</summary>
     [ZoneMessage(ZoneMessageOpcode.PaletteBase)]
@@ -227,6 +296,14 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
     /// <summary>An AchievementBase packet from the client (0x92): u8 sub, then its body (see Game.Achievements).</summary>
     [ZoneMessage(ZoneMessageOpcode.AchievementBase)]
     public class AchievementRequest : SubRequest8 { }
+
+    /// <summary>
+    /// A MountBase packet from the client (0xA1, u16 sub; packet ids 1 MountRequest, 3 DismountRequest …). The 0.695 client
+    /// sends DismountRequest (03 00, no body) when an encounter starts (seen at a duel accept, 2026-10-17); Landmark has
+    /// no mounts, so it is only acknowledged in the log (MiscHandler.HandleMount).
+    /// </summary>
+    [ZoneMessage(ZoneMessageOpcode.MountBase)]
+    public class MountRequest : SubRequest16 { }
 
     /// <summary>A CharacterCustomization packet from the client (0x11C): u8 sub, then its body (see Game.Barbershop).</summary>
     [ZoneMessage(ZoneMessageOpcode.CharacterCustomizationBase)]

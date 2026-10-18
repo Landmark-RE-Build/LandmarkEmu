@@ -100,7 +100,18 @@ namespace LandmarkEmulator.Shared.Network
             lock (sync)
                 all = sessions.Values.ToList();
             foreach (T session in all)
+            {
                 session.OnDisconnect();
+                // The tick that would remove them has stopped: their owners clean up now (e.g. players saved).
+                try
+                {
+                    session.OnRemoved();
+                }
+                catch (Exception exception)
+                {
+                    NLog.LogManager.GetCurrentClassLogger().Error(exception, "Session clean-up at shutdown failed.");
+                }
+            }
 
             connection?.Shutdown();
         }
@@ -118,19 +129,35 @@ namespace LandmarkEmulator.Shared.Network
             foreach (T session in current)
             {
                 if (session.Disconnected || session.Heartbeat.Flatline)
+                {
+                    // A timed-out session is closed like any other, so its owner (the zone side of a world session)
+                    // hears of it.
+                    if (!session.Disconnected)
+                        session.OnTimedOut();
                     pendingRemove.Enqueue(session);
+                }
                 else
                     session.Update(lastTick);
             }
 
-            // Remove any sessions that are pending removal.
+            // Remove any sessions that are pending removal; their owners clean up here, on the tick (OnRemoved).
             while (pendingRemove.TryDequeue(out T session))
+            {
                 lock (sync)
                 {
                     sessions.Remove(session.Endpoint);
                     if (session.BackendSessionId != Guid.Empty)
                         sessionsById.Remove(session.BackendSessionId);
                 }
+                try
+                {
+                    session.OnRemoved();
+                }
+                catch (Exception exception)
+                {
+                    NLog.LogManager.GetCurrentClassLogger().Error(exception, "Session clean-up failed.");
+                }
+            }
         }
 
         /// <summary>

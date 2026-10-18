@@ -12,6 +12,11 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
         public const ushort EquippedRemove = 0x02;
         public const ushort EquipByGuid = 0x03;
         public const ushort DeleteItem = 0x0B;
+        /// <summary>
+        /// InventoryPacketToggleAutoResupply (0.695 sender FUN_142f261b0, writer FUN_142f18aa0; 0.589 FUN_142e87500):
+        /// u64 item guid, bool on [P].
+        /// </summary>
+        public const ushort ToggleAutoResupply = 0x0D;
         /// <summary>RearrangeItemSlots (FUN_14352cfb0 / writer FUN_14352df30): u32 container, u32 n, n × {u32 slot, u64 item guid}.</summary>
         public const ushort RearrangeItemSlots = 0x0E;
         public const ushort ItemInstanceTooltipRequest = 0x0F;

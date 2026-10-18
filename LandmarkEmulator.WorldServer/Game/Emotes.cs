@@ -1,4 +1,5 @@
 using LandmarkEmulator.Shared.Network;
+using LandmarkEmulator.WorldServer.Game.WorldChannel;
 using LandmarkEmulator.WorldServer.Network;
 using LandmarkEmulator.WorldServer.Network.Message;
 using NLog;
@@ -39,25 +40,113 @@ namespace LandmarkEmulator.WorldServer.Game
             ["calm"] = 218, ["angry"] = 219, ["happy"] = 220
         };
 
-        /// <summary>Stance emotes (looping until replaced) and the "stand" selection that ends them.</summary>
-        private static readonly HashSet<uint> stances = new() { 246, 224, 248, 250, 251 };
+        /// <summary>
+        /// Stance emotes (looping until replaced) and the "stand" selection that ends them. Both are sent as
+        /// RequestAnimationSelection with the clear-sit bool (<see cref="ClearsSit"/>, <see cref="ShowPose"/>), never as
+        /// AbilityPlayAnim, and a stance is remembered for players who meet the player later.
+        /// </summary>
+        private static readonly HashSet<uint> stances = new() { 246, 224, 248, 250, 251, PlayDead };
         private const uint Stand = 223;
 
-        /// <summary>Where each player started their current stance; walking away from it ends the stance for everyone.</summary>
-        private static readonly ConcurrentDictionary<ulong, Vector3> stanceAt = new();
+        /// <summary>
+        /// /playdead (0.695 only; features audit #55c, trace/0695/agent-abilities.md §2). The word is the client's text 577222
+        /// "playdead" (the zone's command list registers it, as the other emote words 559123-559192); live's emote set was
+        /// server data, as for every word here. Its animation is AnimationSelection <b>844</b>, new in 0.695 with the
+        /// variables Stance_Index 6 and BreatheSpeed 0 (AnimationSelectionVariables rows 2781 / 2782): in the 0.695
+        /// PlayerAnimationNetwork64.mrn (Assets_153.pack) the Stance_Index switch StanceSwitch|Switch1 (node 14514, control
+        /// ControlParameters|Stance_Index) has the children Stand, Kneel, Placeholder, Dance, Sit_Chair, Laydown,
+        /// <b>PlayDead</b>, AFK_States, so index 6 is the new PlayDead state (clips Biped_Core_React_Death_01 / _2, exit
+        /// Biped_Core_React_GetUp_F01; 0.589's switch had AFK_States at 6 and no PlayDead). BreatheSpeed 0 stops the
+        /// breathing; 0.695 also gave "stand" (223) BreatheSpeed 1 (row 2783), which restores it. So it is a stance like
+        /// kneel: it lasts until "stand" or another stance, and walking away ends it (<see cref="Moved"/>).
+        /// 0.589 has neither the selection nor the texts: the word is only offered to, and the pose and lines only sent to,
+        /// 0.695 clients.
+        /// </summary>
+        public const uint PlayDead = 844;
+        public const string PlayDeadWord = "playdead";
 
         /// <summary>
-        /// Movement from the client: half a metre from where a stance began ends it. The "stand" is sent once the player
-        /// has stopped (checked every half second for up to 15 s): a selection sent while the character is still moving
-        /// is ignored by the client and the stance carries on.
+        /// /playdead's chat lines (texts new in 0.695): to the player 577224 "You play dead." / 577225 "You play dead with
+        /// [*target*]."; to the others nearby 577227 "[*speaker*] plays dead." / 577226 "[*speaker*] plays dead with
+        /// [*target*]." The "with" lines are used when the player has a target (TargetBase 0x2 / 0x3 →
+        /// WorldSession.CurrentTarget) other than themselves. 577223 "Playing Dead" is the stance's label (not sent).
+        /// </summary>
+        private const uint PlayDeadSelf = 577224, PlayDeadSelfWith = 577225, PlayDeadOtherWith = 577226, PlayDeadOther = 577227;
+
+        /// <summary>
+        /// A player's current stance (a looping pose the server played: <see cref="stances"/>): the selection, where it
+        /// began (walking away from it ends it), its landscape, and the players whose clients were shown it (they are the
+        /// ones who must see the stand). <see cref="Ending"/>: the player walked out of it and the stand is waiting for
+        /// them to stop (<see cref="StandWhenStopped"/>); newcomers are no longer shown it.
+        /// </summary>
+        private sealed class Pose
+        {
+            public WorldSession Subject;
+            public uint Selection;
+            public Vector3 At;
+            public uint Zone;
+            public bool Ending;
+            public readonly HashSet<ulong> Told = new();
+        }
+
+        /// <summary>Stances by player guid (<see cref="Pose"/>), under <see cref="poseSync"/>.</summary>
+        private static readonly Dictionary<ulong, Pose> poses = new();
+        private static readonly object poseSync = new();
+
+        /// <summary>
+        /// The selections that replace the character's stance (Stance_Index): the stances and "stand". They go out as
+        /// RequestAnimationSelection with its clear-sit bool (<see cref="SelectionBody"/>), because a sit is client state
+        /// (<see cref="PositionUpdate.SittingState"/>): the client's own /sit sets the character's sitting flag, its
+        /// movement carries it to every other client, and only moving / jumping or that bool clears it on the sitting
+        /// client. AbilityPlayAnim only plays the animation: after "/sit, /stand" the player's own client showed them
+        /// standing, but the flag stayed set and went on in their movement, so any client that applied it afresh (a
+        /// newcomer, or a re-zoned viewer, from the last full movement) showed them sitting (2026-10-18). One-shot
+        /// emotes and moods don't touch the stance and keep AbilityPlayAnim.
+        /// </summary>
+        internal static bool ClearsSit(uint selection) => selection == Stand || stances.Contains(selection);
+
+        /// <summary>
+        /// Movement from the client. For the player's own stance: half a metre from where it began ends it; the "stand" is
+        /// sent once the player has stopped (checked every half second for up to 15 s): a selection sent while the
+        /// character is still moving is ignored by the client and the stance carries on. For the others' stances: a
+        /// player who comes within <see cref="ViewRange"/> of someone in a stance they were never shown is shown it once
+        /// (they were too far when it began).
         /// </summary>
         public static void Moved(WorldSession session, Vector3 position)
         {
-            if (!stanceAt.TryGetValue(session.PlayerGuid, out Vector3 start) || Vector3.Distance(start, position) <= 0.5f
-                || !stanceAt.TryRemove(session.PlayerGuid, out _))
+            // Every movement packet of every player comes here: no lock while nobody is in a stance (a racy read of the
+            // count only delays a catch-up to the next packet).
+            if (poses.Count == 0)
                 return;
-            log.Debug($"{session.CharacterName} walked out of a stance.");
-            _ = StandWhenStopped(session);
+            bool walkedOut = false;
+            List<(ulong Subject, uint Selection)> show = null;
+            lock (poseSync)
+            {
+                if (poses.Count == 0)
+                    return;
+                foreach (Pose pose in poses.Values)
+                {
+                    if (pose.Subject == session)
+                    {
+                        if (!pose.Ending && Vector3.Distance(pose.At, position) > 0.5f)
+                            pose.Ending = walkedOut = true;
+                    }
+                    else if (!pose.Ending && pose.Zone == session.ZoneId && !pose.Told.Contains(session.PlayerGuid)
+                        && Vector3.Distance(pose.Subject.Position, position) <= ViewRange)
+                    {
+                        pose.Told.Add(session.PlayerGuid);
+                        (show ??= new()).Add((pose.Subject.PlayerGuid, pose.Selection));
+                    }
+                }
+            }
+            if (show != null)
+                foreach ((ulong subject, uint selection) in show)
+                    session.EnqueueMessage(ZoneMessageOpcode.PlayerUpdateRequestAnimationSelectionWire, SelectionBody(subject, selection));
+            if (walkedOut)
+            {
+                log.Debug($"{session.CharacterName} walked out of a stance.");
+                _ = StandWhenStopped(session);
+            }
         }
 
         private static async System.Threading.Tasks.Task StandWhenStopped(WorldSession session)
@@ -66,8 +155,9 @@ namespace LandmarkEmulator.WorldServer.Game
             for (int i = 0; i < 30; i++)
             {
                 await System.Threading.Tasks.Task.Delay(500);
-                if (session.Disconnected || stanceAt.ContainsKey(session.PlayerGuid))
-                    return;                                    // gone, or started another stance
+                lock (poseSync)
+                    if (session.Disconnected || !poses.TryGetValue(session.PlayerGuid, out Pose pose) || !pose.Ending)
+                        return;                                // gone, already stood up, or started another stance
                 Vector3 now = session.Position;
                 if (Vector3.Distance(now, last) < 0.05f)
                 {
@@ -77,6 +167,98 @@ namespace LandmarkEmulator.WorldServer.Game
                 }
                 last = now;
             }
+        }
+
+        /// <summary>
+        /// Shows a stance, or "stand", on a player (<see cref="ClearsSit"/>): to the player, to everyone on the landscape
+        /// within <see cref="ViewRange"/>, and to everyone who was shown the stance it replaces (wherever they are now, so
+        /// nobody keeps a stale pose). A stance is remembered for players who meet the player later
+        /// (<see cref="IntroducePose"/>, <see cref="Moved"/>); "stand" forgets it.
+        /// </summary>
+        internal static int ShowPose(WorldSession session, uint selection, IEnumerable<WorldSession> zone)
+        {
+            var audience = new List<WorldSession> { session };
+            lock (poseSync)
+            {
+                poses.TryGetValue(session.PlayerGuid, out Pose before);
+                foreach (WorldSession p in zone)
+                    if (p != session && !p.Disconnected && (Vector3.Distance(p.Position, session.Position) <= ViewRange
+                            || (before != null && before.Told.Contains(p.PlayerGuid))))
+                        audience.Add(p);
+                if (selection == Stand)
+                    poses.Remove(session.PlayerGuid);
+                else
+                {
+                    var pose = new Pose { Subject = session, Selection = selection, At = session.Position, Zone = session.ZoneId };
+                    foreach (WorldSession p in audience)
+                        if (p != session)
+                            pose.Told.Add(p.PlayerGuid);
+                    poses[session.PlayerGuid] = pose;
+                }
+            }
+            byte[] body = SelectionBody(session.PlayerGuid, selection);
+            foreach (WorldSession viewer in audience)
+                viewer.EnqueueMessage(ZoneMessageOpcode.PlayerUpdateRequestAnimationSelectionWire, body);
+            log.Info($"{session.CharacterName}: pose {selection}{(selection == Stand ? " (stand)" : "")} shown to {audience.Count - 1} other player(s).");
+            return audience.Count - 1;
+        }
+
+        /// <summary>
+        /// A viewer was just sent a player's full character (FullCharacterDataRequest → LightweightToFullPc: zone-in, a
+        /// re-zone, coming onto the landscape): the player's stance, if they are in one, so the newcomer sees the same
+        /// pose as everyone else. One packet per introduction, whatever the distance — the full character itself is far
+        /// bigger. A client sit needs nothing here: it travels in the player's last full movement, which the
+        /// LightweightToFullPc carries (<see cref="PositionUpdate.SittingState"/>).
+        /// </summary>
+        public static void IntroducePose(WorldSession viewer, WorldSession subject)
+        {
+            uint selection = 0;
+            lock (poseSync)
+                if (viewer != subject && poses.TryGetValue(subject.PlayerGuid, out Pose pose) && !pose.Ending && pose.Zone == subject.ZoneId)
+                {
+                    pose.Told.Add(viewer.PlayerGuid);
+                    selection = pose.Selection;
+                }
+            if (selection != 0)
+                viewer.EnqueueMessage(ZoneMessageOpcode.PlayerUpdateRequestAnimationSelectionWire, SelectionBody(subject.PlayerGuid, selection));
+        }
+
+        /// <summary>Left the world: their stance is gone, and their client no longer holds anyone else's.</summary>
+        public static void Forget(WorldSession session)
+        {
+            lock (poseSync)
+            {
+                if (poses.TryGetValue(session.PlayerGuid, out Pose own) && own.Subject == session)
+                    poses.Remove(session.PlayerGuid);
+                foreach (Pose pose in poses.Values)
+                    pose.Told.Remove(session.PlayerGuid);
+            }
+        }
+
+        /// <summary>The selection of a player's current stance (0 = none, or walking out of it).</summary>
+        internal static uint StanceOf(ulong player)
+        {
+            lock (poseSync)
+                return poses.TryGetValue(player, out Pose pose) && !pose.Ending ? pose.Selection : 0;
+        }
+
+        /// <summary>
+        /// RequestAnimationSelection body (PlayerUpdate 0x26 sub 0x65, <see cref="ZoneMessageOpcode.PlayerUpdateRequestAnimationSelectionWire"/>):
+        /// u64 entity, u32 AnimationSelection, bool clear the sitting flag, u8 seated (0 = leave the client's seated byte
+        /// as it is). Ours always clears the sit (every caller replaces the stance) and never sets "seated": that byte
+        /// makes the client stand the character up by itself on the next move / jump (FUN_142ecd1d0 and the other callers
+        /// of FUN_142e93b20), which for server stances <see cref="Moved"/> does; whether live set it for its stances is
+        /// not known.
+        /// </summary>
+        internal static byte[] SelectionBody(ulong entity, uint selection, bool clearSit = true, bool seated = false)
+        {
+            var output = new List<byte>(14);
+            var w = new GamePacketWriter(output);
+            w.Write(entity);
+            w.Write(selection);
+            w.Write(clearSit);
+            w.Write(seated);
+            return output.ToArray();
         }
 
         /// <summary>
@@ -93,8 +275,7 @@ namespace LandmarkEmulator.WorldServer.Game
         /// </summary>
         public static void SendCommandList(WorldSession session)
         {
-            var names = new List<string> { "emotelist", "emote", "duel", "duelaccept", "dueldecline", "duelleave" };
-            names.AddRange(emotes.Keys);
+            List<string> names = ZoneCommandNames();
             var output = new List<byte>();
             var writer = new GamePacketWriter(output);
             writer.WriteUShort(0x44);
@@ -103,7 +284,24 @@ namespace LandmarkEmulator.WorldServer.Game
                 writer.Write(name);
             writer.Write(1u);
             session.EnqueueMessage(ZoneMessageOpcode.CommandBase, output.ToArray());
+            DynamicCommands.SendAll(session);
         }
+
+        /// <summary>
+        /// The names of the zone's CommandListPacket (source 1): "emotelist", "emote", the emote words and "playdead" (the
+        /// PlayDead stance is 0.695 only). The duel commands are world commands, added one by one after the list
+        /// (DynamicCommands).
+        /// </summary>
+        public static List<string> ZoneCommandNames()
+        {
+            var names = new List<string> { "emotelist", "emote" };
+            names.AddRange(emotes.Keys);
+            names.Add(PlayDeadWord);
+            return names;
+        }
+
+        /// <summary>The duel commands (world commands since 2026-10-16, <see cref="DynamicCommands"/>).</summary>
+        public static readonly string[] DuelCommands = { "duel", "duelaccept", "dueldecline", "duelleave" };
 
         /// <summary>
         /// Command 0x43 ClientCommandPacket (writer FUN_143316f90): a "/name args" the server registered. Body: string
@@ -128,15 +326,24 @@ namespace LandmarkEmulator.WorldServer.Game
                 return;
             }
             log.Info($"{session.CharacterName} ran command {name} {args}".TrimEnd());
+            Run(session, name, args);
+        }
+
+        /// <summary>Runs one of these commands (from the zone list, 0x43, or added one by one, 0x47).</summary>
+        public static void Run(WorldSession session, string name, string args)
+        {
             // Duels (an encounter kind; docs/encounters.md): 0.589 has no duel menu, so they start from commands.
             if (name.Equals("duel", StringComparison.OrdinalIgnoreCase))
-                Encounters.Challenge(session, args);
+                WorldChannelServices.WorldChannel.DuelChallenge(session, args);
             else if (name.Equals("duelaccept", StringComparison.OrdinalIgnoreCase) || name.Equals("dueldecline", StringComparison.OrdinalIgnoreCase))
-                Encounters.Answer(session, 0, name.Equals("duelaccept", StringComparison.OrdinalIgnoreCase));
+                WorldChannelServices.WorldChannel.DuelAnswer(session, 0, name.Equals("duelaccept", StringComparison.OrdinalIgnoreCase));
             else if (name.Equals("duelleave", StringComparison.OrdinalIgnoreCase))
-                Encounters.Leave(session, "left");
+                WorldChannelServices.WorldChannel.EncounterLeave(session, "left");
             else if (name.Equals("emotelist", StringComparison.OrdinalIgnoreCase))
-                Chat.System(session, "Emotes: /" + string.Join(", /", emotes.Keys) + ". Also /emote 0-21 for every emote clip.");
+                Chat.System(session, "Emotes: /" + string.Join(", /", emotes.Keys.Append(PlayDeadWord))
+                    + ". Also /emote 0-21 for every emote clip.");
+            else if (name.Equals(PlayDeadWord, StringComparison.OrdinalIgnoreCase))
+                PlayDeadNow(session);
             else if (name.Equals("emote", StringComparison.OrdinalIgnoreCase))
             {
                 if (int.TryParse(args, out int index) && index >= 0 && index < emoteByIndex.Length && emoteByIndex[index] != 0)
@@ -145,11 +352,34 @@ namespace LandmarkEmulator.WorldServer.Game
                     Chat.System(session, "Usage: /emote 0-21");
             }
             else if (emotes.TryGetValue(name, out uint selection))
-                PlayAnim(session, selection);
+                { PlayAnim(session, selection); Achievements.Emoted(session, selection); }   // secret emote goals 492-503 (TASKS 5.10)
         }
 
         /// <summary>How far away other players see an emote, metres.</summary>
-        private const float ViewRange = 80f;
+        public const float ViewRange = 80f;
+
+        /// <summary>
+        /// /playdead: the PlayDead stance (<see cref="PlayDead"/>) for the player and the players within
+        /// <see cref="ViewRange"/>, and its chat lines (ChatPacketFromStringId, <see cref="FromStringId"/>): the player's own
+        /// line and the others' line, "with [*target*]" when the player has someone targeted. The client fills [*speaker*]
+        /// and [*target*] from those entities (0.695 FUN_143364980 case 4: speaker, target, owner, player tokens).
+        /// </summary>
+        public static void PlayDeadNow(WorldSession session)
+        {
+            ulong target = session.CurrentTarget != session.PlayerGuid ? session.CurrentTarget : 0;
+            PlayAnim(session, PlayDead, null, includeSelf: true);
+            session.EnqueueMessage(ZoneMessageOpcode.ChatBase, FromStringId(session.PlayerGuid, target != 0 ? PlayDeadSelfWith : PlayDeadSelf, target));
+            byte[] others = FromStringId(session.PlayerGuid, target != 0 ? PlayDeadOtherWith : PlayDeadOther, target);
+            int shown = 0;
+            foreach (WorldSession other in PlayerManager.InZone(session.ZoneId))
+                if (other != session && Vector3.Distance(other.Position, session.Position) <= ViewRange
+                    && !Social.SocialServices.IgnoreCache.Ignoring(other, session))
+                {
+                    other.EnqueueMessage(ZoneMessageOpcode.ChatBase, others);
+                    shown++;
+                }
+            log.Info($"{session.CharacterName} plays dead{(target != 0 ? $" with 0x{target:X}" : "")} (line shown to {shown} player(s)).");
+        }
 
         /// <summary>The emote lines the client asks others to see: "/sit" sends Emote.SitOther "[*speaker*] sits down."</summary>
         private static readonly HashSet<uint> relayedEmoteTexts = new() { 572086 };
@@ -168,27 +398,61 @@ namespace LandmarkEmulator.WorldServer.Game
             uint text = BitConverter.ToUInt32(body, body.Length - 4);
             if (!relayedEmoteTexts.Contains(text))
                 return;
-            var output = new List<byte>();
-            var w = new GamePacketWriter(output);
-            w.WriteUShort(4);
-            w.Write(session.PlayerGuid);
-            w.Write(text);
-            w.Write(false);
-            w.Write(false);
-            w.Write(false);
-            w.Write(0u);
-            w.Write(0ul);
-            w.Write(0ul);
-            w.Write(0u);
-            byte[] packet = output.ToArray();
+            byte[] packet = FromStringId(session.PlayerGuid, text);
             int shown = 0;
             foreach (WorldSession other in PlayerManager.InZone(session.ZoneId))
-                if (other != session && Vector3.Distance(other.Position, session.Position) <= ViewRange && !Ignores.Ignoring(other, session))
+                if (other != session && Vector3.Distance(other.Position, session.Position) <= ViewRange && !Social.SocialServices.IgnoreCache.Ignoring(other, session))
                 {
                     other.EnqueueMessage(ZoneMessageOpcode.ChatBase, packet);
                     shown++;
                 }
             log.Info($"{session.CharacterName}: emote text {text} shown to {shown} player(s).");
+        }
+
+        /// <summary>
+        /// ChatPacketFromStringId body (ChatBase 0x13 sub 4, reader FUN_1432a9950; 0.695 reader FUN_143356860): {u16 4,
+        /// u64 speaker, u32 text id, bool emote (+0x24), bool (+0x25), bool bubble (+0x26), u32 bubble colour (+0x28),
+        /// u64 target (+0x38), u64 owner (+0x30), u32 elapsed (+0x40)}. The client fills [*speaker*] / [*target*] /
+        /// [*owner*] / [*player*] from those entities and prints nothing when it doesn't know the speaker. How the 0.695
+        /// handler (FUN_143364980 case 4) presents the line:
+        /// <list type="bullet">
+        /// <item>bubble (+0x26) set: an overhead bubble (FUN_1433ff200) in the colour u32 (0 white, 1 red, 2 yellow,
+        ///   3 green, 4 blue), "name: text" when the emote flag is clear; then nothing in chat when the emote flag is set;</item>
+        /// <item>emote flag (+0x24) <b>clear</b>: FUN_14336da10 → chat add FUN_142ca7920 on <b>channel 0 (Say)</b>, i.e.
+        ///   558679 " [[*player*]] says: [*message*]" — what /playdead first showed in game (2026-10-17);</item>
+        /// <item>emote flag <b>set</b> (bubble clear): FUN_14336cb40 → FUN_142ca7920 on <b>channel 4 (Emote)</b>, only
+        ///   when the local player is within the emote range of the speaker's position (a client setting looked up by
+        ///   hash). The +0x25 bool is passed through to the chat add as its 4th argument in both paths (left false).</item>
+        /// </list>
+        /// Every caller here sends an emote line (/playdead, the /sit relay, a Story Node's "Announce Emotes in Chat"), so
+        /// <paramref name="emote"/> defaults to true.
+        /// </summary>
+        private static byte[] FromStringId(ulong speaker, uint text, ulong target = 0, bool emote = true)
+        {
+            var output = new List<byte>();
+            var w = new GamePacketWriter(output);
+            w.WriteUShort(4);
+            w.Write(speaker);
+            w.Write(text);
+            w.Write(emote);
+            w.Write(false);
+            w.Write(false);
+            w.Write(0u);
+            w.Write(target);
+            w.Write(0ul);
+            w.Write(0u);
+            return output.ToArray();
+        }
+
+        /// <summary>
+        /// An emote line spoken by an entity that is not a player (a story creature's spawner for a Story Node's
+        /// "Announce Emotes in Chat", StoryTools): one packet for all the given viewers.
+        /// </summary>
+        public static void ShowLine(IEnumerable<WorldSession> viewers, ulong speaker, uint text)
+        {
+            byte[] packet = FromStringId(speaker, text);
+            foreach (WorldSession viewer in viewers)
+                viewer.EnqueueMessage(ZoneMessageOpcode.ChatBase, packet);
         }
 
         /// <summary>
@@ -252,11 +516,12 @@ namespace LandmarkEmulator.WorldServer.Game
 
         private static void PlayAnim(WorldSession session, uint selection, Vector3? facing, bool includeSelf)
         {
+            if (ClearsSit(selection))
+            {
+                ShowPose(session, selection, PlayerManager.InZone(session.ZoneId));
+                return;
+            }
             byte[] body = AnimBody(session, selection, facing);
-            if (stances.Contains(selection))
-                stanceAt[session.PlayerGuid] = session.Position;
-            else if (selection == Stand)
-                stanceAt.TryRemove(session.PlayerGuid, out _);
             // The player's own client gets no facing point: the facing turns the character, and on its own screen that
             // turned the player (and the camera) towards each swing while they were moving.
             byte[] ownBody = includeSelf && facing != null ? AnimBody(session, selection, null) : body;

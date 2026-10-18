@@ -13,6 +13,9 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
     {
         protected static readonly ILogger log = LogManager.GetCurrentClassLogger();
 
+        /// <summary>The cells and their versions come from the Environment Server; this handler decides the replies.</summary>
+        private static Game.Terrain.IEnvironmentServer Env => Game.Terrain.EnvironmentServer.Instance;
+
         /// <summary>
         /// Requested cells the server has changed are sent from the terrain store; the rest are reported up to date so
         /// the client keeps its generated terrain. Leaving requests unanswered makes the client stall until they time out.
@@ -21,7 +24,7 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
         public static void HandleClientCellRequest(WorldSession session, TerrainCellClientCellRequest request)
         {
             Answer(session, request.Cells.Select(c => c.CellId).ToList(),
-                request.Cells.ToDictionary(c => c.CellId, c => new[] { (uint)c.Unknown1, (uint)(c.Unknown1 >> 32), (uint)c.Unknown2 }));
+                request.Cells.ToDictionary(c => c.CellId, c => new[] { c.LayerVersions[0], c.LayerVersions[1], c.LayerVersions[2] }));
         }
 
         /// <summary>
@@ -36,7 +39,7 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
             // more requests timed out, building stalled (the client refuses edits while a fetch is pending) and
             // the original ground showed until the data landed (2026-10-13). The client applies late cell data, so
             // a cell sent recently at the same version is left to arrive.
-            uint version = Game.Terrain.TerrainEdits.CurrentVersion(request.CellId, session.ZoneId);
+            uint version = Env.CurrentVersion(request.CellId, session.ZoneId);
             lock (sentCells)
                 if (sentCells.TryGetValue(session, out var sent) && sent.TryGetValue(request.CellId, out var last)
                     && last.Version == version && System.Environment.TickCount64 - last.At < ResendAfterMs)
@@ -57,46 +60,75 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
             uint zone = session.ZoneId;
             bool home = session.OnHomeContinent;   // the captured store holds home-continent cells only
             var reply = new TerrainCellUpToDateCells();
+            // First the decisions (version checks only), then the server's bodies in one fetch — one round trip to a
+            // remote Environment Server for the whole request (in-process: the same calls as before).
+            var send = new List<(ulong Cell, bool Always)>();
             foreach (ulong cellId in cells)
             {
                 uint[] mine = held != null && held.TryGetValue(cellId, out uint[] h) ? h : null;
-                bool server = Game.Terrain.TerrainEdits.Has(cellId, zone);
+                bool server = Env.Has(cellId, zone);
                 if (mine != null && (server || mine.Any(v => v != 0)))
                 {
                     // The client's copy is current in every layer: "up to date", nothing to send (live's answer).
                     // A layer the client holds but the server doesn't (a stale cached copy) is sent back empty.
                     bool current = true;
                     for (uint layer = 0; layer < Game.Terrain.TerrainEdits.LayerCount && current; layer++)
-                        current = mine[layer] == Game.Terrain.TerrainEdits.LayerVersion(cellId, zone, layer);
+                        current = mine[layer] == Env.LayerVersion(cellId, zone, layer);
                     if (current)
                     {
                         reply.CellIds.Add(cellId);
                         continue;
                     }
-                    Game.Terrain.TerrainEdits.SampleVersion(cellId, zone, mine);
-                    if (!server && !(home && Game.Terrain.TerrainStore.Get(cellId) != null))
+                    Env.SampleVersion(cellId, zone, mine);
+                    if (!server && !(home && Env.HasCapturedCell(cellId)))
                     {
-                        session.EnqueueMessage(ZoneMessageOpcode.TerrainCellCellsUpdate,
-                            Game.Terrain.TerrainEdits.BuildUpdate(cellId, zone, always: true));
+                        send.Add((cellId, true));
                         continue;
                     }
                 }
                 if (server)
-                {
-                    session.EnqueueMessage(ZoneMessageOpcode.TerrainCellCellsUpdate, Game.Terrain.TerrainEdits.BuildUpdate(cellId, zone));
-                    uint version = Game.Terrain.TerrainEdits.CurrentVersion(cellId, zone);
-                    lock (sentCells)
-                        sentCells.GetOrCreateValue(session)[cellId] = (version, System.Environment.TickCount64);
-                }
-                else if (home && Game.Terrain.TerrainStore.Get(cellId) != null)
+                    send.Add((cellId, false));
+                else if (home && Env.HasCapturedCell(cellId))
                     stored.Add(cellId);
                 else
                     reply.CellIds.Add(cellId);
             }
+            if (send.Count > 0)
+            {
+                List<ulong> plain = send.Where(s => !s.Always).Select(s => s.Cell).ToList(),
+                    empty = send.Where(s => s.Always).Select(s => s.Cell).ToList();
+                var bodies = new Dictionary<ulong, byte[]>();
+                IReadOnlyList<byte[]> fetched = Env.BuildCellsUpdates(plain, zone);
+                for (int i = 0; i < plain.Count; i++)
+                    bodies[plain[i]] = fetched[i];
+                fetched = Env.BuildCellsUpdates(empty, zone, always: true);
+                for (int i = 0; i < empty.Count; i++)
+                    bodies[empty[i]] = fetched[i];
+                foreach ((ulong cellId, bool always) in send)
+                {
+                    byte[] body = bodies.GetValueOrDefault(cellId);
+                    if (body == null)
+                    {
+                        // A remote Environment Server away and the body not cached (terrain-service.md §6): "up to date"
+                        // now — the client keeps what it has instead of stalling 6 s and blocking its build tool — and a
+                        // manifest note when the service is back, so it fetches the cell then.
+                        reply.CellIds.Add(cellId);
+                        if (!always && !Env.Available)
+                            Game.Terrain.ZoneTerrain.OweRefetch(session, cellId);
+                        continue;
+                    }
+                    session.EnqueueMessage(ZoneMessageOpcode.TerrainCellCellsUpdate, body);
+                    if (always)
+                        continue;
+                    uint version = Env.CurrentVersion(cellId, zone);
+                    lock (sentCells)
+                        sentCells.GetOrCreateValue(session)[cellId] = (version, System.Environment.TickCount64);
+                }
+            }
 
             log.Debug($"Terrain cell request for {cells.Count} cell(s): {stored.Count} from the store.");
             if (stored.Count > 0)
-                session.EnqueueMessage(ZoneMessageOpcode.TerrainCellCellsUpdate, Game.Terrain.TerrainStore.BuildCellsUpdate(stored));
+                session.EnqueueMessage(ZoneMessageOpcode.TerrainCellCellsUpdate, Env.BuildCapturedCellsUpdate(stored));
             if (reply.CellIds.Count > 0)
                 session.EnqueueMessage(reply);
         }

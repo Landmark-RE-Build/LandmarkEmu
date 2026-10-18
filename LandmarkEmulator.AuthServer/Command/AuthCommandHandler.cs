@@ -1,6 +1,7 @@
 ﻿using LandmarkEmulator.Shared.Command;
 using LandmarkEmulator.Shared.Database;
 using LandmarkEmulator.Shared.Network.Cryptography;
+using LandmarkEmulator.WebAPI;
 using NLog;
 using System;
 
@@ -36,13 +37,28 @@ namespace LandmarkEmulator.AuthServer.Command
                 Write($"{{=Red}}Command {parameters[0]} not recognised.");
         }
 
+        /// <summary>
+        /// The server owner's own account tool: the sign-up's name and password rules (WebAPI AccountRules, the same as
+        /// /srp/register and /create) apply, but not REGISTRATION_OPEN or the hourly limits, so the owner can still make
+        /// accounts while sign-ups are closed. Until 2026-10-18 it only checked that the name was free.
+        /// </summary>
         private string HandleAccountCreate(string username, string password)
         {
+            if (AccountRules.Check(username, password) is string broken)
+                return $"{{=Red}}{broken}";
             if (DatabaseManager.Instance.AuthDatabase.AccountExists(username))
                 return $"{{=Orange}}Username already exists. Please try another.";
 
             var (s, v) = PasswordProvider.GenerateSaltAndVerifier(password);
-            DatabaseManager.Instance.AuthDatabase.CreateAccount(username, s, v);
+            try
+            {
+                DatabaseManager.Instance.AuthDatabase.CreateAccount(username, s, v);
+            }
+            catch (InvalidOperationException)
+            {
+                // Registered at the same moment by a sign-up (AuthDatabase.CreateAccount checks again under its lock).
+                return $"{{=Orange}}Username already exists. Please try another.";
+            }
             return $"{{=Green}}Account {username} successfully created!";
         }
 

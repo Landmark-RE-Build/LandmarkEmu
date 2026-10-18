@@ -144,7 +144,7 @@ bool  +0xbd
 u32   +0xc0
 bool  +0xc4
 FUN_142d66660 -> +0xf8
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
 bool  +0xc5
 bool  +0xc6
@@ -153,10 +153,10 @@ bool  +0xca
 bool  +0xcb
 bool  +0xcc
 FUN_142b9b410 -> +0x138
-  i32   iVar8
+  i32   <local>
     [loop 1: list elements]
-  u32   uVar5
-  u32   *puVar4
+  u32   <local>
+  u32   <element>
 bool  +0xce
 u32   +0xd0
 u32   +0xd4
@@ -175,7 +175,7 @@ bool  +0xf0
 bool  +0xf1
 bool  +0xf2
 FUN_142d66700 -> +0x118
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
 bool  +0xf3
 ```
@@ -277,22 +277,22 @@ u32   +0x48
 bool  +0x4c
 u32   +0x50
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 u32   +0x54
 u64   +0x70
 u64   +0x78
 u32   +0x80
   [loop 2: list elements]
-u32   *puVar1
+u32   <element>
 FUN_142b68fd0 -> +0xa0
     [loop 1: list elements]
-  u32   *(undefined4 *)(param_2 + lVar1 * 4)
+  u32   <computed>
 u32   +0xb0
 u64   +0xb8
 u32   +0xc0
 FUN_142b68fd0 -> +0xf0
     [loop 1: list elements]
-  u32   *(undefined4 *)(param_2 + lVar1 * 4)
+  u32   <computed>
 u32   +0x110
 u32   +0x114
 u32   +0x118
@@ -300,7 +300,7 @@ u32   +0x11c
 u32   +0x120
 FUN_142b68fd0 -> +0x100
     [loop 1: list elements]
-  u32   *(undefined4 *)(param_2 + lVar1 * 4)
+  u32   <computed>
 u32   +0xd4
 u32   +0xc4
 u32   +0xd8
@@ -343,7 +343,7 @@ u32   +0x1c
 u64   +0x20
 u32   +0x28
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 ```
 
 ## Abilities::AbilityPacketPlayVfx
@@ -379,13 +379,13 @@ u32   +0x3c
 u32   +0x40
 FUN_142d66360 -> +0x50
     [loop 1: list elements]
-  u32   *(undefined4 *)(param_2 + lVar2 * 4)
+  u32   <computed>
     [loop 2: list elements]
-  u32   *puVar1
+  u32   <element>
     [loop 3: list elements]
-  u32   *puVar1
+  u32   <element>
     [loop 4: list elements]
-  u32   *puVar1
+  u32   <element>
 ```
 
 ## Abilities::AbilityPacketTargeterEnd
@@ -413,13 +413,13 @@ u32   +0x44
 u32   +0x48
 FUN_142d66360 -> +0x50
     [loop 1: list elements]
-  u32   *(undefined4 *)(param_2 + lVar2 * 4)
+  u32   <computed>
     [loop 2: list elements]
-  u32   *puVar1
+  u32   <element>
     [loop 3: list elements]
-  u32   *puVar1
+  u32   <element>
     [loop 4: list elements]
-  u32   *puVar1
+  u32   <element>
 FUN_142d660d0 -> +0x90
   bool  +0x90
   u32   +0x94
@@ -439,13 +439,13 @@ u32   +0x3c
 u32   +0x40
 FUN_142d66360 -> +0x50
     [loop 1: list elements]
-  u32   *(undefined4 *)(param_2 + lVar2 * 4)
+  u32   <computed>
     [loop 2: list elements]
-  u32   *puVar1
+  u32   <element>
     [loop 3: list elements]
-  u32   *puVar1
+  u32   <element>
     [loop 4: list elements]
-  u32   *puVar1
+  u32   <element>
 ```
 
 ## Abilities::AbilityPacketUpdateEffect
@@ -547,7 +547,7 @@ u64   +0x28
 - FUN_142d993f0
 ```
 u32   +0x20
-i32   iVar2
+i32   <local>
   [loop 1: list elements]
 ```
 
@@ -639,7 +639,7 @@ FUN_143184930 -> +0x20
   u32   +0x110
   str   +0x118
   FUN_143188ec0 -> +0x158
-    i32   iVar2
+    i32   <local>
       [loop 1: list elements]
 u32   +0x18
 ```
@@ -928,7 +928,7 @@ u32   +0x14
 - FUN_142fdc1c0
 ```
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 u32   +0x24
 str   +0x28
 u64   +0x40
@@ -1000,7 +1000,7 @@ u64   +0x40
 ```
 u8    +0x18
 Stream_ReadUInt2BitLength -> +0x1c
-  u8    *(byte *)param_2
+  u8    <computed>
   u8    +0x1d
   u8    +0x1d
   u8    +0x1e
@@ -1052,7 +1052,7 @@ u64   +0x28
 u16   +0x8
 u8    +0x10
 u32   +0x18
-u32   *puVar1
+u32   <element>
 ```
 
 ## BugSubmissionPacketAddBug
@@ -1068,9 +1068,9 @@ u32   *puVar1
 u16   +0x8
 u8    +0x10
 FUN_142b9afe0 -> +0x18
-  i32   iVar5
+  i32   <local>
     [loop 1: list elements]
-  u32   *puVar2
+  u32   <element>
 u32   +0x30
 ```
 
@@ -1177,10 +1177,10 @@ u16   +0x8
 u8    +0x10
 bool  +0x18
 FUN_142d04200 -> +0x20
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
 FUN_142d04900 -> +0x40
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
 ```
 
@@ -1210,7 +1210,7 @@ bool  +0x2c
 u16   +0x8
 u8    +0x10
 u64   +0x18
-i32   iVar2
+i32   <local>
   [loop 1: list elements]
 ```
 
@@ -1261,7 +1261,7 @@ u32   +0x20
 u16   +0x8
 u8    +0x10
 u64   +0x18
-i32   iVar3
+i32   <local>
 ```
 
 ## ClaimsPacketIdRequestClaimsByOwner
@@ -1365,7 +1365,7 @@ u64   +0x38
 u16   +0x8
 u8    +0x10
 u64   +0x18
-i32   iVar3
+i32   <local>
   [loop 1: list elements]
 FUN_142cffa10 -> +0x0
   u32   +0x0
@@ -1463,9 +1463,9 @@ u32   +0x44
 ```
 u16   +0x8
 i16   +0x10
-i32   iVar3
+i32   <local>
 FUN_142ba3190 -> +0x28
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
 u32   +0x4c
 u32   +0x48
@@ -1494,7 +1494,7 @@ u32   +0x24
 u16   +0x8
 i16   +0x10
 u32   +0x18
-i32   iVar3
+i32   <local>
 ```
 
 ## ClientUpdatePacketAddProfileAbilitySetApl
@@ -1503,7 +1503,7 @@ i32   iVar3
 ```
 u16   +0x8
 i16   +0x10
-i32   iVar3
+i32   <local>
 ```
 
 ## ClientUpdatePacketCoinCount
@@ -1552,7 +1552,7 @@ u32   +0x1c
 ```
 u16   +0x8
 i16   +0x10
-i32   iVar3
+i32   <local>
 ```
 
 ## ClientUpdatePacketDamageInfo
@@ -1601,7 +1601,7 @@ u32   +0x1c
 ```
 u16   +0x8
 i16   +0x10
-i32   iVar3
+i32   <local>
 ```
 
 ## ClientUpdatePacketItemDelete
@@ -1635,7 +1635,7 @@ u32   +0x1c
 u16   +0x8
 i16   +0x10
 Stream_ReadUInt2BitLength -> +0x18
-  u8    *(byte *)param_2
+  u8    <computed>
   u8    +0x19
   u8    +0x19
   u8    +0x1a
@@ -1712,7 +1712,7 @@ u32   +0x1c
 ```
 u16   +0x8
 i16   +0x10
-i32   iVar2
+i32   <local>
   [loop 1: list elements]
 ```
 
@@ -1738,9 +1738,9 @@ u32   +0x24
 u16   +0x8
 i16   +0x10
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
   [loop 2: list elements]
-u32   *puVar1
+u32   <element>
 u8    +0x40
 bool  +0x41
 bool  +0x42
@@ -1765,9 +1765,9 @@ u32   +0x50
 u16   +0x8
 i16   +0x10
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
   [loop 2: list elements]
-u32   *puVar1
+u32   <element>
 u8    +0x40
 ```
 
@@ -1779,9 +1779,9 @@ u16   +0x8
 i16   +0x10
 u64   +0x18
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
   [loop 2: list elements]
-u32   *puVar1
+u32   <element>
 bool  +0x40
 u8    +0x41
 ```
@@ -1792,7 +1792,7 @@ u8    +0x41
 ```
 u16   +0x8
 i16   +0x10
-i32   iVar3
+i32   <local>
 ```
 
 ## ClientUpdatePacketUpdateStat
@@ -1863,7 +1863,7 @@ u64   +0x18
 FUN_1434aff40 -> +0x38
   u64   +0x38
   u64   +0x40
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
 ```
 
@@ -1878,13 +1878,13 @@ u16   +0x8
 i16   +0x10
 u32   +0x18
 u64   +0x20
-u32   *puVar1
-u64   *(undefined8 *)(puVar1 + 2)
-u32   puVar1[4]
-u64   *(undefined8 *)(puVar1 + 6)
-u32   puVar1[0x3a]
-u32   puVar1[0x3b]
-bool  *(bool *)(puVar1 + 0x3c)
+u32   <element>
+u64   <computed>
+u32   <computed>
+u64   <computed>
+u32   <computed>
+u32   <computed>
+bool  <computed>
 ```
 
 ## CombatPacketAttackAttackerMissed
@@ -1993,7 +1993,7 @@ bool  +0x20
 u16   +0x8
 i16   +0x10
 FUN_142ba1df0 -> +0x20
-  i32   iVar3
+  i32   <local>
     [loop 1: list elements]
   str   +0x20
 u32   +0x38
@@ -2058,7 +2058,7 @@ u32   +0x38
 ```
 u16   +0x8
 i16   +0x10
-i32   iVar2
+i32   <local>
   [loop 1: list elements]
 ```
 
@@ -2097,7 +2097,7 @@ FUN_1432d7df0 -> +0x20
   u64   +0x20
   bool  +0x28
   FUN_1432db1f0 -> +0x50
-    i32   iVar3
+    i32   <local>
       [loop 1: list elements]
     FUN_1432d7cc0 -> +0x50
       u32   +0x50
@@ -2111,10 +2111,10 @@ FUN_1432d7df0 -> +0x20
   bool  +0x48
   bool  +0x49
   FUN_1432db4b0 -> +0x230
-    i32   iVar5
+    i32   <local>
       [loop 1: list elements]
     str   +0x230
-    u32   *(undefined4 *)(lVar4 + 0x18)
+    u32   <computed>
 bool  +0x5d0
 ```
 
@@ -2141,7 +2141,7 @@ u16   +0x8
 i16   +0x10
 u64   +0x20
 FUN_1432db390 -> +0x30
-  i32   iVar3
+  i32   <local>
     [loop 1: list elements]
   FUN_1432d8d60 -> +0x30
     str   +0x30
@@ -2149,7 +2149,7 @@ FUN_1432db390 -> +0x30
     u32   +0x4c
 u32   +0x28
 FUN_1432db390 -> +0x30
-  i32   iVar3
+  i32   <local>
     [loop 1: list elements]
   FUN_1432d8d60 -> +0x30
     str   +0x30
@@ -2173,7 +2173,7 @@ u64   +0x28
 ```
 u16   +0x8
 i16   +0x10
-i32   iVar3
+i32   <local>
 ```
 
 ## CommandPacketItemDefinitionRequest
@@ -2185,7 +2185,7 @@ i32   iVar3
 ```
 u16   +0x8
 i16   +0x10
-i32   iVar3
+i32   <local>
 ```
 
 ## CommandPacketMoveAndInteract
@@ -2195,7 +2195,7 @@ i32   iVar3
 u16   +0x8
 i16   +0x10
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 u64   +0x30
 ```
 
@@ -2280,11 +2280,11 @@ i16   +0x10
 u64   +0x20
 bool  +0x28
 FUN_1432db2d0 -> +0x30
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
 bool  +0x29
 FUN_1432db2d0 -> +0x30
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
 ```
 
@@ -2338,15 +2338,15 @@ u64   +0x28
 bool  +0x48
 u32   +0x4c
 FUN_1432dada0 -> +0x30
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
   [loop 2: list elements]
-u32   *puVar1
+u32   <element>
 bool  +0x70
   [loop 3: list elements]
-u32   *puVar1
+u32   <element>
 u32   +0x90
 bool  +0x94
 bool  +0x95
@@ -2390,7 +2390,7 @@ u32   +0x9c
 ```
 u16   +0x8
 i16   +0x10
-i32   iVar2
+i32   <local>
   [loop 1: list elements]
 bool  +0x40
 ```
@@ -2549,7 +2549,7 @@ bool  +0x1c
 ```
 u16   +0x8
 u32   +0x10
-i32   iVar3
+i32   <local>
   [loop 1: list elements]
 FUN_142e91fb0 -> +0x0
   u32   +0x0
@@ -2648,16 +2648,16 @@ u32   +0x18
 ```
 u16   +0x8
 FUN_142b9b410 -> +0x18
-  i32   iVar8
+  i32   <local>
     [loop 1: list elements]
-  u32   uVar5
-  u32   *puVar4
+  u32   <local>
+  u32   <element>
 u32   +0x10
 FUN_142b9b410 -> +0x18
-  i32   iVar8
+  i32   <local>
     [loop 1: list elements]
-  u32   uVar5
-  u32   *puVar4
+  u32   <local>
+  u32   <element>
 ```
 
 ## CreateLobbyGamePacket
@@ -2723,7 +2723,7 @@ FUN_142b9b410 -> +0x18
 u16   +0x8
 i16   +0x10
 u64   +0x18
-i32   iVar2
+i32   <local>
   [loop 1: list elements]
 ```
 
@@ -2750,13 +2750,13 @@ u16   +0x8
 i16   +0x10
 u64   +0x18
 FUN_142b9b0b0 -> +0x20
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
-  u32   *puVar3
+  u32   <element>
 FUN_142b9b0b0 -> +0x40
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
-  u32   *puVar3
+  u32   <element>
 ```
 
 ## EncounterMatchmaking::RemoveParticipantFromQueueResponsePacket
@@ -2824,7 +2824,7 @@ FUN_142b86260 -> +0x0
   u32   +0xc
   u32   +0x10
 FUN_142e363b0 -> +0x0
-  i32   iVar4
+  i32   <local>
     [loop 1: list elements]
   FUN_142e35f40 -> +0x0
     u32   +0x0
@@ -3049,7 +3049,7 @@ u32   +0x20
 u32   +0x24
 u32   +0x28
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 ```
 
 ## Groups::GroupPacketJoin
@@ -3095,7 +3095,7 @@ u32   *puVar1
 ```
 u16   +0x8
 i16   +0x10
-i32   iVar2
+i32   <local>
   [loop 1: list elements]
 ```
 
@@ -3149,10 +3149,10 @@ u32   +0x84
 ```
 u16   +0x8
 i16   +0x10
-i32   iVar2
+i32   <local>
   [loop 1: list elements]
 FUN_142e48d10 -> +0x20
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
   str   +0x20
 ```
@@ -3189,10 +3189,10 @@ str   +0x50
 ```
 u16   +0x8
 i16   +0x10
-i32   iVar2
+i32   <local>
   [loop 1: list elements]
 FUN_142e48d10 -> +0x20
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
   str   +0x20
 ```
@@ -3275,9 +3275,9 @@ u8    +0xe0
 u16   +0x8
 i16   +0x10
 FUN_142e48c20 -> +0x18
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
-  u32   *puVar5
+  u32   <element>
 u64   +0x38
 ```
 
@@ -3328,7 +3328,7 @@ u64   +0x18
 bool  +0x20
 str   +0x28
 FUN_142e48410 -> +0x448
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
   str   +0x448
   str   +0x448
@@ -3368,7 +3368,7 @@ FUN_142e46d10 -> +0x20
   u32   +0x74
   str   +0x58
   u32   +0x78
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
   str   +0x20
   u32   +0xb8
@@ -3420,9 +3420,9 @@ u8    +0x30
 - FUN_142b86630
 ```
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
   [loop 2: list elements]
-u32   *puVar1
+u32   <element>
 u32   +0x40
 u32   +0x44
 bool  +0x48
@@ -3466,7 +3466,7 @@ u8    +0x10
 u64   +0x18
 u32   +0x20
 FUN_143671050 -> +0x28
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
 u32   +0x170
 ```
@@ -3490,10 +3490,10 @@ u32   +0x170
 ```
 u16   +0x8
 u32   +0x10
-i32   iVar10
+i32   <local>
   [loop 1: list elements]
-i32   iVar6
-i32   iVar6
+i32   <local>
+i32   <local>
 ```
 
 ## InstancedGameEventPacket
@@ -3557,7 +3557,7 @@ u64   +0x18
 bool  +0x20
 bool  +0x21
 FUN_143429c80 -> +0x28
-  i32   iVar3
+  i32   <local>
     [loop 1: list elements]
   FUN_1434282f0 -> +0x28
     u32   +0x28
@@ -3698,7 +3698,7 @@ u32   +0x38
 ```
 u16   +0x8
 i16   +0x10
-i32   iVar3
+i32   <local>
 ```
 
 ## InventoryPacketEquipByGuid
@@ -3743,22 +3743,22 @@ FUN_142e78e10 -> +0x18
   u32   +0x24
   u32   +0x28
   FUN_142b9afe0 -> +0x30
-    i32   iVar5
+    i32   <local>
       [loop 1: list elements]
-    u32   *puVar2
+    u32   <element>
   FUN_142b9afe0 -> +0x48
-    i32   iVar5
+    i32   <local>
       [loop 1: list elements]
-    u32   *puVar2
+    u32   <element>
   FUN_142b9afe0 -> +0x60
-    i32   iVar5
+    i32   <local>
       [loop 1: list elements]
-    u32   *puVar2
+    u32   <element>
   FUN_142b9b0b0 -> +0x78
-    i32   iVar2
+    i32   <local>
       [loop 1: list elements]
-    u32   *puVar3
-  i32   iVar2
+    u32   <element>
+  i32   <local>
   u32   +0x10c
   u32   +0x110
   u32   +0x114
@@ -3766,7 +3766,7 @@ FUN_142e78e10 -> +0x18
   u32   +0x12c
   u32   +0x130
   FUN_142e79720 -> +0xc0
-    i32   iVar2
+    i32   <local>
       [loop 1: list elements]
   u64   +0x120
   u32   +0x128
@@ -3780,7 +3780,7 @@ FUN_142e78e10 -> +0x18
   FUN_142e792c0 -> +0x98
     bool  +0x98
     FUN_142e79650 -> +0xa0
-      i32   iVar3
+      i32   <local>
         [loop 1: list elements]
       FUN_142e78af0 -> +0xa0
         u32   +0xa0
@@ -3789,7 +3789,7 @@ FUN_142e78e10 -> +0x18
         u32   +0xac
     u32   +0x9c
     FUN_142e79650 -> +0xa0
-      i32   iVar3
+      i32   <local>
         [loop 1: list elements]
       FUN_142e78af0 -> +0xa0
         u32   +0xa0
@@ -3800,7 +3800,7 @@ FUN_142e78e10 -> +0x18
   str   +0x178
   u32   +0x190
 FUN_142e79830 -> +0x1b0
-  i32   iVar3
+  i32   <local>
     [loop 1: list elements]
   FUN_142e78e10 -> +0x1b0
     u32   +0x1b0
@@ -3809,22 +3809,22 @@ FUN_142e79830 -> +0x1b0
     u32   +0x1bc
     u32   +0x1c0
     FUN_142b9afe0 -> +0x1c8
-      i32   iVar5
+      i32   <local>
         [loop 1: list elements]
-      u32   *puVar2
+      u32   <element>
     FUN_142b9afe0 -> +0x1e0
-      i32   iVar5
+      i32   <local>
         [loop 1: list elements]
-      u32   *puVar2
+      u32   <element>
     FUN_142b9afe0 -> +0x1f8
-      i32   iVar5
+      i32   <local>
         [loop 1: list elements]
-      u32   *puVar2
+      u32   <element>
     FUN_142b9b0b0 -> +0x210
-      i32   iVar2
+      i32   <local>
         [loop 1: list elements]
-      u32   *puVar3
-    i32   iVar2
+      u32   <element>
+    i32   <local>
     u32   +0x2a4
     u32   +0x2a8
     u32   +0x2ac
@@ -3832,7 +3832,7 @@ FUN_142e79830 -> +0x1b0
     u32   +0x2c4
     u32   +0x2c8
     FUN_142e79720 -> +0x258
-      i32   iVar2
+      i32   <local>
         [loop 1: list elements]
     u64   +0x2b8
     u32   +0x2c0
@@ -3846,7 +3846,7 @@ FUN_142e79830 -> +0x1b0
     FUN_142e792c0 -> +0x230
       bool  +0x230
       FUN_142e79650 -> +0x238
-        i32   iVar3
+        i32   <local>
           [loop 1: list elements]
         FUN_142e78af0 -> +0x238
           u32   +0x238
@@ -3855,7 +3855,7 @@ FUN_142e79830 -> +0x1b0
           u32   +0x244
       u32   +0x234
       FUN_142e79650 -> +0x238
-        i32   iVar3
+        i32   <local>
           [loop 1: list elements]
         FUN_142e78af0 -> +0x238
           u32   +0x238
@@ -4070,7 +4070,7 @@ u32   +0x1c
 ```
 u16   +0x8
 i16   +0x10
-i32   iVar3
+i32   <local>
 ```
 
 ## Login::ExternalPackets::BasePacket
@@ -4089,7 +4089,7 @@ i32   iVar3
 u8    +0x8
 u64   +0x10
 u32   +0x18
-i32   iVar3
+i32   <local>
 ```
 
 ## Login::ExternalPackets::PacketCharacterDeleteRequest
@@ -4103,7 +4103,7 @@ u8    +0x8
 u64   +0x10
 u64   +0x18
 u32   +0x20
-i32   iVar3
+i32   <local>
 ```
 
 ## Login::ExternalPackets::PacketCharacterLoginRequest
@@ -4123,7 +4123,7 @@ u8    +0x8
 u64   +0x10
 u64   +0x18
 u32   +0x28
-i32   iVar3
+i32   <local>
 ```
 
 ## Login::ExternalPackets::PacketCharacterTransferServerRequest
@@ -4160,7 +4160,7 @@ i32   iVar3
 ```
 u8    +0x8
 u64   +0x10
-i32   iVar3
+i32   <local>
 ```
 
 ## LootPinataPacketNotifyOwnerlessLootClaimed
@@ -4209,7 +4209,7 @@ u8    +0x10
 u32   +0x18
 u32   +0x1c
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 u32   +0x2c
 u32   +0x30
 u32   +0x34
@@ -4415,7 +4415,7 @@ u16   +0x8
 u8    +0x10
 u64   +0x18
 u32   +0x20
-i32   iVar3
+i32   <local>
   [loop 1: list elements]
 FUN_142ea38d0 -> +0x0
   u64   +0x0
@@ -4426,9 +4426,9 @@ FUN_142ea38d0 -> +0x0
   u32   +0x24
   u32   +0x28
     [loop 1: list elements]
-  u32   *(undefined4 *)puVar1
+  u32   <computed>
     [loop 2: list elements]
-  u32   *(undefined4 *)param_1
+  u32   <computed>
 ```
 
 ## ObjectScriptingPacketPotentialLinkRequest
@@ -4516,19 +4516,19 @@ FUN_142ea3840 -> +0x0
   u32   +0x0
   u32   +0x4
   u32   +0x8
-i32   iVar3
+i32   <local>
 FUN_142ea50e0 -> +0x40
-  i32   iVar4
+  i32   <local>
     [loop 1: list elements]
   FUN_142ea3b00 -> +0x40
     u32   +0x40
     u32   +0x44
     u32   +0x48
 FUN_142ea4fd0 -> +0x58
-  i32   iVar5
+  i32   <local>
     [loop 1: list elements]
-  u32   *puVar2
-  u32   puVar2[1]
+  u32   <element>
+  u32   <computed>
 ```
 
 ## ObjectScriptingPacketSupportedActionsRequest
@@ -4542,7 +4542,7 @@ u16   +0x8
 u8    +0x10
 u64   +0x18
 u32   +0x20
-i32   iVar3
+i32   <local>
   [loop 1: list elements]
 FUN_142ea3840 -> +0x0
   u32   +0x0
@@ -4561,7 +4561,7 @@ u16   +0x8
 u8    +0x10
 u64   +0x18
 u32   +0x20
-i32   iVar3
+i32   <local>
   [loop 1: list elements]
 FUN_142ea3b00 -> +0x0
   u32   +0x0
@@ -4633,7 +4633,7 @@ u8    +0x10
 u32   +0x18
 u64   +0x20
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 u32   +0x28
 u32   +0x40
 u32   +0x44
@@ -4651,7 +4651,7 @@ u32   +0x28
 u64   +0x30
 u32   +0x38
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 u32   +0x50
 ```
 
@@ -4703,7 +4703,7 @@ u16   +0x8
 u32   +0x10
 u64   +0x18
 u64   +0x20
-i32   iVar3
+i32   <local>
 ```
 
 ## PacketChestDeleteItem
@@ -4736,7 +4736,7 @@ u64   +0x30
 u32   +0x38
 u32   +0x3c
 bool  +0x4c
-i32   iVar2
+i32   <local>
 ```
 
 ## PacketChestStopObservingChest
@@ -4934,11 +4934,11 @@ u32   +0x24
 ```
 u16   +0x8
   [loop 1: list elements]
-u64   *puVar1
+u64   <element>
   [loop 2: list elements]
-u32   *puVar2
+u32   <element>
   [loop 3: list elements]
-u32   *puVar2
+u32   <element>
 FUN_142b9e660 -> +0x40
     [loop 1: list elements]
     [loop 2: list elements]
@@ -4972,13 +4972,13 @@ FUN_142b9e660 -> +0x20
     [loop 2: list elements]
 FUN_142d66360 -> +0x40
     [loop 1: list elements]
-  u32   *(undefined4 *)(param_2 + lVar2 * 4)
+  u32   <computed>
     [loop 2: list elements]
-  u32   *puVar1
+  u32   <element>
     [loop 3: list elements]
-  u32   *puVar1
+  u32   <element>
     [loop 4: list elements]
-  u32   *puVar1
+  u32   <element>
 u32   +0x80
 bool  +0x84
 bool  +0x85
@@ -4993,9 +4993,9 @@ u16   +0x8
 u32   +0x10
 u64   +0x18
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
   [loop 2: list elements]
-u32   *puVar1
+u32   <element>
 u32   +0x40
 bool  +0x44
 u32   +0x48
@@ -5039,7 +5039,7 @@ u16   +0x8
 u32   +0x10
 u64   +0x18
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 str   +0x30
 u32   +0x48
 bool  +0x4c
@@ -5052,7 +5052,7 @@ u32   +0x50
 ```
 u16   +0x8
 u32   +0x10
-i32   iVar3
+i32   <local>
 ```
 
 ## PacketDeleteItem
@@ -5233,7 +5233,7 @@ FUN_143184930 -> +0x18
   u32   +0x108
   str   +0x110
   FUN_143188ec0 -> +0x150
-    i32   iVar2
+    i32   <local>
       [loop 1: list elements]
 u32   +0x300
 ```
@@ -5540,7 +5540,7 @@ u32   +0x10
 u32   +0x40
 u64   +0x20
 u16   +0x18
-i32   iVar3
+i32   <local>
   [loop 1: list elements]
 FUN_1432c6f60 -> +0x0
   u64   +0x0
@@ -5641,11 +5641,11 @@ FUN_142eba940 -> +0x40
   u64   +0x48
   u32   +0x50
   FUN_142ba3190 -> +0x58
-    i32   iVar2
+    i32   <local>
       [loop 1: list elements]
   FUN_142b7ef60 -> +0x1b20
     FUN_142ba59c0 -> +0x1b20
-      i32   iVar4
+      i32   <local>
         [loop 1: list elements]
       FUN_142b95d40 -> +0x1b20
         u32   +0x1b20
@@ -5661,7 +5661,7 @@ FUN_142eba940 -> +0x40
   u32   +0x1bb4
   str   +0x1bb8
 FUN_142b9ab00 -> +0x1c58
-  i32   iVar2
+  i32   <local>
   FUN_142cb21a0 -> +0x1c58
     FUN_143734c80 -> +0x1c58
         [loop 1: list elements]
@@ -5785,7 +5785,7 @@ u16   +0x8
 u32   +0x10
 str   +0x18
 FUN_142ba1a80 -> +0xb8
-  i32   iVar3
+  i32   <local>
     [loop 1: list elements]
   FUN_142b96340 -> +0xb8
     str   +0xb8
@@ -5920,9 +5920,9 @@ u32   +0x10
 u64   +0x18
 u32   +0x20
   [loop 1: list elements]
-u64   *puVar1
+u64   <element>
   [loop 2: list elements]
-u32   *puVar2
+u32   <element>
 u64   +0x50
 bool  +0x58
 ```
@@ -6002,9 +6002,9 @@ u16   +0x8
 i16   +0x10
 str   +0x18
 FUN_1432aaa40 -> +0xb8
-  i32   iVar5
+  i32   <local>
     [loop 1: list elements]
-  u64   *puVar3
+  u64   <element>
 u32   +0xd0
 ```
 
@@ -6027,7 +6027,7 @@ u32   +0xd0
 ```
 u16   +0x8
 u8    +0x10
-i32   iVar3
+i32   <local>
 ```
 
 ## PlayerUpdatePacketAttachObject
@@ -6141,7 +6141,7 @@ bool  +0x20
 ```
 u16   +0x8
 Stream_ReadUInt2BitLength -> +0x10
-  u8    *(byte *)param_2
+  u8    <computed>
   u8    +0x11
   u8    +0x11
   u8    +0x12
@@ -6197,13 +6197,13 @@ u64   +0x38
 bool  +0x40
 u32   +0x48
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 u32   +0x44
 u64   +0x58
 u32   +0x60
 FUN_142b9e610 -> +0x64
     [loop 1: list elements]
-  u32   *(undefined4 *)(param_2 + lVar1 * 4)
+  u32   <computed>
 u64   +0x70
 ```
 
@@ -6231,7 +6231,7 @@ u16   +0x8
 i16   +0x10
 u32   +0x18
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 u32   +0x30
 bool  +0x34
 u64   +0x38
@@ -6338,11 +6338,11 @@ u64   +0x28
 ```
 u64   +0x20
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
   [loop 2: list elements]
-u32   *puVar1
+u32   <element>
   [loop 3: list elements]
-u32   *puVar1
+u32   <element>
 u32   +0x60
 ```
 
@@ -6405,11 +6405,11 @@ FUN_142b945d0 -> +0x20
   u32   +0x24
   u64   +0x28
   FUN_142b9afe0 -> +0x30
-    i32   iVar5
+    i32   <local>
       [loop 1: list elements]
-    u32   *puVar2
+    u32   <element>
   FUN_142ba1df0 -> +0x60
-    i32   iVar3
+    i32   <local>
       [loop 1: list elements]
     str   +0x60
 bool  +0xe0
@@ -6448,10 +6448,10 @@ FUN_142b94790 -> +0x18
     bool  +0x2128
     u32   +0xc4
     FUN_142b9b7a0 -> +0xc8
-      i32   iVar2
+      i32   <local>
         [loop 1: list elements]
-      u32   uVar8
-      u32   *puVar5
+      u32   <local>
+      u32   <element>
     u32   +0xbc
     u32   +0xc0
     u32   +0x20f0
@@ -6461,18 +6461,18 @@ FUN_142b94790 -> +0x18
     u32   +0x20fc
     u32   +0x2100
     u32   +0x2104
-    u64   local_res8
-    u64   uVar7
+    u64   <local>
+    u64   <local>
     u32   +0x210c
     u32   +0x2110
-    i32   iVar4
+    i32   <local>
       [loop 1: list elements]
-    u32   uVar8
+    u32   <local>
     u32   +0x20f4
   FUN_142b9be10 -> +0x2188
-    i32   iVar3
+    i32   <local>
       [loop 1: list elements]
-    u32   uVar6
+    u32   <local>
   u32   +0x2250
   bool  +0x2254
   bool  +0x29
@@ -6500,10 +6500,10 @@ FUN_142b95550 -> +0x30
   bool  +0x2110
   u32   +0xac
   FUN_142b9b7a0 -> +0xb0
-    i32   iVar2
+    i32   <local>
       [loop 1: list elements]
-    u32   uVar8
-    u32   *puVar5
+    u32   <local>
+    u32   <element>
   u32   +0xa4
   u32   +0xa8
   u32   +0x20d8
@@ -6513,13 +6513,13 @@ FUN_142b95550 -> +0x30
   u32   +0x20e4
   u32   +0x20e8
   u32   +0x20ec
-  u64   local_res8
-  u64   uVar7
+  u64   <local>
+  u64   <local>
   u32   +0x20f4
   u32   +0x20f8
-  i32   iVar4
+  i32   <local>
     [loop 1: list elements]
-  u32   uVar8
+  u32   <local>
   u32   +0x20dc
 u32   +0x2170
 ```
@@ -6551,10 +6551,10 @@ FUN_142b95550 -> +0x38
   bool  +0x2118
   u32   +0xb4
   FUN_142b9b7a0 -> +0xb8
-    i32   iVar2
+    i32   <local>
       [loop 1: list elements]
-    u32   uVar8
-    u32   *puVar5
+    u32   <local>
+    u32   <element>
   u32   +0xac
   u32   +0xb0
   u32   +0x20e0
@@ -6564,13 +6564,13 @@ FUN_142b95550 -> +0x38
   u32   +0x20ec
   u32   +0x20f0
   u32   +0x20f4
-  u64   local_res8
-  u64   uVar7
+  u64   <local>
+  u64   <local>
   u32   +0x20fc
   u32   +0x2100
-  i32   iVar4
+  i32   <local>
     [loop 1: list elements]
-  u32   uVar8
+  u32   <local>
   u32   +0x20e4
 u64   +0x2178
 u32   +0x2180
@@ -6706,7 +6706,7 @@ i16   +0xec
 ```
 u32   +0x18
 u64   +0x20
-i32   iVar3
+i32   <local>
   [loop 1: list elements]
 FUN_142d3e830 -> +0x0
   FUN_142d3e940 -> +0x8
@@ -6717,9 +6717,9 @@ FUN_142d3e830 -> +0x0
   str   +0x28
   u32   +0xc8
   FUN_142d42010 -> +0xd0
-    i32   iVar3
+    i32   <local>
       [loop 1: list elements]
-    u64   uVar6
+    u64   <local>
   u32   +0x0
   bool  +0x178
 ```
@@ -6907,7 +6907,7 @@ u64   +0x40
 ```
 u8    +0x18
 Stream_ReadUInt2BitLength -> +0x1c
-  u8    *(byte *)param_2
+  u8    <computed>
   u8    +0x1d
   u8    +0x1d
   u8    +0x1e
@@ -6916,7 +6916,7 @@ Stream_ReadUInt2BitLength -> +0x1c
   u8    +0x1f
 u32   +0x20
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 ```
 
 ## RemoteProjectileLaunchHintPacket
@@ -6925,7 +6925,7 @@ u32   *puVar1
 ```
 u8    +0x18
 Stream_ReadUInt2BitLength -> +0x1c
-  u8    *(byte *)param_2
+  u8    <computed>
   u8    +0x1d
   u8    +0x1d
   u8    +0x1e
@@ -6935,9 +6935,9 @@ Stream_ReadUInt2BitLength -> +0x1c
 u64   +0x20
 u32   +0x28
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
   [loop 2: list elements]
-u32   *puVar1
+u32   <element>
 ```
 
 ## RemoteProjectileLaunchPacket
@@ -6946,7 +6946,7 @@ u32   *puVar1
 ```
 u8    +0x18
 Stream_ReadUInt2BitLength -> +0x1c
-  u8    *(byte *)param_2
+  u8    <computed>
   u8    +0x1d
   u8    +0x1d
   u8    +0x1e
@@ -6963,7 +6963,7 @@ u64   +0x28
 ```
 u8    +0x18
 Stream_ReadUInt2BitLength -> +0x1c
-  u8    *(byte *)param_2
+  u8    <computed>
   u8    +0x1d
   u8    +0x1d
   u8    +0x1e
@@ -6980,7 +6980,7 @@ u64   +0x28
 ```
 u8    +0x18
 Stream_ReadUInt2BitLength -> +0x1c
-  u8    *(byte *)param_2
+  u8    <computed>
   u8    +0x1d
   u8    +0x1d
   u8    +0x1e
@@ -6988,7 +6988,7 @@ Stream_ReadUInt2BitLength -> +0x1c
   u8    +0x1e
   u8    +0x1f
 u64   +0x20
-i32   iVar3
+i32   <local>
 ```
 
 ## RemoteWeaponEmptyPacket
@@ -6997,7 +6997,7 @@ i32   iVar3
 ```
 u8    +0x18
 Stream_ReadUInt2BitLength -> +0x1c
-  u8    *(byte *)param_2
+  u8    <computed>
   u8    +0x1d
   u8    +0x1d
   u8    +0x1e
@@ -7014,7 +7014,7 @@ u64   +0x28
 ```
 u8    +0x18
 Stream_ReadUInt2BitLength -> +0x1c
-  u8    *(byte *)param_2
+  u8    <computed>
   u8    +0x1d
   u8    +0x1d
   u8    +0x1e
@@ -7038,14 +7038,14 @@ u64   +0x28
 ```
 u8    +0x18
 Stream_ReadUInt2BitLength -> +0x1c
-  u8    *(byte *)param_2
+  u8    <computed>
   u8    +0x1d
   u8    +0x1d
   u8    +0x1e
   u8    +0x1d
   u8    +0x1e
   u8    +0x1f
-i32   iVar3
+i32   <local>
 ```
 
 ## RemoteWeaponStatUpdatePacket
@@ -7054,7 +7054,7 @@ i32   iVar3
 ```
 u8    +0x18
 Stream_ReadUInt2BitLength -> +0x1c
-  u8    *(byte *)param_2
+  u8    <computed>
   u8    +0x1d
   u8    +0x1d
   u8    +0x1e
@@ -7071,7 +7071,7 @@ u64   +0x28
 ```
 u8    +0x18
 Stream_ReadUInt2BitLength -> +0x1c
-  u8    *(byte *)param_2
+  u8    <computed>
   u8    +0x1d
   u8    +0x1d
   u8    +0x1e
@@ -7245,7 +7245,7 @@ FUN_142b9a6c0 -> +0x68
   u32   +0x7c
   u32   +0x80
 u64   +0x88
-i32   iVar2
+i32   <local>
   [loop 1: list elements]
 ```
 
@@ -7598,7 +7598,7 @@ u32   +0x1c
 u16   +0x8
 u8    +0x10
 u64   +0x18
-i32   iVar3
+i32   <local>
 ```
 
 ## StartLobbyGamePacket
@@ -7773,9 +7773,9 @@ bool  +0x29
 u16   +0x8
 u32   +0x10
 FUN_14309df20 -> +0x18
-  i32   iVar5
+  i32   <local>
     [loop 1: list elements]
-  u64   *puVar3
+  u64   <element>
 u64   +0x30
 ```
 
@@ -7786,22 +7786,22 @@ u64   +0x30
 u16   +0x8
 u32   +0x10
 FUN_14309e030 -> +0x18
-  i32   iVar3
+  i32   <local>
     [loop 1: list elements]
   FUN_14309ba00 -> +0x18
     u64   +0x18
     u32   +0x20
-    i32   iVar3
+    i32   <local>
       [loop 1: list elements]
     FUN_14309c3d0 -> +0x18
       u32   +0x18
       u32   +0x1c
       u8    +0x20
-      i32   iVar3
+      i32   <local>
 FUN_14309e260 -> +0x30
-  i32   iVar5
+  i32   <local>
     [loop 1: list elements]
-  u64   *puVar2
+  u64   <element>
 bool  +0x48
 bool  +0x49
 ```
@@ -7830,15 +7830,15 @@ str   +0x28
 ```
 u16   +0x8
 u32   +0x10
-i32   iVar2
+i32   <local>
   [loop 1: list elements]
 u32   +0x3c
 u32   +0x40
 u32   +0x44
 FUN_14309db50 -> +0x48
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
-  u32   uVar5
+  u32   <local>
 u32   +0x38
 ```
 
@@ -7853,7 +7853,7 @@ u16   +0x8
 u32   +0x10
 u16   +0x18
 FUN_14309e3f0 -> +0x20
-  i32   iVar7
+  i32   <local>
     [loop 1: list elements]
 u64   +0x70
 ```
@@ -7864,7 +7864,7 @@ u64   +0x70
 ```
 u16   +0x8
 u32   +0x10
-i32   iVar2
+i32   <local>
 FUN_142cb21a0 -> +0x0
   FUN_143734c80 -> +0x0
       [loop 1: list elements]
@@ -7924,12 +7924,12 @@ u16   +0x8
 u8    +0x10
 u32   +0x18
 FUN_142ba1df0 -> +0x20
-  i32   iVar3
+  i32   <local>
     [loop 1: list elements]
   str   +0x20
 u32   +0x1c
 FUN_142ba1df0 -> +0x20
-  i32   iVar3
+  i32   <local>
     [loop 1: list elements]
   str   +0x20
 ```
@@ -8039,13 +8039,13 @@ FUN_142b87110 -> +0x28
   u32   +0x170
   u8    +0x174
   FUN_142b98a50 -> +0x28
-    i32   iVar2
-  u8    cVar2
+    i32   <local>
+  u8    <local>
   FUN_142b86340 -> +0x28
     u64   +0x28
     u32   +0x30
     u32   +0x34
-  u8    cVar2
+  u8    <local>
   FUN_142b9fa70 -> +0x28
     u64   +0x28
     str   +0x30
@@ -8125,7 +8125,7 @@ bool  +0x20
 u16   +0x8
 u8    +0x10
 u64   +0x18
-i32   iVar3
+i32   <local>
 ```
 
 ## VehicleAutoMountPacket
@@ -8252,19 +8252,19 @@ u64   +0x20
 u32   +0x28
 u32   +0x2c
 FUN_142ed0950 -> +0x30
-  i32   iVar3
+  i32   <local>
     [loop 1: list elements]
-  u32   uVar9
-  bool  *puVar6
+  u32   <local>
+  bool  <element>
 FUN_142ba09f0 -> +0x98
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
 FUN_142ba2770 -> +0x820
-  i32   iVar5
+  i32   <local>
     [loop 1: list elements]
-  u64   *puVar2
-i32   iVar2
-i32   iVar3
+  u64   <element>
+i32   <local>
+i32   <local>
 ```
 
 ## VehicleOwnerPacket
@@ -8277,11 +8277,11 @@ u64   +0x18
 u64   +0x20
 u32   +0x28
 FUN_142ba09f0 -> +0x30
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
 u32   +0x2c
 FUN_142ba09f0 -> +0x30
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
 ```
 - FUN_142ed32a0
@@ -8342,7 +8342,7 @@ u32   +0x24
 u16   +0x8
 u8    +0x10
 u64   +0x18
-i32   iVar3
+i32   <local>
 ```
 
 ## VehicleStatUpdatePacket
@@ -8369,9 +8369,9 @@ u16   +0x8
 u8    +0x10
 u64   +0x18
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
   [loop 2: list elements]
-u32   *puVar1
+u32   <element>
 ```
 
 ## VehicleStateDataPacket
@@ -8436,7 +8436,7 @@ u16   +0x8
 u8    +0x10
 u64   +0x18
 u64   +0x20
-i32   iVar2
+i32   <local>
 FUN_142cb21a0 -> +0x0
   FUN_143734c80 -> +0x0
       [loop 1: list elements]
@@ -8447,17 +8447,17 @@ FUN_142cb21a0 -> +0x0
       [loop 6: list elements]
       [loop 7: list elements]
 FUN_142ba1df0 -> +0x40
-  i32   iVar3
+  i32   <local>
     [loop 1: list elements]
   str   +0x40
 FUN_142ba2840 -> +0x58
-  i32   iVar5
+  i32   <local>
     [loop 1: list elements]
-  u64   *puVar2
+  u64   <element>
 FUN_14307f3a0 -> +0x70
-  i32   iVar5
+  i32   <local>
     [loop 1: list elements]
-  u64   *puVar2
+  u64   <element>
 u32   +0x88
 ```
 
@@ -8478,7 +8478,7 @@ FUN_1430b2280 -> +0x20
     [loop 1: list elements]
     [loop 2: list elements]
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 bool  +0x6c
 ```
 
@@ -8534,10 +8534,10 @@ u32   +0x10
 u32   +0x24c
 u32   +0x248
 FUN_1434507f0 -> +0x18
-  i32   iVar3
+  i32   <local>
     [loop 1: list elements]
-  u32   local_res18[0]
-  u32   *(undefined4 *)(lVar4 + 0x228)
+  u32   <local>
+  u32   <computed>
 u32   +0x240
 ```
 
@@ -8565,7 +8565,7 @@ bool  +0x29
 ```
 u64   +0x18
 bool  +0x20
-i32   iVar3
+i32   <local>
 ```
 
 ## WeaponChamberInterruptPacket
@@ -8596,9 +8596,9 @@ bool  +0x20
 u8    +0x24
 u8    +0x28
 FUN_142b9afe0 -> +0x30
-  i32   iVar5
+  i32   <local>
     [loop 1: list elements]
-  u32   *puVar2
+  u32   <element>
 ```
 
 ## WeaponHitFeedbackPacket
@@ -8691,9 +8691,9 @@ u32   +0x14
 - FUN_142fdbdd0
 ```
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 FUN_142f0a340 -> +0x30
-  i32   iVar3
+  i32   <local>
     [loop 1: list elements]
   FUN_142f09280 -> +0x30
     u64   +0x30
@@ -8710,7 +8710,7 @@ FUN_142f0a340 -> +0x30
     u32   +0x60
     u32   +0x64
     FUN_142f0a660 -> +0x80
-      i32   iVar3
+      i32   <local>
         [loop 1: list elements]
       FUN_142f09e00 -> +0x80
         u32   +0x80
@@ -8721,7 +8721,7 @@ FUN_142f0a340 -> +0x30
     u64   +0x70
     u32   +0x78
     FUN_142f0a5a0 -> +0x98
-      i32   iVar4
+      i32   <local>
         [loop 1: list elements]
       FUN_142f09d50 -> +0x98
         u32   +0x98
@@ -8735,7 +8735,7 @@ FUN_142f0a340 -> +0x30
     u32   +0xec
     u32   +0xf0
   [loop 2: list elements]
-u32   *puVar1
+u32   <element>
 str   +0x60
 u64   +0x78
 ```
@@ -8745,16 +8745,16 @@ u64   +0x78
 - FUN_142fdbf40
 ```
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 FUN_142d66360 -> +0x30
     [loop 1: list elements]
-  u32   *(undefined4 *)(param_2 + lVar2 * 4)
+  u32   <computed>
     [loop 2: list elements]
-  u32   *puVar1
+  u32   <element>
     [loop 3: list elements]
-  u32   *puVar1
+  u32   <element>
     [loop 4: list elements]
-  u32   *puVar1
+  u32   <element>
 bool  +0x70
 str   +0x78
 u64   +0x90
@@ -8766,13 +8766,13 @@ u64   +0x90
 ```
 FUN_142d66360 -> +0x20
     [loop 1: list elements]
-  u32   *(undefined4 *)(param_2 + lVar2 * 4)
+  u32   <computed>
     [loop 2: list elements]
-  u32   *puVar1
+  u32   <element>
     [loop 3: list elements]
-  u32   *puVar1
+  u32   <element>
     [loop 4: list elements]
-  u32   *puVar1
+  u32   <element>
 u32   +0x60
 str   +0x68
 u64   +0x80
@@ -8783,7 +8783,7 @@ u64   +0x80
 - FUN_142fdc1c0
 ```
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 u32   +0x24
 str   +0x28
 u64   +0x40

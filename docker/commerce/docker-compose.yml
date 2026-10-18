@@ -1,0 +1,66 @@
+# The shared commerce service (trace/architecture/world-channel-service.md §5.2 / §8 step 8,
+# LandmarkEmulator.CommerceServer): Player Studio / Marketplace (designs for sale, peer review, the account store, the
+# gallery listings), contests and portraits for every world at once. One container for all worlds; the worlds dial it on
+# the internal network (port 20400, never published) when their COMMERCE_ADDRESS is set. The Showcase web pages stay on
+# each world and read their commerce data from it.
+#
+# Opt-in: the project's docker-compose.yml runs it only with the "commerce" profile. In .env:
+#   COMPOSE_PROFILES=commerce          (or social,commerce)
+#   COMMERCE_ADDRESS=commerce:20400
+# then "docker compose up -d --build". With COMMERCE_ADDRESS empty the worlds keep running the commerce code themselves.
+#
+# Its database lmemu_commerce is on the auth stack's database server (created by the service on its first start). On
+# that start, while its product table is empty, it copies the Player Studio products, reviews and taken designs from
+# lmemu_character (COMMERCE_IMPORT_FROM; empty = no copy) as world COMMERCE_IMPORT_WORLD (default 1); each world sends
+# its Contests/ and Portraits/ files once when it first links. Back up first. An existing database volume needs the grant
+# once (docs/docker.md "Commerce service"):
+#   GRANT ALL PRIVILEGES ON lmemu_commerce.* TO 'landmarkemu'@'%';
+services:
+  commerce:
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile
+      target: commerce
+    # COMMERCE_IMAGE: another tag for this build, so a second build can stand beside the running one
+    # without replacing its image (e.g. a project started with its own -p name and env file, as in
+    # docker/worlds/extra-world.env.example).
+    image: ${COMMERCE_IMAGE:-landmarkemu-commerce}
+    restart: unless-stopped
+    environment:
+      Database: server=landmarkemu-db;port=3306;user=landmarkemu;password=${DB_PASSWORD:?Set DB_PASSWORD in .env};database=lmemu_commerce
+      Network__Host: 0.0.0.0
+      Network__Port: 20400
+      # The one-time copy of the in-process Player Studio rows (empty = none), and the world they belong to.
+      ImportFrom: ${COMMERCE_IMPORT_FROM-lmemu_character}
+      ImportWorldId: ${COMMERCE_IMPORT_WORLD:-1}
+      ImportRealm: ${COMMERCE_IMPORT_REALM:-lmemu_character}
+      # Contest screenshots and portraits.
+      DataPath: /data
+      # Player Studio peer review: approvals that list a product, rejections that turn it down.
+      PlayerStudioApprovals: ${PLAYER_STUDIO_APPROVALS:-3}
+      PlayerStudioRejections: ${PLAYER_STUDIO_REJECTIONS:-3}
+      # Reviews per player per 24 h (live 2; 0 = no limit); peer-rejected products wait for staff (live true).
+      PlayerStudioReviewsPerDay: ${PLAYER_STUDIO_REVIEWS_PER_DAY:-2}
+      PlayerStudioStaffReview: ${PLAYER_STUDIO_STAFF_REVIEW:-true}
+      # The creator's share (percent) of the Lumens a buyer pays for a Player Studio design (live: 60/40, creator 40).
+      PlayerStudioCreatorSharePercent: ${PLAYER_STUDIO_CREATOR_SHARE:-40}
+      # Showcase following: the daily in-game mail of what followed creators and tags listed (true = live, Update Notes
+      # 27 Aug 2014), sent at SHOWCASE_DIGEST_HOUR_UTC (0-23) for every world that uses this service. The same settings as
+      # an in-process world's (docker/world).
+      ShowcaseFollowDigest: ${SHOWCASE_FOLLOW_DIGEST:-true}
+      ShowcaseDigestHourUtc: ${SHOWCASE_DIGEST_HOUR_UTC:-10}
+    volumes:
+      - commerce-data:/data
+    expose:
+      - "20400"
+    networks:
+      landmarkemu:
+        aliases: [commerce]
+
+volumes:
+  commerce-data:
+
+networks:
+  landmarkemu:
+    external: true
+    name: ${NETWORK_NAME:-landmarkemu}

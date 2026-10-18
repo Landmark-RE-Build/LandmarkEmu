@@ -1,6 +1,4 @@
-﻿using LandmarkEmulator.Shared.Database;
-using LandmarkEmulator.Shared.Game;
-using LandmarkEmulator.Shared.Game.Events;
+﻿using LandmarkEmulator.Shared.Game;
 using LandmarkEmulator.Shared.Network.Cryptography;
 using LandmarkEmulator.WorldServer.Network.Message;
 using LandmarkEmulator.WorldServer.Network.Message.Model;
@@ -30,30 +28,11 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
         }
 
         /// <summary>
-        /// Logging out to character select: issue a fresh login session key (as the WebAPI's /authenticate does) so the
-        /// client can log back in to the login server without the launcher.
+        /// Logging out to character select (Lua Ui.Logout): the world-channel back end issues a fresh login session
+        /// (<see cref="Game.WorldChannel.IWorldChannelService.CharacterSelectSession"/>).
         /// </summary>
         [ZoneMessageHandler(ZoneMessageOpcode.CharacterSelectSessionRequest)]
         public static void HandleCharacterSelectSessionRequest(WorldSession session, CharacterSelectSessionRequest request)
-        {
-            if (session.Account == null)
-            {
-                session.EnqueueMessage(new CharacterSelectSessionResponse { Success = false });
-                return;
-            }
-
-            string sessionKey = Game.Inventory.ItemDefinitionManager.NewRelogKey();
-            session.EnqueueEvent(new TaskEvent(DatabaseManager.Instance.AuthDatabase.UpdateAccountSessionKey(session.Account, sessionKey),
-                () =>
-                {
-                    log.Info($"Account {session.Account.Id} returning to character select.");
-                    Game.Inventory.ItemDefinitionManager.NoteRelogin(session.Account.Id, sessionKey);
-                    session.EnqueueMessage(new CharacterSelectSessionResponse
-                    {
-                        Success = true,
-                        SessionId = sessionKey
-                    });
-                }));
-        }
+            => Game.WorldChannel.WorldChannelServices.WorldChannel.CharacterSelectSession(session);
     }
 }

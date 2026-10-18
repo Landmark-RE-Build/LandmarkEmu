@@ -56,7 +56,10 @@ namespace LandmarkEmulator.WorldServer.Game
                 writer.Write(entry.Type);
                 writer.Write(entry.Value);
             }
-            writer.Write(true);
+            // Read-only flag (palette +0x54): the client sends AddEntry / DeleteEntry only for a palette with it 0
+            // (FUN_142f14850 / FUN_142f14a10 test it) [P] — sent true until 2026-10-18, so palette changes never reached
+            // the server and were lost on relog.
+            writer.Write(false);
             writer.Write(0u);
             session.EnqueueMessage(ZoneMessageOpcode.PaletteBase, output.ToArray());
         }

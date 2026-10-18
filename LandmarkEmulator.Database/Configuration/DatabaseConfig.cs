@@ -7,6 +7,8 @@ namespace LandmarkEmulator.Database.Configuration
         public DatabaseConnectionString Auth { get; set; }
         public DatabaseConnectionString Character { get; set; }
         public DatabaseConnectionString Zone { get; set; }
+        /// <summary>The social service's own database, lmemu_social (LandmarkEmulator.SocialServer only).</summary>
+        public DatabaseConnectionString Social { get; set; }
 
         public IConnectionString GetConnectionString(DatabaseType type)
         {
@@ -15,6 +17,7 @@ namespace LandmarkEmulator.Database.Configuration
                 DatabaseType.Auth => Auth,
                 DatabaseType.Character => Character,
                 DatabaseType.Zone => Zone,
+                DatabaseType.Social => Social,
                 _ => throw new ArgumentException($"Invalid database type: {type:G}", nameof(type))
             };
         }

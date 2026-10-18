@@ -35,7 +35,7 @@ u8    +0x10
 u32   +0x18
 u64   +0x20
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 u32   +0x28
 u32   +0x40
 u32   +0x44

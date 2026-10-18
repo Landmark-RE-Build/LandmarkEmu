@@ -192,3 +192,15 @@ u32 +0xe0, f32×3 +0xe4, u32 n × {u32, vec3, vec3} +0xf0, u8 +0x108.
   FUN_1433bc830 for 2 and 6).
 - Hotbar hidden after a relog from build mode: fixed (87429ea) — server runs HudStateManager:OnDisableBuildMode once
   per login (testclient/Resources/Scripts/hudstate.lua).
+
+## Prop menu: Delete / Send to Inventory / Recycle (traced 2026-10-16, TASKS 6.38 / 6.41)
+RadialMenuButtons menu 1 (both builds): row 3 "Delete" 557190 Prop.DeleteObject, row 17 "Send to Inventory" 559201
+Prop.PickUpObject, row 64 "Recycle" 569162 Prop.DisassembleObject. Lua → prop tool (0.695 FUN_1435faa80 / FUN_1435fade0 /
+FUN_1435fae40 → FUN_142fb6360 / FUN_142fb66a0 / FUN_142fb63e0 → FUN_142fb6740 modes 2 / 1 / 3): Delete = PropBase 0x07
+{u64} after the "Prop.DeleteConfirmation" dialog; Send to Inventory = 0x05 {u64, u8 0}; Recycle = 0x05 {u64, u8 **1**}.
+0.589 identical (FUN_143548cc0 → FUN_142f17530 → FUN_142f17890 u8 1). PickUpReply errors (0.695 FUN_142fba9f0 case 6):
+3, 6, 7, 9, 10, 11, 13, 14. PropData u8 after the name id = placement flags, read only by the cancel (0.695 FUN_142fb3b80,
+0.589 FUN_142f14cb0): 0x20 restore on Escape (sends a Save of the start transform), else 0x40 Escape = Recycle, else
+Escape = Send to Inventory. Chests: "intentionally not reclaimable" (P4853); server text Chest.PickupErrorHasItems 560928
+"Can't pick up chest. Please clear out items first." (no client code shows it). Server: Props.PickUp / Refund,
+RightClickMenus.PropMenu (Recycle only for recipe props, not chests).

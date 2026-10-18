@@ -19,7 +19,7 @@ C2S 2 (2 not handled) · S2C 2 (1 never sent / opcode unknown)
 ```
 
 ## C2S PacketPortraitDataRequest  `0x98, 0x2`
-- server: sub NOT handled · seen in play 120× · received 120×
+- server: sub NOT handled · seen in play 374× · received 16×
 - built in: FUN_142ebee10
 - code (builder in FUN_142ebee10):
 ```
@@ -43,11 +43,11 @@ FUN_142eba940 -> +0x40
   u64   +0x48
   u32   +0x50
   FUN_142ba3190 -> +0x58
-    i32   iVar2
+    i32   <local>
       [loop 1: list elements]
   FUN_142b7ef60 -> +0x1b20
     FUN_142ba59c0 -> +0x1b20
-      i32   iVar4
+      i32   <local>
         [loop 1: list elements]
       FUN_142b95d40 -> +0x1b20
         u32   +0x1b20
@@ -63,7 +63,7 @@ FUN_142eba940 -> +0x40
   u32   +0x1bb4
   str   +0x1bb8
 FUN_142b9ab00 -> +0x1c58
-  i32   iVar2
+  i32   <local>
   FUN_142cb21a0 -> +0x1c58
     FUN_143734c80 -> +0x1c58
         [loop 1: list elements]

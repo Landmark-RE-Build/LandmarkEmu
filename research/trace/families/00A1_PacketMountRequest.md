@@ -14,7 +14,7 @@ C2S 6 (6 not handled) · S2C 6 (6 never sent / opcode unknown)
 ```
 
 ## C2S PacketDismountRequest  `0xA1, 0x3`
-- server: NOT HANDLED · seen in play 2× · received 2×
+- server: NOT HANDLED · seen in play 8×
 - built in: FUN_142c24730, FUN_142e71510, FUN_142fa95e0, FUN_142fae0f0, FUN_1432736c0, FUN_143273c70, FUN_14353d550, FUN_14353d640
 - sent by Lua natives: Despawn, Dismount, Spawn
 - code (builder in FUN_142c24730):

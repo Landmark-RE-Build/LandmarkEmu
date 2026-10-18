@@ -16,7 +16,12 @@ namespace LandmarkEmulator.AuthServer.Network
         public AccountModel Account { get; private set; }
         public List<CharacterModel> Characters { get; } = new();
 
-        private readonly Queue<AuthPacket> outgoingPackets = new();
+        /// <summary>
+        /// Concurrent: handlers answering at once (server list, name check, refusals) enqueue on the UDP receive thread
+        /// while the tick drains it (<see cref="OnProcessPackets"/>). A plain Queue raced there: a lost or doubled
+        /// _size could drop a reply or dequeue an empty slot (null packet) on the tick.
+        /// </summary>
+        private readonly ConcurrentQueue<AuthPacket> outgoingPackets = new();
 
         public AuthSession() : base(AuthServer.EncryptionKey)
         {

@@ -15,7 +15,9 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
     /// say what they hit and which affinity property they trigger, e.g. Staff of Frozen Sorrow "Basic Attack: Shatter"
     /// (574445/574446) and "Power Attack: Blizzard" (574447/574448). The cast ids are the same for every weapon (the
     /// client's input table: 760 basic, 761 power …, see <see cref="WeaponAttacks"/>), so the live server applied the
-    /// held weapon's attack; this class does the same from <see cref="Kits"/>.
+    /// held weapon's attack; this class does the same from <see cref="Kits"/>. A kit may also have a Special attack
+    /// (E, input trigger 11): only the four never-live weapons have an E cast in the client's input table (OPEN-LEADS
+    /// L163); Desperado's Deadly Arsenal has three named attacks for its three casts (see <see cref="Kit"/>).
     /// <para>
     /// What is the client's: names, descriptions, icons, state effects and impacts. What is ours (the ability data was
     /// server-side and is lost): shapes (reach, arc), damage split, durations and chances — kept as named numbers here
@@ -25,7 +27,7 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
     /// more energy") change the attacks' cast time and Energy cost in the caster info the client paces itself by.
     /// </para>
     /// </summary>
-    public static class WeaponCombat
+    public static partial class WeaponCombat
     {
         private static readonly ILogger log = LogManager.GetCurrentClassLogger();
 
@@ -50,13 +52,38 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
         /// <summary>
         /// One attack: name / description texts, what it hits, whether "fully charged" applies, channel hits (Ticks, every
         /// TickMs), a per-target rule, a rule once the swing is over, and for blocks the counter's state.
+        /// <paramref name="ChargeSeconds"/>: a full charge for this attack (0 = <see cref="MaxChargeSeconds"/>);
+        /// <paramref name="Immune"/>: "become immune to incoming attacks" while it runs (Nightfall, Terminal Voltage);
+        /// <paramref name="Series"/>: "a series of … attacks, dealing greater damage with each strike" (Rolling Thunder:
+        /// each Power Attack in a row deals <see cref="SeriesStep"/> more, the third is the finisher).
+        /// <paramref name="DamageRow"/>: the attack hits for the client's AbilityParameterDefinitions row of that id
+        /// (<see cref="RowDamage"/>: the same number its description's [*AbilityParamN*] token shows) instead of the
+        /// base weapon damage × the kind's multiplier; 0 = the usual damage. <paramref name="Primer"/>: a state on the
+        /// player that makes this use the attack's stronger form (<see cref="Swing.Primed"/>; Dirty Fighting), whose hit
+        /// is <paramref name="PrimedRow"/> when that is another row (0 = <paramref name="DamageRow"/>).
         /// </summary>
         public sealed record Attack(uint Name, uint Description, Shape Shape, float Range, float Size, bool Charged = false,
             int Ticks = 1, int TickMs = 400, Action<Hit> OnHit = null, Action<Swing> After = null, Status? Counter = null,
-            int MaxTargets = 0, uint Effect = 0);
+            int MaxTargets = 0, uint Effect = 0, float ChargeSeconds = 0f, bool Immune = false, bool Series = false,
+            uint DamageRow = 0, Status? Primer = null, uint PrimedRow = 0);
 
-        /// <summary>A weapon's affinity and its two attacks.</summary>
-        public sealed record Kit(Affinity Affinity, Attack Basic, Attack Power, uint Icon);
+        /// <summary>
+        /// A weapon's affinity and its attacks: Basic (left mouse), Power (right mouse) and, for a weapon whose input
+        /// group has an E cast (trigger 11), an optional <paramref name="Special"/>. Without one, an E cast runs the
+        /// Power attack (<see cref="AttackFor"/>).
+        /// </summary>
+        public sealed record Kit(Affinity Affinity, Attack Basic, Attack Power, uint Icon, Attack Special = null);
+
+        /// <summary>
+        /// The attack of a kit that a cast kind runs: Special (E) the kit's own Special when it has one, else its Power
+        /// attack; Power and its combo stages the Power attack; everything else the Basic attack.
+        /// </summary>
+        public static Attack AttackFor(Kit kit, WeaponAttacks.Kind kind) => kind switch
+        {
+            WeaponAttacks.Kind.Special => kit.Special ?? kit.Power,
+            WeaponAttacks.Kind.Power or WeaponAttacks.Kind.PowerCombo => kit.Power,
+            _ => kit.Basic
+        };
 
         /// <summary>One use of an attack.</summary>
         public sealed class Swing
@@ -72,6 +99,14 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             /// <summary>Exalt / High Herald's Ring: every weapon property stronger (chances, durations).</summary>
             public float Strength = 1f;
             public bool Ranged;
+            /// <summary>The ProjectileDefinitions row drawn for a ranged weapon's shot (0 = none; <see cref="ProjectileRow"/>).</summary>
+            public uint Projectile;
+            /// <summary>For a Power Attack: how many came before it in a row (0 = first; WeaponAttacks.PowerRunOf).</summary>
+            public int Run;
+            /// <summary>A channel ran out of Energy: its remaining hits are dropped.</summary>
+            public bool Stopped;
+            /// <summary>The player had the attack's <see cref="Attack.Primer"/> state when it started (Dirty Fighting).</summary>
+            public bool Primed;
         }
 
         /// <summary>One opponent hit by a swing.</summary>
@@ -93,6 +128,30 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
         private const float RevengeShare = 0.3f, ExecuteBelow = 0.2f, SiphonShare = 0.15f;
         private const float FlowEnergy = 10f, IlluminateShare = 0.1f, RegrowthShare = 0.03f, RejuvenateShare = 0.01f;
         private static readonly TimeSpan ComboWindow = TimeSpan.FromSeconds(2);
+
+        /// <summary>
+        /// Surge (26 Apr 2016 notes, Supercooled Power set, "Weapon Passive: Surge"): a base damage whatever the energy
+        /// spent, only half the stored energy used, more damage per energy but less in total at high energy. Base =
+        /// this share of the swing's
+        /// damage, plus <see cref="SurgePerEnergy"/> per Energy spent (half the store): at the full 456 that is 342 +
+        /// base, below the old all-energy-at-1-each 456; at low reserves it is more. [I] sizes ours.
+        /// </summary>
+        private const float SurgeBaseShare = 0.3f, SurgePerEnergy = 1.5f;
+
+        /// <summary>Rolling Thunder: each leap in a row deals this much more (×1, ×1.25, ×1.5) [I].</summary>
+        private const float SeriesStep = 0.25f;
+
+        /// <summary> 25 May 2016 notes: melee weapons give their wielders a little more passive damage resistance. Our
+        /// server had none before, so the melee wielder's resistance is the whole "slightly more": damage taken × 0.9
+        /// [I] while a melee weapon (no ranged attack shape, see <see cref="IsMelee"/>) is held.
+        /// </summary>
+        private const float MeleeResistance = 0.9f;
+
+        /// <summary>
+        /// A creature attack counts as a projectile when the attacker is further than this from the player (creature
+        /// attacks carry no "ranged" flag here; melee reach is a few metres) [I]. Used by Molten Rebuke (11 May 2016).
+        /// </summary>
+        private const float ProjectileDistance = 6f;
 
         // ---- The weapons ---------------------------------------------------------------------------------------------
 
@@ -128,15 +187,24 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                     OnHit: h => { if (h.Swing.Charged) Surge(h); }),
                 new Attack(574447, 574448, Shape.AreaAtAim, 30f, 5f,                                  // Blizzard
                     After: s => Field(s, s.Aim, 5f, 4, null, 0.25f, endFreeze: true, effect: 11528)), 12207), 3762, 1291);
+            // Supercooled Power Cannon. 26 Apr 2016 (Tidal Burst): hitting a frozen target triggers surge, and the
+            // minimum and maximum charge times are longer (1.5 s full charge [I]); the client text 574718 adds "When
+            // fully
+            // charged this attack passes through multiple opponents, granting Flow for each opponent hit". Torrent:
+            // freezes faster (2 hits in a row instead of 3 [I]), its projectiles pass through several opponents (the
+            // cone hits everyone in front), and it no longer triggers surge.
             Add(new Kit(Affinity.Water,
-                new Attack(574717, 574718, Shape.FirstHit, 35f, 0f, Charged: true,                    // Tidal Burst
-                    OnHit: h =>
+                new Attack(574717, 574718, Shape.FirstHit, 35f, 0f, Charged: true, ChargeSeconds: 1.5f, // Tidal Burst
+                    OnHit: TidalBurstHit,
+                    After: s =>
                     {
-                        if (Statuses.Has(h.Target, Status.Freeze)) Surge(h);
-                        if (h.Swing.Charged) Grant(h.Swing, Status.Flow);
+                        if (!s.Charged)
+                            return;
+                        foreach (ulong t in Pierce(s, 35f, 1.5f).Where(t => !s.Hits.Contains(t)))
+                            Strike(s, t, s.Damage, then: TidalBurstHit);
                     }),
                 new Attack(574719, 574720, Shape.Cone, 15f, 25f, Ticks: 4, TickMs: 300,              // Torrent
-                    OnHit: h => { if (h.InARow >= 3) Apply(h, Status.Freeze); }), 12207), 3036);
+                    OnHit: h => { if (h.InARow >= 2) Apply(h, Status.Freeze); }), 12207), 3036);
             Add(new Kit(Affinity.Water,
                 new Attack(576334, 576335, Shape.Cone, 6f, 45f,                                       // Fracture
                     OnHit: h => { if (Statuses.Has(h.Target, Status.Freeze)) Surge(h); }),
@@ -154,12 +222,19 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                             Grant(s, Status.Supercharge);
                         }
                     }),
-                new Attack(574451, 0, Shape.Cone, 6f, 50f, Charged: true,                             // Terminal Voltage
-                    OnHit: h => { if (h.Swing.Charged) Apply(h, Status.Electrocute); }), 12209), 3763, 1503);
+                // Terminal Voltage: client text 574555 (the wiki's tooltip for this attack): "Transform into pure energy
+                // and become immune to incoming attacks as you leap towards opponents in front of you, dealing damage in
+                // a small area on impact. If you are Supercharged all opponents are also Electrocuted." — a leap, not a
+                // charged attack (it was a charged cone that Electrocuted when fully charged).
+                new Attack(574451, 574555, Shape.Path, 8f, 3f, Immune: true,                          // Terminal Voltage
+                    OnHit: h => { if (Statuses.Has(h.Swing.Player.PlayerGuid, Status.Supercharge)) Apply(h, Status.Electrocute); }),
+                12209), 3763, 1503);
             Add(new Kit(Affinity.Lightning,
                 new Attack(574721, 574722, Shape.FirstHit, 35f, 0f, Charged: true,                    // Feedback
                     OnHit: h => { if (h.Swing.Charged) Apply(h, Status.Electrocute); }),
-                new Attack(574723, 574724, Shape.Cone, 10f, 50f,                                      // Shock and Awe
+                // Shock and Awe: 25 May 2016, the first shot reaches as far as the later ones, but its area is
+                // narrower: 15 m (the volley's reach) and ±30° instead of 10 m / ±50° [I].
+                new Attack(574723, 574724, Shape.Cone, 15f, 30f,                                      // Shock and Awe
                     OnHit: h => { if (Statuses.Has(h.Target, Status.Electrocute)) Grant(h.Swing, Status.Supercharge); }), 12209), 3033);
             Add(new Kit(Affinity.Lightning,
                 new Attack(576330, 576331, Shape.FirstHit, 35f, 0f, Charged: true,                    // Crackling Orb
@@ -169,8 +244,12 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             Add(new Kit(Affinity.Lightning,
                 new Attack(576428, 576436, Shape.Cone, 5f, 60f, Charged: true,                        // Overcharge
                     OnHit: h => { if (h.Swing.Charged) Grant(h.Swing, Status.Supercharge); }),
-                new Attack(576424, 0, Shape.Path, 10f, 3f, Effect: 12782,                            // Rolling Thunder
-                    OnHit: h => { if (Statuses.Has(h.Swing.Player.PlayerGuid, Status.Supercharge)) Apply(h, Status.Electrocute); }), 12209), 3027);
+                // Rolling Thunder (25 May 2016 notes = client text 576437): "Execute a series of leaping attacks,
+                // dealing greater damage to all opponents in front of you with each strike. The third attack in a row
+                // also briefly makes you immune to incoming attacks and Electrocutes all opponents hit." (It used the
+                // Supercharged rule of Terminal Voltage before.)
+                new Attack(576424, 576437, Shape.Path, 10f, 3f, Effect: 12782, Series: true,          // Rolling Thunder
+                    OnHit: h => { if (h.Swing.Run % 3 == 2) Apply(h, Status.Electrocute); }), 12209), 3027);
 
             // Earth — Harden, Regrowth, Crush.
             Add(new Kit(Affinity.Earth,
@@ -181,7 +260,9 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             Add(new Kit(Affinity.Earth,
                 new Attack(574876, 574877, Shape.Cone, 20f, 20f, Ticks: 3, TickMs: 250,               // Unload
                     OnHit: h => Apply(h, Status.Exposed)),
-                new Attack(574878, 574879, Shape.Around, 12f, 0f, MaxTargets: 3,                     // Trick Shot
+                // Trick Shot, 26 Apr 2016: its projectiles pass through several opponents — no 3-target cap any more;
+                // it crushes opponents Unload hit recently, and a second use after a hit grants Harden (kept below).
+                new Attack(574878, 574879, Shape.Around, 12f, 0f,                                     // Trick Shot
                     OnHit: h => { if (Statuses.Has(h.Target, Status.Exposed)) { Statuses.Remove(h.Target, Status.Exposed); Apply(h, Status.Crush); } },
                     After: s =>
                     {
@@ -204,14 +285,23 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                             foreach (ulong t in Chain(s, 6f, 0.5f))
                                 Statuses.Apply(t, Status.Cripple, s.Player, seconds: Defs(Status.Cripple) * s.Strength);
                     }),
-                new Attack(574458, 574459, Shape.FirstHit, 12f, 3f,                                   // Contaminate
+                // Contaminate, 25 May 2016: a larger area — 4.5 m round the impact, was 3 m [I].
+                new Attack(574458, 574459, Shape.FirstHit, 12f, 4.5f,                                 // Contaminate
                     OnHit: h => Rot(h)), 12205), 3765, 1517);
             Add(new Kit(Affinity.Affliction,
                 new Attack(576304, 576305, Shape.Cone, 5f, 60f,                                       // Enfeeble
                     OnHit: h => { if (Statuses.Has(h.Target, Status.Rot)) Apply(h, Status.Cripple); }),
                 new Attack(576306, 576307, Shape.Block, 4f, 60f, Counter: Status.Rot), 12205), 4091); // Corrupting Revenge
+            // Diabolical Scientist's Raygun. The two attacks' rules were swapped: the wiki page gives "Ooze Bolt: Lob a
+            // bolt of contaminated ooze … explodes on impact dealing damage and inflicting Rot on all opponents in the
+            // area" (client text 573035) and "Sludge Storm: Charge a powerful attack … When fully charged this attack
+            // passes through multiple opponents, dealing damage and inflicting Cripple on each one" (573071, 76 Energy),
+            // and the 25 May 2016 notes agree: the basic shots fly flatter and hit a larger area (4 m [I]); the power
+            // attack lets you move a little faster while charging but roots you briefly after the shot (movement is the
+            // client's).
             Add(new Kit(Affinity.Affliction,
-                new Attack(573028, 573071, Shape.FirstHit, 35f, 0f, Charged: true,                    // Ooze Bolt
+                new Attack(573028, 573035, Shape.AreaAtAim, 30f, 4f, OnHit: h => Rot(h), Effect: 11638),  // Ooze Bolt
+                new Attack(573069, 573071, Shape.FirstHit, 35f, 0f, Charged: true,                    // Sludge Storm
                     After: s =>
                     {
                         if (!s.Charged)
@@ -220,8 +310,7 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                             Strike(s, t, s.Damage, then: h => Apply(h, Status.Cripple));
                         foreach (ulong t in s.Hits.ToList())
                             Statuses.Apply(t, Status.Cripple, s.Player, seconds: Defs(Status.Cripple) * s.Strength);
-                    }),
-                new Attack(573069, 0, Shape.AreaAtAim, 25f, 5f, OnHit: h => Rot(h), Effect: 11638), 12205), 3032);   // Sludge Storm
+                    }), 12205), 3032);
 
             // Shadow — Siphon, Torment, Condemn.
             Add(new Kit(Affinity.Shadow,
@@ -232,7 +321,7 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             Add(new Kit(Affinity.Shadow,
                 new Attack(574880, 574882, Shape.Path, 8f, 3f,                                        // Hateseeker
                     OnHit: h => { if (Statuses.Has(h.Target, Status.Torment)) Condemn(h); }),
-                new Attack(574881, 574883, Shape.Cone, 6f, 60f,                                       // Nightfall
+                new Attack(574881, 574883, Shape.Cone, 6f, 60f, Immune: true,                         // Nightfall
                     OnHit: h => Apply(h, Status.Torment)), 12217), 3039, 3034);
             Add(new Kit(Affinity.Shadow,
                 new Attack(576223, 576224, Shape.FirstHit, 40f, 0f,                                   // Cursed Bolt
@@ -251,8 +340,16 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                             Grant(s, Status.Illuminate);
                         }
                     }),
+                // Cascade: Exalt round the first opponent hit. A hit that killed leaves no position (PositionOfGuid is
+                // null for the dead), so a Cascade that killed everything it hit falls back to the aimed point (AimPoint:
+                // the first creature on the ray). Before, .First() threw there, the exception left Abilities.HandleCast
+                // before the cast's answer, and the client stayed "casting" (bughunt-combat.md B1).
                 new Attack(574466, 574467, Shape.Pierce, 20f, 2.5f,                                   // Cascade
-                    After: s => { if (s.Hits.Count > 0) ExaltAllies(s, s.Hits.Select(Creatures.PositionOfGuid).OfType<Vector3>().First(), 10f); }), 12215), 3767, 1529);
+                    After: s =>
+                    {
+                        if (s.Hits.Count > 0)
+                            ExaltAllies(s, s.Hits.Select(Creatures.PositionOfGuid).OfType<Vector3>().DefaultIfEmpty(s.Aim).First(), 10f);
+                    }), 12215), 3767, 1529);
             Add(new Kit(Affinity.Radiance,
                 new Attack(574884, 574885, Shape.Cone, 5f, 60f, Charged: true,                        // Smite
                     After: s => { if (s.Charged && s.Hits.Count > 0) Grant(s, Status.Exalt); }),
@@ -272,12 +369,116 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                         if (orb.Count > 0 || s.Hits.Count > 0)
                             ExaltAllies(s, s.Player.Position, 10f);
                     }), 12215), 4096);
+
+            // Desperado's Deadly Arsenal (OPEN-LEADS L163; spec B4 in trace/0695/agent-leads4.md): a revolver and a shank
+            // (model Wield_Gun1H_Gunslinger_…, secondary Wield_Shank_Bottle_…), Affliction (description 574440). Its input
+            // group 78 has three casts, LMB 793 / RMB 794 / E 795 (InputActionGroupEntries 345-347) [P], and the client has
+            // three named attacks for it whose texts match a revolver shot, a shank stab and a dive: 573167 Run n' Gun /
+            // 573170, 573168 Get 'em Good / 573171, 573169 All or Nothin' / 573172 [P text]; name ↔ button by text order =
+            // cast order, with the damage rows rising the same way [I strong]. It never reached players: its recipe 3999
+            // is one of the four retired weapon recipes (RecipeBook.RetiredRecipeItems), the four weapons with an E cast;
+            // only an admin-granted copy uses this kit. Damage is each row the description names ([*AbilityParamN*],
+            // RowDamage) [P formula; I that live hit for the row]. Dirty Fighting 573184: "a 25 % chance to gain Dirty
+            // Fighting for the next 4 seconds" whenever a shot lands; the next attack uses its Dirty Fighting form and
+            // spends it (Use). Ranges / arcs and the dive's timing are ours [I].
+            Add(new Kit(Affinity.Affliction,
+                // Run n' Gun: a revolver shot (row 703); Dirty Fighting: "Aim for a weak spot", row 706 and a 2 s Snare.
+                new Attack(573167, 573170, Shape.FirstHit, 35f, 0f, DamageRow: 703, Primer: Status.DirtyFighting, PrimedRow: 706,
+                    OnHit: h => { if (h.Swing.Primed) Apply(h, Status.Snare); },
+                    After: s =>
+                    {
+                        if (s.Hits.Count > 0 && Random.Shared.NextDouble() < DirtyFightingChance)
+                            Statuses.Apply(s.Player.PlayerGuid, Status.DirtyFighting, s.Player);
+                    }),
+                // Get 'em Good: a shank stab at the opponents in front (row 704); Dirty Fighting: "Leave an ugly wound",
+                // row 707 three times over the next 3 s.
+                new Attack(573168, 573171, Shape.Cone, 5f, 60f, DamageRow: 704, Primer: Status.DirtyFighting,
+                    OnHit: h => { if (h.Swing.Primed) Bleed(h.Swing, h.Target, 707); }),
+                12205,
+                // All or Nothin' (E): a dive forward firing mid-air shots at the opponents in front (row 710; Dirty
+                // Fighting: row 711 and a 2 s Snare), then on landing a shank hit on everyone in front (row 708; Dirty
+                // Fighting: an additional row 709 three times over 3 s; DesperadoShank).
+                Special: new Attack(573169, 573172, Shape.Cone, 15f, 35f, DamageRow: 710, Primer: Status.DirtyFighting,
+                    PrimedRow: 711,
+                    OnHit: h => { if (h.Swing.Primed) Apply(h, Status.Snare); },
+                    After: s => Later(DiveLandingMs, () => DesperadoShank(s)))), 3038);
             log.Info($"Weapon kits: {k.Count} weapons.");
             return k;
         }
 
+        // ---- Desperado's Deadly Arsenal (rows and Dirty Fighting) ---------------------------------------------------
+
+        /// <summary>Run n' Gun: "a 25 % chance to gain Dirty Fighting" on a landed shot (text 573170) [P].</summary>
+        private const double DirtyFightingChance = 0.25;
+        /// <summary>All or Nothin': the shank hit comes this long after the dive starts ("After you land") [I].</summary>
+        private const int DiveLandingMs = 700;
+        /// <summary>All or Nothin's landing shank: opponents in front within this reach and ±arc (degrees) [I].</summary>
+        private const float ShankRange = 4f, ShankArc = 60f;
+
+        private static Dictionary<uint, (uint Stat, float Factor, float Add)> parameterRows;
+
         /// <summary>
-        /// Weapons with no named attacks in the client (Lightbringer's Justice, Desperado's Deadly Arsenal …): the generic
+        /// The value of a client AbilityParameterDefinitions StatMultiplier row for this player: stat(PARAM_1) × PARAM_2 +
+        /// PARAM_3 (ParameterCalculator FUN_1435079e0; GearStats) [P], with stat 10 (Damage) as the client holds it (the
+        /// armour's 70 × factor, then buffs and consumables, Abilities.CalculatedStats), so the hit equals the number the
+        /// attack's description shows; then the weapon's condition (half at 0 %, as every weapon hit) [I ours]. Rows of
+        /// another type or stat give the base weapon damage.
+        /// </summary>
+        public static uint RowDamage(WorldSession p, uint row)
+        {
+            if (parameterRows == null)
+            {
+                var rows = new Dictionary<uint, (uint, float, float)>();
+                foreach (string[] r in GameDataFiles.Rows("AbilityParameterDefinitions.txt"))
+                    if (r.Length > 6 && r[1] == "StatMultiplier")
+                        rows[r.U(0)] = ((uint)r.F(4), r.F(5), r.F(6));
+                parameterRows = rows;
+            }
+            if (!parameterRows.TryGetValue(row, out var def) || def.Stat != GearStats.DamageStatId)
+                return Abilities.WeaponDamageFor(p);
+            uint stat = GearStats.DamageStatId;
+            float damage = Buffs.Apply(p, stat, Consumables.Apply(p, stat, GearStats.DamageStat(p)));
+            return (uint)Math.Max(1, Math.Round((damage * def.Factor + def.Add) * Abilities.WeaponCondition(p)));
+        }
+
+        /// <summary>
+        /// Dirty Fighting's wound: the row's damage (after the attacker's states, as the hit) three times, one a second
+        /// (texts 573171 / 573172: "3 times over the next 3 seconds") [P count; I timing from the first second].
+        /// </summary>
+        private static void Bleed(Swing s, ulong target, uint row)
+        {
+            WorldSession p = s.Player;
+            uint amount = Boosted(p, s.Kit, s.Power, RowDamage(p, row));
+            for (int i = 1; i <= 3; i++)
+                Later(1000 * i, () =>
+                {
+                    if (!p.Disconnected)
+                        Creatures.StatusDamage(p, target, amount);
+                });
+        }
+
+        /// <summary>
+        /// All or Nothin' after the dive: "After you land everyone in front of you gets a taste of your shank" — row 708 on
+        /// the opponents in front of where the player is now (the client moves the character), Dirty Fighting adding the
+        /// row 709 wound when the dive started with it (text 573172) [P text; I reach, arc, timing].
+        /// </summary>
+        private static void DesperadoShank(Swing dive)
+        {
+            WorldSession p = dive.Player;
+            if (p.Disconnected || Health.IsDead(p))
+                return;
+            var shank = new Swing
+            {
+                Player = p, Kit = dive.Kit, Attack = dive.Attack, Power = true, Origin = p.Position, Forward = dive.Forward,
+                Aim = p.Position, Damage = Boosted(p, dive.Kit, true, RowDamage(p, 708)), Strength = dive.Strength,
+                Run = dive.Run, Primed = dive.Primed
+            };
+            foreach (ulong t in Creatures.InCone(p.ZoneId, p.Position, dive.Forward, ShankRange, ShankArc))
+                Strike(shank, t, shank.Damage, h => { if (h.Swing.Primed) Bleed(h.Swing, h.Target, 709); });
+        }
+
+        /// <summary>
+        /// Weapons with no named attacks in the client (Lightbringer's Justice …): the generic
         /// "Basic Attack" / "Power Attack" names, a shot or a swing by the weapon's model, and the affinity's main
         /// opponent state on Power hits.
         /// </summary>
@@ -320,6 +521,188 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
         public static Kit KitOf(ItemDefinitionManager.ItemDefinition weapon)
             => weapon == null ? null : Kits.TryGetValue(weapon.Id, out Kit k) ? k : GenericKit(weapon);
 
+        /// <summary>Tidal Burst on one opponent: Surge if it was Frozen; a fully charged shot grants Flow per opponent hit.</summary>
+        private static void TidalBurstHit(Hit h)
+        {
+            if (Statuses.Has(h.Target, Status.Freeze)) Surge(h);
+            if (h.Swing.Charged) Grant(h.Swing, Status.Flow);
+        }
+
+        /// <summary>
+        /// Is the weapon a melee weapon (25 May 2016 passive damage resistance)? Not a ranged model (bow, gun, raygun,
+        /// cannon, staff, wand). This split matches the wiki's "Melee weapons" / "Ranged weapons" categories for all 31
+        /// kit weapons (e.g. the daggers are melee although Contaminate leaps 12 m).
+        /// </summary>
+        public static bool IsMelee(ItemDefinitionManager.ItemDefinition weapon) => weapon != null && !IsRangedModel(weapon);
+
+        /// <summary>
+        /// The flying shot a ranged weapon draws (Projectiles 0xEE; OPEN-LEADS L157): bows an arrow, the other ranged weapons
+        /// (staffs, wands, guns, rayguns) a bolt, in the kit's affinity. Rows by their trail effects [P: the
+        /// ActorCompositeEffectDefinitions names]: arrows 85 Physical, 86 Affliction, 87 Fire, 88 Lightning, 89 Shadow, 90 Ice,
+        /// 91 Radiance, 92 Water (80 m/s); bolts 94 Fire, 95 Radiance, 96 Lightning, 98 Shadow, 100 Affliction, 109 Physical
+        /// (40 m/s), 108 Water (80 m/s). Which row live used per weapon was server data [I: by affinity; Earth = Physical,
+        /// Water = the Water trail].
+        /// </summary>
+        public static uint ProjectileRow(ItemDefinitionManager.ItemDefinition weapon, Affinity affinity, bool power = false)
+        {
+            if (weapon == null || !IsRangedModel(weapon))
+                return 0;
+            if (WeaponRows(weapon) is (uint basic, uint strong))
+                return power ? strong : basic;
+            bool bow = (weapon.ModelFile ?? "").Contains("_Bow_");
+            return affinity switch
+            {
+                Affinity.Affliction => bow ? 86u : 100u,
+                Affinity.Fire => bow ? 87u : 94u,
+                Affinity.Lightning => bow ? 88u : 96u,
+                Affinity.Shadow => bow ? 89u : 98u,
+                Affinity.Radiance => bow ? 91u : 95u,
+                Affinity.Water => bow ? 92u : 108u,
+                _ => bow ? 85u : 109u
+            };
+        }
+
+        /// <summary>
+        /// The tooltip keywords of a weapon attack (KeywordDefinitions rows shown to players, HIDE_FROM_CLIENT 0): the kit's
+        /// affinity (1 Fire, 2 Water, 3 Shadow, 4 Radiance, 5 Affliction, 6 Earth, 7 Lightning), Ranged 56 / Melee 57, and
+        /// Basic Attack 59 for a basic attack [P rows; I: which keywords live put on each attack — server data, L158].
+        /// </summary>
+        /// <summary>Dev "weaponkeywords on|off": whether weapon attack replies carry their keywords (default on).</summary>
+        public static bool SendKeywords { get; set; } = true;
+
+        public static List<uint> KeywordsOf(ItemDefinitionManager.ItemDefinition weapon, uint ability)
+        {
+            var keywords = new List<uint>();
+            Kit kit = KitOf(weapon);
+            if (kit == null)
+                return keywords;
+            uint affinity = kit.Affinity switch
+            {
+                Affinity.Fire => 1u, Affinity.Water => 2u, Affinity.Shadow => 3u, Affinity.Radiance => 4u,
+                Affinity.Affliction => 5u, Affinity.Earth => 6u, Affinity.Lightning => 7u, _ => 0u
+            };
+            if (affinity != 0)
+                keywords.Add(affinity);
+            keywords.Add(IsRangedModel(weapon) ? 56u : 57u);
+            if (WeaponAttacks.KindOf(ability) is WeaponAttacks.Kind.Basic or WeaponAttacks.Kind.BasicCombo)
+                keywords.Add(59u);
+            return keywords;
+        }
+
+        /// <summary>
+        /// Per-weapon rows (Basic, Power) for the 2016 ranged weapons (trace/0695/agent-leads2-d2.md L157) [I: matched by
+        /// the rows' bones and the neighbouring effect ids of each weapon's own cast / release effects]: the Supercooled
+        /// Power Cannon and the Raygun fire from the shoulder bone R_UpWeaponFlex (Water 115 / 114 Large, Affliction 93 lob /
+        /// 99 Large), the Six-Shooters alternate 117 (right) / 118 (left), the Recon Blaster uses the left-hand Lightning
+        /// rows (113 / 101), Night Herald's Mercy 119, the Wand of Boundless Light 112 (its release 11574 is the wand's),
+        /// the Wanderer's Blazing Bow 111, the Staff of the Lightning Caller 121, the Staff of Frozen Sorrow 97 (Ice),
+        /// Lightbringer's Justice 91. Items that share one of these weapons' kit (the pre-launch versions) use its rows.
+        /// </summary>
+        private static readonly Dictionary<uint, (uint Basic, uint Power)> weaponRows = new()
+        {
+            [3036] = (115, 114), [3032] = (93, 99), [3040] = (117, 117), [3033] = (113, 101), [4089] = (119, 119),
+            [3767] = (112, 112), [3761] = (111, 111), [4107] = (121, 121), [3762] = (97, 97), [3028] = (91, 91)
+        };
+
+        private static (uint Basic, uint Power)? WeaponRows(ItemDefinitionManager.ItemDefinition weapon)
+        {
+            if (weaponRows.TryGetValue(weapon.Id, out var rows))
+                return rows;
+            if (Kits.TryGetValue(weapon.Id, out Kit kit))
+                foreach (var (id, known) in weaponRows)
+                    if (Kits.TryGetValue(id, out Kit other) && ReferenceEquals(other, kit))
+                        return known;
+            return null;
+        }
+
+        private static Dictionary<uint, float> rowSpeeds;
+
+        /// <summary>A ProjectileDefinitions row's SPEED (m/s), read from the client's table [P]; 40 when unknown.</summary>
+        private static float ProjectileSpeed(uint row)
+        {
+            if (rowSpeeds == null)
+            {
+                var speeds = new Dictionary<uint, float>();
+                foreach (string[] r in GameDataFiles.Rows("ProjectileDefinitions.txt"))
+                    if (r.Length > 3 && uint.TryParse(r[0], out uint id)
+                        && float.TryParse(r[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float speed))
+                        speeds[id] = speed;
+                rowSpeeds = speeds;
+            }
+            return rowSpeeds.TryGetValue(row, out float v) && v > 0f ? v : 40f;
+        }
+
+        /// <summary>Dual revolvers: the shooter's next shot leaves the left hand (row 118) after a right-hand one (117).</summary>
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<WorldSession, bool> leftHandNext = new();
+
+        /// <summary>
+        /// The keywords an item's tooltip lists (InventoryPacketItemTooltipReply 0x2D / 0x12, the record's 4th int list:
+        /// FUN_142c34c30 reads u32 n, n × u32 into the list ItemTooltipInfo FUN_143763a20 walks; trace/0695/agent-leads2-d2.md
+        /// L158) [P]: a weapon's affinity and Ranged 56 / Melee 57, a chest armour's or an accessory's affinity, a pet
+        /// figurine Pet 86. This reply is the only source of an item tooltip's keywords: the item definition carries none
+        /// (items.json has no keyword field; definition +0xd0 is a plain u32, FUN_142c176d0), and FUN_143763a20's only other
+        /// caller is the weapon variant FUN_14376ec10 with the same record [P]. Armour and accessories: the wiki's Armor /
+        /// Accessories pages call their affinity associations "keywords" and Affinity (Equipment List) lists each piece's
+        /// affinity (as Gear.cs) [P source; I that the tooltip showed exactly the affinity keyword].
+        /// </summary>
+        /// <summary>The KeywordDefinitions row of an affinity (1 Fire … 7 Lightning, the rows with icons) [P rows].</summary>
+        public static uint KeywordOf(Affinity a) => a switch
+        {
+            Affinity.Fire => 1u, Affinity.Water => 2u, Affinity.Shadow => 3u, Affinity.Radiance => 4u,
+            Affinity.Affliction => 5u, Affinity.Earth => 6u, Affinity.Lightning => 7u, _ => 0u
+        };
+
+        public static List<uint> ItemKeywordsOf(ItemDefinitionManager.ItemDefinition item)
+        {
+            var keywords = new List<uint>();
+            if (item == null)
+                return keywords;
+            if (Pets.IsFigurine(item.Id))
+                keywords.Add(86u);
+            else if (Kits.ContainsKey(item.Id) || (item.EquipSlotId == 2 && AffinityOf(item) != Affinity.None))
+            {
+                Kit kit = KitOf(item);
+                uint affinity = kit?.Affinity switch
+                {
+                    Affinity.Fire => 1u, Affinity.Water => 2u, Affinity.Shadow => 3u, Affinity.Radiance => 4u,
+                    Affinity.Affliction => 5u, Affinity.Earth => 6u, Affinity.Lightning => 7u, _ => 0u
+                };
+                if (affinity != 0)
+                    keywords.Add(affinity);
+                keywords.Add(IsRangedModel(item) ? 56u : 57u);
+            }
+            else if (Gear.ArmourAffinity(item.Id) is var armour and not Affinity.None)
+                keywords.Add(KeywordOf(armour));
+            else if (Gear.AccessoryAffinity(item.Id) is var accessory and not Affinity.None)
+                keywords.Add(KeywordOf(accessory));
+            return keywords;
+        }
+
+        /// <summary>Draws a ranged swing's shot from the player to <paramref name="to"/>, ended when it gets there.</summary>
+        private static void Fly(Swing s, Vector3 to)
+        {
+            if (s.Projectile == 0)
+                return;
+            WorldSession p = s.Player;
+            Vector3 from = p.Position + new Vector3(0f, 1.5f, 0f);
+            if (Vector3.Distance(from, to) < 1f)
+                return;
+            var viewers = AreaViewers(p, to).ToList();
+            uint row = s.Projectile;
+            if (row == 117)
+            {
+                bool left = leftHandNext.TryGetValue(p, out bool l) && l;
+                leftHandNext[p] = !left;
+                if (left)
+                    row = 118;
+            }
+            uint id = Projectiles.NewId();
+            // The shooter guid lets the client start the shot at the weapon bone (R_Weapon) of the player's actor.
+            Projectiles.Create(viewers, id, row, from, to - from, p.PlayerGuid, to, 0);
+            Later((int)(Vector3.Distance(from, to) / ProjectileSpeed(row) * 1000f) + 50,
+                () => Projectiles.Delete(viewers, id, to, false, 0));
+        }
+
         private static bool IsRangedModel(ItemDefinitionManager.ItemDefinition w)
         {
             string m = w?.ModelFile ?? "";
@@ -357,7 +740,12 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
         /// before affinity bonuses. Returns true when something was hit.
         /// </summary>
         public static bool Use(WorldSession player, AbilityCastAttempt attempt, ItemDefinitionManager.ItemDefinition weapon, uint ability, uint damage)
-            => Use(player, attempt.AimRay(player.Position), new Vector3(attempt.TargetX, attempt.TargetY, attempt.TargetZ), weapon, ability, damage);
+            => Use(player, attempt.AimRay(player.Position), new Vector3(attempt.TargetX, attempt.TargetY, attempt.TargetZ), weapon, ability, damage,
+                cast: attempt);
+
+        /// <summary>Dev "fire": the held weapon's Basic (cast 760) or Power (761) attack straight ahead, as a cast would run it.</summary>
+        public static bool DevFire(WorldSession player, bool power)
+            => Use(player, null, player.Position + Facing(player) * 20f, Abilities.HeldWeapon(player), power ? 761u : 760u, 50);
 
         // ---- Charged attacks ---------------------------------------------------------------------------------------
 
@@ -367,20 +755,32 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
         public const float MaxChargeSeconds = 1.2f, MinChargeSeconds = 0.15f;
 
         private sealed record Charging(AbilityCastAttempt Attempt, ItemDefinitionManager.ItemDefinition Weapon, uint Damage,
-            DateTime Start, WeaponAttacks.Animation? Animation, Vector3 Facing);
+            DateTime Start, WeaponAttacks.Animation? Animation, Vector3 Facing, float FullCharge);
+
+        /// <summary>The attack a cast id runs with this weapon (Basic, Power or Special), or null.</summary>
+        private static Attack AttackOf(ItemDefinitionManager.ItemDefinition weapon, uint ability)
+        {
+            Kit kit = KitOf(weapon);
+            if (kit == null)
+                return null;
+            return AttackFor(kit, WeaponAttacks.KindOf(ability));
+        }
+
+        /// <summary>Seconds to a full charge for this attack (its own, e.g. Tidal Burst's longer charge, else the default).</summary>
+        private static float FullChargeOf(Attack a) => a?.ChargeSeconds > 0 ? a.ChargeSeconds : MaxChargeSeconds;
 
         private static readonly Dictionary<WorldSession, Charging> charging = new();
 
         /// <summary>Is this cast id a charged attack of this weapon?</summary>
         public static bool IsCharged(ItemDefinitionManager.ItemDefinition weapon, uint ability)
-        {
-            Kit kit = KitOf(weapon);
-            if (kit == null)
-                return false;
-            WeaponAttacks.Kind k = WeaponAttacks.KindOf(ability);
-            Attack a = k is WeaponAttacks.Kind.Power or WeaponAttacks.Kind.PowerCombo or WeaponAttacks.Kind.Special ? kit.Power : kit.Basic;
-            return a.Charged;
-        }
+            => AttackOf(weapon, ability)?.Charged == true;
+
+        /// <summary>
+        /// Is this cast id a blocking stance of this weapon (<see cref="Shape.Block"/>: Molten Rebuke, Corrupting Revenge)?
+        /// Such a cast hits nothing when it is used; <see cref="Use"/> returns false for it, which is not a miss.
+        /// </summary>
+        public static bool IsBlock(ItemDefinitionManager.ItemDefinition weapon, uint ability)
+            => AttackOf(weapon, ability)?.Shape == Shape.Block;
 
         /// <summary>
         /// A charged attack's cast: remembered until FinishChargedCast (or CancelCast); others see the wind-up. False
@@ -395,7 +795,8 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             lock (sync)
             {
                 charging.Remove(p, out old);
-                charging[p] = new Charging(attempt, weapon, damage, DateTime.UtcNow, animation, facing);
+                charging[p] = new Charging(attempt, weapon, damage, DateTime.UtcNow, animation, facing,
+                    FullChargeOf(AttackOf(weapon, attempt.AbilityId)));
             }
             if (old != null)
                 Abilities.AnswerCharged(p, old.Attempt, 0);
@@ -416,8 +817,8 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                 charging.Remove(p);
             }
             double held = (DateTime.UtcNow - c.Start).TotalSeconds;
-            float fraction = (float)Math.Clamp(held / MaxChargeSeconds, 0, 1);
-            bool full = held >= MaxChargeSeconds * 0.95;
+            float fraction = (float)Math.Clamp(held / c.FullCharge, 0, 1);
+            bool full = held >= c.FullCharge * 0.95;
             uint damage = (uint)Math.Round(c.Damage * (0.6 + 0.4 * fraction));
             AbilityCastAttempt a = c.Attempt;
             // Aimed where the player looks when letting go (FinishChargedCast carries the camera ray), else at the press.
@@ -445,7 +846,7 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
         {
             List<WorldSession> stale;
             lock (sync)
-                stale = charging.Where(c => (now - c.Value.Start).TotalSeconds > MaxChargeSeconds + 5).Select(c => c.Key).ToList();
+                stale = charging.Where(c => (now - c.Value.Start).TotalSeconds > c.Value.FullCharge + 5).Select(c => c.Key).ToList();
             foreach (WorldSession p in stale)
                 if (p.Disconnected)
                     lock (sync) charging.Remove(p);
@@ -453,17 +854,21 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                     FinishCharge(p, null);
         }
 
-        /// <summary>Dev / test: an attack aimed at the nearest creature within 20 m (or straight ahead).</summary>
-        public static bool DevAttack(WorldSession player, bool power, bool charged = false)
+        /// <summary>
+        /// Dev / test: an attack aimed at the nearest creature within 20 m (or straight ahead); <paramref name="special"/>
+        /// runs an E cast (the kit's Special attack, else its Power attack).
+        /// </summary>
+        public static bool DevAttack(WorldSession player, bool power, bool charged = false, bool special = false)
         {
             var weapon = Abilities.HeldWeapon(player);
-            uint ability = WeaponAttacks.CastIds.FirstOrDefault(id => WeaponAttacks.KindOf(id) == (power ? WeaponAttacks.Kind.Power : WeaponAttacks.Kind.Basic));
+            WeaponAttacks.Kind wanted = special ? WeaponAttacks.Kind.Special : power ? WeaponAttacks.Kind.Power : WeaponAttacks.Kind.Basic;
+            uint ability = WeaponAttacks.CastIds.FirstOrDefault(id => WeaponAttacks.KindOf(id) == wanted);
             Vector3 eye = player.Position + new Vector3(0f, 1.6f, 0f);
-            ulong near = Creatures.InRadius(player.ZoneId, player.Position, 20f).FirstOrDefault();
+            ulong near = Creatures.InSight(player.ZoneId, player.Position, 20f).FirstOrDefault();
             Vector3 dir = near != 0 && Creatures.PositionOfGuid(near) is Vector3 at ? Vector3.Normalize(at + new Vector3(0f, 1f, 0f) - eye) : Facing(player);
-            uint damage = (uint)Math.Round(Abilities.WeaponDamageFor(player) * WeaponAttacks.DamageMultiplier(ability));
+            uint damage = (uint)Math.Round(Abilities.WeaponDamageFor(player) * WeaponAttacks.DamageMultiplier(weapon, ability));
             bool hit = Use(player, (eye, dir), eye + dir * 10f, weapon, ability, damage, charged ? true : null);
-            log.Info($"{player.CharacterName} dev {(power ? "power" : charged ? "charged basic" : "basic")} attack ({ability}) with {weapon?.Id}: {(hit ? "hit" : "missed")}"
+            log.Info($"{player.CharacterName} dev {(special ? "special" : power ? "power" : charged ? "charged basic" : "basic")} attack ({ability}) with {weapon?.Id}: {(hit ? "hit" : "missed")}"
                 + $" (nearest {(near == 0 ? "none" : $"{Vector3.Distance(Creatures.PositionOfGuid(near) ?? player.Position, player.Position):0.0} m")}).");
             return hit;
         }
@@ -474,21 +879,21 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             var parts = new List<string>();
             string Of(ulong g) => string.Join(",", Enum.GetValues<Status>().Where(s => Statuses.Has(g, s))
                 .Select(s => Statuses.Stacks(g, s) > 1 ? $"{s}x{Statuses.Stacks(g, s)}" : s.ToString()));
-            parts.Add($"self [{Of(player.PlayerGuid)}]");
-            foreach (ulong c in Creatures.InRadius(player.ZoneId, player.Position, 25f))
+            parts.Add($"self [{Of(player.PlayerGuid)}] Energy {WeaponAttacks.EnergyOf(player)}/{WeaponAttacks.EnergyCap(player):0}");
+            foreach (ulong c in Creatures.InSight(player.ZoneId, player.Position, 25f))
                 parts.Add($"0x{c:X} {Creatures.HealthFraction(c):P0} [{Of(c)}]");
             return string.Join("; ", parts);
         }
 
         private static bool Use(WorldSession player, (Vector3 Origin, Vector3 Direction)? ray, Vector3 fallbackAim,
-            ItemDefinitionManager.ItemDefinition weapon, uint ability, uint damage, bool? fullyCharged = null)
+            ItemDefinitionManager.ItemDefinition weapon, uint ability, uint damage, bool? fullyCharged = null, AbilityCastAttempt cast = null)
         {
             Kit kit = KitOf(weapon);
             if (kit == null || Health.IsDead(player))
                 return false;
             WeaponAttacks.Kind kind = WeaponAttacks.KindOf(ability);
             bool power = kind is WeaponAttacks.Kind.Power or WeaponAttacks.Kind.PowerCombo or WeaponAttacks.Kind.Special;
-            Attack attack = power ? kit.Power : kit.Basic;
+            Attack attack = AttackFor(kit, kind);
             Pace pace = PaceOf(player);
             DateTime now = DateTime.UtcNow;
             bool charged;
@@ -507,6 +912,20 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             Vector3 flat = new(dir.X, 0f, dir.Z);
             flat = flat.LengthSquared() > 0.0001f ? Vector3.Normalize(flat) : Vector3.UnitZ;
             Vector3 aim = ray is var (o, d) ? AimPoint(player, o, d, attack.Range) : fallbackAim;
+            int run = power ? WeaponAttacks.PowerRunOf(player) : 0;
+            // Rolling Thunder: "dealing greater damage … with each strike"; the third in a row is the finisher.
+            if (attack.Series)
+                damage = (uint)Math.Round(damage * (1f + SeriesStep * (run % 3)));
+            // Dirty Fighting and the like: the player's primer state makes this use the attack's stronger form.
+            // "with your next shot" / "your next swing" (573170 / 573171): the attack that uses it spends it, hit or miss
+            // [I literal reading].
+            bool primed = attack.Primer is Status primer && Statuses.Has(player.PlayerGuid, primer);
+            if (primed)
+                Statuses.Remove(player.PlayerGuid, attack.Primer.Value);
+            // An attack with its own parameter row hits for that row's value (the number its description shows), not the
+            // base weapon damage × the kind's multiplier. (No row attack is charged, so no charge share is lost here.)
+            if (attack.DamageRow != 0)
+                damage = RowDamage(player, primed && attack.PrimedRow != 0 ? attack.PrimedRow : attack.DamageRow);
             var swing = new Swing
             {
                 Player = player, Kit = kit, Attack = attack, Power = power, Charged = charged,
@@ -514,28 +933,45 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                 Damage = Boosted(player, kit, power, damage),
                 Strength = (Statuses.Has(player.PlayerGuid, Status.Exalt) ? 1.25f : 1f)
                     * (Statuses.Has(player.PlayerGuid, Status.Rejuvenate) && Gear.Has(player, Gear.HighHeraldsRing) ? 1.25f : 1f),
-                Ranged = attack.Shape is Shape.FirstHit or Shape.Pierce or Shape.AreaAtAim || attack.Range > 10f
+                Ranged = attack.Shape is Shape.FirstHit or Shape.Pierce or Shape.AreaAtAim || attack.Range > 10f,
+                Projectile = attack.Shape is Shape.FirstHit or Shape.Pierce or Shape.AreaAtAim ? ProjectileRow(weapon, kit.Affinity, power) : 0,
+                Run = run,
+                Primed = primed
             };
             if (attack.Shape == Shape.Block)
             {
                 Statuses.Apply(player.PlayerGuid, Status.Block, player);
                 return false;
             }
-            if (attack == kit.Power && kit.Power.Name == 574881)
-                Statuses.Apply(player.PlayerGuid, Status.Immune, player);   // Nightfall: immune while in the shadows
+            // Nightfall, Terminal Voltage: immune during the leap; Rolling Thunder's third leap "briefly makes you immune".
+            if (attack.Immune || (attack.Series && run % 3 == 2))
+                Statuses.Apply(player.PlayerGuid, Status.Immune, player);
+            // A melee swing whose caster info carried a Sweep targeter (OPEN-LEADS L170): the client's sweep reports the
+            // opponents it hits (FindTarget) and the server strikes those after checking them against this cone; see
+            // WeaponCombat.Targeters.cs. Dev swings and casts without a client targeter are resolved here, as before.
+            if (cast != null && DeferToSweep(swing, ray, weapon, ability, cast))
+                return false;
             Resolve(swing, ray);
+            // Channels: every further hit costs the weapon's "energy cost over time" (WeaponAttacks.Balance, 26 Apr /
+            // 25 May 2016 notes); the channel stops when the Energy runs out.
+            uint tickEnergy = power ? WeaponAttacks.TickEnergy(weapon) : 0;
             for (int t = 1; t < attack.Ticks; t++)
             {
                 int tick = t;
                 Later(attack.TickMs * tick, () =>
                 {
-                    if (player.Disconnected || Health.IsDead(player))
+                    if (player.Disconnected || Health.IsDead(player) || swing.Stopped)
                         return;
+                    if (!WeaponAttacks.TrySpendEnergy(player, tickEnergy))
+                    {
+                        swing.Stopped = true;
+                        return;
+                    }
                     var again = new Swing
                     {
                         Player = player, Kit = kit, Attack = attack, Power = power, Charged = charged,
                         Origin = player.Position, Forward = flat, Aim = aim, Damage = swing.Damage, Strength = swing.Strength,
-                        Ranged = swing.Ranged
+                        Ranged = swing.Ranged, Projectile = swing.Projectile, Run = run, Primed = swing.Primed
                     };
                     Resolve(again, ray);
                 });
@@ -578,8 +1014,8 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             List<ulong> targets = a.Shape switch
             {
                 Shape.Cone => Creatures.InCone(p.ZoneId, p.Position, s.Forward, a.Range, a.Size),
-                Shape.Around => Creatures.InRadius(p.ZoneId, p.Position, a.Range),
-                Shape.AreaAtAim => Creatures.InRadius(p.ZoneId, s.Aim, a.Size),
+                Shape.Around => Creatures.InSight(p.ZoneId, p.Position, a.Range),
+                Shape.AreaAtAim => Creatures.InSight(p.ZoneId, s.Aim, a.Size),
                 Shape.Pierce => Pierce(s, a.Range, a.Size),
                 Shape.Path => Creatures.AlongRay(p.ZoneId, p.Position + new Vector3(0f, 1f, 0f), s.Forward, a.Range, a.Size),
                 Shape.FirstHit => FirstHit(s, ray, a.Range, a.Size),
@@ -587,6 +1023,14 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             };
             if (a.MaxTargets > 0)
                 targets = targets.Take(a.MaxTargets).ToList();
+            // The visible shot: to the first target hit, else to the aimed point (Pierce: its full range).
+            if (s.Projectile != 0)
+            {
+                Vector3 to = a.Shape == Shape.Pierce ? p.Position + new Vector3(0f, 1.2f, 0f) + s.Forward * a.Range
+                    : targets.Count > 0 && Creatures.PositionOfGuid(targets[0]) is Vector3 hitAt ? hitAt + new Vector3(0f, 1f, 0f)
+                    : s.Aim + new Vector3(0f, 1f, 0f);
+                Fly(s, to);
+            }
             if (a.Effect != 0)
             {
                 // The attack's area effect where it lands: the aimed point, round the player, or along the path.
@@ -601,7 +1045,17 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             }
             foreach (ulong t in targets)
                 Strike(s, t, s.Damage, a.OnHit);
-            a.After?.Invoke(s);
+            Finish(s);
+        }
+
+        /// <summary>
+        /// The end of a swing, once all its hits are in: the attack's rule for the whole swing (After), and a Power
+        /// Attack spends the "first Power Attack after Frenzy / while Exalted" armour triggers.
+        /// </summary>
+        private static void Finish(Swing s)
+        {
+            WorldSession p = s.Player;
+            s.Attack.After?.Invoke(s);
             if (s.Power)
             {
                 Pace pace = PaceOf(p);
@@ -622,7 +1076,7 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                 return new List<ulong>();
             var hits = new List<ulong> { first };
             if (splash > 0 && Creatures.PositionOfGuid(first) is Vector3 at)
-                hits.AddRange(Creatures.InRadius(s.Player.ZoneId, at, splash).Where(g => g != first));
+                hits.AddRange(Creatures.InSight(s.Player.ZoneId, at, splash).Where(g => g != first));
             return hits;
         }
 
@@ -638,12 +1092,16 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             WorldSession p = s.Player;
             Affinity aff = s.Kit.Affinity;
             bool erupted = false;
-            if (aff == Affinity.Fire)
+            // Erupt: a Fire weapon's property, or the weaker one a Fire accessory gives with another weapon
+            // (Gear.WeakerProperty: half the chance; nothing guarantees it).
+            bool weakFire = aff != Affinity.Fire && Gear.WeakerProperties(p, aff).Contains(Affinity.Fire);
+            if (aff == Affinity.Fire || weakFire)
             {
                 Pace pace = PaceOf(p);
-                bool guaranteed = Statuses.Has(p.PlayerGuid, Status.Eruption)
-                    || (s.Power && pace.FirstPowerAfterFrenzy && Gear.Wields(p, Gear.WanderersBlazingGuise, aff));
-                float chance = EruptChance * s.Strength * (Gear.Has(p, Gear.MoltenIronOrb) ? 1.6f : 1f);
+                bool guaranteed = !weakFire && (Statuses.Has(p.PlayerGuid, Status.Eruption)
+                    || (s.Power && pace.FirstPowerAfterFrenzy && Gear.Wields(p, Gear.WanderersBlazingGuise, aff)));
+                float chance = EruptChance * s.Strength * (Gear.Has(p, Gear.MoltenIronOrb) ? 1.6f : 1f)
+                    * (weakFire ? Gear.WeakerProperty : 1f);
                 erupted = guaranteed || Random.Shared.NextDouble() < chance;
                 if (erupted)
                 {
@@ -653,14 +1111,17 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                     if (Gear.Has(p, Gear.BandOfFlame))
                         Statuses.Apply(target, Status.Burn, p, power: s.Damage * BurnPerSecond);
                     if (guaranteed && s.Power && Gear.Wields(p, Gear.WanderersBlazingGuise, aff) && Creatures.PositionOfGuid(target) is Vector3 at)
+                    {
                         Field(s, at, 3f, 4, null, 0.2f, effect: 12729);                // the blazing cyclone
+                        Gear.Fired(p, Gear.WanderersBlazingGuise, "first Power Attack after Frenzy Erupted, blazing cyclone 3 m / 4 s");
+                    }
+                    if (weakFire)
+                        Gear.Fired(p, WeakerItem(p, Affinity.Fire), "weaker Erupt (no Fire weapon)");
                 }
             }
             if (Statuses.Has(target, Status.Weakened) == false && aff == Affinity.Affliction && Gear.Has(p, Gear.BeltOfVirulence)
                 && Statuses.AtMax(p.PlayerGuid, Status.Infect))
                 Statuses.Apply(target, Status.Weakened, p);
-            if (aff == Affinity.Shadow && Gear.Has(p, Gear.SpiteEtchedBracer))
-                Statuses.Apply(target, Status.Siphoned, p);
             float lifeBefore = Creatures.HealthFraction(target);
             var (dealt, killed) = Creatures.Damage(p, target, damage, s.Ranged);
             if (dealt == 0 && !killed)
@@ -685,51 +1146,98 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             Property(hit);
         }
 
-        /// <summary>The weapon affinity's own on-hit property (wiki: Flow, Energize, Regrowth, Infect, Siphon, Rejuvenate).</summary>
+        /// <summary>
+        /// The on-hit properties (wiki / 21 Mar 2016 notes P4197: Flow, Energize, Regrowth, Infect, Siphon, Rejuvenate):
+        /// the weapon affinity's own, then the weaker one of each accessory affinity the weapon doesn't have
+        /// (<see cref="Gear.WeakerProperties"/>; Fire's weaker Erupt is rolled in <see cref="Strike"/>).
+        /// </summary>
         private static void Property(Hit h)
+        {
+            WorldSession p = h.Swing.Player;
+            Affinity weapon = h.Swing.Kit.Affinity;
+            PropertyOf(h, weapon, 1f);
+            foreach (Affinity a in Gear.WeakerProperties(p, weapon))
+                if (a != Affinity.Fire && PropertyOf(h, a, Gear.WeakerProperty))
+                    Gear.Fired(p, WeakerItem(p, a), $"weaker {PropertyName(a)} (no {a} weapon)");
+        }
+
+        /// <summary>The on-hit property of an affinity (21 Mar 2016 notes, P4197).</summary>
+        private static string PropertyName(Affinity a) => a switch
+        {
+            Affinity.Fire => "Erupt", Affinity.Water => "Flow", Affinity.Lightning => "Energize", Affinity.Earth => "Regrowth",
+            Affinity.Affliction => "Infect", Affinity.Shadow => "Siphon", Affinity.Radiance => "Rejuvenate", _ => "none"
+        };
+
+        /// <summary>The first equipped accessory of an affinity (whose weaker property fired; for the log).</summary>
+        private static uint WeakerItem(WorldSession p, Affinity a)
+            => p.Inventory?.Items.Where(i => i.Container == Inventory.Inventory.EquippedContainer)
+                   .Select(i => i.ItemDefinitionId).FirstOrDefault(id => Gear.AccessoryAffinity(id) == a) ?? 0;
+
+        /// <summary>
+        /// One affinity's on-hit property at a strength: 1 for the weapon's own, <see cref="Gear.WeakerProperty"/> for an
+        /// accessory's weaker version, where it happens on that share of the hits (Flow, Energize, Infect), with that
+        /// share of the chance (Regrowth, Rejuvenate) or turns that share of the damage into life (Siphon). The
+        /// accessories' boosts apply to either. True when the property happened.
+        /// </summary>
+        private static bool PropertyOf(Hit h, Affinity affinity, float strength)
         {
             Swing s = h.Swing;
             WorldSession p = s.Player;
-            switch (s.Kit.Affinity)
+            bool some = strength >= 1f || Random.Shared.NextDouble() < strength;
+            switch (affinity)
             {
                 case Affinity.Water:
+                    if (!some)
+                        return false;
                     int flow = Gear.Has(p, Gear.RingOfTheRisingTide) ? 2 : 1;
                     Statuses.Apply(p.PlayerGuid, Status.Flow, p, stacks: flow);
-                    WeaponAttacks.GainEnergy(p, FlowEnergy * flow * (Gear.Has(p, Gear.SigilOfPiercingFloods) ? 1.5f : 1f));
-                    break;
+                    // Flow raises the Energy maximum while it lasts (WeaponAttacks.EnergyCap; Sigil of Piercing Floods:
+                    // more per stack); the stack's Energy is ours on top. GainEnergy also tells the client the new maximum.
+                    WeaponAttacks.GainEnergy(p, FlowEnergy * flow);
+                    return true;
                 case Affinity.Lightning:
-                    if (s.Power)
-                        Statuses.Apply(p.PlayerGuid, Status.Energize, p,
-                            seconds: Statuses.Defs[Status.Energize].Seconds * (Gear.Has(p, Gear.EarringsOfEnduringEnergy) ? 1.5f : 1f));
-                    break;
+                    if (!s.Power || !some)
+                        return false;
+                    Statuses.Apply(p.PlayerGuid, Status.Energize, p,
+                        seconds: Statuses.Defs[Status.Energize].Seconds * (Gear.Has(p, Gear.EarringsOfEnduringEnergy) ? 1.5f : 1f));
+                    return true;
                 case Affinity.Earth:
-                    float chance = RegrowthChance * s.Strength * (Gear.Has(p, Gear.BracerOfSurvival) ? 1.75f : 1f);
-                    if (Random.Shared.NextDouble() < chance)
-                    {
-                        Health.Heal(p, (uint)(Health.MaxHealth * RegrowthShare * (Gear.Has(p, Gear.DefendersWristguard) ? 1.6f : 1f)));
-                        HitEffects.PlayOn(p.PlayerGuid, 11668, Statuses.Viewers(p.PlayerGuid));
-                        if (Gear.Has(p, Gear.RingOfIndifference))
-                            Statuses.Apply(p.PlayerGuid, Status.Bulwark, p);
-                    }
-                    break;
+                    float chance = RegrowthChance * s.Strength * strength * (Gear.Has(p, Gear.BracerOfSurvival) ? 1.75f : 1f);
+                    if (Random.Shared.NextDouble() >= chance)
+                        return false;
+                    Health.Heal(p, (uint)(Health.Max(p) * RegrowthShare * (Gear.Has(p, Gear.DefendersWristguard) ? 1.6f : 1f)));
+                    HitEffects.PlayOn(p.PlayerGuid, 11668, Statuses.Viewers(p.PlayerGuid));
+                    if (Gear.Has(p, Gear.RingOfIndifference))
+                        Statuses.Apply(p.PlayerGuid, Status.Bulwark, p);
+                    return true;
                 case Affinity.Affliction:
+                    if (!some)
+                        return false;
                     Statuses.Apply(p.PlayerGuid, Status.Infect, p, stacks: Gear.Has(p, Gear.DefilersPiercings) ? 2 : 1);
-                    break;
+                    return true;
                 case Affinity.Shadow:
-                    float share = s.Power ? SiphonShare * (Gear.Has(p, Gear.ShadowforgedBand) ? 1.6f : 1f)
-                        : Gear.Has(p, Gear.EarringsOfDarkestNight) ? SiphonShare * 0.5f : 0f;
-                    if (Recently(p, "revenge", TimeSpan.FromSeconds(4)) && Gear.Wields(p, Gear.PlateOfUnrelentingVengeance, Affinity.Shadow))
+                    float share = (s.Power ? SiphonShare * (Gear.Has(p, Gear.ShadowforgedBand) ? 1.6f : 1f)
+                        : Gear.Has(p, Gear.EarringsOfDarkestNight) ? SiphonShare * 0.5f : 0f) * strength;
+                    // Plate of Unrelenting Vengeance: "significantly" more Siphon while its window runs (TryVengeance).
+                    if (Recently(p, "revenge", VengeanceSiphon) && Gear.Wields(p, Gear.PlateOfUnrelentingVengeance, Affinity.Shadow))
                         share *= 2f;
-                    if (share > 0)
-                        Health.Heal(p, (uint)Math.Max(1, h.Dealt * share * s.Strength));
-                    break;
+                    if (share <= 0)
+                        return false;
+                    Health.Heal(p, (uint)Math.Max(1, h.Dealt * share * s.Strength));
+                    // Spite Etched Bracer (574932): "Siphon temporarily increases the damage opponents take when you
+                    // attack them" — when Siphon happens (was: on every Shadow hit, Siphon or not).
+                    if (!h.Killed && Gear.Has(p, Gear.SpiteEtchedBracer))
+                        Statuses.Apply(h.Target, Status.Siphoned, p);
+                    return true;
                 case Affinity.Radiance:
-                    if (Random.Shared.NextDouble() < RejuvenateChance * s.Strength)
-                        Statuses.Apply(p.PlayerGuid, Status.Rejuvenate, p,
-                            power: Health.MaxHealth * RejuvenateShare * (Gear.Has(p, Gear.BlessedBrooch) ? 2f : 1f),
-                            seconds: Statuses.Defs[Status.Rejuvenate].Seconds * (Gear.Has(p, Gear.RadiantBulwark) ? 1.6f : 1f));
-                    break;
+                    if (Random.Shared.NextDouble() >= RejuvenateChance * s.Strength * strength)
+                        return false;
+                    Statuses.Apply(p.PlayerGuid, Status.Rejuvenate, p,
+                        power: Health.Max(p) * RejuvenateShare * (Gear.Has(p, Gear.BlessedBrooch) ? 2f : 1f),
+                        seconds: Statuses.Defs[Status.Rejuvenate].Seconds * (Gear.Has(p, Gear.RadiantBulwark) ? 1.6f : 1f));
+                    return true;
             }
+            return false;
         }
 
         // ---- Rule helpers --------------------------------------------------------------------------------------------
@@ -746,7 +1254,10 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                 _ => 0f
             };
             if (st == Status.Condemn && Gear.Wields(h.Swing.Player, Gear.HauberkOfPiercingJudgment, Affinity.Shadow))
+            {
                 power = h.Swing.Damage * CondemnPerSecond;
+                Gear.Fired(h.Swing.Player, Gear.HauberkOfPiercingJudgment, $"Condemn deals {power:0} damage a second");
+            }
             Statuses.Apply(h.Target, st, h.Swing.Player, power: power, seconds: Defs(st) * h.Swing.Strength);
             Gear.OnApplied(h, st);
         }
@@ -758,27 +1269,33 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
         /// <summary>A state on the attacker (scaled by strength).</summary>
         public static void Grant(Swing s, Status st)
         {
-            float power = st == Status.Illuminate ? Health.MaxHealth * IlluminateShare * s.Strength : 0f;
+            float power = st == Status.Illuminate ? Health.Max(s.Player) * IlluminateShare * s.Strength : 0f;
             Statuses.Apply(s.Player.PlayerGuid, st, s.Player, power: power, seconds: Defs(st) * s.Strength);
         }
 
         /// <summary>
-        /// Surge: half of the player's stored energy is spent as bonus damage on the target (Raiment of Frozen Sorrow:
-        /// double against the Frozen, and a small ice storm stays behind).
+        /// Surge: half of the player's stored energy is spent as bonus damage on the target — a base amount whatever
+        /// was spent, plus more per Energy than before but less in all at high reserves (26 Apr 2016 notes, see
+        /// <see cref="SurgeBaseShare"/>). Raiment of Frozen Sorrow: double against the Frozen, and a small ice storm
+        /// stays behind.
         /// </summary>
         public static void Surge(Hit h)
         {
             WorldSession p = h.Swing.Player;
             double spent = WeaponAttacks.SpendHalfEnergy(p);
-            if (spent < 1)
-                return;
             bool frozen = Statuses.Has(h.Target, Status.Freeze);
             bool raiment = frozen && Gear.Wields(p, Gear.RaimentOfFrozenSorrow, Affinity.Water);
-            uint bonus = (uint)(spent * (raiment ? 2.0 : 1.0));
+            double surge = h.Swing.Damage * SurgeBaseShare + spent * SurgePerEnergy;
+            uint bonus = (uint)(surge * (raiment ? 2.0 : 1.0));
+            if (bonus == 0)
+                return;
             HitEffects.PlayOn(h.Target, 11533, Statuses.Viewers(h.Target, p));   // PFX_Combat_Ice_Staff_SpecialAttack_Explosion
             Creatures.Damage(p, h.Target, bonus, true, impact: false);
             if (raiment && Creatures.PositionOfGuid(h.Target) is Vector3 at)
+            {
                 Field(h.Swing, at, 4f, 4, null, 0.1f, effect: 11528);
+                Gear.Fired(p, Gear.RaimentOfFrozenSorrow, $"Surge on a Frozen target doubled to {bonus}, ice storm 4 m / 4 s");
+            }
         }
 
         /// <summary>Bonus damage (share of the swing) to everyone within <paramref name="radius"/> of each target hit; returns who was hit.</summary>
@@ -787,7 +1304,7 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             var near = new HashSet<ulong>();
             foreach (ulong t in s.Hits.ToList())
                 if (Creatures.PositionOfGuid(t) is Vector3 at)
-                    foreach (ulong n in Creatures.InRadius(s.Player.ZoneId, at, radius))
+                    foreach (ulong n in Creatures.InSight(s.Player.ZoneId, at, radius))
                         near.Add(n);
             foreach (ulong n in near)
                 Creatures.Damage(s.Player, n, (uint)(s.Damage * share), s.Ranged);
@@ -901,14 +1418,22 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             {
                 if (a.Source.Disconnected)
                     continue;
-                foreach (ulong t in Creatures.InRadius(a.Zone, a.At, a.Radius))
+                // Each area on its own, as the delayed hits above: a kill runs story Links (bughunt-combat.md B10).
+                try
                 {
-                    if (a.PerTick > 0 && a.TicksLeft >= 0)
-                        Creatures.Damage(a.Source, t, a.PerTick, true, impact: false);
-                    if (a.Applies is Status st && a.TicksLeft >= 0)
-                        Statuses.Apply(t, st, a.Source, power: st == Status.Burn ? a.Damage * BurnPerSecond : 0f);
-                    if (a.EndFreeze && a.TicksLeft == 0)
-                        Statuses.Apply(t, Status.Freeze, a.Source, seconds: Defs(Status.Freeze) * a.Strength);
+                    foreach (ulong t in Creatures.InSight(a.Zone, a.At, a.Radius))
+                    {
+                        if (a.PerTick > 0 && a.TicksLeft >= 0)
+                            Creatures.Damage(a.Source, t, a.PerTick, true, impact: false);
+                        if (a.Applies is Status st && a.TicksLeft >= 0)
+                            Statuses.Apply(t, st, a.Source, power: st == Status.Burn ? a.Damage * BurnPerSecond : 0f);
+                        if (a.EndFreeze && a.TicksLeft == 0)
+                            Statuses.Apply(t, Status.Freeze, a.Source, seconds: Defs(Status.Freeze) * a.Strength);
+                    }
+                }
+                catch (Exception e)
+                {
+                    log.Warn(e, "Lingering area tick failed.");
                 }
             }
         }
@@ -932,31 +1457,68 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                 // "the next attack that hits you head on": the attacker is in the half the player faces.
                 if (to.LengthSquared() < 0.01f || Vector3.Dot(Vector3.Normalize(to), Facing(victim)) > 0.2f)
                 {
+                    // Hotfix notes 11 May 2016: the Flame Bound Bastion's Molten Rebuke keeps blocking and no longer
+                    // stops to counter projectiles.
+                    // A shot (attacker further than ProjectileDistance [I]) is stopped and the stance stays up.
+                    var held = KitOf(Abilities.HeldWeapon(victim));
+                    if (held?.Power.Name == MoltenRebukeName && to.Length() > ProjectileDistance)
+                        return 0;
                     Statuses.Remove(g, Status.Block);
                     ShieldBash(victim);
                     return 0;
                 }
             }
             float f = 1f;
+            // 25 May 2016: melee weapons give their wielders a little more passive damage resistance.
+            if (IsMelee(Abilities.HeldWeapon(victim)))
+                f *= MeleeResistance;
             if (Statuses.Has(g, Status.Consecrated))
             {
                 f *= 0.7f;
                 if (!Recently(victim, "consecrate-shield", TimeSpan.FromSeconds(3)))
                 {
                     Mark(victim, "consecrate-shield");
-                    Statuses.Apply(g, Status.Illuminate, victim, power: Health.MaxHealth * IlluminateShare);
+                    Statuses.Apply(g, Status.Illuminate, victim, power: Health.Max(victim) * IlluminateShare);
                 }
             }
             if (Statuses.Has(g, Status.Bulwark)) f *= 0.8f;
-            if (Statuses.Has(g, Status.Harden))
+            // Harden is used up by this hit; the armour effects that react to it (Armored Brawler's Doublet,
+            // Unflinching Embodiment of Stone) get the flag, as Statuses no longer has it.
+            bool hardened = Statuses.Has(g, Status.Harden);
+            if (hardened)
             {
                 Statuses.Remove(g, Status.Harden);
                 f *= Gear.Wields(victim, Gear.UnflinchingEmbodimentOfStone, Affinity.Earth) ? 0f : 0.5f;
             }
-            f *= Gear.OnHurt(victim, attacker);
+            f *= Gear.OnHurt(victim, attacker, hardened);
             uint through = (uint)Math.Round(amount * f);
-            Mark(victim, "revenge");
             return Statuses.Absorb(g, through);
+        }
+
+        /// <summary>Molten Rebuke's name text (the Flame Bound Bastion's Power Attack).</summary>
+        private const uint MoltenRebukeName = 573125;
+
+        /// <summary>How long Plate of Unrelenting Vengeance's stronger Siphon lasts after it fires.</summary>
+        public static readonly TimeSpan VengeanceSiphon = TimeSpan.FromSeconds(4);
+
+        /// <summary>
+        /// Plate of Unrelenting Vengeance (text 575660: "opponents that attack you suffer revenge damage. When this
+        /// happens Siphon also briefly converts significantly more damage to life"). Hotfix notes 26 April 2016,
+        /// "Armor Passive: Unrelenting Vengeance": no longer needs low life or a Tormented opponent, more damage when
+        /// it triggers, a much stronger Siphon for a while, no new trigger until that Siphon buff ends, and no benefit
+        /// from Siphon itself (revenge damage is not a weapon hit, so it never heals),
+        /// "No longer reduces incoming damage at low life". True when it fires now (and starts the Siphon window).
+        /// </summary>
+        public static bool TryVengeance(WorldSession p)
+        {
+            Pace pace = PaceOf(p);
+            lock (sync)
+            {
+                if (pace.Marks.TryGetValue("revenge", out DateTime at) && DateTime.UtcNow - at <= VengeanceSiphon)
+                    return false;
+                pace.Marks["revenge"] = DateTime.UtcNow;
+                return true;
+            }
         }
 
         /// <summary>The way the player faces (their last movement rotation, flattened), else +Z.</summary>
@@ -977,7 +1539,10 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             var s = new Swing
             {
                 Player = p, Kit = kit, Attack = kit.Power, Power = true, Charged = true, Origin = p.Position,
-                Forward = Facing(p), Aim = p.Position, Damage = Abilities.WeaponDamageFor(p)
+                Forward = Facing(p), Aim = p.Position,
+                // The counter is the Power Attack: the weapon's Power factor (Flame Bound Bastion 25 May 2016: more
+                // power attack damage, WeaponAttacks.Balance).
+                Damage = (uint)Math.Round(Abilities.WeaponDamageFor(p) * WeaponAttacks.DamageFactor(weapon, power: true))
             };
             HitEffects.PlayOn(p.PlayerGuid, 11356, Statuses.Viewers(p.PlayerGuid));   // PFX_Combat_Physical_Sword_SpecialAttack_Release
             foreach (ulong t in Creatures.InCone(p.ZoneId, p.Position, s.Forward, kit.Power.Range, kit.Power.Size))
@@ -1000,7 +1565,7 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                 Player = p, Kit = kit ?? new Kit(Affinity.None, null, null, 0), Attack = kit?.Basic, Origin = p.Position,
                 Forward = Facing(p), Aim = at, Damage = (uint)(Abilities.WeaponDamageFor(p) * share)
             };
-            foreach (ulong t in Creatures.InRadius(p.ZoneId, at, radius))
+            foreach (ulong t in Creatures.InSight(p.ZoneId, at, radius))
             {
                 if (effect != 0)
                     HitEffects.PlayOn(t, effect, Statuses.Viewers(t, p));
@@ -1026,6 +1591,9 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                 lock (sync) PaceOf(p).FirstPowerWhileExalted = true;
             if (s is Status.Frenzy or Status.Supercharge or Status.Energize)
                 SendAttackInfo(p);
+            // Flow over (expired, death): the Energy maximum drops back to the table's (WeaponAttacks.EnergyCap).
+            if (!started && s == Status.Flow)
+                WeaponAttacks.EnergyCapChanged(p);
         }
 
         /// <summary>Is this the player's first Power Attack since Exalt started (Lightbringer's Oath)?</summary>
@@ -1044,17 +1612,22 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
 
         /// <summary>
         /// Fills a weapon attack's caster info from the held weapon: the attack's own name and description (Basic / Power
-        /// by the cast's button), cast time (Frenzy: 40 % faster) and Energy cost (<see cref="CostFactor"/>).
+        /// / Special by the cast's button), cast time (Frenzy: 40 % faster) and Energy cost (<see cref="CostFactor"/>).
         /// </summary>
         public static void Describe(WorldSession p, ItemDefinitionManager.ItemDefinition weapon, uint ability, AbilityCasterInfoReply reply)
         {
             Kit kit = KitOf(weapon);
             if (kit == null)
                 return;
-            WeaponAttacks.Kind k = WeaponAttacks.KindOf(ability);
-            Attack a = k is WeaponAttacks.Kind.Power or WeaponAttacks.Kind.PowerCombo or WeaponAttacks.Kind.Special ? kit.Power : kit.Basic;
+            Attack a = AttackFor(kit, WeaponAttacks.KindOf(ability));
             reply.NameId = a.Name;
             reply.DescriptionId = a.Description;
+            // The weapon's own Power Attack cost (WeaponAttacks.Balance: wiki tooltip values, 25 May 2016 pass).
+            if (reply.CostAmount > 0 || WeaponAttacks.KindOf(ability) is WeaponAttacks.Kind.Power or WeaponAttacks.Kind.PowerCombo)
+            {
+                reply.CostAmount = WeaponAttacks.ShownEnergyCost(weapon, ability);
+                reply.CostResource = 2;
+            }
             if (Statuses.Has(p.PlayerGuid, Status.Frenzy))
             {
                 reply.CastTime *= 0.6f;
@@ -1066,9 +1639,13 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             if (a.Charged)
             {
                 reply.KindHash = ChargedKind;
-                reply.MaxCharge = MaxChargeSeconds;
-                reply.MinCharge = MinChargeSeconds;
+                float full = FullChargeOf(a);
+                reply.MaxCharge = full;
+                reply.MinCharge = MinChargeSeconds * full / MaxChargeSeconds;
             }
+            // A melee swing: the client runs it as a Sweep targeter and reports the opponents it hits (L170).
+            if (SweepOf(weapon, ability) is ClientExecutedTargeter sweep)
+                reply.ExecutedTargeters.Add(sweep);
         }
 
         /// <summary>Sends the caster info of every weapon cast id again (weapon changed, Frenzy / Supercharge started or ended).</summary>
@@ -1086,6 +1663,8 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
         /// <summary>The held weapon changed since the attack info was last sent?</summary>
         public static void CheckWeapon(WorldSession p)
         {
+            // Equip / unequip: the armour's maximum life and damage (sent only when they changed).
+            GearStats.Refresh(p);
             var weapon = Abilities.HeldWeapon(p);
             ItemDefinitionManager.ItemDefinition last;
             lock (sync)
@@ -1102,6 +1681,10 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                 areas.RemoveAll(a => a.Source == p);
                 charging.Remove(p);
             }
+            // The six-shooters' hand (a concurrent map): kept the whole session alive after logout (bughunt-combat.md B9).
+            leftHandNext.TryRemove(p, out _);
+            ForgetSweeps(p);
+            Abilities.Forget(p);
             Statuses.Forget(p);
         }
     }

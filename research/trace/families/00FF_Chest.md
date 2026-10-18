@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 4 (0 not handled) · S2C 5 (0 never sent / opcode unknown)
 
 ## C2S QuickChatSendChatToChannelPacket  `0xFF`
-- server: handled
+- server: handled · seen in play 4×
 - writer: FUN_143290f30
 - built in: FUN_143298c40, FUN_14329e500, FUN_14329e680
 - sent by Lua natives: ProcessQuickChatCommand, ProcessQuickGroupChatCommand
@@ -27,7 +27,7 @@ i16   +0xec
 ```
 
 ## C2S QuickChatSendTellPacket  `0xFF`
-- server: handled
+- server: handled · seen in play 4×
 - built in: FUN_14329e7b0
 - sent by Lua natives: ProcessQuickTellCommand
 - code (builder in FUN_14329e7b0):
@@ -36,7 +36,7 @@ i16   +0xec
 ```
 
 ## C2S PacketChestStopObservingChest  `0xFF, 0x2`
-- server: handled (sub in handler)
+- server: handled (sub in handler) · seen in play 2×
 - built in: FUN_142daf350
 - sent by Lua natives: RequestCloseChest
 - UI using them: Chest.lua
@@ -46,7 +46,7 @@ i16   +0xec
 ```
 
 ## C2S PacketChestInventoryListRequest  `0xFF, 0x3`
-- server: handled (sub in handler)
+- server: handled (sub in handler) · seen in play 2×
 - built in: FUN_142dae130
 - sent by Lua natives: OpenChest
 - code (builder in FUN_142dae130):
@@ -55,7 +55,7 @@ i16   +0xec
 ```
 
 ## S2C PacketChestAddItem  `0xFF`
-- server: SENT (opcode used in the server code)
+- server: SENT (opcode used in the server code) · seen in play 4×
 - reader: FUN_142da8e70
 - built in: FUN_142dad120
 - layout:
@@ -64,11 +64,11 @@ u16   +0x8
 u32   +0x10
 u64   +0x18
 u64   +0x20
-i32   iVar3
+i32   <local>
 ```
 
 ## S2C PacketChestDeleteItem  `0xFF`
-- server: SENT (opcode used in the server code)
+- server: SENT (opcode used in the server code) · seen in play 4×
 - reader: FUN_142da8f80
 - built in: FUN_142dad120
 - layout:
@@ -86,7 +86,7 @@ u64   +0x28
 - built in: FUN_142dad120
 
 ## S2C PacketChestInventoryListResponse  `0xFF`
-- server: SENT (opcode used in the server code)
+- server: SENT (opcode used in the server code) · seen in play 4×
 - reader: FUN_142da90f0
 - built in: FUN_142dad120
 - layout:
@@ -100,11 +100,11 @@ u64   +0x30
 u32   +0x38
 u32   +0x3c
 bool  +0x4c
-i32   iVar2
+i32   <local>
 ```
 
 ## S2C PacketChestUpdateItem  `0xFF`
-- server: SENT (opcode used in the server code)
+- server: SENT (opcode used in the server code) · seen in play 4×
 - reader: FUN_142da92e0
 - built in: FUN_142dad120
 - layout:

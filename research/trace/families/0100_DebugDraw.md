@@ -41,13 +41,13 @@ FUN_142b9e660 -> +0x20
     [loop 2: list elements]
 FUN_142d66360 -> +0x40
     [loop 1: list elements]
-  u32   *(undefined4 *)(param_2 + lVar2 * 4)
+  u32   <computed>
     [loop 2: list elements]
-  u32   *puVar1
+  u32   <element>
     [loop 3: list elements]
-  u32   *puVar1
+  u32   <element>
     [loop 4: list elements]
-  u32   *puVar1
+  u32   <element>
 u32   +0x80
 bool  +0x84
 bool  +0x85
@@ -64,9 +64,9 @@ u16   +0x8
 u32   +0x10
 u64   +0x18
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
   [loop 2: list elements]
-u32   *puVar1
+u32   <element>
 u32   +0x40
 bool  +0x44
 u32   +0x48
@@ -98,7 +98,7 @@ u16   +0x8
 u32   +0x10
 u64   +0x18
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 str   +0x30
 u32   +0x48
 bool  +0x4c

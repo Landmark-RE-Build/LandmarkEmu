@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    LandmarkEmulator.PatchPacks: patch packs (.lmpatch) and the one set of rules every side checks them with. Shared by
+    LaunchPad (LandmarkEmulator.LaunchPad: installs, makes and downloads packs), the patch host
+    (LandmarkEmulator.WebAPI/PatchHost.cs: verifies the packs a server owner drops in its folder before it serves them)
+    and the tests (LandmarkEmulator.Tests/PatchPacks), so the server and the player run exactly the same checks.
+
+    The trust anchor is in here, embedded (not a loose file a server or a pack could swap): Daybreak's file list of the
+    final build, Steam's list of the 0.589 install, and the SHA-256 of every genuine 0.695 file
+    (Data/landmark-0695-files-sha256.csv, tools/strong_hash_list.py). Names, sizes and checksums only: no game code or
+    game bytes. docs/launchpad.md.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>LandmarkEmulator.PatchPacks</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.IO.Hashing" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The tests swap in their own small lists (Patching.UseLists) instead of the real ones. -->
+    <InternalsVisibleTo Include="LandmarkEmulator.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Daybreak's file list for the final build (path, size, CRC32): names and checksums only, no game content. -->
+    <EmbeddedResource Include="Data\landmark-final-2017-file-list.csv" LogicalName="final-file-list.csv" />
+    <!-- Steam's own list of the 0.589 install (path, size, SHA-1; re/tools/steam_manifest.py). -->
+    <EmbeddedResource Include="Data\steam-0589-file-list.csv" LogicalName="steam-file-list.csv" />
+    <!-- The update's files (re/tools/update_files.py): which 0.695 files differ from a verified Steam copy. -->
+    <EmbeddedResource Include="Data\update-0589-to-0695-files.csv" LogicalName="update-files.csv" />
+    <!-- The SHA-256 of every genuine file of the 0.695 builds (tools/strong_hash_list.py): the trust anchor. -->
+    <EmbeddedResource Include="Data\landmark-0695-files-sha256.csv" LogicalName="strong-file-list.csv" />
+  </ItemGroup>
+
+</Project>

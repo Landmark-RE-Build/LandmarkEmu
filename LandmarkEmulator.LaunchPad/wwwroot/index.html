@@ -77,17 +77,43 @@
 
           <section class="tab hidden" id="tab-packs">
             <h2>Patch packs</h2>
-            <p class="muted">The one patch LaunchPad installs is Daybreak's update from the Steam build to the final
-              build, checked file by file against the build's own list: nothing else gets into your game. Install it from
+            <p class="muted">The one patch LaunchPad installs is Daybreak's update from the Steam build to 0.695, checked
+              file by file against LaunchPad's own list of the genuine files (SHA-256): nothing else gets into your game. Install it from
               its .lmpatch file (choose it, or drop it on this window). It only goes on a complete Steam copy of Landmark, and the
               files it replaces are kept in a compressed backup so it can be undone.</p>
             <div class="buttons"><button id="choosePack" class="primary">Install a patch pack...</button>
               <button id="undoPack">Undo the last patch</button>
               <button id="revertAll" class="danger">Back to the Steam game</button></div>
             <div id="packPreview" class="hidden card"></div>
+            <label class="check"><input type="checkbox" id="optFebruary"> Allow the February 2017 build's three files without a
+              strong fingerprint (local pack files only)</label>
+            <p class="muted small">Daybreak's last build (14 Feb 2017) differs from the January build in Landmark64.exe and
+              the English text (Locale\en_us_data.dat / .dir). LaunchPad has no SHA-256 of those three, so normally a pack
+              with them is refused. With this on, a pack you choose or make yourself may write them checked only by their size
+              and CRC32 against Daybreak's list, which a forged file can match: only use packs you trust. It never applies
+              to a server's update or to any other file.</p>
             <h3>Installed (newest first)</h3>
             <ul id="packList" class="list"></ul>
             <p class="muted"><span id="cacheInfo"></span> <button class="link" id="clearCache">Clear</button></p>
+
+            <h3>Create update pack</h3>
+            <p class="muted">If you have a 0.695 copy of Landmark, LaunchPad can make the update pack from it, for yourself or
+              for a server. It takes only Daybreak's genuine 0.695 files: every file is checked against LaunchPad's own
+              list of them (SHA-256) first, and the folder is refused if any file is missing or different. The pack
+              contains game files from your own copy, and installs only on a complete Steam copy of Landmark
+              <span class="steam-build"></span>, so it is no use to anyone who doesn't own the game.</p>
+            <div class="card">
+              <div class="pick"><span>Your 0.695 game folder</span><span id="makeFrom" class="mono muted">not chosen</span>
+                <button id="makeChooseFrom">Choose...</button></div>
+              <div class="pick"><span>Steam copy (makes a much smaller pack)</span>
+                <select id="makeSteam"><option value="own">This game folder</option><option value="">No Steam copy: every file whole</option>
+                  <option value="other">Another folder...</option></select><span id="makeSteamPath" class="mono muted"></span></div>
+              <div class="pick"><span>Save the pack as</span><span id="makeOut" class="mono muted">not chosen</span>
+                <button id="makeChooseOut">Choose...</button></div>
+              <div class="buttons"><button id="makeCheck">Check the folder</button>
+                <button id="makeGo" class="primary">Create update pack</button></div>
+              <div id="makeResult"></div>
+            </div>
           </section>
 
           <section class="tab hidden" id="tab-validate">
@@ -114,6 +140,8 @@
           <section class="tab hidden" id="tab-options">
             <h2>Options</h2>
             <label class="check"><input type="checkbox" id="optAutoPlay"> Start the game automatically when LaunchPad opens</label>
+            <label class="check"><input type="checkbox" id="optServerUpdates"> Allow installing the update from servers
+              (LaunchPad always asks first, and checks every file against its own list of Daybreak's genuine files)</label>
             <label>Game language
               <select id="optLocale">
                 <option value="">Default</option><option value="en_US">English</option><option value="de_DE">Deutsch</option>
@@ -169,12 +197,13 @@
   </div>
   <div id="patchModal" class="modal hidden">
     <button class="modal-close">&#x2715;</button>
-    <h2>Update for <span id="patchServer"></span></h2>
-    <p class="muted">This server plays on Daybreak's final build. Its update is checked file by file against
-      Daybreak's own list before anything changes; your files are backed up first, and Settings &gt; Patch packs
-      undoes it.</p>
+    <h2>Update from <span id="patchServer"></span></h2>
     <ul id="patchList" class="plain"></ul>
-    <button class="primary wide" id="patchAccept">Update</button>
+    <p class="muted">Nothing has been downloaded yet. If you go ahead, LaunchPad downloads the pack into its own folder and
+      checks every file in it against its own list of Daybreak's genuine files (SHA-256) before anything in your game
+      changes; anything else is refused and deleted. Your files are backed up first, and Settings &gt; Patch packs
+      undoes it. You can switch server updates off in Settings &gt; Options.</p>
+    <button class="primary wide" id="patchAccept">Download and install</button>
   </div>
   <div id="spinnerModal" class="modal hidden">
     <div class="spinner"></div>

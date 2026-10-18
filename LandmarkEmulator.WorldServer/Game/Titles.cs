@@ -57,9 +57,9 @@ namespace LandmarkEmulator.WorldServer.Game
                 {
                     uint id = (uint)(item.NameId + d);
                     string text = TextManager.Instance.GetTextForId(id);
-                    if (text == title || text == " " + title)
+                    if (text == title || text == " " + title || text == ", " + title)
                     {
-                        map[item.Id] = new Title(item.Id, text.StartsWith(' ') ? 2u : 1u, id);
+                        map[item.Id] = new Title(item.Id, SuffixText(text) ? 2u : 1u, id);
                         break;
                     }
                 }
@@ -68,6 +68,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 {
                     var found = TextManager.Instance.FindIds(title).Select(i => (Id: i, Type: 1u))
                         .Concat(TextManager.Instance.FindIds(" " + title).Select(i => (Id: i, Type: 2u)))
+                        .Concat(TextManager.Instance.FindIds(", " + title).Select(i => (Id: i, Type: 2u)))
                         .Where(t => t.Id != item.NameId)
                         .OrderBy(t => Math.Abs((long)t.Id - item.NameId)).ToList();
                     if (found.Count > 0)
@@ -79,6 +80,14 @@ namespace LandmarkEmulator.WorldServer.Game
             log.Info($"{map.Count} title items.");
             return byItem = map;
         }
+
+        /// <summary>
+        /// Is a title text a suffix (type 2, "PlayerTitleFormatSuffix" 9517 "[*fullName*] [*title*]")? 0.589-era suffixes
+        /// start with a space (" the Dramatic" 575471); the 0.695 ones with a comma (", Champion of the People" 577649,
+        /// ", Holiday Hero" 577730 …; TASKS 4.16, trace/0695/cosmetics-695.md §4). Without the comma form item 4519 (grant 60)
+        /// found no title text and could not be used.
+        /// </summary>
+        private static bool SuffixText(string text) => text.StartsWith(' ') || text.StartsWith(", ");
 
         public static Title Get(uint id) => TitleItems().GetValueOrDefault(id);
 
@@ -102,7 +111,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 return false;
             if (Unlocks.Has(session, Unlocks.TitleOwned, title.Id))
             {
-                Chat.System(session, "You already have that title.");
+                ItemUses.Refuse(session, ItemUses.FailedItemRequirementText);   // L35: no title-specific text
                 return true;
             }
             if (!session.TakeItem(item.ItemDefinitionId, 1))
@@ -151,15 +160,20 @@ namespace LandmarkEmulator.WorldServer.Game
                 viewer.EnqueueMessage(ZoneMessageOpcode.PlayerUpdatePlayerTitleWire, packet);
         }
 
-        /// <summary>The PlayerUpdate PlayerTitle body for a player (guid, title; an empty title shows none).</summary>
+        /// <summary>
+        /// The PlayerUpdate PlayerTitle body for a player: the title {u32 id, u32 type, u32 name text}, then the player's
+        /// u64 guid (0.695 reader FUN_142c2a390: title at +0x20 via FUN_142c25e20, guid +0x18 read last; the client looks
+        /// the player up by it) [P]. The guid was written first until 2026-10-17 (audit-wire-a.md M2), so titles over other
+        /// players never changed. An empty title shows none.
+        /// </summary>
         public static byte[] UpdatePacket(WorldSession session)
         {
             uint shown = Shown(session.PlayerGuid);
             Title title = shown != 0 ? Get(shown) : null;
             var output = new List<byte>();
             var w = new GamePacketWriter(output);
-            w.Write(session.PlayerGuid);
             Write(w, title ?? new Title(0, 0, 0));
+            w.Write(session.PlayerGuid);
             return output.ToArray();
         }
 

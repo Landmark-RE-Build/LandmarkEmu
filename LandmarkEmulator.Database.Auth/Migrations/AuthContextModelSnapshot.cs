@@ -3,6 +3,7 @@ using System;
 using LandmarkEmulator.Database.Auth;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -16,8 +17,10 @@ namespace LandmarkEmulator.Database.Auth.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "6.0.1")
+                .HasAnnotation("ProductVersion", "9.0.0")
                 .HasAnnotation("Relational:MaxIdentifierLength", 64);
+
+            MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
 
             modelBuilder.Entity("LandmarkEmulator.Database.Auth.Model.AccountModel", b =>
                 {
@@ -26,11 +29,27 @@ namespace LandmarkEmulator.Database.Auth.Migrations
                         .HasColumnType("bigint(20) unsigned")
                         .HasColumnName("id");
 
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<ulong>("Id"));
+
                     b.Property<DateTime>("CreateTime")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("datetime")
                         .HasColumnName("createTime")
                         .HasDefaultValueSql("current_timestamp()");
+
+                    b.Property<byte>("MemberType")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(3) unsigned")
+                        .HasDefaultValue((byte)0)
+                        .HasColumnName("memberType");
+
+                    b.Property<DateTime?>("MemberStipendAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("memberStipendAt");
+
+                    b.Property<DateTime?>("MemberUntil")
+                        .HasColumnType("datetime")
+                        .HasColumnName("memberUntil");
 
                     b.Property<string>("Salt")
                         .IsRequired()
@@ -46,6 +65,16 @@ namespace LandmarkEmulator.Database.Auth.Migrations
                         .HasDefaultValue("")
                         .HasColumnName("serverTicket");
 
+                    b.Property<DateTime?>("ServerTicketIssuedAt")
+                        .HasColumnType("datetime")
+                        .HasColumnName("serverTicketIssuedAt");
+
+                    b.Property<uint>("ServerTicketWorld")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int(10) unsigned")
+                        .HasDefaultValue(0u)
+                        .HasColumnName("serverTicketWorld");
+
                     b.Property<string>("SessionKey")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -58,6 +87,18 @@ namespace LandmarkEmulator.Database.Auth.Migrations
                         .HasColumnType("datetime")
                         .HasColumnName("sessionKeyExpiration")
                         .HasDefaultValueSql("current_timestamp()");
+
+                    b.Property<bool>("TrialKeyMailed")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false)
+                        .HasColumnName("trialKeyMailed");
+
+                    b.Property<bool>("TrialRedeemed")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false)
+                        .HasColumnName("trialRedeemed");
 
                     b.Property<string>("Username")
                         .IsRequired()
@@ -94,6 +135,8 @@ namespace LandmarkEmulator.Database.Auth.Migrations
                         .HasColumnType("bigint(20) unsigned")
                         .HasColumnName("id");
 
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<ulong>("Id"));
+
                     b.Property<uint>("Flags")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int(10) unsigned")
@@ -110,6 +153,12 @@ namespace LandmarkEmulator.Database.Auth.Migrations
                         .HasColumnType("varchar(64)")
                         .HasDefaultValue("127.0.0.1")
                         .HasColumnName("host");
+
+                    b.Property<uint>("MaxPlayers")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int(10) unsigned")
+                        .HasDefaultValue(0u)
+                        .HasColumnName("maxPlayers");
 
                     b.Property<uint>("PlayersOnline")
                         .ValueGeneratedOnAdd()

@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 1 (0 not handled) · S2C 0 (0 never sent / opcode unknown)
 
 ## C2S PacketKeepAlive  `0x63`
-- server: handled · seen in play 24616× · received 24616×
+- server: handled · seen in play 133950× · received 4579×
 - built in: FUN_142c3b490
 - code (builder in FUN_142c3b490):
 ```

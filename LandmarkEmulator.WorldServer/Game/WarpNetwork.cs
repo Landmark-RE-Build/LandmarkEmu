@@ -5,6 +5,7 @@ using LandmarkEmulator.WorldServer.Network.Message;
 using LandmarkEmulator.WorldServer.Network.Message.Model;
 using NLog;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -13,8 +14,8 @@ using System.Numerics;
 namespace LandmarkEmulator.WorldServer.Game
 {
     /// <summary>
-    /// The Spire's Local Travel (wiki "Spire": "Local Travel: this option allows you to travel deep into caves … a map
-    /// will open … click on the spire icon"): the landscape's warp network. The client's ControllerLocalTravel (camera
+    /// The Spire's Local Travel (wiki "Spire": Local Travel goes deep into the caves; a map opens and the player clicks
+    /// a spire icon): the landscape's warp network. The client's ControllerLocalTravel (camera
     /// mode 0x1E, Lua Teleport:ActivateLocalTravelMap from the Spire menu, hint 6 "Click a HUB or Portal Crystal
     /// destination") shows the network's nodes; picking one opens the Confirm Travel window (Teleport.Confirmation:
     /// node name and cost) and confirming asks the server to warp.
@@ -38,18 +39,45 @@ namespace LandmarkEmulator.WorldServer.Game
     /// GameEvents:OnPlayerTeleportTerminalInteraction and asks for the travel locations (0xFC sub 2), i.e. the Spire
     /// menu. The node must be in the network the client holds.</item>
     /// </list>
-    /// Cost (client FUN_143452280 / FUN_143453b90): BaseCost + NodeCost (+ NodeCost again for a type-2 node, + WorldCost /
-    /// ZoneCost to another world / zone, + HubCost off the surface layer), in item WarpNetwork.CostItemId 1579 (Lumens).
-    /// The data has "WarpNetwork.NodeCost " and "ZoneCost " with a trailing space, so the client's lookups of the plain
-    /// names miss and its defaults apply (NodeCost 1, ZoneCost 5): a trip on the landscape costs 1 Lumen, which the
-    /// client shows and checks ("Ui.Teleport.CannotAfford"); the server charges the same.
+    /// Cost [P] (0.695 client: the click on a node, FUN_143055480 in ControllerLocalTravel, builds a from and a to
+    /// {zone, world, location key (node +0x24), node guid, node type} and calls the confirm-cost function FUN_143504a80;
+    /// the settings are read by FUN_143505fd0 from StringHashToValue): BaseCost, + NodeCost when the from node is a
+    /// crystal (type 2), + WorldCost to another world, + ZoneCost to another zone (landscape), + HubCost when the two
+    /// location keys (or zone / world) differ, + NodeCost when the destination is a crystal; in item
+    /// WarpNetwork.CostItemId 1579 (Lumens). Shipped data (gameData695 StringHashToValue rows 675-680): BaseCost 0,
+    /// HubCost 0, WorldCost 0, CostItemId 1579; "WarpNetwork.NodeCost " and "WarpNetwork.ZoneCost " carry a trailing
+    /// space, so the client's lookups of the plain names miss and its defaults apply (NodeCost 1, ZoneCost 5). So the
+    /// Confirm Travel window shows hub → crystal 1, crystal → hub 1, crystal → crystal 2 (+ 5 to another landscape),
+    /// checks it ("Ui.Teleport.CannotAfford"), and the server charges the same (<see cref="CostOf"/>). (The 0.589
+    /// /warpnetwork debug list, FUN_143452280, adds NodeCost always and HubCost off layer -1; it is a debug estimate,
+    /// not the confirm. 0.589 FUN_143453b90 = 0.695 FUN_143505c90 is the node +0x24 lookup, not a cost.)
+    /// Source: trace/0695/agent-leads3-c.md L130.
     /// </para>
     /// <para>
     /// Nodes (0.589 data): the hub is the Spire's Portal Crystal (props 575 / 1871 "Portal Spire (Hub)"); underground,
     /// the continent's cave placements (ContinentCavePlacements[406]_Underground.cpa) put a Graveyard01 piece (tile 111)
     /// every ~700 m — 81 of them, tier 1, in two cave biomes (VoxelLayerPropertyGroups: property group → biome, tier) —
     /// and each gets an "Underground Portal Crystal" (prop 1881). Whether live made players discover crystals first
-    /// (the client has a "Leyline discovery" fanfare, composite 11674) is not known; here every node is open.
+    /// (the client has a "Leyline discovery" fanfare, composite 11674) is not known; here every node is open. The client
+    /// keeps no discovery state for warp nodes (node +0x24 is a location key, the +0x248 default 11674 has no reader;
+    /// trace/0695/agent-leads3-c.md L130), so live's discovery, if it outlived the 5 May 2015 notes, was the server leaving
+    /// undiscovered nodes out of the network [I].
+    /// </para>
+    /// <para>
+    /// Where a crystal stands (<see cref="SiteOf"/>): the same 81 Graveyard01 pieces are the client's type-3 "cave beginning
+    /// locations" (.cpa tile byte 32 set, byte 38 = 3; agent-leads3-c.md L51) and each has a cavern graveyard
+    /// (graveyard_launch.otd, Graveyards.Landscape.cs) whose stamped box covers the piece's column, so a crystal stands on
+    /// that stamp's ground when the graveyard is laid out from the template, else on the cave floor under the piece.
+    /// </para>
+    /// <para>
+    /// Every landscape with Chaos Caverns (OPEN-LEADS L130, trace/0695/agent-outposts.md §3) [I]: each island's own
+    /// Underground placement file has the same 81 Graveyard01 pieces (tile 111) as 406, every landscape has its Spire, and
+    /// the client files a network per (world, landscape) (FUN_143454ec0), so each landscape the server gives caverns
+    /// (Caves.Landscapes, setting CavernLandscapes) gets its own network: its Spire's hub and its 81 crystals, read in the
+    /// background the first time a player is there (the cave floors under them need that landscape's cave index) and
+    /// pushed to the players there once ready. Node ids (crystal guids): the home continent's as before (base + 1000 + n),
+    /// another landscape's base + zone &lt;&lt; 16 + 1000 + n. Whether live listed crystals off the home landscape is the
+    /// open part of L130 (runtime check in the test client).
     /// </para>
     /// </summary>
     public static class WarpNetwork
@@ -64,8 +92,12 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <summary>Node types: 1 = hub (the Spire), 2 = portal crystal (the map only offers hubs and crystals).</summary>
         private const uint HubType = 1, CrystalType = 2;
         private const uint GraveyardTile = 111, UndergroundCrystalProp = 1881, PortalCrystalProp = 575;
-        /// <summary>Travel cost (see the class notes) in Lumens: NodeCost, again for a crystal destination.</summary>
-        public const uint CostItem = 1579, NodeCost = 1;
+        /// <summary>
+        /// Travel cost settings as the 0.695 client resolves them from the shipped data (see the class notes,
+        /// FUN_143505fd0): BaseCost 0, WorldCost 0, ZoneCost 5 (default: the data key has a trailing space), HubCost 0,
+        /// NodeCost 1 (default, trailing space), in item 1579 (Lumens).
+        /// </summary>
+        public const uint CostItem = 1579, BaseCost = 0, WorldCost = 0, ZoneCost = 5, HubCost = 0, NodeCost = 1;
         private const ulong CrystalGuidBase = 0x5750_0000_0000_0000;
 
         private sealed class Node
@@ -76,55 +108,40 @@ namespace LandmarkEmulator.WorldServer.Game
             public int Layer;
             public Vector3 Position;
             public ulong Cell;
+            /// <summary>A crystal's Graveyard01 piece (local metres, the .cpa record's position).</summary>
+            public Vector3 Piece;
         }
 
-        private static readonly List<Node> underground = new();
+        /// <summary>Each landscape's underground portal crystals (the home continent's loaded at start, the rest on demand).</summary>
+        private static readonly ConcurrentDictionary<uint, List<Node>> underground = new();
+        /// <summary>Every crystal by node id (= its prop guid), with its landscape.</summary>
+        private static readonly ConcurrentDictionary<ulong, uint> zoneOfNode = new();
+        /// <summary>Landscapes whose crystals are being read in the background.</summary>
+        private static readonly ConcurrentDictionary<uint, byte> loading = new();
+        /// <summary>Landscapes read in the background, waiting for the world tick to push them (<see cref="Update"/>).</summary>
+        private static readonly ConcurrentQueue<uint> loaded = new();
+        private static string gameDirectory;
+        private static Dictionary<uint, (uint Biome, int Tier)> groups;
         /// <summary>
         /// The world id each client uses. The client asks only once (its first ClientFinishedLoading), so the server
         /// pushes the network of every landscape the player enters (<see cref="EnterLandscape"/>), filed under
         /// (world, landscape).
         /// </summary>
         private static readonly Dictionary<WorldSession, uint> worlds = new();
-        private static List<PlayerUpdateAddLightweightProp> crystals;
+        /// <summary>Each landscape's crystal props (built once), and every one by guid (LightweightToFullProp).</summary>
+        private static readonly ConcurrentDictionary<uint, List<PlayerUpdateAddLightweightProp>> crystals = new();
+        private static readonly ConcurrentDictionary<ulong, PlayerUpdateAddLightweightProp> crystalByGuid = new();
+        private static uint Home => Terrain.TerrainStore.HomeContinent;
 
         /// <summary>Reads the home continent's cave Graveyard pieces (the underground portal crystals' sites).</summary>
         public static void Load(string gameDirectory, uint continent)
         {
-            var groups = new Dictionary<uint, (uint Biome, int Tier)>();
+            WarpNetwork.gameDirectory = gameDirectory;
             try
             {
-                foreach (string line in File.ReadLines(Path.Combine(gameDirectory, "Resources", "VoxelLayerPropertyGroups.txt")))
-                {
-                    string[] f = line.Split('^');
-                    if (f.Length >= 3 && uint.TryParse(f[0], out uint id))
-                        groups[id] = (uint.Parse(f[1]), int.Parse(f[2]));
-                }
-                string path = Path.Combine(gameDirectory, "CommonData", "Voxel", "caves", $"ContinentCavePlacements[{continent}]_Underground.cpa");
-                byte[] d = File.ReadAllBytes(path);
-                int n = BitConverter.ToInt32(d, 4);
-                var origin = Terrain.TerrainStore.ZoneOrigin;
-                for (int i = 0, o = 8; i < n && o + 39 <= d.Length; i++, o += 39)
-                {
-                    if (BitConverter.ToUInt32(d, o) != GraveyardTile)
-                        continue;
-                    double x = BitConverter.ToDouble(d, o + 4), y = BitConverter.ToDouble(d, o + 12), z = BitConverter.ToDouble(d, o + 20);
-                    uint group = BitConverter.ToUInt32(d, o + 33);
-                    (uint biome, int tier) = groups.GetValueOrDefault(group, (0u, 1));
-                    var at = new Vector3((float)((x - origin.X) / 10), (float)((y - origin.Y) / 10), (float)((z - origin.Z) / 10));
-                    at = Caves.Floor(at + new Vector3(0f, 10f, 0f));
-                    underground.Add(new Node
-                    {
-                        // Node ids are entity guids: the Local Travel map (FUN_142fb55e0) picks the node by the
-                        // entity under the cursor, so each node is its crystal prop.
-                        Id = CrystalGuidBase | (1000 + (ulong)underground.Count),
-                        Type = CrystalType,
-                        Biome = biome,
-                        Layer = Math.Max(1, tier),
-                        Position = at,
-                        Cell = Terrain.TerrainEdits.CellAt(at)
-                    });
-                }
-                log.Info($"Warp network: {underground.Count} underground portal crystals under continent {continent}.");
+                List<Node> nodes = ReadCrystals(continent, Home);
+                underground[Home] = nodes;
+                log.Info($"Warp network: {nodes.Count} underground portal crystals under continent {continent}.");
             }
             catch (Exception e)
             {
@@ -132,22 +149,149 @@ namespace LandmarkEmulator.WorldServer.Game
             }
         }
 
-        private static Node Hub()
+        /// <summary>
+        /// One landscape's crystals: the Graveyard01 pieces of its continent's Underground placement file, each on the cave
+        /// floor under it (that landscape's cave shapes), tier and biome from its property group.
+        /// </summary>
+        private static List<Node> ReadCrystals(uint continent, uint zone)
         {
-            if (Spire.Arrival is not Vector3 at || HubNode == 0)
-                return null;
-            return new Node { Id = HubNode, Type = HubType, Biome = 0, Layer = SurfaceLayer, Position = at, Cell = Terrain.TerrainEdits.CellAt(at) };
+            if (groups == null)
+            {
+                var read = new Dictionary<uint, (uint Biome, int Tier)>();
+                foreach (string line in File.ReadLines(Path.Combine(gameDirectory, "Resources", "VoxelLayerPropertyGroups.txt")))
+                {
+                    string[] f = line.Split('^');
+                    if (f.Length >= 3 && uint.TryParse(f[0], out uint id))
+                        read[id] = (uint.Parse(f[1]), int.Parse(f[2]));
+                }
+                groups = read;
+            }
+            var nodes = new List<Node>();
+            string path = Path.Combine(gameDirectory, "CommonData", "Voxel", "caves", $"ContinentCavePlacements[{continent}]_Underground.cpa");
+            byte[] d = File.ReadAllBytes(path);
+            int n = BitConverter.ToInt32(d, 4);
+            var origin = Terrain.TerrainStore.ZoneOrigin;
+            // The home continent keeps its ids (base + 1000 + n); another landscape's carry its zone in bits 16-31.
+            ulong idBase = CrystalGuidBase | (zone == Home ? 0ul : (ulong)zone << 16);
+            for (int i = 0, o = 8; i < n && o + 39 <= d.Length; i++, o += 39)
+            {
+                if (BitConverter.ToUInt32(d, o) != GraveyardTile)
+                    continue;
+                double x = BitConverter.ToDouble(d, o + 4), y = BitConverter.ToDouble(d, o + 12), z = BitConverter.ToDouble(d, o + 20);
+                uint group = BitConverter.ToUInt32(d, o + 33);
+                (uint biome, int tier) = groups.GetValueOrDefault(group, (0u, 1));
+                var piece = new Vector3((float)((x - origin.X) / 10), (float)((y - origin.Y) / 10), (float)((z - origin.Z) / 10));
+                Vector3 at = SiteOf(piece, zone);
+                var node = new Node
+                {
+                    // Node ids are entity guids: the Local Travel map (FUN_142fb55e0) picks the node by the
+                    // entity under the cursor, so each node is its crystal prop.
+                    Id = idBase | (1000 + (ulong)nodes.Count),
+                    Type = CrystalType,
+                    Biome = biome,
+                    Layer = Math.Max(1, tier),
+                    Position = at,
+                    Cell = Terrain.TerrainEdits.CellAt(at),
+                    Piece = piece
+                };
+                nodes.Add(node);
+                zoneOfNode[node.Id] = zone;
+            }
+            return nodes;
         }
 
-        /// <summary>The nodes of a player's landscape (the home continent holds the Spire and the caves).</summary>
+        /// <summary>
+        /// Where a crystal stands at its Graveyard01 piece [I: the piece is ours, class notes]: on the cavern graveyard's
+        /// stamped template where the landscape has one there (the template's box covers the piece's column, so the stamp
+        /// decides the ground: Graveyards.StandAtPiece, CavernGraveyardStamps), else on the cave floor under the piece, 1 m
+        /// above the rock (the client's cave pieces), as before. The warp arrives at the same point.
+        /// </summary>
+        private static Vector3 SiteOf(Vector3 piece, uint zone)
+            => Graveyards.StandAtPiece(zone, piece) ?? Caves.Floor(piece + new Vector3(0f, 10f, 0f), zone);
+
+        /// <summary>
+        /// Start-up, after the cavern graveyards' stamps are known (Graveyards.LoadStamps): the home continent's crystals,
+        /// read before the templates folder and the graveyards were, move onto their graveyards' stamped ground
+        /// (<see cref="SiteOf"/>). The other landscapes' are read later, in the background, when both are known.
+        /// </summary>
+        public static void SettleOnGraveyards()
+        {
+            if (!underground.TryGetValue(Home, out List<Node> nodes))
+                return;
+            int moved = 0;
+            foreach (Node node in nodes)
+                if (Graveyards.StandAtPiece(Home, node.Piece) is Vector3 at && at != node.Position)
+                {
+                    node.Position = at;
+                    node.Cell = Terrain.TerrainEdits.CellAt(at);
+                    moved++;
+                }
+            if (moved > 0)
+                log.Info($"Warp network: {moved} of {nodes.Count} underground portal crystals stand on their cavern graveyards' stamped ground.");
+        }
+
+        /// <summary>
+        /// A landscape with caverns that has no crystals yet: read in the background (its cave floors), then pushed to the
+        /// players there by <see cref="Update"/>. Nothing for the home continent (read at start) or a landscape without caves.
+        /// </summary>
+        private static void Prepare(uint zone)
+        {
+            if (zone == Home || gameDirectory == null || underground.ContainsKey(zone) || !Caves.HasCaverns(zone) || !loading.TryAdd(zone, 0))
+                return;
+            uint continent = Landscapes.Get(zone)?.Continent ?? zone;
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    List<Node> nodes = ReadCrystals(continent, zone);
+                    underground[zone] = nodes;
+                    log.Info($"Warp network: {nodes.Count} underground portal crystals on landscape {zone}.");
+                }
+                catch (Exception e)
+                {
+                    underground[zone] = new List<Node>();
+                    log.Warn($"Warp network of landscape {zone}: no crystals ({e.Message}).");
+                }
+                loaded.Enqueue(zone);
+            });
+        }
+
+        /// <summary>World tick: a landscape's crystals were read: its network and crystal props to the players there.</summary>
+        public static void Update()
+        {
+            while (loaded.TryDequeue(out uint zone))
+                foreach (WorldSession session in PlayerManager.InZone(zone).Where(s => !s.StreamsOnHold))
+                {
+                    EnterLandscape(session);
+                    Enter(session);
+                }
+        }
+
+        /// <summary>A landscape's hub node: its Spire's "Portal Spire (Hub)" prop (0 = none yet).</summary>
+        public static ulong HubNodeOn(uint zone) => Spire.HubGuidOn(zone == 0 ? Home : zone);
+
+        private static Node Hub(uint zone)
+        {
+            ulong id = HubNodeOn(zone);
+            if (Spire.ArrivalOn(zone) is not Vector3 at || id == 0)
+                return null;
+            return new Node { Id = id, Type = HubType, Biome = 0, Layer = SurfaceLayer, Position = at, Cell = Terrain.TerrainEdits.CellAt(at) };
+        }
+
+        /// <summary>
+        /// The nodes of a player's landscape: its Spire's hub and its underground crystals (every landscape with caverns;
+        /// one whose crystals aren't read yet gets the hub now and the rest once they are, <see cref="Update"/>).
+        /// </summary>
         private static List<Node> NodesFor(WorldSession session)
         {
             var nodes = new List<Node>();
-            if (!session.OnHomeContinent)
-                return nodes;
-            if (Hub() is Node hub)
+            uint zone = session.ZoneId == 0 ? Home : session.ZoneId;
+            if (Hub(zone) is Node hub)
                 nodes.Add(hub);
-            nodes.AddRange(underground);
+            if (underground.TryGetValue(zone, out List<Node> crystalNodes))
+                nodes.AddRange(crystalNodes);
+            else
+                Prepare(zone);
             return nodes;
         }
 
@@ -194,7 +338,14 @@ namespace LandmarkEmulator.WorldServer.Game
                     w.Write(node.Position.X);
                     w.Write(node.Position.Y);
                     w.Write(node.Position.Z);
-                    w.Write(0u);
+                    // Node +0x24 [P field, I value]: the node's location key (reader FUN_143502390; default -2,
+                    // DAT_145262608). Its only reader is FUN_143505c90 (lookup by guid), whose callers in
+                    // ControllerLocalTravel feed it into the confirm cost FUN_143504a80, which adds HubCost when the
+                    // from and to keys differ. It is not a "discovered" flag (the client keeps no discovery state).
+                    // The server's key is the node's layer (0 = the Spire hub on the surface, cave tier for a crystal),
+                    // the same key CostOf compares; HubCost is 0 in the shipped data, so the window shows no change.
+                    // Source: trace/0695/agent-leads3-c.md L130.
+                    w.Write(node.Layer);
                 }
                 w.Write(layer.Key);
             }
@@ -203,22 +354,46 @@ namespace LandmarkEmulator.WorldServer.Game
             log.Debug($"{session.CharacterName}: warp network {world}/{zone}: {nodes.Count} node(s) in {layers.Count} layer(s).");
         }
 
-        /// <summary>A warp the client confirmed: the destination node, for a Lumen.</summary>
+        /// <summary>
+        /// The cost of a warp, as the client's confirm-cost function FUN_143504a80 computes it [P] (class notes). Both
+        /// nodes are on the network the player holds; the zone / world terms are kept so that the sum stays the client's
+        /// if a network ever lists another landscape's or world's nodes. A <paramref name="from"/> that is not a node of
+        /// the network (the player did not open the map at a node) counts as the hub [I]: no from-node term.
+        /// </summary>
+        private static uint CostOf(Node from, uint fromZone, Node to, uint toZone)
+        {
+            uint cost = BaseCost;
+            if (from?.Type == CrystalType)
+                cost += NodeCost;
+            // One world per server, so WorldCost (0 in the data) never applies here.
+            if (fromZone != toZone)
+                cost += ZoneCost;
+            if (fromZone != toZone || (from?.Layer ?? SurfaceLayer) != to.Layer)
+                cost += HubCost;
+            if (to.Type == CrystalType)
+                cost += NodeCost;
+            return cost;
+        }
+
+        /// <summary>A warp the client confirmed: the destination node, for the client's confirm cost (<see cref="CostOf"/>).</summary>
         private static void Warp(WorldSession session, ulong from, ulong to)
         {
-            Node target = NodesFor(session).FirstOrDefault(n => n.Id == to);
+            List<Node> nodes = NodesFor(session);
+            Node target = nodes.FirstOrDefault(n => n.Id == to);
             if (target == null || from == to)
             {
                 log.Info($"{session.CharacterName}: warp {from} → {to} refused (no such node).");
                 return;
             }
-            uint cost = NodeCost + (target.Type == CrystalType ? NodeCost : 0);
-            if (!session.TakeItem(CostItem, cost))
+            uint zone = session.ZoneId == 0 ? Home : session.ZoneId;
+            Node fromNode = nodes.FirstOrDefault(n => n.Id == from);
+            uint cost = CostOf(fromNode, zone, target, zoneOfNode.GetValueOrDefault(target.Id, zone));
+            if (cost > 0 && !session.TakeItem(CostItem, cost))
             {
                 Chat.System(session, "You can't afford to travel there.");
                 return;
             }
-            if (target.Id == HubNode)
+            if (target.Type == HubType)
                 Spire.TravelTo(session);
             else
                 Teleport.To(session, target.Position, snapToGround: false);
@@ -254,34 +429,52 @@ namespace LandmarkEmulator.WorldServer.Game
                 worlds.Remove(session);
         }
 
-        /// <summary>Sends the underground portal crystals to a player entering the home continent (static props, once).</summary>
+        /// <summary>
+        /// Sends the underground portal crystals of the player's landscape (static props, all of them, on every entry: the
+        /// client drops them with a re-zone). A landscape whose crystals aren't read yet gets them once they are (<see cref="Update"/>).
+        /// </summary>
         public static void Enter(WorldSession session)
         {
-            crystals ??= underground.Select(n => new PlayerUpdateAddLightweightProp
+            uint zone = session.ZoneId == 0 ? Home : session.ZoneId;
+            if (!underground.TryGetValue(zone, out List<Node> nodes))
             {
-                Guid = n.Id,
-                TransientId = PlayerManager.AllocateTransientId(),
-                ModelId = Props.ModelOf(UndergroundCrystalProp) is uint m and not 0 ? m : Props.ModelOf(PortalCrystalProp),
-                Position = new Vector4(n.Position, 1f),
-                Rotation = new Vector4(0f, 0f, 0f, 1f),
-                Scale = new Vector4(1f, 1f, 1f, 1f),
-                NameId = GameTableManager.Instance.PropDefs.GetEntry(UndergroundCrystalProp)?.NameStringId ?? 0
-            }).ToList();
-            foreach (PlayerUpdateAddLightweightProp prop in crystals)
+                Prepare(zone);
+                return;
+            }
+            List<PlayerUpdateAddLightweightProp> props = crystals.GetOrAdd(zone, _ => nodes.Select(n =>
+            {
+                var prop = new PlayerUpdateAddLightweightProp
+                {
+                    Guid = n.Id,
+                    TransientId = PlayerManager.AllocateTransientId(),
+                    ModelId = Props.ModelOf(UndergroundCrystalProp) is uint m and not 0 ? m : Props.ModelOf(PortalCrystalProp),
+                    Position = new Vector4(n.Position, 1f),
+                    Rotation = new Vector4(0f, 0f, 0f, 1f),
+                    Scale = new Vector4(1f, 1f, 1f, 1f),
+                    NameId = GameTableManager.Instance.PropDefs.GetEntry(UndergroundCrystalProp)?.NameStringId ?? 0
+                };
+                crystalByGuid[prop.Guid] = prop;
+                return prop;
+            }).ToList());
+            foreach (PlayerUpdateAddLightweightProp prop in props)
                 session.EnqueueMessage(prop);
-            if (crystals.Count > 0)
+            if (props.Count > 0)
             {
                 var flagging = new DynamicInteractionFlagging();
-                flagging.Guids.AddRange(crystals.Select(c => c.Guid));
+                flagging.Guids.AddRange(props.Select(c => c.Guid));
                 session.EnqueueMessage(flagging);
             }
         }
 
-        /// <summary>The node id (crystal prop guid) of the n-th underground crystal, 0 when there is none.</summary>
-        public static ulong CrystalNode(int index) => index >= 0 && index < underground.Count ? underground[index].Id : 0;
+        /// <summary>The node id (crystal prop guid) of the home continent's n-th underground crystal, 0 when there is none.</summary>
+        public static ulong CrystalNode(int index) => CrystalNodeOn(Home, index);
+
+        /// <summary>The node id of a landscape's n-th underground crystal, 0 when there is none (or not read yet).</summary>
+        public static ulong CrystalNodeOn(uint zone, int index)
+            => underground.TryGetValue(zone == 0 ? Home : zone, out List<Node> nodes) && index >= 0 && index < nodes.Count ? nodes[index].Id : 0;
 
         /// <summary>Is this guid an underground portal crystal? (usable: clicking it is ActivateTerminal.)</summary>
-        public static bool IsCrystal(ulong guid) => (guid & 0xFFFF_0000_0000_0000) == CrystalGuidBase && underground.Any(n => n.Id == guid);
+        public static bool IsCrystal(ulong guid) => (guid & 0xFFFF_0000_0000_0000) == CrystalGuidBase && zoneOfNode.ContainsKey(guid);
 
         /// <summary>The crystal's node (0 when not a crystal).</summary>
         public static ulong NodeOf(ulong guid) => IsCrystal(guid) ? guid : 0;
@@ -289,8 +482,7 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <summary>LightweightToFullProp for a crystal the client wants solid / interactable.</summary>
         public static bool SendFull(WorldSession session, ulong guid)
         {
-            PlayerUpdateAddLightweightProp prop = crystals?.FirstOrDefault(p => p.Guid == guid);
-            if (prop == null)
+            if (!crystalByGuid.TryGetValue(guid, out PlayerUpdateAddLightweightProp prop))
                 return false;
             session.EnqueueMessage(new PlayerUpdateLightweightToFullProp { TransientId = prop.TransientId });
             return true;

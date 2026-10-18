@@ -187,10 +187,10 @@ FUN_142b95550 -> +0x30
   bool  +0x2110
   u32   +0xac
   FUN_142b9b7a0 -> +0xb0
-    i32   iVar2
+    i32   <local>
       [loop 1: list elements]
-    u32   uVar8
-    u32   *puVar5
+    u32   <local>
+    u32   <element>
   u32   +0xa4
   u32   +0xa8
   u32   +0x20d8
@@ -200,13 +200,13 @@ FUN_142b95550 -> +0x30
   u32   +0x20e4
   u32   +0x20e8
   u32   +0x20ec
-  u64   local_res8
-  u64   uVar7
+  u64   <local>
+  u64   <local>
   u32   +0x20f4
   u32   +0x20f8
-  i32   iVar4
+  i32   <local>
     [loop 1: list elements]
-  u32   uVar8
+  u32   <local>
   u32   +0x20dc
 u32   +0x2170
 ```
@@ -245,10 +245,10 @@ FUN_142b95550 -> +0x38
   bool  +0x2118
   u32   +0xb4
   FUN_142b9b7a0 -> +0xb8
-    i32   iVar2
+    i32   <local>
       [loop 1: list elements]
-    u32   uVar8
-    u32   *puVar5
+    u32   <local>
+    u32   <element>
   u32   +0xac
   u32   +0xb0
   u32   +0x20e0
@@ -258,13 +258,13 @@ FUN_142b95550 -> +0x38
   u32   +0x20ec
   u32   +0x20f0
   u32   +0x20f4
-  u64   local_res8
-  u64   uVar7
+  u64   <local>
+  u64   <local>
   u32   +0x20fc
   u32   +0x2100
-  i32   iVar4
+  i32   <local>
     [loop 1: list elements]
-  u32   uVar8
+  u32   <local>
   u32   +0x20e4
 u64   +0x2178
 u32   +0x2180
@@ -298,10 +298,10 @@ FUN_142b94790 -> +0x18
     bool  +0x2128
     u32   +0xc4
     FUN_142b9b7a0 -> +0xc8
-      i32   iVar2
+      i32   <local>
         [loop 1: list elements]
-      u32   uVar8
-      u32   *puVar5
+      u32   <local>
+      u32   <element>
     u32   +0xbc
     u32   +0xc0
     u32   +0x20f0
@@ -311,18 +311,18 @@ FUN_142b94790 -> +0x18
     u32   +0x20fc
     u32   +0x2100
     u32   +0x2104
-    u64   local_res8
-    u64   uVar7
+    u64   <local>
+    u64   <local>
     u32   +0x210c
     u32   +0x2110
-    i32   iVar4
+    i32   <local>
       [loop 1: list elements]
-    u32   uVar8
+    u32   <local>
     u32   +0x20f4
   FUN_142b9be10 -> +0x2188
-    i32   iVar3
+    i32   <local>
       [loop 1: list elements]
-    u32   uVar6
+    u32   <local>
   u32   +0x2250
   bool  +0x2254
   bool  +0x29

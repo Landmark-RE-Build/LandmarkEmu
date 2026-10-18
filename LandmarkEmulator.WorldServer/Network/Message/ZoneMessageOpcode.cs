@@ -24,8 +24,11 @@
         KnownPropCreatePropItemRequest = 0x150102,
         WorldInitiatedPlayerTransferServer = 0x1600,
         ZoneToWorldForPlayer        = 0x1700,
-        ToolActivate                = 0x17000101,
-        ToolUndoStackChange         = 0x17000201,
+        // ToolBase 0x117 (wire 17 01), u8 sub: 1 Activate, 2 UndoStackChange (0.695 id table cToolPacketIdActivate /
+        // cToolPacketUndoStackChange) [P]. These were 0x17000101 / 0x17000201, i.e. bytes 17 00 01 01: base 0x17
+        // ZoneToWorldForPlayer. Unused by the code (ToolRequest reads the base 0x1701).
+        ToolActivate                = 0x170101,
+        ToolUndoStackChange         = 0x170102,
         ZoneToZonePacket            = 0x1800,
         ClientToTargetClientsZoneWrapped = 0x1900,
         TargetClientNotOnline       = 0x1A00,
@@ -49,19 +52,30 @@
         /// <summary>PlayerUpdate sub 0x1C PlayerTitle {u64 guid, u32 title id, u32 type, u32 name text} (see Game.Titles).</summary>
         PlayerUpdatePlayerTitleWire = 0x26001C,
         PlayerUpdatePlayCompositeEffectWire = 0x26000B,
+        /// <summary>PlayerUpdate sub 0x35 MemberStatus {u64 guid, bool member} (0.695 dispatcher FUN_142cdfa60 case 0x34, reader
+        /// FUN_142c4f210 → FUN_142c25ad0, handler FUN_142ec2ff0); see Game.Membership.</summary>
+        PlayerUpdateMemberStatusWire = 0x260035,
+        /// <summary>PlayerUpdate sub 0x4B cPlayerInGamePurchaseResult {u32, u32, u32} (0.695 dispatcher FUN_142cdfa60 case 0x4a,
+        /// reader FUN_142c4b300 → FUN_142c25490; read and dropped by the client); see Game.StoreBundles.HandlePurchase.</summary>
+        PlayerUpdateInGamePurchaseResultWire = 0x26004B,
         // Action bar (base 0x9A, one sub-opcode byte).
         ActionManagerUpdateSlotWire = 0x9A0005,
         // Equipment (base 0xCB, one sub-opcode byte): what a character visibly wears or wields.
         EquipmentSetCharacterEquipmentSlotWire = 0xCB0002,
         EquipmentUnsetCharacterEquipmentSlotWire = 0xCB0003,
         PlayerUpdateAddLightweightPcWire = 0x260058,
+        PlayerUpdateAFKWire = 0x260057,
+        PlayerUpdateSetDispositionWire = 0x260014,
         PlayerUpdateAddLightweightPropWire = 0x260062,
         PlayerUpdateAddLightweightNpcWire = 0x260059,
         PlayerUpdateLightweightToFullPcWire = 0x26005B,
+        PlayerUpdateLightweightToFullNpcWire = 0x26005C,
         PlayerUpdateLightweightToFullPropWire = 0x260063,
         PlayerUpdateInteractionInfoRequestWire = 0x260069,
         PlayerUpdateInteractionInfoReplyWire = 0x26006A,
         PlayerUpdateDynamicInteractionFlaggingWire = 0x26006B,
+        /// <summary>PlayerUpdate 0x80 SetPlayerBio (0.695 only; C→S {str bio}, packets-695.md §1).</summary>
+        PlayerUpdateSetPlayerBioWire = 0x260080,
         PlayerUpdateFullCharacterDataRequestWire = 0x26005E,
         PlayerUpdateRespawnWire = 0x26003B,
         // Death and revive (registry cPlayerUpdatePacketId*, docs/gameplay.md): KnockedOut, ReadyToRevive (S→C) and its
@@ -73,6 +87,18 @@
         PlayerUpdatePreferredLanguagesWire = 0x26001A,
         PlayerUpdateSetEnabledWire = 0x260073,
         PlayerUpdateEmoteStringByIdWire = 0x260077,
+        /// <summary>
+        /// PlayerUpdate sub 0x65 RequestAnimationSelection (S→C {u64 entity, u32 AnimationSelection, bool clear sit, u8
+        /// seated}; 0.695 reader FUN_142c2ae00 via FUN_142c4d050, dispatcher FUN_142cdfa60 case 100, which builds the class
+        /// with sub 0x65 itself — the client has no PacketId constant for it). The handler finds the entity by guid
+        /// (FUN_142f85390, the local player included), clears its sitting flag (+0x1461 bit 0x4, FUN_142ec9840) when the
+        /// bool is set, copies a non-zero u8 to its seated byte (+0xa39) and plays the selection (FUN_142dfc010); when the
+        /// actor can't play it yet the selection is queued on the entity (FUN_142e977b0 → +0x49c8). See Game.Emotes.
+        /// </summary>
+        PlayerUpdateRequestAnimationSelectionWire = 0x260065,
+        /// <summary>PlayerUpdate 0x4C SafeEject (C→S {u8 1}, writer FUN_142ebdda0): the client was launched by a pad / flinger /
+        /// launcher and set entity state bit 26 (Game/SafeEject.cs). No S→C case (dispatcher FUN_142cdfa60).</summary>
+        PlayerUpdateSafeEjectWire = 0x26004C,
         PlayerUpdateReadyToReviveResponseWire = 0x26003D,
         PlayerUpdateReadyToReviveWire = 0x260044,
         PlayerUpdateStartReviveWire = 0x260042,
@@ -80,6 +106,10 @@
         PlayerUpdateUpdateHitpointsWire = 0x260003,
         PlayerUpdateUpdateStatWire = 0x260053,
         PlayerUpdateCombatResourceEventWire = 0x260067,
+        /// <summary>PlayerUpdate sub 0x51 UpdateCharacterStateDelta {u64 guid, u64 source, u64 set, u64 clear, u32 time}
+        /// (0.695 dispatcher FUN_142cdfa60 case 0x50, reader FUN_142c2c7a0 via FUN_142c4fb90, handler FUN_142ecdd20): sets /
+        /// clears entity state bits (+0xa20); see Game.Combat.BlockStance (bit 45 = blocking).</summary>
+        PlayerUpdateUpdateCharacterStateDeltaWire = 0x260051,
 
         PlayerUpdateRemovePlayer    = 0x26000100,
         PlayerUpdateKnockback       = 0x26000200,
@@ -108,6 +138,8 @@
         PlayerUpdateEffectPackage   = 0x26001900,
         PlayerUpdatePreferredLanguages = 0x26001A00,
         PlayerUpdateCustomizationChange = 0x26001B00,
+        /// <summary>PlayerUpdate sub 0x1B CustomizationChange as its wire bytes (see Game.Barbershop).</summary>
+        PlayerUpdateCustomizationChangeWire = 0x26001B,
         PlayerUpdatePlayerTitle     = 0x26001C00,
         PlayerUpdateAddEffectTagCompositeEffect = 0x26001D00,
         PlayerUpdateRemoveEffectTagCompositeEffect = 0x26001E00,
@@ -259,7 +291,9 @@
         ClientUpdateTeleportToLocation = 0x29000C00,
         ClientUpdateMana            = 0x29000D00,
         ClientUpdateUpdateProfileExperience = 0x29000E00,
-        ClientUpdateAddProfileAbilitySetApl = 0x2900F00,
+        // ClientUpdate sub 0x0F (0.695 id table cClientUpdatePacketIdAddProfileAbilitySetApl) [P]; was 0x2900F00, a digit short
+        // (bytes 02 90 0F 00).
+        ClientUpdateAddProfileAbilitySetApl = 0x29000F00,
         ClientUpdateAddEffectTag    = 0x29001000,
         ClientUpdateRemoveEffectTag = 0x29001100,
         ClientUpdateUpdateProfileRank = 0x29001200,
@@ -550,39 +584,46 @@
         UpdatePropInteractionState  = 0xFD00,
         ChestBase                   = 0xFF00,
         DebugDrawBase               = 0x0001,
-        // Bases 0x102-0x119 below keep the old 0x1XX00 form on purpose: no handler is registered for them, and
-        // WorldSession's raw paths (HeroicMovement relay, design screenshot uploads, warp / social / world-editing
-        // requests) only run when GetOpcode finds no match. A base that gets a model must use the wire form 0xXX01.
-        FogOfWarZoneDataRequest     = 0x10200,
-        FogOfWarZoneDataReply       = 0x10300,
-        SocialShareBase             = 0x10400,
-        HeroicMovement              = 0x10500,
-        UpdatePlayerRedeemedPromoBundle = 0x10600,
-        MarketplaceImageBase        = 0x10700,
+        // Every base from 0x100 up is in its wire form 0xXX01 (b653b73), so GetOpcode finds it and the packet goes to
+        // HandleZonePacket: a base the client sends needs a model and a handler (or Game.Telemetry), else it is logged
+        // as "unreadable". (Before b653b73 WorldSession read HeroicMovement 0x105 and MarketplaceImage 0x107 as raw
+        // bytes; those raw paths never ran after it, OPEN-LEADS L166, and are replaced by models.)
+        // Opcodes 0x100 and above are a little-endian u16 on the wire, so the enum holds their wire bytes (0x102 = bytes
+        // 02 01 = 0x0201), as InstancedGameBase 0x0D01 does. Written as 0x10200 they became bytes 01 02 00 and never
+        // matched (CorrectNpcHeights 0x114 arrived as "Unknown Zone Packet 14-01", 2026-10-16).
+        FogOfWarZoneDataRequest     = 0x0201,
+        FogOfWarZoneDataReply       = 0x0301,
+        SocialShareBase             = 0x0401,
+        HeroicMovement              = 0x0501,
+        UpdatePlayerRedeemedPromoBundle = 0x0601,
+        MarketplaceImageBase        = 0x0701,
         DelayWrappedPacket          = 0x3800,
-        ZoneToWorldToClientWrappedForCharacterNameLookups = 0x10800,
+        ZoneToWorldToClientWrappedForCharacterNameLookups = 0x0801,
         PreferencePacket            = 0x300,
-        ProceduralDataMonitorUpdateRequest = 0x10900,
-        ProceduralDataMonitorUpdateResponse = 0x10A00,
-        ItemReviewBase              = 0x10B00,
-        WorldEditingBase            = 0x10C00,
+        /// <summary>
+        /// Admin monitor page 28 (trace/architecture/admin-pages.md §3): ProceduralDataMonitorPacketUpdateRequest 0x109
+        /// (bare u16, sent every 5 s while page 28 is shown) and its reply ProceduralDataMonitorPacketUpdateResponse 0x10A,
+        /// in the wire form (bytes 09 01 / 0A 01) since the request has a handler (Game/AdminMonitor.cs).
+        /// </summary>
+        ProceduralDataMonitorUpdateRequest = 0x0901,
+        ProceduralDataMonitorUpdateResponse = 0x0A01,
+        ItemReviewBase              = 0x0B01,
+        WorldEditingBase            = 0x0C01,
         ReviveRequest               = 0x200,
         // Two-byte base 0x10D: u16 LE on the wire (0D 01), so the enum holds the wire bytes 0x0D01.
         InstancedGameBase           = 0x0D01,
-        CombatStateManager          = 0x10E00,
+        CombatStateManager          = 0x0E01,
         RequestAllInstancedGames    = 0x0F01,
-        RequestZoneData             = 0x11000,
+        RequestZoneData             = 0x1001,
         GameScriptingBase           = 0x1101,   // two-byte base 0x111 (wire 11 01)
         Notifications               = 0x100,
-        WarpNetworkBase             = 0x11300,
         /// <summary>WarpNetwork 0x113 as its wire bytes 13 01 (like InstancedGameBase 0x0D01); sub is a u32.</summary>
         WarpNetworkWire             = 0x1301,
-        CorrectNpcHeights           = 0x11400,
+        CorrectNpcHeights           = 0x1401,
         KnownPropBase               = 0x1501,
-        ArtDataBase                 = 0x11600,
         ToolBase                    = 0x1701,
-        ContentBase                 = 0x11800,
-        DebugAnimation              = 0x11900,
+        ContentBase                 = 0x1801,
+        DebugAnimation              = 0x1901,
         DesignBasedStateMachineBase = 0x1A01,
         InteractionBase             = 0x1B01,
     }

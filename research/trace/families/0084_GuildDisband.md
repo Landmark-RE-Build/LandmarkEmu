@@ -96,7 +96,7 @@ u64   +0x50
 ```
 
 ## C2S GuildUpdateRankPacket  `0x84, 0xE`
-- server: handled (sub in handler) · seen in play 13×
+- server: handled (sub in handler) · seen in play 33×
 - writer: FUN_142e46c20
 - built in: FUN_142e539f0, FUN_142e5b110, FUN_143508990, FUN_143508d90, FUN_143508fe0, FUN_143509740, FUN_143509a50
 - sent by Lua natives: RankAdd, RankAddPermission, RankRemove, RankRemovePermission, RankSetName, RankToggleAllPermissions
@@ -112,7 +112,7 @@ FUN_142e46d10 -> +0x20
   u32   +0x74
   str   +0x58
   u32   +0x78
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
   str   +0x20
   u32   +0xb8
@@ -133,7 +133,7 @@ u32   +0x130
 ```
 
 ## C2S GuildDescriptionUpdatePacket  `0x84, 0xF`
-- server: handled (sub in handler) · seen in play 5×
+- server: handled (sub in handler) · seen in play 10×
 - writer: FUN_142e45c60
 - built in: FUN_142e539f0, FUN_1432fbb50, FUN_143506e40, FUN_143509470
 - sent by Lua natives: RankSetDescription, SetDescription
@@ -164,10 +164,10 @@ str   +0x50
 ```
 u16   +0x8
 i16   +0x10
-i32   iVar2
+i32   <local>
   [loop 1: list elements]
 FUN_142e48d10 -> +0x20
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
   str   +0x20
 ```
@@ -178,7 +178,7 @@ FUN_142e48d10 -> +0x20
 ```
 
 ## S2C GuildDataPacket  `0x84, 0x13`
-- server: NOT SENT (not in opcode_stats, not in the server code) · seen in play 27×
+- server: NOT SENT (not in opcode_stats, not in the server code) · seen in play 166×
 - reader: FUN_142e49860
 - built in: FUN_142e539f0
 - handled in FUN_142e539f0 (its switch case for this message)
@@ -195,10 +195,10 @@ FUN_142e48d10 -> +0x20
 ```
 u16   +0x8
 i16   +0x10
-i32   iVar2
+i32   <local>
   [loop 1: list elements]
 FUN_142e48d10 -> +0x20
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
   str   +0x20
 ```
@@ -209,7 +209,7 @@ FUN_142e48d10 -> +0x20
 ```
 
 ## S2C GuildAddMemberPacket  `0x84, 0x15`
-- server: NOT SENT (not in opcode_stats, not in the server code) · seen in play 1×
+- server: NOT SENT (not in opcode_stats, not in the server code) · seen in play 12×
 - case functions (dispatcher): FUN_142e4a900 FUN_142e49570 FUN_142e52500 FUN_142e4c0b0
 - data sources: ptr:UI_GuildAddMember_145135760 · ptr:Members_145134df8 · ptr:MembersOnline_145134e00 · ptr:Location_145134e28 · ptr:RankOrdinal_145134e40 · ptr:Online_145134e48 · ptr:MemberGuid_145134e50 · ptr:CategoryName_145134e58 · ptr:LastOnline_145134e60
 - text keys: Guild.MemberOffline · Contacts.Guilds
@@ -217,7 +217,7 @@ FUN_142e48d10 -> +0x20
 - UI reacting: soundhandler.lua (ptr:Members_145134df8) · GuildWindow (ptr:Members_145134df8) · Hud (ptr:Members_145134df8) · PvPScoreboard (ptr:Members_145134df8) · UIObjects.lua (ptr:Location_145134e28) · HudHelper.lua (ptr:Location_145134e28) · LockOnWindow.lua (ptr:Location_145134e28) · PlayerStudioRegistrationDialog (ptr:Online_145134e48)
 
 ## S2C GuildRemoveMemberPacket  `0x84, 0x16`
-- server: NOT SENT (not in opcode_stats, not in the server code) · seen in play 1×
+- server: NOT SENT (not in opcode_stats, not in the server code) · seen in play 34×
 - reader: FUN_142e468c0
 - built in: FUN_142e539f0
 - layout:
@@ -237,7 +237,7 @@ str   +0x28
 ```
 
 ## S2C GuildUpdateInvitationPacket  `0x84, 0x17`
-- server: NOT SENT (not in opcode_stats, not in the server code) · seen in play 1×
+- server: NOT SENT (not in opcode_stats, not in the server code) · seen in play 13×
 - reader: FUN_142e46b40
 - built in: FUN_142e539f0
 - layout:
@@ -287,7 +287,7 @@ bool  +0x28
 ```
 
 ## S2C GuildNotificationPacket  `0x84, 0x19`
-- server: NOT SENT (not in opcode_stats, not in the server code)
+- server: NOT SENT (not in opcode_stats, not in the server code) · seen in play 40×
 - reader: FUN_142e46710
 - built in: FUN_142e539f0
 - layout:
@@ -349,9 +349,9 @@ u64   +0xc0
 u16   +0x8
 i16   +0x10
 FUN_142e48c20 -> +0x18
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
-  u32   *puVar5
+  u32   <element>
 u64   +0x38
 ```
 - handled in FUN_142e539f0 (its switch case for this message)
@@ -372,7 +372,7 @@ u64   +0x18
 bool  +0x20
 str   +0x28
 FUN_142e48410 -> +0x448
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
   str   +0x448
   str   +0x448

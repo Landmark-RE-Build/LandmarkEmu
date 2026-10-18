@@ -209,7 +209,7 @@ namespace LandmarkEmulator.Parser
                 var body = new Span<byte>(data, 1, data.Length - 1).ToArray();
                 try
                 {
-                    message.Read(new GamePacketReader(body));
+                    CaptureReading.Read(message, new GamePacketReader(body));
                 }
                 catch
                 {
@@ -436,12 +436,12 @@ namespace LandmarkEmulator.Parser
             try
             {
                 var reader = new GamePacketReader(payload);
-                reader.ReadUInt();                  // Unknown0 / size
+                reader.ReadUInt();                  // SizePrefix (the framework's prepended size)
                 reader.ReadULong();                 // Guid
                 reader.ReadString();                // AccountName
                 reader.ReadULong();                 // CharacterId
-                reader.ReadUInt2BitLength();        // Unknown1
-                reader.ReadULong();                 // LastLoginTime
+                reader.ReadUInt2BitLength();        // TransientId
+                reader.ReadULong();                 // ServerTime
                 reader.ReadUInt();                  // ModelId
 
                 var model = new CharacterModelInfo();
@@ -452,7 +452,7 @@ namespace LandmarkEmulator.Parser
                 z = reader.ReadSingle();
                 w = reader.ReadSingle();
 
-                // Rotation (Unknown4) — skip so identity aligns.
+                // Rotation — skip so identity aligns.
                 reader.ReadSingle();
                 reader.ReadSingle();
                 reader.ReadSingle();
@@ -482,7 +482,7 @@ namespace LandmarkEmulator.Parser
             if (string.IsNullOrWhiteSpace(value))
                 return null;
             string trimmed = value.Trim();
-            // Server.Read appends " (stringtable)" even when TextManager has no entry.
+            // CaptureReading.DecorateServers appends " (stringtable)" even when TextManager has no entry.
             if (trimmed.EndsWith(" ()", StringComparison.Ordinal))
                 trimmed = trimmed[..^3].TrimEnd();
             return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;

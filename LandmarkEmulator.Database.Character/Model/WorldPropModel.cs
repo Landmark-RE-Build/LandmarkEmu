@@ -31,5 +31,19 @@
         public string Text { get; set; } = "";
         /// <summary>Switched off (lights and effects dark).</summary>
         public bool Disabled { get; set; }
+        /// <summary>
+        /// The placement pack the prop is a part of (Translocation Pad, Flinger, Magical Platform …): the group id its
+        /// parts share; 0 = not a part.
+        /// </summary>
+        public ulong PackGroup { get; set; }
+        /// <summary>The spawner prop that placed the pack (what picking a part up gives back); 0 = not a part.</summary>
+        public uint PackSpawner { get; set; }
+        /// <summary>
+        /// The item definition the prop was placed from (a bag item; 0 = paid with recipe materials or free): what it
+        /// gives back when picked up, and its entry in its build site's inventory (claim inventory, L146).
+        /// </summary>
+        public uint PaidByItem { get; set; }
+        /// <summary>The guid of the bag item it was placed from (0 = none): the claim inventory's item guid.</summary>
+        public ulong PaidByItemGuid { get; set; }
     }
 }

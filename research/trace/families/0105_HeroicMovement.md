@@ -6,15 +6,15 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 5 (5 not handled) · S2C 1 (1 never sent / opcode unknown)
 
 ## C2S HeroicMovementPacketFireGrapplingHook  `0x105, 0x1`
-- server: NOT HANDLED
+- server: NOT HANDLED · seen in play 43× · received 2×
 - writer: FUN_142b86630
 - built in: FUN_142c42ab0, FUN_142dc5ae0
 - layout:
 ```
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
   [loop 2: list elements]
-u32   *puVar1
+u32   <element>
 u32   +0x40
 u32   +0x44
 bool  +0x48
@@ -29,7 +29,7 @@ bool  +0x48
 ```
 
 ## C2S HeroicMovementPacketSetHeroicMovement  `0x105, 0x2`
-- server: NOT HANDLED · seen in play 47× · received 47×
+- server: NOT HANDLED · seen in play 122× · received 64×
 - writer: FUN_142bafda0
 - built in: FUN_142c42ab0, FUN_142e23a10
 - code (builder in FUN_142c42ab0):
@@ -42,7 +42,7 @@ bool  +0x48
 ```
 
 ## C2S HeroicMovementPacketSwimmingUpdate  `0x105, 0x3`
-- server: NOT HANDLED · seen in play 106× · received 106×
+- server: NOT HANDLED · seen in play 3240× · received 134×
 - writer: FUN_142b867d0
 - built in: FUN_142c42ab0, FUN_1434ddca0
 - layout:
@@ -62,7 +62,7 @@ u32   +0x2c
 ```
 
 ## C2S HeroicMovementPacketTerminateGrappleHookEffects  `0x105, 0x4`
-- server: NOT HANDLED
+- server: NOT HANDLED · seen in play 43× · received 2×
 - built in: FUN_142c42ab0, FUN_142dc5960
 - code (builder in FUN_142c42ab0):
 ```
@@ -74,7 +74,7 @@ u32   +0x2c
 ```
 
 ## C2S HeroicMovementPacketHeroicMovement  `0x105, 0x5`
-- server: NOT HANDLED
+- server: NOT HANDLED · seen in play 36× · received 2×
 - built in: FUN_142dc5080
 - code (builder in FUN_142dc5080):
 ```

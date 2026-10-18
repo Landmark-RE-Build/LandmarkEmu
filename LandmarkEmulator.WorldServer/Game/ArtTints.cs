@@ -14,16 +14,18 @@ namespace LandmarkEmulator.WorldServer.Game
     /// +0x26c or "ANY"): prop tints (PlayerUpdate 0x7A SetPropTint), item and character default tints. Eight empty lists
     /// therefore left the table empty (0 entries, read in the running client 2026-10-13) and no tint ever showed.
     /// The content is the same ArtData the login server tunnels (AuthServer Resources/ArtTints.json, linked into this
-    /// build); the client reads the lists in the same order:
+    /// build; the model with every field's client evidence is AuthServer Model/TunnelData/ArtData.cs). The client
+    /// reads the lists in this order (reader 0.695 FUN_1430af1e0 / zone FUN_142bae270):
     /// <list type="number">
-    /// <item>{i32, string} (1114)</item>
-    /// <item>{i32, i32} (1114)</item>
-    /// <item>override groups {i32, i32, i32, list {i32, i32}}</item>
-    /// <item>{i64, i32, i32, i32, i32}</item>
-    /// <item>{string} ×2 lists</item>
-    /// <item>tint groups (the alias table, FUN_142b96540): {i32 id, string alias, string semantic group, list {string
-    /// semantic, i32, i32, i32, string edit type, i32, i32 r, g, b, a}, u32 alias hash +0x268, u32 type hash +0x26c}</item>
-    /// <item>{i32, i32}</item>
+    /// <item>AliasNames {i32 alias hash, string alias name} (1114) → manager +0x878</item>
+    /// <item>AliasIds {i32 ArtTints.txt id, i32 alias hash} (1114) → +0x18e8</item>
+    /// <item>OverrideGroups {i32 key = group id, i32 art source actor id, i32 group id, list {i32 tint type, i32 tint id}} → +0x39c8</item>
+    /// <item>ActorTintTypes {i64 (model hash &lt;&lt; 32) + shader hash, i32 tint type, i32 model hash, i32 shader hash, i32 actor id} → +0x39f8</item>
+    /// <item>SemanticNames, EditTypes: {string} ×2 lists → +0x230 / +0x550</item>
+    /// <item>Aliases (the alias table, FUN_142c30030): {i32 key = alias hash, string alias, string slot, list {string
+    /// semantic group, i32 group hash, i32 semantic name hash, i32 edit type hash, string param, i32 param hash, f32 ×4},
+    /// u32 alias hash +0x268, u32 slot hash +0x26c} → +0x8</item>
+    /// <item>PlayerTintOptions {i32 tint type, i32 tint id} → +0x3a28</item>
     /// </list>
     /// About 736 KB raw (compressed per fragment on the wire), sent once per login.
     /// </summary>
@@ -59,40 +61,51 @@ namespace LandmarkEmulator.WorldServer.Game
                     item(e);
             }
 
-            List("Unknown0", e => { I(e, "Unknown0"); S(e, "Unknown1"); });
-            List("Unknown1", e => { I(e, "Unknown0"); I(e, "Unknown1"); });
-            List("ArtTintOverrideGroups", e =>
+            void F(JsonElement e) => w.Write(e.GetSingle());
+            void Strings(string name)
             {
-                I(e, "Unknown0"); I(e, "Unknown1"); I(e, "Unknown2");
-                JsonElement entries = e.GetProperty("Unknown3");
+                JsonElement list = root.GetProperty(name);
+                w.Write((uint)list.GetArrayLength());
+                foreach (JsonElement e in list.EnumerateArray())
+                    w.Write(e.GetString() ?? "");
+            }
+
+            List("AliasNames", e => { I(e, "AliasHash"); S(e, "AliasName"); });
+            List("AliasIds", e => { I(e, "AliasId"); I(e, "AliasHash"); });
+            List("OverrideGroups", e =>
+            {
+                I(e, "Key"); I(e, "ArtSourceActorId"); I(e, "GroupId");
+                JsonElement entries = e.GetProperty("Entries");
                 w.Write((uint)entries.GetArrayLength());
                 foreach (JsonElement o in entries.EnumerateArray())
                 {
-                    I(o, "Unknown0"); I(o, "Unknown1");
+                    I(o, "ArtTintTypeId"); I(o, "ArtTintId");
                 }
             });
-            List("Unknown3", e =>
+            List("ActorTintTypes", e =>
             {
-                w.Write(e.GetProperty("Unknown0").GetInt64());
-                I(e, "Unknown1"); I(e, "Unknown2"); I(e, "Unknown3"); I(e, "Unknown4");
+                w.Write(e.GetProperty("Key").GetInt64());
+                I(e, "ArtTintTypeId"); I(e, "ActorModelHash"); I(e, "ShaderNameHash"); I(e, "ArtSourceActorId");
             });
-            List("Unknown4", e => S(e, "Unknown0"));
-            List("Unknown5", e => S(e, "Unknown0"));
-            List("ArtTintGroups", e =>
+            Strings("SemanticNames");
+            Strings("EditTypes");
+            List("Aliases", e =>
             {
-                I(e, "Id"); S(e, "AliasName"); S(e, "SemanticGroup");
-                JsonElement tints = e.GetProperty("ArtTints");
-                w.Write((uint)tints.GetArrayLength());
-                foreach (JsonElement t in tints.EnumerateArray())
+                I(e, "Key"); S(e, "AliasName"); S(e, "Slot");
+                JsonElement semantics = e.GetProperty("Semantics");
+                w.Write((uint)semantics.GetArrayLength());
+                foreach (JsonElement t in semantics.EnumerateArray())
                 {
-                    S(t, "SemanticName"); I(t, "Unknown1"); I(t, "Unknown2"); I(t, "Unknown3"); S(t, "EditType");
-                    I(t, "Unknown4"); I(t, "R"); I(t, "G"); I(t, "B"); I(t, "A");
+                    S(t, "SemanticGroup"); I(t, "SemanticGroupHash"); I(t, "SemanticNameHash"); I(t, "EditTypeHash");
+                    S(t, "StringParam"); I(t, "StringParamHash");
+                    foreach (JsonElement v in t.GetProperty("Values").EnumerateArray())
+                        F(v);
                 }
-                I(e, "Unknown3"); I(e, "Unknown4");
+                I(e, "AliasHash"); I(e, "SlotHash");
             });
-            List("Unknown7", e => { I(e, "Unknown0"); I(e, "Unknown1"); });
+            List("PlayerTintOptions", e => { I(e, "ArtTintTypeId"); I(e, "ArtTintId"); });
 
-            log.Info($"Tint definitions: {root.GetProperty("ArtTintGroups").GetArrayLength()} aliases, {output.Count} bytes.");
+            log.Info($"Tint definitions: {root.GetProperty("Aliases").GetArrayLength()} aliases, {output.Count} bytes.");
             return output.ToArray();
         }
     }

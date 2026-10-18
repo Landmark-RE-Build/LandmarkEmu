@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 1 (0 not handled) · S2C 10 (4 never sent / opcode unknown)
 
 ## C2S AchievementTrackerUpdatePacket  `0x92, 0xC`
-- server: handled (sub in handler) · seen in play 1× · received 1×
+- server: handled (sub in handler) · seen in play 7×
 - sent by Lua natives: SetTrackingAchievement
 - UI using them: CraftingWidget, Journal, JournalDetailsWidget, WatchListWidget
 
@@ -16,10 +16,10 @@ C2S 1 (0 not handled) · S2C 10 (4 never sent / opcode unknown)
 - log lines: ##Objective name id: %d
 
 ## S2C AchievementInitializePacket  `0x92, 0x3`
-- server: SENT (102× in opcode_stats) · seen in play 102×
+- server: SENT (16× in opcode_stats) · seen in play 327×
 
 ## S2C AchievementCompletePacket  `0x92, 0x4`
-- server: SENT (1× in opcode_stats) · seen in play 216×
+- server: SENT (1× in opcode_stats) · seen in play 2257×
 - case functions (dispatcher): FUN_142d8c430
 
 ## S2C AchievementObjectiveAddedPacket  `0x92, 0x5`
@@ -27,15 +27,15 @@ C2S 1 (0 not handled) · S2C 10 (4 never sent / opcode unknown)
 - case functions (dispatcher): FUN_142bcb7e0 FUN_142d8c680 FUN_142d8fe70 FUN_143ac7610
 
 ## S2C AchievementObjectiveActivatedPacket  `0x92, 0x6`
-- server: probably sent (static check: sent by server); not in opcode_stats · seen in play 216×
+- server: SENT (1× in opcode_stats) · seen in play 2257×
 - case functions (dispatcher): FUN_142d8a950 FUN_142d8f3e0 FUN_142d95c60
 
 ## S2C AchievementObjectiveUpdatePacket  `0x92, 0x7`
-- server: SENT (10× in opcode_stats) · seen in play 216×
+- server: SENT (74× in opcode_stats) · seen in play 2257×
 - case functions (dispatcher): FUN_142d8ac90 FUN_142d95c60
 
 ## S2C AchievementObjectiveCompletePacket  `0x92, 0x8`
-- server: SENT (1× in opcode_stats) · seen in play 216×
+- server: SENT (7× in opcode_stats) · seen in play 2257×
 - case functions (dispatcher): FUN_142d8ab50 FUN_142d905c0 FUN_142c338a0 FUN_142e19520
 - Lua events/calls: GameEvents:OnObjectiveComplete
 - text keys: LuaErrors.log
@@ -43,7 +43,7 @@ C2S 1 (0 not handled) · S2C 10 (4 never sent / opcode unknown)
 - UI reacting: events.lua (GameEvents:OnObjectiveComplete)
 
 ## S2C AchievementTrackerInitializePacket  `0x92, 0xB`
-- server: SENT (102× in opcode_stats)
+- server: SENT (16× in opcode_stats)
 
 ## S2C AchievementSecretCompletePacket  `0x92, 0xE`
 - server: NOT SENT (not in opcode_stats, not in the server code)
@@ -51,4 +51,4 @@ C2S 1 (0 not handled) · S2C 10 (4 never sent / opcode unknown)
 - log lines: ##Objective name id: %d · %d^%d^%d^%d* · %d^%s^%d*
 
 ## S2C AchievementGlobalAnnouncePacket  `0x92, 0xF`
-- server: NOT SENT (not in opcode_stats, not in the server code)
+- server: NOT SENT (not in opcode_stats, not in the server code) · seen in play 4×

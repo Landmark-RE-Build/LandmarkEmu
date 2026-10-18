@@ -37,7 +37,10 @@ services:
       context: ../..
       dockerfile: docker/Dockerfile
       target: auth
-    image: landmarkemu-auth
+    # AUTH_IMAGE: another tag for this build, so a second build can stand beside the running one
+    # without replacing its image (e.g. a project started with its own -p name and env file, as in
+    # docker/worlds/extra-world.env.example).
+    image: ${AUTH_IMAGE:-landmarkemu-auth}
     restart: unless-stopped
     depends_on:
       db:
@@ -52,26 +55,47 @@ services:
       # Empty: each world registers its own address (its PublicAddress). Set only to force one address for all worlds.
       WorldAddress: ""
       # The account website (service "web") may pass on the player's address; sign-up limits.
-      WebApi__TrustedProxy: 172.30.77.10
+      WebApi__TrustedProxy: ${WEB_SUBNET_PREFIX:-172.30.77}.10
       WebApi__RegistrationOpen: ${REGISTRATION_OPEN:-true}
       WebApi__RegistrationsPerAddressPerHour: ${REGISTRATIONS_PER_ADDRESS_PER_HOUR:-3}
       WebApi__RegistrationsPerHour: ${REGISTRATIONS_PER_HOUR:-60}
+      # Character names RPG-style only (capital first letter, letters only, no spaces); false (default) = any allowed name.
+      CreationRules__StrictName: ${STRICT_NAMES:-false}
+      # Each character in the character list carries its friends list, as on live (the client counts each world's online
+      # friends from it). false = sent empty.
+      CharacterSelectFriends: ${CHARACTER_SELECT_FRIENDS:-true}
+      # The shared social service (docker/social, the worlds' SOCIAL_ADDRESS): those friends lists and who is online come
+      # from it. Empty: from the character database, every friend shown offline.
+      SocialAddress: ${SOCIAL_ADDRESS:-}
       # What LaunchPad shows for this server (docs/launchpad.md): name, website link (default: the account website on
       # PUBLIC_HOST), required game build, news.
       WebApi__ServerName: ${SERVER_NAME:-LandmarkEmu}
       WebApi__WebsiteUrl: ${WEBSITE_URL:-http://${PUBLIC_HOST:-127.0.0.1}:${WEBSITE_PORT:-8080}/}
       WebApi__RequiredClientBuild: ${REQUIRED_CLIENT_BUILD:-}
       WebApi__NewsFile: /launcher/news.json
+      # The patch folder (PATCH_DIR): drop the update pack (.lmpatch) there. Each pack is checked with the rules players'
+      # LaunchPad uses before it is served; refused ones are moved to rejected/ (docs/launchpad.md "Server side").
+      WebApi__PatchFolder: /launcher/patches
+      # A Steam 0.589 copy mounted for the check (PATCH_VERIFY_STEAM_DIR); an empty folder = none.
+      WebApi__PatchVerifySteamDir: /patch-verify-steam
     volumes:
       # The server's game data: copied from your Landmark folder by the setup service (docker-compose.yml).
       - ${GAME_DATA_DIR:-../../server-data/gamedata}:/gamedata:ro
       - ${LAUNCHER_DIR:-../launcher}:/launcher:ro
+      # Writable: refused packs are moved to its rejected/ folder.
+      - ${PATCH_DIR:-../launcher/patches}:/launcher/patches
+      # Optional, read-only: with a Steam 0.589 copy here the check also replays every edit and patch in a pack.
+      - ${PATCH_VERIFY_STEAM_DIR:-../launcher/no-steam-copy}:/patch-verify-steam:ro
     ports:
       # The game login port is the same inside and outside the container.
       - "${LOGIN_PORT:-20042}:${LOGIN_PORT:-20042}/udp"
       - "${ACCOUNT_PORT:-5000}:5000/tcp"
+    # The login service's internal port (gateways in their own container consume tickets there; never published).
+    expose:
+      - "20210"
     networks:
-      landmarkemu: {}
+      landmarkemu:
+        aliases: [landmarkemu-login]
       landmarkemu-web:
         aliases: [landmarkemu-auth-api]
 
@@ -91,7 +115,7 @@ services:
       - "${WEBSITE_PORT:-8080}:8080/tcp"
     networks:
       landmarkemu-web:
-        ipv4_address: 172.30.77.10
+        ipv4_address: ${WEB_SUBNET_PREFIX:-172.30.77}.10
 
 volumes:
   db:
@@ -99,10 +123,10 @@ volumes:
 networks:
   # World containers join this network to reach the database (see docker/world/docker-compose.yml).
   landmarkemu:
-    name: landmarkemu
+    name: ${NETWORK_NAME:-landmarkemu}
   # The website and the auth server only (fixed range: the auth server trusts the website's address).
   landmarkemu-web:
-    name: landmarkemu-web
+    name: ${NETWORK_NAME:-landmarkemu}-web
     ipam:
       config:
-        - subnet: 172.30.77.0/24
+        - subnet: ${WEB_SUBNET_PREFIX:-172.30.77}.0/24

@@ -35,6 +35,12 @@ namespace LandmarkEmulator.LaunchPad
                 Shutdown(MakePack(e.Args));
                 return;
             }
+            if (e.Args.Length >= 3 && e.Args[0] == "--store")
+            {
+                AttachConsole(-1);
+                Shutdown(StoreCommand(e.Args));
+                return;
+            }
 
             // One launcher per game folder (two would race over the same files and settings).
             string name = "LandmarkEmu.LaunchPad." + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
@@ -55,6 +61,108 @@ namespace LandmarkEmulator.LaunchPad
         {
             SteamPresence.Stop();
             base.OnExit(e);
+        }
+
+        /// <summary>
+        /// The window's patch actions from the command line, through the same GameStore calls (for testing the patcher
+        /// on copies of the game): LaunchPad.exe --store &lt;verb&gt; &lt;game folder&gt; [pack.lmpatch]
+        ///   verify-steam   check every file against Steam's 0.589 list
+        ///   install        install a pack (all the checks, backup, journal and result checks of the window)
+        ///   undo           undo the last pack; revert-all: undo every pack
+        ///   validate       check every file against what it should be now (Steam's or the pack's)
+        ///   recover        finish / roll back an interrupted install (what opening LaunchPad does)
+        ///   manifest       (pack.lmpatch in place of the game folder) print the pack's list
+        ///   verify-pack    (pack.lmpatch [Steam game folder]) the check a server and every player run on a pack
+        ///   check-695      (0.695 game folder) which 0.695 build it is, by the SHA-256 of every file of the update
+        /// Exit code 0 = success and no problems; 1 = problems found or the action was refused.
+        /// </summary>
+        private static int StoreCommand(string[] args)
+        {
+            string verb = args[1], game = args[2];
+            long lastPrint = 0;
+            void Report(string phase, long done, long total, string file)
+            {
+                long now = Environment.TickCount64;
+                if (now - lastPrint < 2000 && done < total)
+                    return;
+                lastPrint = now;
+                Console.WriteLine($"  {phase}: {done}/{total} {file}");
+            }
+            int Problems(IEnumerable<Patching.Problem> problems, string what)
+            {
+                var list = problems.ToList();
+                foreach (var p in list.Take(50))
+                    Console.WriteLine($"  PROBLEM {p.Path}: {p.Issue}");
+                Console.WriteLine($"{what}: {(list.Count == 0 ? "OK" : list.Count + " problems")}");
+                return list.Count == 0 ? 0 : 1;
+            }
+            try
+            {
+                if (verb == "manifest")
+                {
+                    // --store manifest <pack.lmpatch>: print the pack's manifest (pack.json text).
+                    using var pack = new Patching.Pack(game);
+                    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(pack.Manifest));
+                    return 0;
+                }
+                if (verb == "check-695")
+                {
+                    // --store check-695 <0.695 game folder>: which 0.695 build it is, by the SHA-256 of every file of the
+                    // update (what Create update pack checks first). Only reads the folder.
+                    Patching.FolderCheck check = Patching.CheckFolder(game, Report, CancellationToken.None);
+                    Console.WriteLine(check.Build != null
+                        ? $"check-695: OK, the {check.Build.Label} ({check.Checked} files of the update genuine)"
+                        : $"check-695: not a known build (closest: {check.Closest})");
+                    return Problems(check.Problems, "check-695");
+                }
+                if (verb == "verify-pack")
+                {
+                    // --store verify-pack <pack.lmpatch> [<Steam game folder>]: the check a server and every player run
+                    // (PackCheck.Verify); with a Steam copy every edit and patch is replayed on it (read only).
+                    using var pack = new Patching.Pack(game);
+                    PackCheck.Result r = PackCheck.Verify(pack, args.Length > 3 ? args[3] : null, Report, CancellationToken.None);
+                    Console.WriteLine($"verify-pack: OK ({r.Build.Label}; {r.Entries} files, {r.Replayed} edits/patches replayed, " +
+                        $"{r.NotReplayed} checked by header only)");
+                    return 0;
+                }
+                var store = new GameStore(game);
+                switch (verb)
+                {
+                    case "verify-steam":
+                        return Problems(store.VerifySteam(Report, CancellationToken.None), "verify-steam");
+                    case "install":
+                    {
+                        using var pack = new Patching.Pack(args[3]);
+                        var installed = store.Install(pack, "", "", Report, CancellationToken.None);
+                        Console.WriteLine($"install: OK ({installed.Name})");
+                        return 0;
+                    }
+                    case "undo":
+                        Console.WriteLine($"undo: OK ({store.UndoLast(Report, CancellationToken.None).Name})");
+                        return 0;
+                    case "revert-all":
+                        while (store.Stack.Count > 0)
+                            Console.WriteLine($"undo: {store.UndoLast(Report, CancellationToken.None).Name}");
+                        Console.WriteLine("revert-all: OK");
+                        return 0;
+                    case "validate":
+                    {
+                        var (problems, count) = store.Validate(Report, CancellationToken.None);
+                        Console.WriteLine($"validate: {count} files checked");
+                        return Problems(problems, "validate");
+                    }
+                    case "recover":
+                        Console.WriteLine($"recover: {store.RecoverInterrupted() ?? "nothing to recover"}");
+                        return 0;
+                }
+                Console.Error.WriteLine($"Unknown --store verb '{verb}'.");
+                return 2;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"{verb}: REFUSED / FAILED: {ex.Message}");
+                return 1;
+            }
         }
 
         private static int MakePack(string[] args)

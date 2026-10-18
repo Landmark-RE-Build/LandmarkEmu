@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 0 (0 not handled) · S2C 1 (0 never sent / opcode unknown)
 
 ## S2C PacketInitializationParameters  `0x9F`
-- server: SENT (102× in opcode_stats) · seen in play 102×
+- server: SENT (18× in opcode_stats) · seen in play 327×
 - built in: FUN_142c42db0
 - text keys: Images.txt · ImageSetMappings.txt
 - log lines: %s/%s

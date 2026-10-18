@@ -80,7 +80,13 @@ function Invoke-Setup {
     if (-not $settings['DB_PASSWORD']) { Set-EnvValue 'DB_PASSWORD' (New-Password) }
 
     $admin = (Read-Host "Your account name, to be an admin on your world (empty: $(if ($settings['ADMIN_ACCOUNT']) { "keep $($settings['ADMIN_ACCOUNT'])" } else { 'none' }); you create the account in LaunchPad)").Trim()
-    if ($admin) { Set-EnvValue 'ADMIN_ACCOUNT' $admin }
+    # Saved as account:<name>: a bare name also matches a character of that name, and when an account and another
+    # player's character share it the world makes nobody admin (docs/admin.md). An entry that already has an
+    # account: / character: prefix is kept as typed.
+    if ($admin) {
+        if ($admin -notmatch '^(?i)(account|character)\s*:') { $admin = "account:$admin" }
+        Set-EnvValue 'ADMIN_ACCOUNT' $admin
+    }
 
     $addresses = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
         Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } |

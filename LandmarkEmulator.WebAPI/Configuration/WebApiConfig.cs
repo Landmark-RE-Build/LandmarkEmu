@@ -2,6 +2,7 @@ namespace LandmarkEmulator.WebAPI.Configuration
 {
     public class WebApiConfig
     {
+        /// <summary>Run the account / launcher web API. Internal (no .env line): the Docker auth service always runs it.</summary>
         public bool Enabled { get; set; } = true;
         public string BaseURI { get; set; } = "https://0.0.0.0:5000";
 
@@ -15,8 +16,11 @@ namespace LandmarkEmulator.WebAPI.Configuration
         /// <summary>Can new accounts be created (the launcher, the account website)?</summary>
         public bool RegistrationOpen { get; set; } = true;
 
-        /// <summary>New accounts per address per hour (beyond it: 429).</summary>
-        public int RegistrationsPerAddressPerHour { get; set; } = 10;
+        /// <summary>
+        /// New accounts per address per hour (beyond it: 429; requests from this PC are not counted). Default 3, the same
+        /// as docker/auth compose and .env.example (REGISTRATIONS_PER_ADDRESS_PER_HOUR).
+        /// </summary>
+        public int RegistrationsPerAddressPerHour { get; set; } = 3;
 
         /// <summary>New accounts per hour from all addresses together (stops a spammer with many addresses).</summary>
         public int RegistrationsPerHour { get; set; } = 60;
@@ -43,15 +47,27 @@ namespace LandmarkEmulator.WebAPI.Configuration
 
         /// <summary>
         /// The login port the launcher sends the game to. 0 = the auth server's own port (Network.Port); set it when
-        /// players reach the server through a different port (a router or Docker port mapping).
+        /// players reach the server through a different port (a router or Docker port mapping). Internal under Docker (no
+        /// .env line): docker/auth publishes LOGIN_PORT on the same number inside and outside, so 0 is right; change
+        /// LOGIN_PORT instead.
         /// </summary>
         public int LoginPort { get; set; }
 
         /// <summary>
-        /// A folder with the patch pack the launcher downloads and installs on top of a verified Steam copy of the game
-        /// (<see cref="PatchHost"/>): the update's .lmpatch as LaunchPad.exe --make-update makes it; packs apply in file-name
-        /// order. Empty = no patches. (Players' LaunchPad has server patches switched off for now.)
+        /// The patch folder: the server owner puts (uploads) the update pack here, as LaunchPad makes it (Settings > Patch
+        /// packs > Create update pack, or LaunchPad.exe --make-update), and players' LaunchPad offers it to them (it asks
+        /// first, and checks every byte against its own list of genuine files). A pack is only served after it has passed
+        /// the same check here (<see cref="PatchLibrary"/>); one that fails is moved to rejected\ with the reason. Packs
+        /// are listed in file-name order. Empty = no patches. Docker: docker/launcher/patches (PATCH_DIR).
         /// </summary>
         public string PatchFolder { get; set; } = "";
+
+        /// <summary>
+        /// Optional: a Steam 0.589 copy of Landmark (read only). With it the patch folder's check also replays every edit
+        /// and patch in a pack on the Steam files and checks each result's SHA-256 (without it, they are checked by their
+        /// headers, and each player's LaunchPad replays them on their own copy before anything changes). Empty or not a
+        /// Steam 0.589 game folder = none. Docker: PATCH_VERIFY_STEAM_DIR.
+        /// </summary>
+        public string PatchVerifySteamDir { get; set; } = "";
     }
 }

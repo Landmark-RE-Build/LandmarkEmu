@@ -7,20 +7,20 @@ C2S 0 (0 not handled) · S2C 4 (0 never sent / opcode unknown)
 
 ## S2C Resources::BaseResourcePacket  `0xC4`
 - resolved by hand: placed by placeclasses.py (opcode only): FUN_143568b00 <- FUN_142ee70c0
-- server: SENT (1865× in opcode_stats)
+- server: SENT (316× in opcode_stats)
 - built in: FUN_143568b00, FUN_143569530
 
 ## S2C Resources::ResourcePacketSetCharacterResources  `0xC4, 0x1`
 - resolved by hand: ResourcesBase handler FUN_143568b00 (zone value 0xC3 → FUN_142ee70c0); server CharacterResources.cs
-- server: SENT (102× in opcode_stats)
+- server: SENT (16× in opcode_stats)
 - built in: FUN_14349ff00
 
 ## S2C Resources::ResourcePacketSetCharacterResource  `0xC4, 0x2`
 - resolved by hand: FUN_143569530 / FUN_143568c10; sent by CharacterResources.Set (sequence, sub, guid, record)
-- server: SENT (102× in opcode_stats)
+- server: SENT (16× in opcode_stats)
 - built in: FUN_143568c10, FUN_143569530
 
 ## S2C Resources::ResourcePacketUpdateCharacterResource  `0xC4, 0x3`
 - resolved by hand: FUN_143568e40
-- server: SENT (102× in opcode_stats)
+- server: SENT (16× in opcode_stats)
 - built in: FUN_143568e40, FUN_143569530

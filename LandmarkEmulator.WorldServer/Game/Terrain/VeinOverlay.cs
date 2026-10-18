@@ -43,7 +43,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         public static int Send(WorldSession session, uint overlay, float radius, Func<uint, bool> which = null)
         {
             var cells = new List<(uint Id, (double, double, double) From, (double, double, double) To)>();
-            foreach ((OreVeins.Vein vein, _, _) in OreVeins.Near(session.Position, radius, session.ZoneId))
+            foreach ((OreVeins.Vein vein, _, _) in EnvironmentServer.Instance.VeinsNear(session.Position, radius, session.ZoneId))
                 if (which == null || which(vein.Item))
                     for (int i = 0; i + 1 < vein.Points.Count; i += SegmentPoints)
                     {

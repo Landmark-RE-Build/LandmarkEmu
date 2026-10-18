@@ -60,6 +60,9 @@ namespace LandmarkEmulator.AuthServer.Zone
             return s;
         }
 
+        /// <summary>A world's row read just now (at Play): its counts and limit, for the login queue.</summary>
+        public static void Refresh(ZoneServer server, ZoneServerModel model) => Apply(server, model);
+
         /// <summary>Is a world's row (read just now) that of a running world?</summary>
         public static bool IsRunning(ZoneServerModel model) =>
             model?.Heartbeat is DateTime beat && DateTime.UtcNow - beat < HeartbeatTimeout;
@@ -70,6 +73,7 @@ namespace LandmarkEmulator.AuthServer.Zone
             bool changed = up != server.Up;
             server.Up = up;
             server.PlayersOnline = up ? model.PlayersOnline : 0;
+            server.MaxPlayers = up ? model.MaxPlayers : 0;
             return changed;
         }
 

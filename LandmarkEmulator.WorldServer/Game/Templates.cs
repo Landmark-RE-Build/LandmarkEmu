@@ -1,7 +1,9 @@
 ﻿using LandmarkEmulator.Shared.Database;
+using LandmarkEmulator.Internal.Commerce;
 using LandmarkEmulator.Database.Character.Model;
 using LandmarkEmulator.Shared.Network;
 using LandmarkEmulator.WorldServer.Game.Terrain;
+using LandmarkEmulator.WorldServer.Game.WorldChannel;
 using LandmarkEmulator.WorldServer.Network;
 using LandmarkEmulator.WorldServer.Network.Message;
 using NLog;
@@ -43,6 +45,53 @@ namespace LandmarkEmulator.WorldServer.Game
 
         /// <summary>A stored design by its guid and owner (a character, or a Player Design item's guid).</summary>
         public static TemplateModel FindDesign(ulong owner, ulong guid) => Find(owner, guid);
+
+        /// <summary>
+        /// Is this design of the player's a copy they took from Player Studio (TASKS 6.45: such designs go only on the
+        /// player's own site)? A Player Studio copy (<see cref="Commerce.TakeDesign"/>) is someone else's work (not
+        /// <see cref="IsOwnWork"/>) matching, by name, size and materials, the source design of a product the player has
+        /// taken (<see cref="Unlocks.StudioDesign"/> rows: product ids). <b>Inferred identification</b>: the stored copy
+        /// keeps no product id (live kept "template instances", the client's text Construction.OnlyClaimOwnerMayPlaceOr
+        /// CopyTemplateInstances); designs traded as items are not restricted, and a Player Studio copy can't be exported to
+        /// an item (DesignItems.Export, audit-wiki-gaps #4).
+        /// </summary>
+        public static bool IsPlayerStudioCopy(ulong owner, ulong guid)
+        {
+            if (IsStarter(guid))
+                return false;
+            TemplateModel design = Find(owner, guid);
+            if (design == null || IsOwnWork(design))
+                return false;
+            var products = Unlocks.ValuesOfAnyone(owner, Unlocks.StudioDesign).Select(p => (ulong)p).ToList();
+            if (products.Count == 0)
+                return false;
+            using var context = DatabaseManager.Instance.CharacterDatabase.NewContext();
+            var sources = context.PlayerStudioProduct.Where(p => products.Contains(p.Id)).Select(p => p.TemplateId).ToList();
+            return context.Template.Any(t => sources.Contains(t.Id) && t.Name == design.Name && t.SizeX == design.SizeX
+                && t.SizeY == design.SizeY && t.SizeZ == design.SizeZ && t.Materials == design.Materials);
+        }
+
+        /// <summary>
+        /// A deleted or lapsed site's design keeps the site's screenshots (hotfix 1 Apr 2016, P4365: designs made
+        /// automatically when upkeep runs out keep their screenshots): the Site Management shots
+        /// (<see cref="SiteScreenshots"/>, index 0 the primary one) are copied as the design's shots, index by index, while
+        /// both sizes exist. Returns how many.
+        /// </summary>
+        public static int CopySiteImages(ulong site, ulong design)
+        {
+            int copied = 0;
+            for (int index = 0; index < MaxImages; index++)
+            {
+                byte[] large = SiteScreenshots.Image(site, index, "large"), small = SiteScreenshots.Image(site, index, "small");
+                if (large == null || small == null)
+                    break;
+                System.IO.Directory.CreateDirectory(ImageFolder);
+                System.IO.File.WriteAllBytes(System.IO.Path.Combine(ImageFolder, design + "_" + index + "_large.jpg"), large);
+                System.IO.File.WriteAllBytes(System.IO.Path.Combine(ImageFolder, design + "_" + index + "_small.jpg"), small);
+                copied++;
+            }
+            return copied;
+        }
 
         /// <summary>
         /// The client's own "You have learned a new Design" notice with the design's name (Learned.Template; TemplateBase
@@ -106,27 +155,145 @@ namespace LandmarkEmulator.WorldServer.Game
         // ---- Starter Castle ------------------------------------------------------------------------------------------
 
         /// <summary>
-        /// The Starter Castle designs every player has (client ExportedTemplateCategoryMap: category 1 "Starter Castle",
-        /// 28 templates; their names are texts 574226-574336/576961-576962; the Getting Started goal "Your Home Is Your
-        /// Castle" asks to place Castle Courtyard, Castle Wall Entry, Castle Tower - Inline and Castle Wall - Medium,
-        /// none of which is an item). Served from the client's own .otd files, not stored per character. Name → file
-        /// by name, and by size where the names differ: walls are 12 × 50 (Short 24 = ramparts short, Medium 72, Long
-        /// 168, plus the rampart corner and entry), rooms are the 86 m-high family (room v2, the 4-way and corner
-        /// "tower" files), towers the 124 m-high family (the only inline piece is a tall tower). Modular Castle Window
-        /// with Wall has no file (no 26 × 50 × 40 window).
+        /// The Starter Castle designs (client ExportedTemplateCategoryMap: category 1 "Starter Castle", 28 templates;
+        /// their names are texts 574226-574336/576961-576962). Served from the client's own .otd files, not stored per
+        /// character. Name → file by name, and by size where the names differ: walls are 12 × 50 (Short 24 = ramparts
+        /// short, Medium 72, Long 168, plus the rampart corner and entry), rooms are the 86 m-high family (room v2, the
+        /// 4-way and corner "tower" files), towers the 124 m-high family (the only inline piece is a tall tower).
+        /// Modular Castle Window with Wall (template 1141, item 4106) has no file (no 26 × 50 × 40 window); if one turns
+        /// up, it goes at the end as index 27.
+        /// <para><b>The order is fixed</b>: a piece's guid is "ST" + its index here (<see cref="StarterGuidBase"/>), and
+        /// the client caches designs by guid.</para>
+        /// <para>Per piece (trace/0695/spec-design-categories.md §2):</para>
+        /// <list type="bullet">
+        /// <item><c>TemplateId</c>: the live template database id, i.e. the ExportedTemplateCategoryMap TEMPLATE_ID the
+        /// 0.695 Designs window compares with TemplateBasicData +0xec to file a designer template under "Starter Castle"
+        /// (FUN_143755020, called from the palette's count / entry builders FUN_143754540 / FUN_143755d60). It is the
+        /// same number the piece's design item carries as its grantId (22 of the 28 rows; the map rows are in name
+        /// order, which pins the 6 without an item).</item>
+        /// <item><c>ItemId</c>: the design item that unlocks the piece (0: none). 3706/3707/4072-4080/4085/4360/4361 are
+        /// the 13 castle pieces in reward bundle 1051 (goal 471 "Your Home Is Your Castle", and again 477, in the
+        /// Feb 2017 capture); 4098-4105 the Modular Castle items, rewarded by the tutorial goal Building Block Basics
+        /// (Achievements.Tutorial.cs, TASKS 6.57: Modular Thinking, the goal after it, asks the player to place them;
+        /// inferred, OPEN-LEADS U-DC3).</item>
+        /// <item><c>Default</c>: every character has it. The 6 pieces with no item, which include the 4 that goal 471
+        /// asks to place (Courtyard, Wall Entry, Tower - Inline, Wall - Medium; 21 Mar 2016 a few to start with, more
+        /// from achievements). The 8 Modular Castle pieces stopped being defaults on
+        /// 2026-10-16: the wipe took the Modular Castle designs from every player so the tutorial could hand them out
+        /// as intended (7 Jun 2016, P5750), now from Building Block Basics' reward. The
+        /// rest come as unlocks of kind <see cref="Unlocks.StarterDesign"/> (<see cref="HasStarterPiece"/>).</item>
+        /// </list>
         /// </summary>
-        private static readonly (uint NameId, string File)[] StarterCastle =
+        private static readonly (uint NameId, string File, uint TemplateId, uint ItemId, bool Default)[] StarterCastle =
         {
-            (574336, "castle_courtyard"), (574256, "castle_hallway_(corner)"), (574284, "castle_hallway_(long)"),
-            (576962, "castle_hallway_-_medium"), (574281, "castle_hallway_(short)"), (574255, "castle_hallway_(t-junction)"),
-            (576961, "castle_hallway_with_entries"), (576199, "castle_long_room"), (574226, "castle_room_v2"),
-            (574294, "castle_tower_(corner)"), (574295, "castle_tower_(4_way)"), (574297, "castle_tall_tower"),
-            (574298, "castle_tall_tower_(corner)"), (574296, "castle_tall_tower_(inline)"), (574251, "ramparts_wall_(corner)"),
-            (574253, "castle_wall_(long)"), (574302, "castle_wall_(medium)"), (574252, "ramparts_wall_(short)"),
-            (574257, "ramparts_wall_(entry)"), (574310, "modular_castle_entry"), (574305, "modular_castle_entry_with_wall"),
-            (574309, "modular_castle_hall_entry"), (574304, "modular_castle_room_(long)"), (574307, "modular_castle_room_hallway"),
-            (574303, "modular_castle_tower"), (574308, "modular_castle_tall_tower_hallway"), (574311, "modular_castle_window")
+            (574336, "castle_courtyard", 1144, 0, true),                        //  0 Castle Courtyard
+            (574256, "castle_hallway_(corner)", 1125, 4074, false),            //  1 Castle Hallway - Corner
+            (574284, "castle_hallway_(long)", 1124, 0, true),                   //  2 Castle Hallway - Long
+            (576962, "castle_hallway_-_medium", 1324, 4360, false),            //  3 Castle Hallway - Medium
+            (574281, "castle_hallway_(short)", 1123, 4072, false),             //  4 Castle Hallway - Short
+            (574255, "castle_hallway_(t-junction)", 1126, 4075, false),        //  5 Castle Hallway - T-Junction
+            (576961, "castle_hallway_with_entries", 1323, 4361, false),        //  6 Castle Hallway with Side Doors
+            (576199, "castle_long_room", 1310, 4085, false),                   //  7 Castle Long Room
+            (574226, "castle_room_v2", 1127, 4076, false),                     //  8 Castle Room
+            (574294, "castle_tower_(corner)", 1129, 4078, false),              //  9 Castle Room - Corner
+            (574295, "castle_tower_(4_way)", 1130, 4077, false),               // 10 Castle Room - Four Way
+            (574297, "castle_tall_tower", 1131, 4079, false),                  // 11 Castle Tower
+            (574298, "castle_tall_tower_(corner)", 1132, 4080, false),         // 12 Castle Tower - Corner
+            (574296, "castle_tall_tower_(inline)", 1128, 0, true),             // 13 Castle Tower - Inline
+            (574251, "ramparts_wall_(corner)", 1120, 0, true),                 // 14 Castle Wall - Corner
+            (574253, "castle_wall_(long)", 1122, 3706, false),                 // 15 Castle Wall - Long
+            (574302, "castle_wall_(medium)", 1143, 0, true),                   // 16 Castle Wall - Medium
+            (574252, "ramparts_wall_(short)", 1119, 3707, false),              // 17 Castle Wall - Short
+            (574257, "ramparts_wall_(entry)", 1121, 0, true),                  // 18 Castle Wall Entry
+            (574310, "modular_castle_entry", 1140, 4098, false),                // 19 Modular Castle Entry
+            (574305, "modular_castle_entry_with_wall", 1135, 4099, false),      // 20 Modular Castle Entry with Wall
+            (574309, "modular_castle_hall_entry", 1139, 4100, false),           // 21 Modular Castle Hall Entry
+            (574304, "modular_castle_room_(long)", 1134, 4101, false),          // 22 Modular Castle Long Room
+            (574307, "modular_castle_room_hallway", 1137, 4102, false),         // 23 Modular Castle Room Hallway
+            (574303, "modular_castle_tower", 1133, 4104, false),                // 24 Modular Castle Tower
+            (574308, "modular_castle_tall_tower_hallway", 1138, 4103, false),   // 25 Modular Castle Tower Hallway
+            (574311, "modular_castle_window", 1136, 4105, false)                // 26 Modular Castle Window
         };
+
+        /// <summary>
+        /// Characters made before this day had every Starter Castle piece (the list sent all 27 until 2026-10-15); they
+        /// keep them as unlocks (<see cref="GrantOldStarterPieces"/>). Compared with the character's createTime column.
+        /// </summary>
+        private static readonly DateTime StarterUnlockCutoff = new(2026, 10, 16, 0, 0, 0, DateTimeKind.Unspecified);
+
+        /// <summary>Characters already checked for the one-time grant in this run (keyed by character id).</summary>
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<ulong, byte> starterGrantChecked = new();
+
+        /// <summary>
+        /// One-time, non-destructive migration (spec-design-categories.md §5, option 1): a character with no
+        /// <see cref="Unlocks.StarterDesign"/> rows yet that was made before <see cref="StarterUnlockCutoff"/> gets every
+        /// piece of <see cref="StarterCastle"/> as an unlock, plus the marker row (kind 20, value 0), so nobody loses a
+        /// design they had. Idempotent: any kind-20 row (the marker, or a piece learned since) means it has run; it is
+        /// checked once per character per run. Owners that are not characters (a Player Design item's guid) find no
+        /// character row and are skipped. Nothing is deleted: designer copies of castle pieces stored in the template
+        /// table before this change (ItemUses.LearnDesign used to store them) stay.
+        /// </summary>
+        private static void GrantOldStarterPieces(ulong characterId)
+        {
+            if (!starterGrantChecked.TryAdd(characterId, 0))
+                return;
+            try
+            {
+                if (Unlocks.ValuesOfAnyone(characterId, Unlocks.StarterDesign).Count > 0)
+                    return;
+                DateTime? created;
+                using (var context = DatabaseManager.Instance.CharacterDatabase.NewContext())
+                    created = context.Character.Where(c => c.Id == characterId).Select(c => (DateTime?)c.CreateTime).FirstOrDefault();
+                if (created == null || created.Value >= StarterUnlockCutoff)
+                    return;
+                foreach (var piece in StarterCastle)
+                    Unlocks.Add(characterId, Unlocks.StarterDesign, piece.TemplateId);
+                Unlocks.Add(characterId, Unlocks.StarterDesign, 0);
+                log.Info($"Character {characterId} (made {created.Value:yyyy-MM-dd}) keeps all {StarterCastle.Length} Starter Castle designs as unlocks.");
+            }
+            catch (Exception e)
+            {
+                starterGrantChecked.TryRemove(characterId, out _);   // try again next time
+                log.Warn($"Starter Castle grant for character {characterId} failed: {e.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Does the character have this Starter Castle piece (index into <see cref="StarterCastle"/>)? Defaults always;
+        /// the rest when unlocked (kind <see cref="Unlocks.StarterDesign"/>, value = the piece's TemplateId), from its
+        /// design item (ItemUses.LearnDesign) or the one-time grant to older characters.
+        /// </summary>
+        public static bool HasStarterPiece(ulong owner, int index)
+        {
+            if (index < 0 || index >= StarterCastle.Length)
+                return false;
+            if (StarterCastle[index].Default)
+                return true;
+            GrantOldStarterPieces(owner);
+            return Unlocks.ValuesOfAnyone(owner, Unlocks.StarterDesign).Contains(StarterCastle[index].TemplateId);
+        }
+
+        /// <summary>The Starter Castle piece a design item unlocks (index into <see cref="StarterCastle"/>), or -1.</summary>
+        public static int StarterIndexOfItem(uint itemId)
+            => itemId == 0 ? -1 : Array.FindIndex(StarterCastle, s => s.ItemId == itemId);
+
+        /// <summary>
+        /// Unlocks a Starter Castle piece for the player (kind <see cref="Unlocks.StarterDesign"/>) and adds it to their
+        /// Designs list (3 SaveTemplateResponse, as a save does; the 0.695 client files it under "Starter Castle" by its
+        /// +0xec id). No template row is stored: the piece is the client's own .otd, served by guid "ST" + index, and
+        /// designer designs take no design storage. Returns the design as sent (null if its file is missing; the unlock
+        /// is kept, so it shows once the file is there).
+        /// </summary>
+        public static TemplateModel UnlockStarterPiece(WorldSession session, int index)
+        {
+            if (index < 0 || index >= StarterCastle.Length)
+                return null;
+            Unlocks.Add(session, Unlocks.StarterDesign, StarterCastle[index].TemplateId);
+            TemplateModel piece = Starter(index, session.PlayerGuid);
+            if (piece != null)
+                SendAdded(session, piece);
+            return piece;
+        }
 
         /// <summary>Guids of the Starter Castle designs ("ST" + index).</summary>
         private const ulong StarterGuidBase = 0x5354_0000_0000_0000;
@@ -184,9 +351,30 @@ namespace LandmarkEmulator.WorldServer.Game
             };
         }
 
+        /// <summary>The index in <see cref="StarterCastle"/> of the piece with this (shown) name, or -1.</summary>
+        private static int StarterIndexOfName(string name)
+            => string.IsNullOrEmpty(name) ? -1
+                : Array.FindIndex(StarterCastle, s => LandmarkEmulator.Shared.GameTable.Text.TextManager.Instance.GetTextForId(s.NameId) == name);
+
         /// <summary>The name text id of a Starter Castle design (by its name), or 0.</summary>
         private static uint StarterNameId(string name)
-            => StarterCastle.Select(s => s.NameId).FirstOrDefault(id => LandmarkEmulator.Shared.GameTable.Text.TextManager.Instance.GetTextForId(id) == name);
+            => StarterIndexOfName(name) is int i and >= 0 ? StarterCastle[i].NameId : 0;
+
+        /// <summary>
+        /// The exported template id of a designer design (TemplateBasicData +0xec, see <see cref="WriteBasicData"/>):
+        /// a Starter Castle piece's TemplateId (by its "ST" guid, or by name for a designer copy stored before
+        /// 2026-10-16), else the grantId of the design item of the same name (<see cref="ItemUses.DesignGrantId"/>:
+        /// old starter shapes 7-30, Starter Homes 599-608, Architecture Tools 1318-1319 …, all in category 3
+        /// "Collected"), else 0 (the client's fallback is Collected too).
+        /// </summary>
+        private static uint ExportedTemplateId(TemplateModel design)
+        {
+            if (IsStarter(design.Id) && (int)(design.Id & 0xFFFF) is int index && index < StarterCastle.Length)
+                return StarterCastle[index].TemplateId;
+            if (StarterIndexOfName(design.Name) is int byName and >= 0)
+                return StarterCastle[byName].TemplateId;
+            return ItemUses.DesignGrantId(design.Name);
+        }
 
         private static List<TemplateModel> Owned(ulong owner)
         {
@@ -194,20 +382,37 @@ namespace LandmarkEmulator.WorldServer.Game
             return context.Template.Where(t => t.OwnerGuid == owner).OrderBy(t => t.Id).ToList();
         }
 
+        /// <summary>
+        /// A design by guid and owner, or null. A Starter Castle guid ("ST" + index) only resolves for an owner who has
+        /// that piece (<see cref="HasStarterPiece"/>): every user of a guid the client sends — paste
+        /// (BuildingClipboard → <see cref="VoxelsOf"/>), voxel data, rename/delete, ExportToItem (DesignItems.Export),
+        /// Player Studio listing (Commerce), design materials — goes through here, so a piece the character hasn't got
+        /// can't be used by sending its guid.
+        /// </summary>
         private static TemplateModel Find(ulong owner, ulong guid)
         {
             if (IsStarter(guid))
-                return Starter((int)(guid & 0xFFFF), owner);
+            {
+                int index = (int)(guid & 0xFFFF);
+                return HasStarterPiece(owner, index) ? Starter(index, owner) : null;
+            }
             using var context = DatabaseManager.Instance.CharacterDatabase.NewContext();
             return context.Template.FirstOrDefault(t => t.Id == guid && t.OwnerGuid == owner);
         }
 
-        /// <summary>TemplateBase sub 2: every design the player owns. Sent on zone-in.</summary>
+        /// <summary>
+        /// TemplateBase sub 2: every design the player owns. Sent on zone-in. The Starter Castle pieces are the defaults
+        /// plus those the character has unlocked (<see cref="HasStarterPiece"/>; spec-design-categories.md §3.4): a new
+        /// character starts with the 6 default pieces (the Modular Castle pieces come from Building Block Basics). The
+        /// client cannot show a design it isn't sent: its Designs window walks its own template manager (FUN_142ccb9a0),
+        /// which only these packets fill; ExportedTemplateCategoryMap only picks the tab.
+        /// </summary>
         public static void SendList(WorldSession session)
         {
             List<TemplateModel> designs = Owned(session.PlayerGuid);
+            GrantOldStarterPieces(session.PlayerGuid);
             for (int i = 0; i < StarterCastle.Length; i++)
-                if (Starter(i, session.PlayerGuid) is TemplateModel starter)
+                if (HasStarterPiece(session.PlayerGuid, i) && Starter(i, session.PlayerGuid) is TemplateModel starter)
                     designs.Add(starter);
             var output = new List<byte>();
             var writer = new GamePacketWriter(output);
@@ -222,6 +427,9 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <summary>Solid voxels in a stored material list ("material:count;...").</summary>
         public static long MaterialCount(string materials)
             => Materials(new TemplateModel { Materials = materials ?? "" }).Sum(m => (long)m.Count);
+
+        /// <summary>A design's materials and voxel counts (also for <see cref="DesignMaterials"/>).</summary>
+        public static IEnumerable<(ushort Material, uint Count)> MaterialsOf(TemplateModel design) => Materials(design);
 
         private static IEnumerable<(ushort Material, uint Count)> Materials(TemplateModel design)
         {
@@ -256,6 +464,13 @@ namespace LandmarkEmulator.WorldServer.Game
         /// item from someone else) carry their author's name and go to the Designs window's Collected category, as
         /// live; the game's own designs stay where IsDesignerTemplate puts them.
         /// </summary>
+        /// <summary>
+        /// May the holder list this design on Player Studio? Only their own work (the client's own test: ProductAddItem,
+        /// 0.695 FUN_143263990, refuses a design whose own-design flag +0xf4 is false; the Player Studio button is off
+        /// for purchased templates, Hotfix Notes 20 Jun 2014) [P], and not one of the game's own designs [I].
+        /// </summary>
+        public static bool IsSellable(TemplateModel design) => design != null && !IsDesigner(design) && IsOwnWork(design);
+
         private static bool IsOwnWork(TemplateModel design)
         {
             if (string.IsNullOrEmpty(design.AuthorName) || IsDesigner(design))
@@ -265,6 +480,18 @@ namespace LandmarkEmulator.WorldServer.Game
             return owner.Length == 0 || string.Equals(owner, design.AuthorName, StringComparison.OrdinalIgnoreCase);
         }
 
+        /// <summary>
+        /// TemplateBasicData (0.695 reader FUN_1430ff530). 0.695 dropped the PropData list from it (0.589 had it after the
+        /// materials; it is written in the voxel data reply instead, <see cref="SendVoxelData"/>); the rest is the same
+        /// (trace/0695/packets-695.md §B4).
+        /// <para>0.695 Designs window category (PaletteCollectionTemplates, FUN_143754540 / FUN_143755d60,
+        /// part_0120.c:8670-8716 and 9827-9841): IsOnMarketplace (+0x48) → Player Studio; else IsDesignerTemplate (+0x50)
+        /// → the first ExportedTemplateCategory whose ExportedTemplateCategoryMap set holds the u32 at <b>+0xec</b> (the
+        /// third u32 after the "counts against storage" bool; FUN_143755020), else Collected; else the own-design bool
+        /// (+0xf4) → Personal, false → Collected. Empty categories get no tab (FUN_143755ca0). Before 2026-10-16 the server
+        /// sent 0 at +0xec, so every designer design fell back to Collected and "Starter Castle" never showed
+        /// (trace/0695/spec-design-categories.md).</para>
+        /// </summary>
         private static void WriteBasicData(GamePacketWriter writer, TemplateModel design)
         {
             ulong created = (ulong)new DateTimeOffset(DateTime.SpecifyKind(design.CreatedAt, DateTimeKind.Utc)).ToUnixTimeSeconds();
@@ -274,8 +501,8 @@ namespace LandmarkEmulator.WorldServer.Game
             writer.Write(design.OwnerGuid);         // AuthorPlayerGuid
             writer.Write(created);                  // DateCreated
             writer.Write(created);                  // DateAcquired
-            writer.Write(Commerce.IsOnMarketplace(design.Id) ? 1u : 0u);   // IsOnMarketplace: the Player Studio category
-            writer.Write(IsDesigner(design) ? 1u : 0u);   // IsDesignerTemplate: the "Starter Castle" category, free of storage
+            writer.Write(WorldChannelServices.Commerce.IsOnMarketplace(design.Id) ? 1u : 0u);   // IsOnMarketplace: the Player Studio category
+            writer.Write(IsDesigner(design) ? 1u : 0u);   // IsDesignerTemplate: category by the +0xec id below, free of storage
             writer.Write(design.SizeX);
             writer.Write(design.SizeY);
             writer.Write(design.SizeZ);
@@ -286,7 +513,30 @@ namespace LandmarkEmulator.WorldServer.Game
                 writer.WriteUShort(material);
                 writer.Write(n);
             }
-            // PropData list (PropCount; the client sends it back when the design is placed, FUN_1430b9d50).
+            writer.Write(0u);
+            writer.Write(0u);
+            writer.Write(false);                    // IsDefault
+            writer.Write(design.Tags);
+            writer.Write(!IsDesigner(design));      // counts against the storage limit
+            // A designer template's shown name is this text id (0.695 +0xe4, 0.589 +0xfc; 0 shows "Daybreak Template
+            // (Invalid Name)", tooltip part_0086.c:12124): the piece's or the design item's own name.
+            writer.Write(!IsDesigner(design) ? 0u : StarterNameId(design.Name) is uint starterName and not 0 ? starterName : ItemUses.DesignNameId(design.Name));
+            writer.Write(0u);                       // +0xe8, meaning unknown (U-DC1)
+            // +0xec: the exported template id, read only when IsDesignerTemplate != 0; its ExportedTemplateCategoryMap
+            // row picks the Designs tab (1119-1324 → "Starter Castle", others → "Collected"). The same u32 slot in 0.589.
+            writer.Write(IsDesigner(design) ? ExportedTemplateId(design) : 0u);
+            writer.Write(IsOwnWork(design));        // the player's own design: Personal category (false: Collected)
+            writer.Write(design.AuthorName);
+            // TemplateValue (+0x110): the design's own Player Studio minimum price; the submission window's ProductAddItem
+            // (0.695 FUN_143263990) raises the product's minimum to it (StudioRules.TemplateValue: 1 % of the voxels).
+            writer.Write(IsDesigner(design) ? 0u : StudioRules.TemplateValue(MaterialCount(design.Materials)));
+            writer.Write(false);                    // ContestWinner
+            writer.Write(0u);
+        }
+
+        /// <summary>PropData list (PropCount; the client sends it back when the design is placed, FUN_1430b9d50).</summary>
+        private static void WritePropList(GamePacketWriter writer, TemplateModel design)
+        {
             List<Props.DesignProp> props = design.Id != 0 ? PropsOf(design.Id) : new List<Props.DesignProp>();
             writer.Write((uint)props.Count);
             foreach (Props.DesignProp prop in props)
@@ -295,21 +545,6 @@ namespace LandmarkEmulator.WorldServer.Game
                 Building.WritePropData(bytes, prop);
                 writer.WriteBytes(bytes.ToArray());
             }
-            writer.Write(0u);
-            writer.Write(0u);
-            writer.Write(false);                    // IsDefault
-            writer.Write(design.Tags);
-            writer.Write(!IsDesigner(design));      // counts against the storage limit
-            // A designer template's shown name is this text id (+0xfc; 0 shows "Daybreak Template (Invalid Name)"):
-            // the design item's own name.
-            writer.Write(!IsDesigner(design) ? 0u : StarterNameId(design.Name) is uint starterName and not 0 ? starterName : ItemUses.DesignNameId(design.Name));
-            writer.Write(0u);
-            writer.Write(0u);
-            writer.Write(IsOwnWork(design));        // the player's own design: Personal category (false: Collected)
-            writer.Write(design.AuthorName);
-            writer.Write(0u);                       // TemplateValue
-            writer.Write(false);                    // ContestWinner
-            writer.Write(0u);
         }
 
         /// <summary>
@@ -359,20 +594,21 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>
-        /// Adds a prefab from the client's templates (a "Design:" item such as the castle pieces) to the player's designs,
-        /// as if saved: the template's cell list is a design's block list as it stands.
-        /// </summary>
-        /// <summary>
-        /// Author of the designs the game itself hands out (design items, .otd templates). The client files these under
-        /// "Starter Castle" (Template.Category.Daybreak): its Designs window (FUN_1436966c0 and the list builder after it)
-        /// puts a design in Player Studio when IsOnMarketplace is set, else in Starter Castle when IsDesignerTemplate is
-        /// set, else in Personal or Collected; such designs don't count against the storage limit. A space keeps it apart
-        /// from any character name.
+        /// Author of the designs the game itself hands out (design items, .otd templates): sent with IsDesignerTemplate
+        /// set, so they don't count against the storage limit. The 0.695 client picks their tab by the exported template
+        /// id at TemplateBasicData +0xec (<see cref="WriteBasicData"/>): "Starter Castle" for the castle pieces, else
+        /// "Collected". (0.589's window, FUN_1436966c0 and the list builder after it, filed every designer template under
+        /// Template.Category.Daybreak.) A space keeps it apart from any character name.
         /// </summary>
         public const string DesignerAuthor = "Landmark Team";
 
         private static bool IsDesigner(TemplateModel design) => design.AuthorName is DesignerAuthor or "Landmark";
 
+        /// <summary>
+        /// Adds a prefab from the client's templates (a "Design:" item such as the old starter shapes or Starter Homes) to
+        /// the player's designs, as if saved: the template's cell list is a design's block list as it stands. Starter
+        /// Castle pieces are not stored this way any more (<see cref="UnlockStarterPiece"/>).
+        /// </summary>
         public static bool AddFromTemplate(WorldSession session, string name, VoxelTemplate template)
         {
             var materials = template.Materials.ToDictionary(m => m.Material, m => m.Count);
@@ -512,6 +748,12 @@ namespace LandmarkEmulator.WorldServer.Game
                 case ExportToItemSub when body.Length >= 8:
                     DesignItems.Export(session, BitConverter.ToUInt64(body, 0));
                     break;
+                case DesignMaterials.DataRequestSub when body.Length >= 8:
+                    DesignMaterials.SendOffer(session, BitConverter.ToUInt64(body, 0));
+                    break;
+                case DesignMaterials.PurchaseSub when body.Length >= 12:
+                    DesignMaterials.Purchase(session, body);
+                    break;
                 default:
                     Network.OpcodeStats.Unanswered("Template 0xF0", sub);
                     log.Debug($"Template packet 0x{sub:X2} from {session.CharacterName}: {BitConverter.ToString(body, 0, Math.Min(body.Length, 64))}");
@@ -533,6 +775,8 @@ namespace LandmarkEmulator.WorldServer.Game
             writer.Write(first);
             WriteBasicData(writer, design);
             writer.WriteBytes(Rebased(design.Blocks));
+            // 0.695 (FUN_1430fff20): the design's props follow the cell list.
+            WritePropList(writer, design);
             // Screenshots only when asked for (tens of KB each): large/small pairs in index order (TEMPLATE_<n>).
             List<byte[]> shots = images ? Images(design.Id) : new List<byte[]>();
             writer.Write((uint)shots.Count);
@@ -601,6 +845,19 @@ namespace LandmarkEmulator.WorldServer.Game
                 shots.Add(System.IO.File.ReadAllBytes(small));
             }
             return shots;
+        }
+
+        /// <summary>
+        /// MarketplaceImageBase 0x107 from the client: sub 1 UploadRequest is stored (<see cref="StoreImage"/>); the
+        /// client sends no other sub (coverage-695.md "0x107": only UploadRequest) and expects no answer.
+        /// </summary>
+        [Network.Message.ZoneMessageHandler(Network.Message.ZoneMessageOpcode.MarketplaceImageBase)]
+        public static void HandleImage(WorldSession session, Network.Message.Model.MarketplaceImageRequest request)
+        {
+            if (request.SubOpcode == 1)
+                StoreImage(session, request.Body);
+            else
+                Network.OpcodeStats.Unanswered("MarketplaceImage 0x107", request.SubOpcode);
         }
 
         /// <summary>

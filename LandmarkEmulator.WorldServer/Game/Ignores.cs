@@ -22,6 +22,8 @@ namespace LandmarkEmulator.WorldServer.Game
     /// </list>
     /// The server also enforces it: chat from an ignored player doesn't reach the ignoring player, and their trade,
     /// group and guild invitations are refused.
+    /// Part of the social service: callers outside it use <see cref="Social.SocialServices"/> (LocalSocialService runs
+    /// this code; social-service.md §6 step 1).
     /// </summary>
     public static class Ignores
     {
@@ -58,6 +60,21 @@ namespace LandmarkEmulator.WorldServer.Game
         {
             lock (sync)
                 lists.Remove(session.PlayerGuid);
+        }
+
+        /// <summary>
+        /// IgnoreListSync from the shared social service (Social/RemoteSocialService, social-service.md §5.4): replaces
+        /// this zone's copy of a character's list, which <see cref="Ignoring"/> / <see cref="Refuses"/> read for
+        /// everything the zone delivers itself. With the service remote the list lives there and this table is only
+        /// the zone-side cache; requests to change it go to the service.
+        /// </summary>
+        public static void Replace(ulong character, IEnumerable<(ulong Guid, string Name)> list)
+        {
+            var copy = new Dictionary<ulong, string>();
+            foreach ((ulong guid, string name) in list)
+                copy[guid] = name ?? "";
+            lock (sync)
+                lists[character] = copy;
         }
 
         /// <summary>Does <paramref name="listener"/> ignore <paramref name="speaker"/>?</summary>

@@ -1,0 +1,54 @@
+# A world's gateway in its own process (trace/architecture/gateway-service.md, LandmarkEmulator.GatewayServer): the
+# client-facing UDP port (SOE, encryption, gateway login, 0.695 header translation, flood limits). The world's zone
+# process dials it on the internal network (port 20300, never published) and serves the clients it attaches.
+#
+# Opt-in, per world. Run it with the world, adding docker/gateway/world.override.yml to the world's compose files so the
+# world dials the gateway and stops publishing the UDP port itself:
+#
+#   docker compose --env-file .env --env-file docker/worlds/dev.env -p landmarkemu-gateway-dev -f docker/gateway/docker-compose.yml up -d
+#   docker compose --env-file .env --env-file docker/worlds/dev.env -p landmarkemu-world-dev -f docker/world/docker-compose.yml -f docker/gateway/world.override.yml up -d
+#
+# Without it the world runs the gateway itself on WORLD_PORT, as before.
+services:
+  gateway:
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile
+      target: gateway
+    # GATEWAY_IMAGE: another tag for this build, so a second build can stand beside the running one
+    # without replacing its image (e.g. a project started with its own -p name and env file, as in
+    # docker/worlds/extra-world.env.example).
+    image: ${GATEWAY_IMAGE:-landmarkemu-gateway}
+    restart: unless-stopped
+    environment:
+      # The login check (single-use server ticket; the character belongs to the account) and relog sessions: the login
+      # service's internal port (the auth container, 20210, never published).
+      LoginInternalAddress: ${LOGIN_INTERNAL_ADDRESS:-landmarkemu-login:20210}
+      Network__Host: 0.0.0.0
+      Network__Port: ${WORLD_PORT:-19000}
+      Internal__Host: 0.0.0.0
+      Internal__Port: 20300
+      # Seconds a connection is held while its world's zone is away (a crash or a container restart) before it closes.
+      HoldSeconds: ${GATEWAY_HOLD_SECONDS:-120}
+      # Seconds without any packet from a client before its connection closes and its zone removes the character (a crash,
+      # a killed process, a lost network); the same .env line as the world's. Silence from the zone side (the hold above)
+      # doesn't count: the client keeps sending to the gateway meanwhile.
+      ClientTimeoutSeconds: ${CLIENT_TIMEOUT_SECONDS:-60}
+      # The world it serves: the routing table is keyed by (world, channel) and back ends registering for another world
+      # (RegisterBackEnd world id = the zone's ZoneServerId / the world channel's WorldId) are not routed.
+      WorldId: ${WORLD_ID:-1}
+      # Travel between worlds from the teleport window (B.10): auto (default) = on as soon as a second world's zone dials
+      # this gateway (live: one gateway reached every world); true = on; false = other worlds' zones are refused.
+      MultiWorld: ${GATEWAY_MULTI_WORLD:-auto}
+    expose:
+      - "20300"
+    ports:
+      - "${WORLD_PORT:-19000}:${WORLD_PORT:-19000}/udp"
+    networks:
+      landmarkemu:
+        aliases: ["gateway-${WORLD_KEY:-main}"]
+
+networks:
+  landmarkemu:
+    external: true
+    name: ${NETWORK_NAME:-landmarkemu}

@@ -25,6 +25,8 @@ namespace LandmarkEmulator.WorldServer.Game
     /// - 5 PickupLoot (C→S {u32 id, u64 player}) when one reaches its owner (FUN_14307d0f0: auto-scoop in range);
     ///   answered by 3 PickupLootResponse {u32 id, u64 player, bool} which removes it.
     /// - 2 RemoveLoot (S→C {u32 id, u64 player}): the server clears one that was never collected.
+    /// - 7 RequestClaimOwnerlessLoot (C→S {u32 id, u64 none}) and 4 NotifyOwnerlessLootClaimed (S→C {u32 id, u64 new
+    ///   owner}): the claim of a pinata nobody owns (<see cref="ClaimOwnerless"/>).
     ///
     /// Harvest chunks are only looks (the resources were given at the swing); a loot bag carries its items, given on
     /// pickup. Uncollected pinatas are removed after <see cref="ChunkLinger"/> / <see cref="BagLinger"/>.
@@ -33,18 +35,38 @@ namespace LandmarkEmulator.WorldServer.Game
     {
         private static readonly ILogger log = LogManager.GetCurrentClassLogger();
 
-        public const byte SpawnLootSub = 1, RemoveLootSub = 2, PickupLootResponseSub = 3, PickupLootSub = 5;
+        public const byte SpawnLootSub = 1, RemoveLootSub = 2, PickupLootResponseSub = 3, NotifyOwnerlessLootClaimedSub = 4,
+            PickupLootSub = 5, ClaimOwnerlessLootSub = 7;
 
         /// <summary>LootPinata.txt loot bag (Theme_Loot_Containers_Bag01).</summary>
         public const uint LootBag = 5;
         /// <summary>Fallback chunk for resources without a model of their own (stone).</summary>
         public const uint DefaultChunk = 21;
 
-        private static readonly TimeSpan ChunkLinger = TimeSpan.FromSeconds(10), BagLinger = TimeSpan.FromSeconds(60);
+        /// <summary>
+        /// How long an uncollected pinata lies before the server removes it. Bags: the client constant
+        /// <c>LootPinata.DecayAge = 120</c> (StringHashToValue.txt:374). Its oaat hash 0x65741807 is read nowhere in the
+        /// 0.695 client, so it is a server value shipped in the shared table [P unread]; that it is the lifetime in
+        /// seconds is [I] (the name and the unit of its neighbours, e.g. MaxDroppingTime 7). Chunks are looks only and
+        /// fly in at once, so they keep a short life.
+        /// </summary>
+        private static readonly TimeSpan ChunkLinger = TimeSpan.FromSeconds(10), BagLinger = TimeSpan.FromSeconds(120);
+
+        /// <summary>
+        /// <c>LootPinata.DistanceToPickupOwnerlessLoot = 5.0</c> (StringHashToValue.txt:376, hash 0x1d59bdcd read by the
+        /// per-pinata update FUN_143127a10): a client asks to claim only within 5 m of the pinata. The server allows
+        /// slack for the pinata's drop arc and movement lag [I].
+        /// </summary>
+        private const float OwnerlessClaimRange = 5f + 5f;
 
         private static int nextId;
 
-        private sealed record Pending(WorldSession Owner, IReadOnlyList<(uint Item, uint Count)> Contents);
+        /// <summary>
+        /// A pinata not collected yet: its owner (null = ownerless, anyone near may claim it — replaced by the claimer
+        /// once a claim is granted), what it holds, who sees it and where it was dropped.
+        /// </summary>
+        private sealed record Pending(WorldSession Owner, IReadOnlyList<(uint Item, uint Count)> Contents, IReadOnlyList<WorldSession> Viewers,
+            Vector3 Position);
 
         /// <summary>Pinatas not collected yet, by loot id.</summary>
         private static readonly ConcurrentDictionary<uint, Pending> pending = new();
@@ -110,15 +132,30 @@ namespace LandmarkEmulator.WorldServer.Game
         /// </summary>
         public static void Handle(WorldSession session, byte sub, byte[] body)
         {
-            if (sub != PickupLootSub || body.Length < 4)
+            if (body.Length < 4)
                 return;
             uint id = BitConverter.ToUInt32(body, 0);
-            if (pending.TryRemove(id, out Pending loot) && loot.Owner == session)
+            if (sub == ClaimOwnerlessLootSub)
+            {
+                ClaimOwnerless(session, id);
+                return;
+            }
+            if (sub != PickupLootSub)
+                return;
+            // Only the owner's pickup takes it (another player's request no longer removes the owner's loot).
+            if (pending.TryGetValue(id, out Pending loot) && loot.Owner == session && pending.TryRemove(id, out loot))
+            {
                 foreach ((uint item, uint count) in loot.Contents)
                 {
                     session.GiveItem(item, count);
                     Notify(session, item, count);
                 }
+                // A once-ownerless bag: the other viewers' copies go now (a viewer whose copy never reaches the claimer
+                // would otherwise keep it lying on the ground; agent-loot-rule.md).
+                foreach (WorldSession other in loot.Viewers)
+                    if (other != session && !other.Disconnected)
+                        other.EnqueueMessage(ZoneMessageOpcode.LootPinataBase, RemoveLoot(id, other.PlayerGuid));
+            }
             var output = new List<byte>();
             var w = new GamePacketWriter(output);
             w.Write(PickupLootResponseSub);
@@ -149,6 +186,86 @@ namespace LandmarkEmulator.WorldServer.Game
             session.EnqueueMessage(ZoneMessageOpcode.InventoryBase, output.ToArray());
         }
 
+        /// <summary>
+        /// RequestClaimOwnerlessLoot (LootPinataBase sub 7) {u32 loot id, u64 none}. The client's per-pinata update
+        /// FUN_143127a10 sends it on every update while its player is within DistanceToPickupOwnerlessLoot (5 m) of a
+        /// pinata whose owner (+0x200) is none, and puts the pinata in state 2 (claim requested). The answer the client
+        /// expects is <b>NotifyOwnerlessLootClaimed (sub 4) {u32 id, u64 new owner}</b> (reader FUN_143121c60, case 4 of
+        /// LootPinataManager::HandlePacket FUN_143125240): it writes the new owner to +0x200 / +0x70 and sets state 3
+        /// (scooping). From then on every viewer's copy flies to the owner entity; the owner's own client sends the
+        /// ordinary PickupLoot (sub 5) on arrival — answered by <see cref="Handle"/>'s owner branch with the contents and
+        /// PickupLootResponse — and every other viewer's client just sets its destroy flag (+0x1E4) on arrival, or decays
+        /// it (state 4) at once when it does not know the owner entity. So:
+        /// - the first claim from a viewer in range sets the owner and sends sub 4 to every viewer (claimer included);
+        ///   the contents are not given yet;
+        /// - repeated claims (the claimer's own, sent each update until sub 4 arrives) and losing claims get <b>no
+        ///   reply</b>: PickupLootResponse (sub 3) and RemoveLoot (sub 2) both delete the pinata at once
+        ///   (FUN_143121d20 / FUN_143121e00 → FUN_143126f70), which would cut the fly-to-the-claimer animation short;
+        /// - the RemoveLoot cleanup after <see cref="BagLinger"/> (<see cref="RemoveIfLeft"/>) still reaches every viewer,
+        ///   for a claimer who never picks it up (a full bag: FUN_143124180 drops it back to state 1).
+        /// When live made loot ownerless is open (OPEN-LEADS L141): <see cref="SpawnOwnerless"/> is the way to make one.
+        /// </summary>
+        private static void ClaimOwnerless(WorldSession session, uint id)
+        {
+            if (!pending.TryGetValue(id, out Pending loot) || loot.Owner != null || !loot.Viewers.Contains(session))
+                return;
+            float distance = Vector3.Distance(session.Position, loot.Position);
+            if (distance > OwnerlessClaimRange)
+            {
+                log.Debug($"{session.CharacterName} claimed ownerless loot {id} from {distance:0.0} m; ignored.");
+                return;
+            }
+            // First claim wins: only one caller can swap the ownerless entry for an owned one.
+            if (!pending.TryUpdate(id, loot with { Owner = session }, loot))
+                return;
+            var output = new List<byte>();
+            var w = new GamePacketWriter(output);
+            w.Write(NotifyOwnerlessLootClaimedSub);
+            w.Write(id);
+            w.Write(session.PlayerGuid);
+            byte[] notify = output.ToArray();
+            foreach (WorldSession viewer in loot.Viewers)
+                if (!viewer.Disconnected)
+                    viewer.EnqueueMessage(ZoneMessageOpcode.LootPinataBase, notify);
+            log.Info($"{session.CharacterName} claimed ownerless loot {id}.");
+        }
+
+        /// <summary>RemoveLoot (sub 2) {u32 id, u64 player}.</summary>
+        private static byte[] RemoveLoot(uint id, ulong player)
+        {
+            var output = new List<byte>();
+            var w = new GamePacketWriter(output);
+            w.Write(RemoveLootSub);
+            w.Write(id);
+            w.Write(player);
+            return output.ToArray();
+        }
+
+        /// <summary>
+        /// A loot bag with no owner, shown to <paramref name="viewers"/>: the spawn's owner guid is 0 (the client's "none"
+        /// guid DAT_145453608 has no writer, so it is 0), so each client shows it — FUN_143125240 sub 1 shows a pinata only
+        /// when it is yours or ownerless — and asks to claim it when its player comes near (<see cref="ClaimOwnerless"/>).
+        /// Nothing calls this yet: when live made loot ownerless is a server rule the client does not carry (L141, for the
+        /// user to decide).
+        /// </summary>
+        public static void SpawnOwnerless(IReadOnlyList<WorldSession> viewers, Vector3 position, IReadOnlyList<(uint Item, uint Count)> contents)
+        {
+            if (viewers.Count == 0 || contents.Count == 0)
+                return;
+            uint id = (uint)Interlocked.Increment(ref nextId);
+            pending[id] = new Pending(null, contents, viewers, position);
+            Task.Delay(BagLinger).ContinueWith(_ => RemoveIfLeft(id));
+            // The last three SpawnLoot fields (+0x64 / +0x68 / +0x6C) are floats the client uses only for an ownerless
+            // pinata: its throw angle, heading and speed, so every viewer sees the same bag land in the same place
+            // (owned bags roll them locally; 0x143123311-0x14312341a, trace/0695/agent-loot-rule.md). One roll per bag.
+            uint angle = BitConverter.SingleToUInt32Bits(Random.Shared.NextSingle()),
+                heading = BitConverter.SingleToUInt32Bits(Random.Shared.NextSingle()),
+                speed = BitConverter.SingleToUInt32Bits(Random.Shared.NextSingle());
+            byte[] spawn = SpawnBody(id, LootBag, position, 0, 0, 0, angle, heading, speed, 0ul);
+            foreach (WorldSession viewer in viewers)
+                viewer.EnqueueMessage(ZoneMessageOpcode.LootPinataBase, spawn);
+        }
+
         /// <summary>A harvest chunk (looks only): a resource's chunk that flies into the player.</summary>
         public static void SpawnChunk(WorldSession owner, Vector3 position, uint item, uint count = 1)
             => Spawn(owner, position, PinataFor(item), item: item, count: Math.Max(1u, count));
@@ -169,9 +286,14 @@ namespace LandmarkEmulator.WorldServer.Game
             IReadOnlyList<(uint Item, uint Count)> contents = null, uint item = 0, uint count = 0)
         {
             uint id = (uint)Interlocked.Increment(ref nextId);
-            pending[id] = new Pending(owner, contents ?? Array.Empty<(uint, uint)>());
+            pending[id] = new Pending(owner, contents ?? Array.Empty<(uint, uint)>(), new[] { owner }, position);
             Task.Delay(contents is { Count: > 0 } ? BagLinger : ChunkLinger).ContinueWith(_ => RemoveIfLeft(id));
+            owner.EnqueueMessage(ZoneMessageOpcode.LootPinataBase, SpawnBody(id, pinata, position, item, count, kind, a, b, c, owner.PlayerGuid));
+        }
 
+        /// <summary>SpawnLoot (sub 1) for one loot id; <paramref name="owner"/> 0 = ownerless.</summary>
+        private static byte[] SpawnBody(uint id, uint pinata, Vector3 position, uint item, uint count, uint kind, uint a, uint b, uint c, ulong owner)
+        {
             var output = new List<byte>();
             var w = new GamePacketWriter(output);
             w.Write(SpawnLootSub);
@@ -190,26 +312,23 @@ namespace LandmarkEmulator.WorldServer.Game
             w.Write(0u);
             w.Write(count);
             w.Write(1f);
-            w.Write(owner.PlayerGuid);
+            w.Write(owner);
             w.Write("");
             w.Write(kind);
             w.Write(a);
             w.Write(b);
             w.Write(c);
-            owner.EnqueueMessage(ZoneMessageOpcode.LootPinataBase, output.ToArray());
+            return output.ToArray();
         }
 
         /// <summary>Clears a pinata its owner never collected (RemoveLoot); a bag's items are lost with it.</summary>
         private static void RemoveIfLeft(uint id)
         {
-            if (!pending.TryRemove(id, out Pending loot) || loot.Owner.Disconnected)
+            if (!pending.TryRemove(id, out Pending loot))
                 return;
-            var output = new List<byte>();
-            var w = new GamePacketWriter(output);
-            w.Write(RemoveLootSub);
-            w.Write(id);
-            w.Write(loot.Owner.PlayerGuid);
-            loot.Owner.EnqueueMessage(ZoneMessageOpcode.LootPinataBase, output.ToArray());
+            foreach (WorldSession viewer in loot.Viewers)
+                if (!viewer.Disconnected)
+                    viewer.EnqueueMessage(ZoneMessageOpcode.LootPinataBase, RemoveLoot(id, viewer.PlayerGuid));
         }
     }
 }

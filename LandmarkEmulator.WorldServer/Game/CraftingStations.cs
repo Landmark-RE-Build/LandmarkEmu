@@ -84,18 +84,32 @@ namespace LandmarkEmulator.WorldServer.Game
                 var record = new Network.Message.Model.SendSelfToClient.RecipeData.Recipe
                 {
                     RecipeId = recipe.Id,
-                    Unknown1 = recipe.RecipeType,
-                    Unknown2 = recipe.SortOrder,
+                    RecipeType = recipe.RecipeType,
+                    SortOrder = recipe.SortOrder,
                     Itemid = recipe.ItemDefinitionId,
                     Quantity = recipe.ItemCount,
                     NameId = new Shared.Game.LandmarkText(recipe.OverrideNameId != 0 ? recipe.OverrideNameId : output?.NameId ?? 0),
                     DescriptionId = new Shared.Game.LandmarkText(output?.DescriptionId ?? 0),
-                    IconId = output?.ImageSetId ?? 0
+                    IconId = output?.ImageSetId ?? 0,
+                    // Proven record fields (reader FUN_142c2e640, row builder FUN_14360e950; agent-l43.md §4) [P]: the
+                    // catalyst slot, the Replicator goal the "track" button follows, and the queue cap (1 for Lumen
+                    // Station unlocks). All were 0 / false until 2026-10-18. The tracker id is sent only when its goal
+                    // exists (the Watch button is enabled by a non-zero id and can only show a goal the client holds;
+                    // Achievements.WatchableGoal).
+                    AllowCatalyst = recipe.AllowCatalyst,
+                    TrackerAchievementId = Achievements.WatchableGoal(recipe.TrackerAchievementId),
+                    MaxQueue = recipe.MaxQueue,
+                    // CASTING_TIME / STACK_SIZE / COOLDOWN_TIME, as live sent them on every record (2026-10-18; were 0): the
+                    // refining window's FuelNeeded = queue × casting time and QueueSlots = queue / stack size, and the
+                    // CooldownTotal column (FUN_14360e950) [P].
+                    CastingTime = recipe.CastingTime,
+                    StackSize = recipe.StackSize,
+                    CooldownTotal = (uint)recipe.CooldownTime
                 };
                 // The window adds one row per entry here (FUN_14355de30 loops record +0x58): the output item's
                 // categories, which CraftingCategoryGroupMapDefinitions groups into the window's sections.
                 if (output != null)
-                    record.Unknown16.AddRange(output.Categories);
+                    record.Categories.AddRange(output.Categories);
                 uint index = 0;
                 foreach (RecipeComponentEntry component in GameTableManager.Instance.ComponentsOf(recipe.Id))
                 {
@@ -103,11 +117,13 @@ namespace LandmarkEmulator.WorldServer.Game
                     record.Components.Add(new Network.Message.Model.SendSelfToClient.RecipeData.Recipe.RecipeComponent
                     {
                         Index = index++,
-                        Unknown1 = component.ComponentType,
+                        ComponentType = component.ComponentType,
                         ItemId = component.ComponentId,
                         Quantity = component.ComponentCount,
                         NameId = new Shared.Game.LandmarkText(component.NameId != 0 ? component.NameId : item?.NameId ?? 0),
-                        IconId = component.IconId != 0 ? component.IconId : item?.ImageSetId ?? 0
+                        IconId = component.IconId != 0 ? component.IconId : item?.ImageSetId ?? 0,
+                        // The row's DESCRIPTION_ID, as live sent it (no client reader).
+                        DescriptionId = new Shared.Game.LandmarkText(component.DescriptionId)
                     });
                 }
                 records.Add(record);

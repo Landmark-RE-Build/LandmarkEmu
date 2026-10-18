@@ -22,7 +22,7 @@ C2S 5 (0 not handled) · S2C 2 (0 never sent / opcode unknown)
 ```
 
 ## C2S EncounterParticipantRequestEntrancePacket  `0x2C, 0x6C`
-- server: handled (sub in handler) · seen in play 2× · received 2×
+- server: handled (sub in handler) · seen in play 8×
 - built in: FUN_142cbe6e0
 - sent by Lua natives: StartPendingEncounter
 - code (builder in FUN_142cbe6e0):
@@ -31,7 +31,7 @@ C2S 5 (0 not handled) · S2C 2 (0 never sent / opcode unknown)
 ```
 
 ## C2S EncounterParticipantRequestExitPacket  `0x2C, 0x6D`
-- server: handled (sub in handler) · seen in play 1× · received 1×
+- server: handled (sub in handler) · seen in play 4×
 - built in: FUN_142ca26b0, FUN_14326d9a0
 - sent by Lua natives: LeaveMiniGameOrEncounter, QuitMiniGame
 - code (builder in FUN_142ca26b0):
@@ -53,7 +53,7 @@ C2S 5 (0 not handled) · S2C 2 (0 never sent / opcode unknown)
 ```
 
 ## S2C EncounterDetailsResponsePacket  `0x2C`
-- server: SENT (37× in opcode_stats) · seen in play 37×
+- server: SENT (2× in opcode_stats) · seen in play 128×
 
 ## S2C EncounterPacketEncounterComplete  `0x2C`
-- server: SENT (37× in opcode_stats) · seen in play 37×
+- server: SENT (2× in opcode_stats) · seen in play 128×

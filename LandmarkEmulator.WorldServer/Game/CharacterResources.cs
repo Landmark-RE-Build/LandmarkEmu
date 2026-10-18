@@ -15,6 +15,14 @@ namespace LandmarkEmulator.WorldServer.Game
     /// ResourcesBase 0xC4 sub 2 SetCharacterResource (client FUN_143569530): u32 sequence (must grow per player), u8 sub,
     /// u64 character guid, then the record (FUN_142b7f0c0): u32 resource id, u32 resource type, u32 variable count
     /// (0: the maximum comes from Resources.txt), 10 u32 starting with the current value, u32, 4 × u64, 3 bools, u32.
+    /// <para>
+    /// Variables (0.695 FUN_142c2ec50 → FUN_142c3c070): u32 count, then per variable u32 key followed by the entry
+    /// (FUN_142c2ed20) {u32 variable id (= key), f32 base, f32 modifier}; value = base + modifier. Key
+    /// <see cref="MaxValueVariable"/> is the resource's maximum: FUN_143217a00 returns base + modifier of that variable,
+    /// falling back to Resources.txt MAX_VALUE (resource definition +4, loader part_0146) when the record has none.
+    /// A Set replaces the record's whole variable list (FUN_143550610 → FUN_14354f240 clears it, then copies), so a
+    /// raised maximum must ride on every Set of that resource and an omitted one falls back to the table's value.
+    /// </para>
     /// </summary>
     public static class CharacterResources
     {
@@ -32,14 +40,25 @@ namespace LandmarkEmulator.WorldServer.Game
             Send(session, StaminaId, StaminaType, StaminaMax);
         }
 
+        /// <summary>
+        /// Resource variable id of the maximum (Resources.txt MAX_VALUE): FUN_143217a00 / FUN_143c77590 (part_0146) map
+        /// 0x2C7CD6E6 to the definition's MAX_VALUE.
+        /// </summary>
+        public const uint MaxValueVariable = 0x2C7CD6E6;
+
         /// <summary>Sets one resource's current value on the player's client.</summary>
-        public static void Send(WorldSession session, uint resourceId, uint resourceType, uint value)
-            => SendFor(session, session.PlayerGuid, resourceId, resourceType, value);
+        public static void Send(WorldSession session, uint resourceId, uint resourceType, uint value,
+            (uint Base, uint Max)? maximum = null)
+            => SendFor(session, session.PlayerGuid, resourceId, resourceType, value, maximum);
 
         /// <summary>
         /// Sets a resource of any entity (a creature's Life too) on one player's client; the sequence is that player's.
+        /// With <paramref name="maximum"/> the record carries the MAX_VALUE variable {base = the table's maximum,
+        /// modifier = Max − Base}, which is what the HUD bar and the character sheet show as the maximum (16 bytes more);
+        /// without it the client uses Resources.txt MAX_VALUE.
         /// </summary>
-        public static void SendFor(WorldSession session, ulong guid, uint resourceId, uint resourceType, uint value)
+        public static void SendFor(WorldSession session, ulong guid, uint resourceId, uint resourceType, uint value,
+            (uint Base, uint Max)? maximum = null)
         {
             uint sequence;
             lock (sync)
@@ -54,7 +73,16 @@ namespace LandmarkEmulator.WorldServer.Game
             writer.Write(guid);
             writer.Write(resourceId);
             writer.Write(resourceType);
-            writer.Write(0u);
+            if (maximum is (uint baseMax, uint max))
+            {
+                writer.Write(1u);                          // one variable
+                writer.Write(MaxValueVariable);            // key
+                writer.Write(MaxValueVariable);            // entry: variable id
+                writer.Write((float)baseMax);              //        base
+                writer.Write((float)max - baseMax);        //        modifier (max = base + modifier)
+            }
+            else
+                writer.Write(0u);
             writer.Write(value);
             for (int i = 0; i < 9; i++)
                 writer.Write(0u);

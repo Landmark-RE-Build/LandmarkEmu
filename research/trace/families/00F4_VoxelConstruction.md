@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 2 (0 not handled) · S2C 13 (6 never sent / opcode unknown)
 
 ## C2S VoxelConstructionPacketAddTemporaryBlockRequest  `0xF4`
-- server: handled · seen in play 1× · received 1×
+- server: handled · seen in play 1325× · received 74×
 - built in: FUN_1430b4fd0
 - code (builder in FUN_1430b4fd0):
 ```
@@ -14,7 +14,7 @@ C2S 2 (0 not handled) · S2C 13 (6 never sent / opcode unknown)
 ```
 
 ## C2S VoxelConstructionPacketClientUndoRedoRequest  `0xF4, 0x3`
-- server: handled (sub in handler)
+- server: handled (sub in handler) · seen in play 72×
 - built in: FUN_1430ba020, FUN_1430bc070
 - sent by Lua natives: Redo, Undo
 - UI using them: BuildModeHUDWidget
@@ -28,10 +28,10 @@ C2S 2 (0 not handled) · S2C 13 (6 never sent / opcode unknown)
 ```
 
 ## S2C VoxelConstructionPacketApplyDiffRequest  `0xF4, 0x1`
-- server: probably sent (static check: sent by server (sub in payload)); not in opcode_stats
+- server: NOT SENT (not in opcode_stats, not in the server code)
 
 ## S2C VoxelConstructionPacketEnvOwnershipUpToDateResponse  `0xF4, 0x16`
-- server: probably sent (static check: sent by server (sub in payload)); not in opcode_stats
+- server: NOT SENT (not in opcode_stats, not in the server code)
 - built in: FUN_1430b7bf0
 - handled in FUN_1430b7bf0 (its switch case for this message)
 - code (handler case in FUN_1430b7bf0):
@@ -40,7 +40,7 @@ C2S 2 (0 not handled) · S2C 13 (6 never sent / opcode unknown)
 ```
 
 ## S2C VoxelConstructionPacketEnvOwnershipDataResponse  `0xF4, 0x17`
-- server: SENT (2548× in opcode_stats) · seen in play 2548×
+- server: NOT SENT (not in opcode_stats, not in the server code) · seen in play 2548×
 - reader: FUN_1430b0ed0
 - built in: FUN_1430b7bf0
 - layout:
@@ -49,7 +49,7 @@ u16   +0x8
 u8    +0x10
 u64   +0x18
 u64   +0x20
-i32   iVar2
+i32   <local>
 FUN_142cb21a0 -> +0x0
   FUN_143734c80 -> +0x0
       [loop 1: list elements]
@@ -60,17 +60,17 @@ FUN_142cb21a0 -> +0x0
       [loop 6: list elements]
       [loop 7: list elements]
 FUN_142ba1df0 -> +0x40
-  i32   iVar3
+  i32   <local>
     [loop 1: list elements]
   str   +0x40
 FUN_142ba2840 -> +0x58
-  i32   iVar5
+  i32   <local>
     [loop 1: list elements]
-  u64   *puVar2
+  u64   <element>
 FUN_14307f3a0 -> +0x70
-  i32   iVar5
+  i32   <local>
     [loop 1: list elements]
-  u64   *puVar2
+  u64   <element>
 u32   +0x88
 ```
 - handled in FUN_1430b7bf0 (its switch case for this message)
@@ -80,7 +80,7 @@ u32   +0x88
 ```
 
 ## S2C VoxelConstructionPacketZoneDisplayNotification  `0xF4, 0x1B`
-- server: NOT SENT (not in opcode_stats, not in the server code)
+- server: probably sent (static check: sent by server (sub in payload)); not in opcode_stats
 - reader: FUN_1430b1310
 - built in: FUN_1430b7bf0
 - layout:
@@ -100,17 +100,17 @@ bool  +0x1c
 - server: probably sent (static check: sent by server (sub in payload)); not in opcode_stats
 
 ## S2C VoxelConstructionPacketClientOwnershipRequest  `0xF4, 0x4`
-- server: probably sent (static check: sent by server (sub in payload)); not in opcode_stats
+- server: NOT SENT (not in opcode_stats, not in the server code)
 - built in: FUN_143086450
 
 ## S2C VoxelConstructionPacketOffGridPasteClientRequest  `0xF4, 0x5`
 - server: NOT SENT (not in opcode_stats, not in the server code)
 
 ## S2C VoxelConstructionPacketClipboardData  `0xF4, 0x6`
-- server: probably sent (static check: sent by server (sub in payload)); not in opcode_stats
+- server: probably sent (static check: sent by server (sub in payload)); not in opcode_stats · seen in play 3×
 
 ## S2C VoxelConstructionPacketResponse  `0xF4, 0x7`
-- server: SENT (3× in opcode_stats)
+- server: SENT (74× in opcode_stats)
 - built in: FUN_1430b7bf0
 - handled in FUN_1430b7bf0 (its switch case for this message)
 - text keys: Construction.InsufficentMaterials · Construction.InsufficentProps · Construction.InsufficentPermissions · Construction.ExceedsMaxTotalTemplateVoxelsCount · UI.PurchaseVoxelExpanders · Construction.OnlyClaimOwnerMayPlaceOrCopyTemplateInstances · Construction.GeneralError
@@ -120,7 +120,7 @@ bool  +0x1c
 ```
 
 ## S2C VoxelConstructionPacketZoneUnknownPropList  `0xF4, 0x8`
-- server: NOT SENT (not in opcode_stats, not in the server code)
+- server: probably sent (static check: sent by server (sub in payload)); not in opcode_stats
 - built in: FUN_1430b7bf0
 - handled in FUN_1430b7bf0 (its switch case for this message)
 - text keys: Construction.MissingPropKnowledge
@@ -131,7 +131,7 @@ bool  +0x1c
 ```
 
 ## S2C VoxelConstructionPacketZoneMissingPropList  `0xF4, 0x9`
-- server: NOT SENT (not in opcode_stats, not in the server code)
+- server: probably sent (static check: sent by server (sub in payload)); not in opcode_stats · seen in play 1×
 - built in: FUN_1430b7bf0
 - handled in FUN_1430b7bf0 (its switch case for this message)
 - text keys: Construction.SkippedProps
@@ -142,7 +142,7 @@ bool  +0x1c
 ```
 
 ## S2C VoxelConstructionPacketResponseObserved  `0xF4, 0xA`
-- server: NOT SENT (not in opcode_stats, not in the server code)
+- server: probably sent (static check: sent by server (sub in payload)); not in opcode_stats · seen in play 12×
 - reader: FUN_1430b11e0
 - built in: FUN_1430b7bf0
 - layout:
@@ -154,7 +154,7 @@ FUN_1430b2280 -> +0x20
     [loop 1: list elements]
     [loop 2: list elements]
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
 bool  +0x6c
 ```
 - handled in FUN_1430b7bf0 (its switch case for this message)

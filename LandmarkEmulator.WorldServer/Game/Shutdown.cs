@@ -1,4 +1,4 @@
-﻿using LandmarkEmulator.Shared.Network;
+using LandmarkEmulator.Shared.Network;
 using LandmarkEmulator.WorldServer.Network;
 using LandmarkEmulator.WorldServer.Network.Message;
 using LandmarkEmulator.Shared.Database;
@@ -20,6 +20,12 @@ namespace LandmarkEmulator.WorldServer.Game
     /// The dev command "shutdown &lt;seconds&gt; [message]" counts down with warnings at the usual steps (1 h … 10 s),
     /// sends the final notice and stops the server cleanly; "shutdown cancel" stops the countdown. A server stopped any
     /// other way (Ctrl+C) still sends the immediate notice first.
+    /// <para>Once the countdown is at 30 s or less, every player also gets the client's kick warning
+    /// PacketClientPendingKickFromServer 0x65 {message, seconds} (<see cref="Kicks"/>; setting PendingKickPacket): it brings
+    /// the client's sound back to full volume (FUN_142cdd200) so the last warnings are heard. Its own text is empty on the
+    /// retail clients (the CodeStringMappings key is missing), so the 0x5F countdown stays the readable warning. Setting
+    /// ShutdownBroadcasts (default false = live) also sends each warning step as a System Broadcast 0x4F
+    /// (<see cref="Broadcasts"/>: on-screen text and a chat line).</para>
     /// </summary>
     public static class Shutdown
     {
@@ -35,6 +41,11 @@ namespace LandmarkEmulator.WorldServer.Game
         private static int lastWarning = int.MaxValue;
         private static bool notified;
         private static bool stopping;
+        /// <summary>The 0x65 kick warning went out for this countdown (once, at 30 s or less).</summary>
+        private static bool kickWarned;
+
+        /// <summary>The countdown's last stretch, when the 0x65 kick warning goes out.</summary>
+        private const int KickWarningSeconds = 30;
 
         /// <summary>
         /// A shutdown is counting down or under way: the world tells the login server it is going down (its heartbeat
@@ -61,6 +72,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 at = DateTime.UtcNow.AddSeconds(Math.Max(0, seconds));
                 message = text ?? "";
                 lastWarning = int.MaxValue;
+                kickWarned = false;
             }
             Broadcast(seconds, text ?? "");
             lock (sync)
@@ -158,13 +170,13 @@ namespace LandmarkEmulator.WorldServer.Game
                     else if (DateTime.UtcNow - askedAt[s] > TimeSpan.FromSeconds(8))
                         TurnAway(s);
                 }
-                bool anyone = NetworkManager<WorldSession>.Instance.Sessions().Any(s => s.Account != null && !s.Disconnected);
+                bool anyone = Network.ZoneSessions.Connected() > 0;
                 DateTime now = DateTime.UtcNow;
                 if (now >= until || (!anyone && now >= earliest))
                     break;
                 System.Threading.Thread.Sleep(200);
             }
-            int left = NetworkManager<WorldSession>.Instance.Sessions().Count(s => s.Account != null && !s.Disconnected);
+            int left = Network.ZoneSessions.Connected();
             log.Info($"Shutdown: {sent} client(s) sent to character select" + (left > 0 ? $"; {left} still connected, closing anyway." : "."));
         }
 
@@ -197,6 +209,19 @@ namespace LandmarkEmulator.WorldServer.Game
 
         private static void Broadcast(int seconds, string text)
         {
+            bool warnKick = false;
+            if (seconds > 0 && seconds <= KickWarningSeconds)
+                lock (sync)
+                {
+                    warnKick = !kickWarned;
+                    kickWarned = true;
+                }
+            if (warnKick)
+                foreach (WorldSession s in PlayerManager.Snapshot())
+                    Kicks.SendPendingPacketTo(s, string.IsNullOrWhiteSpace(text) ? "The server is shutting down." : text, seconds);
+            if (Broadcasts.MirrorShutdownWarnings)
+                Broadcasts.ToEveryone((seconds > 0 ? $"The server is shutting down in {Remaining(seconds)}." : "The server is shutting down now.")
+                    + (string.IsNullOrWhiteSpace(text) ? "" : " " + text.Trim()));
             var output = new List<byte>();
             var w = new GamePacketWriter(output);
             w.Write((uint)Math.Max(0, seconds));
@@ -206,5 +231,15 @@ namespace LandmarkEmulator.WorldServer.Game
             foreach (WorldSession s in PlayerManager.Snapshot())
                 s.EnqueueMessage(ZoneMessageOpcode.WorldShutdownNotice, packet);
         }
+
+        /// <summary>"1 hour", "15 minutes", "30 seconds" for the broadcast mirror.</summary>
+        private static string Remaining(int seconds) => seconds switch
+        {
+            >= 3600 when seconds % 3600 == 0 => seconds / 3600 == 1 ? "1 hour" : $"{seconds / 3600} hours",
+            >= 60 when seconds % 60 == 0 => seconds / 60 == 1 ? "1 minute" : $"{seconds / 60} minutes",
+            >= 120 => $"{(seconds + 30) / 60} minutes",
+            1 => "1 second",
+            _ => $"{seconds} seconds",
+        };
     }
 }

@@ -21,9 +21,9 @@ u32   +0x10
 u64   +0x18
 u32   +0x20
   [loop 1: list elements]
-u64   *puVar1
+u64   <element>
   [loop 2: list elements]
-u32   *puVar2
+u32   <element>
 u64   +0x50
 bool  +0x58
 ```

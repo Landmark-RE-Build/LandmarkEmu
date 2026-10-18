@@ -1,4 +1,5 @@
 ﻿using LandmarkEmulator.Database.Character.Model;
+using LandmarkEmulator.Internal.Social;
 using LandmarkEmulator.Shared.Database;
 using LandmarkEmulator.Shared.Network;
 using LandmarkEmulator.WorldServer.Network;
@@ -19,23 +20,30 @@ namespace LandmarkEmulator.WorldServer.Game
     /// FUN_1432c9770). Player-to-player mail with subject and body, kept per recipient (table mail), with up to four item
     /// attachments, coins, or cash on delivery (the recipient pays the asked coins to the sender before taking the
     /// items).
+    /// Part of the social service: callers outside it use <see cref="Social.SocialServices"/> (LocalSocialService runs
+    /// this code; social-service.md §6 step 1). With a remote social service the mailboxes live there
+    /// (SocialServer/MailService.cs) and only the zone's part runs here, through <see cref="Social.RemoteMail"/>: the
+    /// compose window's bag checks (<see cref="ReadCompose"/>, <see cref="CheckBag"/>, <see cref="Attach"/>), escrow, and
+    /// the reading window's packet (<see cref="SendRead"/>).
     /// </summary>
     public static class Mail
     {
         private static readonly ILogger log = LogManager.GetCurrentClassLogger();
 
-        // Client → server.
-        private const uint ComposeRequest = 1, InboxListRequest = 6, ReadMessageRequest = 8, DeleteMessageRequest = 10,
-            ConsumeAttachmentRequest = 0xF, AttachItemRequest = 0x14;
-        // Server → client.
-        private const uint ComposeResponse = 4, InboxListResponse = 7, ReadMessageResponse = 9, DeleteMessageResponse = 0xB,
-            NewMailNotification = 0xE, ConsumeAttachmentResponse = 0x10, EnableWindow = 0x13, AttachItemResponse = 0x15;
+        // MailBase subs, 0.695 numbers [P]: the 0.695 id table (re/out/packet_ids_695.tsv, cMailPacketId*) inserted
+        // DeveloperMailPlayer at 4 and moved every 0.589 sub from 4 up by one (0.695 S→C dispatcher; packets-695.md
+        // "Changed layouts" A3, coverage-695.md §0xF8). Client → server:
+        internal const uint ComposeRequest = 1, InboxListRequest = 7, ReadMessageRequest = 9, DeleteMessageRequest = 0xB,
+            ConsumeAttachmentRequest = 0x10, AttachItemRequest = 0x15;
+        // Server → client:
+        internal const uint ComposeResponse = 5, InboxListResponse = 8, ReadMessageResponse = 0xA, DeleteMessageResponse = 0xC,
+            NewMailNotification = 0xF, ConsumeAttachmentResponse = 0x11, EnableWindow = 0x14, AttachItemResponse = 0x16;
 
         /// <summary>
         /// Result codes (client text table at 0x14521a980): 0 Success, 1 unable to find user, 5 attachment is invalid,
         /// 0xD user has too much mail in inbox, 0xE user has sent too many mail messages, 0x14 message not found.
         /// </summary>
-        private const uint Success = 0, UserNotFound = 1, SelfWithAttachment = 2, AttachmentInvalid = 5,
+        internal const uint Success = 0, UserNotFound = 1, ServiceUnavailable = 3, SelfWithAttachment = 2, AttachmentInvalid = 5,
             ItemGone = 7, NoTradeItem = 0xA, ChestWithItems = 0x12, IgnoredByTarget = 0xF, MultipleWithAttachment = 0xB, TooManyAttachments = 0xC, InboxFull = 0xD, SentTooMany = 0xE,
             MessageNotFound = 0x14, AttachmentNotFound = 0x1A, InsufficientFunds = 6, CurrencyFull = 0x1E,
             MustPayCodFirst = 0x1F, InsufficientFundsForCod = 0x20;
@@ -65,7 +73,7 @@ namespace LandmarkEmulator.WorldServer.Game
         private static readonly ConcurrentDictionary<ulong, Queue<DateTime>> recentSends = new();
 
         /// <summary>Writes a MailBase packet: the u32 sub-opcode, then the body.</summary>
-        private static void Send(WorldSession session, uint sub, Action<GamePacketWriter> write)
+        internal static void Send(WorldSession session, uint sub, Action<GamePacketWriter> write)
         {
             var output = new List<byte>();
             var writer = new GamePacketWriter(output);
@@ -77,7 +85,8 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <summary>
         /// PacketMailEnableWindow {u64 mailbox}: makes the client request its inbox and open the Inbox window (what a
         /// mailbox prop would send). Not sent on login: the client would open the inbox unseen and then ignore the
-        /// Open Inbox button.
+        /// Open Inbox button. Zone side: mailbox proximity stays with the zone (social-service.md §5.1), so the mailbox
+        /// interaction calls this directly.
         /// </summary>
         public static void OpenFor(WorldSession session) => Send(session, EnableWindow, w => w.Write(session.PlayerGuid));
 
@@ -120,7 +129,7 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>
-        /// InboxListResponse (sub 7, reader FUN_1432c75d0): u32 list type (0), u64 owner, u16 flags (bit 0: complete; the
+        /// InboxListResponse (sub 8; 0.589 reader FUN_1432c75d0, 0.695 FUN_143374400): u32 list type (0), u64 owner, u16 flags (bit 0: complete; the
         /// window opens on it), u32 n, n × MailData (FUN_1432c6f60): u64 id, u64, sender name {u32, u32, u32, string
         /// first, string last}, string subject, string body, u64 sent (Unix s; the window shows days until it
         /// expires), u32 read, u16 attachment count, u32 kind flags (0 = player mail; 1/2/4/8/0xF0/0x1000 are system
@@ -174,64 +183,157 @@ namespace LandmarkEmulator.WorldServer.Game
             w.Write("");
         }
 
-        /// <summary>
-        /// PacketMailComposeRequest (sub 1, built by FUN_14358c2e0 from the compose window): u64, u32 n × PlayerName
-        /// "To", u32 m × PlayerName (unused), string subject, string body, u32 k × attachment. Every recipient must exist;
-        /// each gets their own copy. Answered with ComposeResponse (sub 4: u32 result, + PlayerName for results 1 and
-        /// 0xD — which name failed), and online recipients get NewMailInboxNotification.
-        /// </summary>
-        private static void Compose(WorldSession session, GamePacketReader reader)
+        /// <summary>A compose read from the client (PacketMailComposeRequest, sub 1).</summary>
+        internal sealed class ComposeDraft
         {
+            public readonly List<string> Names = new();
+            public string Subject = "", Body = "";
+            /// <summary>Bag items by item guid.</summary>
+            public readonly List<(ulong Guid, uint Count)> Attached = new();
+            /// <summary>
+            /// The attached bag items once <see cref="CheckBag"/> passed them, in <see cref="Attached"/> order, with the
+            /// state each keeps on the way (wear; audit-wiki-gaps #1).
+            /// </summary>
+            public readonly List<MailItem> Items = new();
+            /// <summary>Coins sent; coins asked on delivery.</summary>
+            public uint Coins, Cod;
+        }
+
+        /// <summary>
+        /// Reads PacketMailComposeRequest (sub 1, built by FUN_14358c2e0 from the compose window): u64, u32 n × PlayerName
+        /// "To", u32 m × PlayerName (unused), string subject, string body, u32 k × attachment. Attachments (writer
+        /// FUN_143581400): u32 n × {u64 id, u32 type, ...}; type 1 = {u64 item guid, u32 count, u32 definition, u32} — a
+        /// bag item, or coins when the guid is 0 (count = coins); type 5 = {u32 coins asked on delivery} (the compose
+        /// window's coin pane: send money / COD). Success, or the result that refuses it.
+        /// </summary>
+        internal static uint ReadCompose(GamePacketReader reader, out ComposeDraft draft)
+        {
+            draft = new ComposeDraft();
             reader.ReadULong();
-            var names = new List<string>();
             uint to = reader.ReadUInt();
             for (uint i = 0; i < to && i < MaxRecipients; i++)
-                names.Add(ReadName(reader));
+                draft.Names.Add(ReadName(reader));
             uint cc = reader.ReadUInt();
             for (uint i = 0; i < cc && i < MaxRecipients; i++)
                 ReadName(reader);
-            string subject = Clean(reader.ReadString(), MaxSubject);
-            string body = Clean(reader.ReadString(), MaxBody);
-            // Attachments (writer FUN_143581400): u32 n × {u64 id, u32 type, ...}; type 1 = {u64 item guid, u32 count, u32
-            // definition, u32} — a bag item, or coins when the guid is 0 (count = coins); type 5 = {u32 coins asked on
-            // delivery} (the compose window's coin pane: send money / COD).
+            draft.Subject = Clean(reader.ReadString(), MaxSubject);
+            draft.Body = Clean(reader.ReadString(), MaxBody);
             uint attachmentCount = reader.BytesRemaining >= 4 ? reader.ReadUInt() : 0;
             if (attachmentCount > MaxAttachments)
-            {
-                Reply(session, TooManyAttachments);
-                return;
-            }
-            var attached = new List<(ulong Guid, uint Count)>();
-            uint coins = 0, cod = 0;
+                return TooManyAttachments;
             for (uint i = 0; i < attachmentCount; i++)
             {
                 reader.ReadULong();
                 uint type = reader.ReadUInt();
                 if (type == 5)
                 {
-                    cod = reader.ReadUInt();
+                    draft.Cod = reader.ReadUInt();
                     continue;
                 }
                 if (type != 1)
-                {
-                    Reply(session, AttachmentInvalid);
-                    return;
-                }
+                    return AttachmentInvalid;
                 ulong guid = reader.ReadULong();
                 uint count = reader.ReadUInt();
                 reader.ReadUInt();
                 reader.ReadUInt();
                 if (guid == 0)
-                    coins += count;
+                    draft.Coins += count;
                 else
-                    attached.Add((guid, count));
+                    draft.Attached.Add((guid, count));
             }
             // Cash on delivery only makes sense for items, and a mail either sends coins or asks for them.
-            if (cod > 0 && (attached.Count == 0 || coins > 0))
+            if (draft.Cod > 0 && (draft.Attached.Count == 0 || draft.Coins > 0))
+                return AttachmentInvalid;
+            return Success;
+        }
+
+        /// <summary>
+        /// The attached items must still be in the sender's bag (not equipped), enough of them, tradeable, and not chests
+        /// holding items. Success with the definitions and counts (and <see cref="ComposeDraft.Items"/>: the same with
+        /// each item's guid and state), or the result that refuses them.
+        /// </summary>
+        internal static uint CheckBag(WorldSession session, ComposeDraft draft, out List<(uint Definition, uint Count)> items)
+        {
+            items = new List<(uint Definition, uint Count)>();
+            draft.Items.Clear();
+            foreach ((ulong guid, uint count) in draft.Attached)
             {
-                Reply(session, AttachmentInvalid);
+                CharacterItemModel item = session.Inventory.Items.FirstOrDefault(i => i.Id == guid
+                    && i.Container != Inventory.Inventory.EquippedContainer);
+                if (item == null || count == 0 || count > item.Count
+                    || (item.Container == Inventory.Inventory.VaultContainer && !Vaults.CanAccess(session)))
+                    return ItemGone;
+                // Mail keeps only kinds and counts (as Attach refuses it): a Player Design item would arrive empty and its
+                // design, keyed to the sender's item guid, would be lost with the item.
+                if (OverStackCap(count) || item.ItemDefinitionId == DesignItems.PlayerDesignItem)
+                    return AttachmentInvalid;
+                if (Inventory.ItemDefinitionManager.Get(item.ItemDefinitionId) is { NoTrade: true })
+                    return NoTradeItem;
+                // A store purchase in its waiting period is not tradeable yet (audit-wiki-gaps #7): "can't send NO_TRADE item".
+                if (Inventory.Inventory.IsTradeLocked(item))
+                    return NoTradeItem;
+                if (Chests.HasItems(item.Id))
+                    return ChestWithItems;
+                items.Add((item.ItemDefinitionId, count));
+                draft.Items.Add(new MailItem(item.Id, item.ItemDefinitionId, count, item.Wear));
+            }
+            // The same stack in two slots may not add up to more than it holds (the items leave by guid, TakeItems).
+            foreach (var group in draft.Items.GroupBy(i => i.Guid))
+                if (session.Inventory.Get(group.Key) is not { } stack || stack.Count < (uint)group.Sum(i => (long)i.Count))
+                    return ItemGone;
+            return Success;
+        }
+
+        /// <summary>
+        /// Is this many of one item more than one attachment may carry? Wiki Trading: at most 9,000 of a gathered
+        /// material (e.g. Copper Ore) per mail [W] (audit-wiki-gaps #16). The client has no cap
+        /// of its own [P]: its attach request (Lua Mail.AttachItemToCompose, 0.695 FUN_1435ba0b0 → FUN_14363e9d0) and the
+        /// compose writer (FUN_14363f210 / FUN_143634c00) send the dragged stack's count as it is, and the compose window
+        /// (EmailComposeWindow / AttachmentListItemRenderer.as) limits only text lengths; the resources tab holds up to
+        /// 24,000,000 per resource (InventoryDefinition.txt SLOT_VALUE), so 9,000 was a server rule. Answered with 5
+        /// "attachment is invalid". Setting MailMaxStack (0 = no cap).
+        /// </summary>
+        private static bool OverStackCap(uint count)
+        {
+            uint cap = Shared.Configuration.ConfigurationManager<WorldServerConfiguration>.Instance.Config.MailMaxStack;
+            return cap > 0 && count > cap;
+        }
+
+        /// <summary>
+        /// One attached bag item: its stack, kind, count and the wear it keeps (a worn tool arrives worn; the attachment
+        /// text and the social service store it).
+        /// </summary>
+        internal readonly record struct MailItem(ulong Guid, uint Definition, uint Count, float Wear);
+
+        /// <summary>
+        /// Takes checked attachments (<see cref="CheckBag"/>) out of the sender's bag: the very stacks attached, so the
+        /// item that leaves is the one whose state the mail carries. False (and nothing taken) when one has gone.
+        /// </summary>
+        internal static bool TakeItems(WorldSession session, IReadOnlyList<MailItem> items)
+        {
+            foreach (var group in items.GroupBy(i => i.Guid))
+                if (session.Inventory.Get(group.Key) is not { } stack || stack.Count < (uint)group.Sum(i => (long)i.Count))
+                    return false;
+            foreach (MailItem item in items)
+                session.TakeFromStack(item.Guid, item.Count);
+            return true;
+        }
+
+        /// <summary>
+        /// PacketMailComposeRequest (<see cref="ReadCompose"/>). Every recipient must exist; each gets their own copy.
+        /// Answered with ComposeResponse (sub 5: u32 result, + PlayerName for results 1 and 0xD — which name failed), and
+        /// online recipients get NewMailInboxNotification.
+        /// </summary>
+        private static void Compose(WorldSession session, GamePacketReader reader)
+        {
+            uint check = ReadCompose(reader, out ComposeDraft draft);
+            if (check != Success)
+            {
+                Reply(session, check);
                 return;
             }
+            List<string> names = draft.Names;
+            uint coins = draft.Coins, cod = draft.Cod;
             if (coins > session.Coins)
             {
                 Reply(session, InsufficientFunds);
@@ -269,7 +371,7 @@ namespace LandmarkEmulator.WorldServer.Game
 
             // Items go to one other player and must still be in the sender's bag (not equipped), enough of them.
             var items = new List<(uint Definition, uint Count)>();
-            if (attached.Count > 0 || coins > 0)
+            if (draft.Attached.Count > 0 || coins > 0)
             {
                 if (recipients.Count > 1)
                 {
@@ -281,33 +383,15 @@ namespace LandmarkEmulator.WorldServer.Game
                     Reply(session, SelfWithAttachment);
                     return;
                 }
-                foreach ((ulong guid, uint count) in attached)
+                check = CheckBag(session, draft, out items);
+                // A trial key goes to a friend: not to another character of the sender's own account (Membership).
+                if (check == Success)
+                    check = Membership.CheckTrialKeyMail(session, recipients.Select(r => r.AccountId), items);
+                if (check != Success)
                 {
-                    CharacterItemModel item = session.Inventory.Items.FirstOrDefault(i => i.Id == guid
-                        && i.Container != Inventory.Inventory.EquippedContainer);
-                    if (item == null || count == 0 || count > item.Count)
-                    {
-                        Reply(session, ItemGone);
-                        return;
-                    }
-                    if (Inventory.ItemDefinitionManager.Get(item.ItemDefinitionId) is { NoTrade: true })
-                    {
-                        Reply(session, NoTradeItem);
-                        return;
-                    }
-                    if (Chests.HasItems(item.Id))
-                    {
-                        Reply(session, ChestWithItems);
-                        return;
-                    }
-                    items.Add((item.ItemDefinitionId, count));
+                    Reply(session, check);
+                    return;
                 }
-                foreach (var group in items.GroupBy(i => i.Definition))
-                    if (session.Inventory.CountOf(group.Key) < (uint)group.Sum(i => i.Count))
-                    {
-                        Reply(session, ItemGone);
-                        return;
-                    }
             }
             using (var context = DatabaseManager.Instance.CharacterDatabase.NewContext())
             {
@@ -322,22 +406,30 @@ namespace LandmarkEmulator.WorldServer.Game
                     Reply(session, InsufficientFunds);
                     return;
                 }
-                foreach ((uint definition, uint count) in items)
-                    session.TakeItem(definition, count);
+                if (!TakeItems(session, draft.Items))
+                {
+                    if (coins > 0)
+                        session.ChangeCoins(coins);
+                    Reply(session, ItemGone);
+                    return;
+                }
+                // A mailed trial key arrives as its NO_TRADE copy, so it travels by mail only once (Membership). Each item
+                // keeps its wear (audit-wiki-gaps #1).
+                var stored = draft.Items.Select(i => new Stored(Membership.AsMailed(i.Definition), i.Count, i.Wear)).ToList();
                 if (coins > 0)
-                    items.Add((CoinsEntry, coins));
+                    stored.Add(new Stored(CoinsEntry, coins));
                 if (cod > 0)
-                    items.Add((CodEntry, cod));
+                    stored.Add(new Stored(CodEntry, cod));
                 foreach (CharacterModel r in recipients)
                     context.Mail.Add(new MailModel
                     {
                         RecipientGuid = r.Id,
                         SenderGuid = session.PlayerGuid,
                         SenderName = session.CharacterName,
-                        Subject = subject,
-                        Body = body,
+                        Subject = draft.Subject,
+                        Body = draft.Body,
                         SentAt = DateTime.UtcNow,
-                        Attachments = FormatAttachments(items)
+                        Attachments = FormatAttachments(stored)
                     });
                 context.SaveChanges();
             }
@@ -345,7 +437,7 @@ namespace LandmarkEmulator.WorldServer.Game
             log.Info($"{session.CharacterName} mailed {string.Join(", ", recipients.Select(r => r.Name))}.");
             foreach (CharacterModel r in recipients)
                 if (PlayerManager.Snapshot().FirstOrDefault(p => p.PlayerGuid == r.Id) is { } online)
-                    Send(online, NewMailNotification, _ => { });
+                    Send(online, NewMailNotification, w => w.Write((ushort)1));   // {u16 count}: required by the client (L67)
         }
 
         private static string ReadName(GamePacketReader reader)
@@ -359,14 +451,14 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>Trims, drops control characters except line breaks, and caps the length.</summary>
-        private static string Clean(string text, int max)
+        internal static string Clean(string text, int max)
         {
             text = new string((text ?? "").Where(c => !char.IsControl(c) || c == '\n' || c == '\r').ToArray()).Trim();
             return text.Length > max ? text[..max] : text;
         }
 
-        /// <summary>ComposeResponse (sub 4, reader FUN_1432c8190).</summary>
-        private static void Reply(WorldSession session, uint result, string name = null)
+        /// <summary>ComposeResponse (sub 5; 0.589 reader FUN_1432c8190, 0.695 FUN_143374fc0).</summary>
+        internal static void Reply(WorldSession session, uint result, string name = null)
             => Send(session, ComposeResponse, w =>
             {
                 w.Write(result);
@@ -390,12 +482,8 @@ namespace LandmarkEmulator.WorldServer.Game
             }
         }
 
-        /// <summary>
-        /// ReadMessageRequest (sub 8) {u64 id}: the player opened a message. Marked read, and answered with
-        /// ReadMessageResponse (sub 9, reader FUN_1432c77e0), which opens the reading window (Lua ReadEmailMessage):
-        /// u64 id, u32 result (0 ok, 0x14 not found — a failure ends here), u32 kind flags, then on success u64 sender,
-        /// sender name, string subject, string body, u64 sent, u32, u32 n × attachment, u32 n + n bytes (HTML; empty).
-        /// </summary>
+        /// <summary>ReadMessageRequest (sub 9) {u64 id}: the player opened a message. Marked read, and answered with
+        /// ReadMessageResponse (<see cref="SendRead"/>).</summary>
         private static void MarkRead(WorldSession session, ulong id)
         {
             MailModel m;
@@ -408,13 +496,46 @@ namespace LandmarkEmulator.WorldServer.Game
                     context.SaveChanges();
                 }
             }
+            if (m == null)
+            {
+                SendRead(session, new MailReadData { MailId = id, Result = MessageNotFound });
+                return;
+            }
+            // Taken attachments keep their slot (ids stay the positions + 1).
+            List<Stored> attached = ParseAttachments(m.Attachments);
+            var waiting = new List<MailAttachment>();
+            for (int i = 0; i < attached.Count; i++)
+                if (attached[i].Count > 0)
+                    waiting.Add(new MailAttachment((uint)i, attached[i].Definition switch
+                    {
+                        CoinsEntry => MailAttachmentType.Coins,
+                        CodEntry => MailAttachmentType.CashOnDelivery,
+                        _ => MailAttachmentType.Item
+                    }, attached[i].Definition, attached[i].Count, attached[i].Wear));
+            SendRead(session, new MailReadData
+            {
+                MailId = m.Id, Result = Success, Kind = m.Kind, SenderGuid = m.SenderGuid, SenderName = m.SenderName ?? "",
+                Subject = m.Subject ?? "", Body = m.Body ?? "",
+                SentAt = (ulong)new DateTimeOffset(DateTime.SpecifyKind(m.SentAt, DateTimeKind.Utc)).ToUnixTimeSeconds(),
+                Attachments = waiting
+            });
+        }
+
+        /// <summary>
+        /// ReadMessageResponse (sub 0xA; 0.589 reader FUN_1432c77e0, 0.695 FUN_143374610), which opens the reading window (Lua ReadEmailMessage): u64
+        /// id, u32 result (0 ok, 0x14 not found — a failure ends here), u32 kind flags, then on success u64 sender, sender
+        /// name, string subject, string body, u64 sent, u32, u32 n × attachment, u32 n + n bytes (HTML; empty). Written
+        /// by the zone for the local and the remote mailboxes alike (the item records need the game's item tables).
+        /// </summary>
+        internal static void SendRead(WorldSession session, MailReadData m)
+        {
             Send(session, ReadMessageResponse, w =>
             {
-                w.Write(id);
-                if (m == null)
+                w.Write(m.MailId);
+                if (m.Result != Success)
                 {
                     // A failure ends after the kind flags.
-                    w.Write(MessageNotFound);
+                    w.Write(m.Result);
                     w.Write(0u);
                     return;
                 }
@@ -424,33 +545,31 @@ namespace LandmarkEmulator.WorldServer.Game
                 WriteName(w, m.SenderName);
                 w.Write(m.Subject ?? "");
                 w.Write(m.Body ?? "");
-                w.Write((ulong)new DateTimeOffset(DateTime.SpecifyKind(m.SentAt, DateTimeKind.Utc)).ToUnixTimeSeconds());
+                w.Write(m.SentAt);
                 w.Write(1u);
                 // Attachments (FUN_1432c6c60): u64 attachment id, u32 type 2 = a full item record (the inventory's,
                 // FUN_142b87110) so the reading window shows the real item; other types show a placeholder.
-                List<(uint Definition, uint Count)> attached = ParseAttachments(m.Attachments);
-                w.Write((uint)attached.Count(a => a.Count > 0));
-                for (int i = 0; i < attached.Count; i++)
+                w.Write((uint)m.Attachments.Count);
+                foreach (MailAttachment a in m.Attachments)
                 {
-                    if (attached[i].Count == 0)
-                        continue;                       // already taken; ids stay the slot positions
-                    w.Write(AttachmentId(i));
-                    if (attached[i].Definition is CoinsEntry or CodEntry)
+                    w.Write(AttachmentId((int)a.Slot));
+                    if (a.Type != MailAttachmentType.Item)
                     {
                         // 6 = coins to take, 5 = coins to pay first (FUN_1432c6c60): both shown in the coin pane.
-                        w.Write(attached[i].Definition == CoinsEntry ? 6u : 5u);
-                        w.Write(attached[i].Count);
+                        w.Write(a.Type == MailAttachmentType.Coins ? 6u : 5u);
+                        w.Write(a.Count);
                         continue;
                     }
                     w.Write(2u);
                     var item = new InventoryItem
                     {
-                        Guid = AttachmentItemGuid(m.Id, i),
-                        Count = attached[i].Count,
+                        Guid = AttachmentItemGuid(m.MailId, (int)a.Slot),
+                        Count = a.Count,
                         OwnerType = 1,
+                        Wear = BitConverter.SingleToUInt32Bits(a.Wear),   // the condition the item arrives with
                         SecondsSinceLastCast = int.MaxValue
                     };
-                    Inventory.Inventory.FillDefinition(item, attached[i].Definition);
+                    Inventory.Inventory.FillDefinition(item, a.Definition);
                     // The 0.589 record (FUN_142b87110) ends at the u32 after the metadata block (no login-packet byte).
                     item.WriteRecord(w);
                 }
@@ -467,18 +586,51 @@ namespace LandmarkEmulator.WorldServer.Game
                 .Any(a => ParseAttachments(a).Any(x => x.Definition == itemDefinition && x.Count > 0));
         }
 
-        /// <summary>"definition:count;..." ⇄ list.</summary>
-        private static string FormatAttachments(IEnumerable<(uint Definition, uint Count)> items)
-            => string.Join(";", items.Select(i => $"{i.Definition}:{i.Count}"));
-
-        private static List<(uint Definition, uint Count)> ParseAttachments(string text)
+        /// <summary>
+        /// Which of these definitions the player has on a letter still holding the item: one read of the recipient's
+        /// letters for all of them (<see cref="HasAttachment"/> reads them once per definition). Blocking: off the world
+        /// thread (review 2026-10-18b #5).
+        /// </summary>
+        public static HashSet<uint> AttachmentKinds(ulong recipient, IReadOnlyCollection<uint> itemDefinitions)
         {
-            var list = new List<(uint, uint)>();
+            var wanted = itemDefinitions.ToHashSet();
+            var found = new HashSet<uint>();
+            if (wanted.Count == 0)
+                return found;
+            using var context = DatabaseManager.Instance.CharacterDatabase.NewContext();
+            foreach (string text in context.Mail.Where(m => m.RecipientGuid == recipient && m.Attachments != null && m.Attachments != "")
+                .Select(m => m.Attachments).AsEnumerable())
+                foreach (Stored a in ParseAttachments(text))
+                    if (a.Count > 0 && wanted.Contains(a.Definition))
+                        found.Add(a.Definition);
+            return found;
+        }
+
+        /// <summary>One stored attachment slot: an item kind (or <see cref="CoinsEntry"/> / <see cref="CodEntry"/>), its
+        /// count (0 = taken) and the item's wear.</summary>
+        private readonly record struct Stored(uint Definition, uint Count, float Wear = 0f);
+
+        /// <summary>
+        /// "definition:count[:wear];..." ⇄ list. The wear field (invariant float) is written only for a worn item, so
+        /// older texts read unchanged (and SocialImport reads both forms).
+        /// </summary>
+        private static string FormatAttachments(IEnumerable<Stored> items)
+            => string.Join(";", items.Select(i => i.Wear > 0f
+                ? $"{i.Definition}:{i.Count}:{i.Wear.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+                : $"{i.Definition}:{i.Count}"));
+
+        private static string FormatAttachments(IEnumerable<(uint Definition, uint Count)> items)
+            => FormatAttachments(items.Select(i => new Stored(i.Definition, i.Count)));
+
+        private static List<Stored> ParseAttachments(string text)
+        {
+            var list = new List<Stored>();
             foreach (string part in (text ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries))
             {
                 string[] f = part.Split(':');
-                if (f.Length == 2 && uint.TryParse(f[0], out uint d) && uint.TryParse(f[1], out uint c))
-                    list.Add((d, c));
+                if (f.Length is 2 or 3 && uint.TryParse(f[0], out uint d) && uint.TryParse(f[1], out uint c))
+                    list.Add(new Stored(d, c, f.Length == 3 && float.TryParse(f[2], System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out float wear) ? wear : 0f));
             }
             return list;
         }
@@ -490,9 +642,9 @@ namespace LandmarkEmulator.WorldServer.Game
         private static ulong AttachmentItemGuid(ulong mailId, int index) => 0x7000_0000_0000_0000ul | (mailId << 4) | (uint)index;
 
         /// <summary>
-        /// ConsumeAttachmentRequest (sub 0xF, writer FUN_14358c180, Lua Mail.RetrieveAttachment / RetrieveAllAttachments):
+        /// ConsumeAttachmentRequest (sub 0x10, 0.589 writer FUN_14358c180, Lua Mail.RetrieveAttachment / RetrieveAllAttachments):
         /// {u64 mail id, u64 attachment id (0 = all), u8}. The items go into the recipient's bag and leave the mail;
-        /// answered with ConsumeAttachmentResponse (sub 0x10, reader FUN_1432c73a0): u64 mail, u64 attachment, u32 result.
+        /// answered with ConsumeAttachmentResponse (sub 0x11; 0.589 reader FUN_1432c73a0, 0.695 FUN_1433741d0): u64 mail, u64 attachment, u32 result.
         /// </summary>
         private static void TakeAttachments(WorldSession session, ulong mailId, ulong attachmentId)
         {
@@ -500,7 +652,7 @@ namespace LandmarkEmulator.WorldServer.Game
             using (var context = DatabaseManager.Instance.CharacterDatabase.NewContext())
             {
                 MailModel m = context.Mail.FirstOrDefault(x => x.Id == mailId && x.RecipientGuid == session.PlayerGuid);
-                List<(uint Definition, uint Count)> attached = ParseAttachments(m?.Attachments);
+                List<Stored> attached = ParseAttachments(m?.Attachments);
                 if (m == null)
                     replies.Add((attachmentId, MessageNotFound));
                 else
@@ -523,7 +675,7 @@ namespace LandmarkEmulator.WorldServer.Game
                                 continue;
                             }
                             PayCod(context, m, attached[i].Count, session.CharacterName);
-                            attached[i] = (attached[i].Definition, 0);
+                            attached[i] = attached[i] with { Count = 0 };
                             codIndex = -1;
                             replies.Add((AttachmentId(i), Success));
                             continue;
@@ -542,8 +694,8 @@ namespace LandmarkEmulator.WorldServer.Game
                             }
                         }
                         else
-                            session.GiveItem(attached[i].Definition, attached[i].Count);
-                        attached[i] = (attached[i].Definition, 0);
+                            session.GiveItem(attached[i].Definition, attached[i].Count, new Inventory.ItemState(attached[i].Wear));
+                        attached[i] = attached[i] with { Count = 0 };
                         replies.Add((AttachmentId(i), Success));
                     }
                     if (replies.Count == 0)
@@ -574,7 +726,7 @@ namespace LandmarkEmulator.WorldServer.Game
         public static void SendSystemMail(ulong recipient, string from, string subject, string body, uint coins,
             IEnumerable<(uint Item, uint Count)> items = null, uint kind = 0)
         {
-            var attached = new List<(uint, uint)>();
+            var attached = new List<(uint Definition, uint Count)>();
             if (coins > 0)
                 attached.Add((CoinsEntry, coins));
             if (items != null)
@@ -596,7 +748,7 @@ namespace LandmarkEmulator.WorldServer.Game
             {
                 log.Info($"System mail {mail.Id} to 0x{recipient:X}: \"{mail.Subject}\" ({mail.Attachments}).");
                 if (PlayerManager.FindByGuid(recipient) is WorldSession online)
-                    Send(online, NewMailNotification, _ => { });
+                    Send(online, NewMailNotification, w => w.Write((ushort)1));   // {u16 count}: required by the client (L67)
             });
         }
 
@@ -611,19 +763,19 @@ namespace LandmarkEmulator.WorldServer.Game
                 Subject = Clean("COD payment: " + paid.Subject, MaxSubject),
                 Body = payer + " paid " + coins + " coins on delivery.",
                 SentAt = DateTime.UtcNow,
-                Attachments = FormatAttachments(new[] { (CoinsEntry, coins) })
+                Attachments = FormatAttachments(new[] { new Stored(CoinsEntry, coins) })
             });
             if (PlayerManager.Snapshot().FirstOrDefault(p => p.PlayerGuid == paid.SenderGuid) is { } online)
-                Send(online, NewMailNotification, _ => { });
+                Send(online, NewMailNotification, w => w.Write((ushort)1));   // {u16 count}: required by the client (L67)
         }
 
         /// <summary>
-        /// AttachItemToComposeRequest (sub 0x14, writer FUN_14358baa0, from Lua Mail.AttachItemToCompose when an item is
+        /// AttachItemToComposeRequest (sub 0x15, 0.589 writer FUN_14358baa0, from Lua Mail.AttachItemToCompose when an item is
         /// dragged onto a compose slot): {u32 type (1 = bag item), u64, u32 bag slot, u32 count, u32 container, bool}.
-        /// Answered with AttachItemToComposeResponse (sub 0x15, reader FUN_1432c70e0): u32 result, then the request's
+        /// Answered with AttachItemToComposeResponse (sub 0x16; 0.589 reader FUN_1432c70e0, 0.695 FUN_143373f10): u32 result, then the request's
         /// fields echoed (result 0 shows the item in the slot). The items only leave the bag when the mail is sent.
         /// </summary>
-        private static void Attach(WorldSession session, byte[] body)
+        internal static void Attach(WorldSession session, byte[] body)
         {
             uint result = Success;
             if (body.Length >= 25)
@@ -631,13 +783,22 @@ namespace LandmarkEmulator.WorldServer.Game
                 uint slot = BitConverter.ToUInt32(body, 12), count = BitConverter.ToUInt32(body, 16),
                     container = BitConverter.ToUInt32(body, 20);
                 CharacterItemModel item = session.Inventory.Items.FirstOrDefault(i => i.Container == container && i.Slot == slot);
-                // Mail keeps only kinds and counts: a Player Design item would lose its design.
+                // Mail keeps only kinds and counts: a Player Design item would lose its design. A stack over the mail cap
+                // (MailMaxStack, 9,000 as live) is refused as well.
                 if (BitConverter.ToUInt32(body, 0) != 1 || item == null || count == 0 || count > item.Count
-                    || container == Inventory.Inventory.EquippedContainer || item.ItemDefinitionId == DesignItems.PlayerDesignItem)
+                    || container == Inventory.Inventory.EquippedContainer || item.ItemDefinitionId == DesignItems.PlayerDesignItem
+                    || OverStackCap(count) || (container == Inventory.Inventory.VaultContainer && !Vaults.CanAccess(session)))
                     result = AttachmentInvalid;
                 // The client's own reasons: "can't send NO_TRADE item", "can't send chest item (with items in it)".
                 else if (Inventory.ItemDefinitionManager.Get(item.ItemDefinitionId) is { NoTrade: true })
                     result = NoTradeItem;
+                // A store purchase still waiting to become tradeable (audit-wiki-gaps #7): refused as no-trade, and the
+                // client's own reason line 577061 "That item was recently purchased and may not be traded yet."
+                else if (Inventory.Inventory.IsTradeLocked(item))
+                {
+                    result = NoTradeItem;
+                    SystemMessages.Show(session, Trades.RecentlyPurchasedText);
+                }
                 else if (Chests.HasItems(item.Id))
                     result = ChestWithItems;
             }
@@ -650,7 +811,7 @@ namespace LandmarkEmulator.WorldServer.Game
             });
         }
 
-        /// <summary>DeleteMessageRequest (sub 10) {u64 id} → DeleteMessageResponse (sub 0xB: u64 id, u32 result).</summary>
+        /// <summary>DeleteMessageRequest (sub 0xB) {u64 id} → DeleteMessageResponse (sub 0xC: u64 id, u32 result).</summary>
         private static void Delete(WorldSession session, ulong id)
         {
             uint result;

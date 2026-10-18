@@ -21,5 +21,8 @@
     "__StrictName_Comment__": "This forces names to be RPG-style. First letter capitalized, no numbers, no spaces.",
     "StrictName": false
   },
-  "GameDataPath": "gameData"
+  "GameDataPath": "gameData",
+  "__CharacterSelectFriends_Comment__": "Each character in the character list carries its friends list (live). SocialAddress: the shared social service (host:port, the worlds' SocialAddress); empty = from the character database, every friend offline.",
+  "CharacterSelectFriends": true,
+  "SocialAddress": ""
 }

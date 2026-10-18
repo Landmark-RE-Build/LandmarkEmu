@@ -46,12 +46,22 @@ namespace LandmarkEmulator.Shared.Network
         /// <summary>Highest reliable sequence actually written to UDP (not merely packed).</summary>
         public ushort? HighestSentSequence { get; private set; }
 
+        /// <summary>See <see cref="UnackedCountLocked"/> (read by the out thread for its send window).</summary>
+        public int UnackedCount
+        {
+            get
+            {
+                lock (sync)
+                    return UnackedCountLocked;
+            }
+        }
+
         /// <summary>
         /// Reliable sequences still cached between the pending cursor and
         /// <see cref="HighestSentSequence"/> (selective acks may leave holes).
         /// Desync reports over-window so the sender pauses.
         /// </summary>
-        public int UnackedCount
+        private int UnackedCountLocked
         {
             get
             {
@@ -100,6 +110,16 @@ namespace LandmarkEmulator.Shared.Network
         /// </summary>
         private uint OutgoingId => NextSequence.HasValue ? (uint)NextSequence.Value + 1u : 0u;
 
+        /// <summary>
+        /// Guards the send cache and cursors. Three threads use them: the tick packs (<see cref="PackData"/>) and runs
+        /// the RTO resends, the UDP receive thread takes the client's acks, the out thread marks sends and reads the
+        /// window. Unguarded, an ack landing between PackData's <c>NextSequence++</c> and its <c>DataPackets[...] =</c>
+        /// saw an empty slot inside the assigned range: AdvancePendingOverHoles moved LastAck past the packet before it
+        /// was even cached, so it counted as acked, was never resent when lost, and the client's reliable stream waited
+        /// for that sequence until the session died (the "LastAck desync" repair in TryAcceptAckSequence treats a symptom).
+        /// </summary>
+        private readonly object sync = new();
+
         private uint _fragmentSize;
         private Arc4Provider arc4Provider;
         private int _ignoredAheadAckLogBudget = 8;
@@ -110,8 +130,15 @@ namespace LandmarkEmulator.Shared.Network
             arc4Provider = new Arc4Provider(RC4Key);
         }
 
-        /// <summary>Record that a reliable Data/DataFragment with this sequence hit UDP.</summary>
+        /// <summary>Record that a reliable Data/DataFragment with this sequence hit UDP (out thread).</summary>
         public void NotifySent(ushort sequence)
+        {
+            lock (sync)
+                NotifySentLocked(sequence);
+        }
+
+        /// <summary>Record that a reliable Data/DataFragment with this sequence hit UDP.</summary>
+        private void NotifySentLocked(ushort sequence)
         {
             long now = DateTime.UtcNow.Ticks;
             DataPacket cached = DataPackets[sequence];
@@ -135,7 +162,14 @@ namespace LandmarkEmulator.Shared.Network
                 HighestSentSequence = sequence;
         }
 
+        /// <summary>Encrypts, sequences and caches a packet for sending (tick thread).</summary>
         public void PackData(byte[] data)
+        {
+            lock (sync)
+                PackDataLocked(data);
+        }
+
+        private void PackDataLocked(byte[] data)
         {
             if (UsingEncryption)
                 arc4Provider.Encrypt(data);
@@ -181,13 +215,20 @@ namespace LandmarkEmulator.Shared.Network
             _fragmentSize = fragmentSize;
         }
 
+        /// <summary>Single-sequence Acknowledge (<c>0x11</c>) from the client (receive thread); see <see cref="HandleAckLocked"/>.</summary>
+        public void HandleAck(ushort sequence)
+        {
+            lock (sync)
+                HandleAckLocked(sequence);
+        }
+
         /// <summary>
         /// Single-sequence Acknowledge (<c>0x11</c>). Clears that slot only; advances
         /// <see cref="LastAck"/> over leading holes (as the client does).
         /// Selective ack of a later seq accelerates resend of earlier slots whose
         /// <see cref="DataPacket.LastSendTicks"/> is older than the acked packet's first send.
         /// </summary>
-        public void HandleAck(ushort sequence)
+        private void HandleAckLocked(ushort sequence)
         {
             if (!TryAcceptAckSequence(sequence, out ushort seq))
                 return;
@@ -205,22 +246,26 @@ namespace LandmarkEmulator.Shared.Network
                 {
                     ushort idx = (ushort)(pendingBefore + i);
                     DataPacket pkt = DataPackets[idx];
-                    if (pkt != null && pkt.LastSendTicks > 0 && pkt.LastSendTicks < marker)
-                    {
+                    if (pkt != null && pkt.LastSendTicks > 0 && pkt.LastSendTicks < marker && QueueResend(idx, pkt))
                         _session?.ReliabilityStats.RecordOutboundAcceleratedResend();
-                        OnData(idx, pkt, wasOutOfOrder: true);
-                    }
                 }
             }
 
             AdvancePendingOverHoles();
         }
 
+        /// <summary>AcknowledgeAll (<c>0x15</c>) from the client (receive thread); see <see cref="HandleAckAllLocked"/>.</summary>
+        public void HandleAckAll(ushort sequence)
+        {
+            lock (sync)
+                HandleAckAllLocked(sequence);
+        }
+
         /// <summary>
         /// AcknowledgeAll (<c>0x15</c>). Clears every cached sequence through
         /// <paramref name="sequence"/> inclusive (as the client does).
         /// </summary>
-        public void HandleAckAll(ushort sequence)
+        private void HandleAckAllLocked(ushort sequence)
         {
             if (!TryAcceptAckSequence(sequence, out ushort seq))
                 return;
@@ -335,11 +380,34 @@ namespace LandmarkEmulator.Shared.Network
             }
         }
 
+        /// <summary>See <see cref="IsAckedThroughLocked"/>.</summary>
+        public bool IsAckedThrough(ushort sequence)
+        {
+            lock (sync)
+                return IsAckedThroughLocked(sequence);
+        }
+
+        /// <summary>
+        /// Queues a resend of a cached sequence unless one is already waiting to go out (false then). Its age (and so the
+        /// RTO check) only moves when it actually hits UDP (<see cref="NotifySentLocked"/>): before this guard every tick
+        /// (the world tick runs about every millisecond) queued every overdue packet again while the earlier copies still
+        /// waited, so a client that stopped acking for a moment (a loading hitch) got a growing storm of duplicates, and a
+        /// session whose sending was paused (CanProcessPackets off) grew its resend queue without bound.
+        /// </summary>
+        private bool QueueResend(ushort sequence, DataPacket packet)
+        {
+            if (packet.ResendQueued)
+                return false;
+            packet.ResendQueued = true;
+            OnData(sequence, packet, wasOutOfOrder: true);
+            return true;
+        }
+
         /// <summary>
         /// True when contiguous acks cover <paramref name="sequence"/> and
         /// <see cref="LastAck"/> is not ahead of <see cref="NextSequence"/>.
         /// </summary>
-        public bool IsAckedThrough(ushort sequence)
+        private bool IsAckedThroughLocked(ushort sequence)
         {
             if (!LastAck.HasValue || !NextSequence.HasValue)
                 return false;
@@ -350,11 +418,18 @@ namespace LandmarkEmulator.Shared.Network
             return fromSeqToAck < 32768 && fromAckToNext < 32768;
         }
 
+        /// <summary>RTO tick (tick thread); see <see cref="ProcessRtoResendsLocked"/>.</summary>
+        public bool ProcessRtoResends()
+        {
+            lock (sync)
+                return ProcessRtoResendsLocked();
+        }
+
         /// <summary>
         /// RTO tick: retransmit occupied slots whose last send is older than the current RTO.
         /// Returns true if the oldest unacked age exceeds <see cref="OldestUnackedTimeoutMs"/>.
         /// </summary>
-        public bool ProcessRtoResends()
+        private bool ProcessRtoResendsLocked()
         {
             if (!HighestSentSequence.HasValue)
                 return false;
@@ -383,11 +458,8 @@ namespace LandmarkEmulator.Shared.Network
                     // down further.
                     int resends = Math.Min(pkt.SendCount - 1, 4);
                     long backoffTicks = Math.Min(rtoTicks << resends, TimeSpan.FromMilliseconds(ResendDelayCapMs).Ticks);
-                    if (age >= backoffTicks)
-                    {
+                    if (age >= backoffTicks && QueueResend(idx, pkt))
                         _session?.ReliabilityStats.RecordOutboundRtoResend();
-                        OnData(idx, pkt, wasOutOfOrder: true);
-                    }
                 }
 
                 if (idx == high)
@@ -398,11 +470,18 @@ namespace LandmarkEmulator.Shared.Network
             return oldestAge >= oldestTimeoutTicks;
         }
 
+        /// <summary>See <see cref="ResendAllUnackedLocked"/>.</summary>
+        public void ResendAllUnacked()
+        {
+            lock (sync)
+                ResendAllUnackedLocked();
+        }
+
         /// <summary>
         /// Force-resend all still-cached packets from pending through the send high-water
         /// (terrain soft-deadline kick). Does not pretend Ping triggered the resend.
         /// </summary>
-        public void ResendAllUnacked()
+        private void ResendAllUnackedLocked()
         {
             if (!HighestSentSequence.HasValue)
                 return;
@@ -414,11 +493,8 @@ namespace LandmarkEmulator.Shared.Network
 
             while (true)
             {
-                if (DataPackets[idx] != null)
-                {
+                if (DataPackets[idx] is { } pkt && QueueResend(idx, pkt))
                     _session?.ReliabilityStats.RecordOutboundForcedResend();
-                    OnData(idx, DataPackets[idx], wasOutOfOrder: true);
-                }
 
                 if (idx == high)
                     break;

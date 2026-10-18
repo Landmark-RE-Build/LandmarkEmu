@@ -17,6 +17,7 @@ namespace LandmarkEmulator.WorldServer.Game
     /// Goals and achievements. In the client they are one system ("achievements"): the Goals tracker, the journal, the
     /// recipe discoveries and the replicator lists are all achievements with objectives. AchievementBase 0x92, u8 sub
     /// (client dispatcher FUN_142d92750):
+    ///   2 Add {achievement}                         one more achievement (a goal tier unlocked), see Achievements.Tiers.cs
     ///   3 Initialize {u32 n, n x achievement}       the whole list, at zone-in
     ///   4 Complete {u32 achievement}                "Completed achievement ...", leaves the tracker
     ///   6 ObjectiveActivated {u32 ach, u32 obj, u32 current, u32 required, u32 progress, bool}
@@ -31,15 +32,18 @@ namespace LandmarkEmulator.WorldServer.Game
     /// also carries the captured player's progress, so the server patches each character's own progress into a copy at
     /// zone-in (see <see cref="Load"/> for the patched fields).
     /// </summary>
-    public static class Achievements
+    public static partial class Achievements
     {
         private static readonly ILogger log = LogManager.GetCurrentClassLogger();
 
-        public const byte InitializeSub = 3, CompleteSub = 4, ActivatedSub = 6, UpdateSub = 7, ObjectiveCompleteSub = 8,
+        public const byte AddSub = 2, InitializeSub = 3, CompleteSub = 4, ActivatedSub = 6, UpdateSub = 7, ObjectiveCompleteSub = 8,
             TrackerSub = 0x0B, TrackerUpdateSub = 0x0C;
 
-        /// <summary>The "Getting Started" goals, in order: each starts when the one before it is complete.</summary>
-        public static readonly uint[] GettingStarted = { 471, 480, 478, 477, 685 };
+        /// <summary>
+        /// The "Getting Started" goals, in order: each starts when the one before it is complete. The last three are the
+        /// advanced tutorial goals with no live record, built from the wiki (Achievements.Tutorial.cs, TASKS 6.57).
+        /// </summary>
+        public static readonly uint[] GettingStarted = { 471, 480, 478, 477, 685, GettingCrafty, BuildingBlockBasics, ModularThinking };
 
         public class Objective
         {
@@ -51,6 +55,8 @@ namespace LandmarkEmulator.WorldServer.Game
             public byte CapturedState;
             /// <summary>Offsets in the template of the objective's state (+0x2150) and current count (+0x2154).</summary>
             public int StateOffset, CurrentOffset;
+            /// <summary>Offset in the template of the objective's list key (followed by its id and text).</summary>
+            public int KeyOffset;
         }
 
         public class Achievement
@@ -65,8 +71,32 @@ namespace LandmarkEmulator.WorldServer.Game
             public int StartedOffset, CompletedOffset, ProgressOffset;
             /// <summary>The record's bytes in the template ([start, end)).</summary>
             public int RecordStart, RecordEnd;
+            /// <summary>Where the reward bundle ends (the objective count) and where the points field (+0x2264) is.</summary>
+            public int RewardEnd, PointsOffset;
+            /// <summary>
+            /// Meta goals: the record's objective → child achievement map (the u32 → u32 map near the record's end;
+            /// e.g. 595 Slayer of All the Things: 1037 → 574 ... 1057 → 594). Empty for other goals.
+            /// </summary>
+            public List<(uint Objective, uint Child)> Map = new();
+            /// <summary>
+            /// A goal tier the client gets only once the tier before it is complete (AchievementAdd, sub 2): that tier's
+            /// id, or 0 for goals every character has from the start (<see cref="Tiers"/>).
+            /// </summary>
+            public uint UnlockedBy;
             /// <summary>A Daily goal (subcategory 91): sent only while the character has it (<see cref="DailyGoals"/>).</summary>
             public bool Daily;
+            /// <summary>
+            /// Luminary Score points for completing it: record +0x2264 (the 4th u32 after the objectives, reader
+            /// FUN_142b7ca00), which the client's AchievementInfo "TotalPoints" sums over completed goals
+            /// (0.695 FUN_14355cdb0).
+            /// </summary>
+            public uint Points;
+            /// <summary>
+            /// Template offsets of the reward bundles' recipient guid (ClientRewardBundle +0x20f0, Model.Shared.RewardBundle
+            /// CharacterId) where the capture has one: it holds the captured character's own guid, so each copy gets the
+            /// receiving player's (<see cref="WriteRecord"/>).
+            /// </summary>
+            public List<int> RecipientOffsets = new();
         }
 
         private static byte[] template;
@@ -78,6 +108,16 @@ namespace LandmarkEmulator.WorldServer.Game
         private static readonly object sync = new();
 
         public static Achievement Get(uint id) => achievements.TryGetValue(id, out Achievement a) ? a : null;
+
+        /// <summary>Every goal's reward items (capture bundles, dailies and the built tiers), filled by <see cref="Load"/>.</summary>
+        private static HashSet<uint> rewardItems = new();
+
+        /// <summary>
+        /// Is the item some goal's reward? Used to keep goal-only recipe items out of random drops
+        /// (<see cref="RecipeBook.RandomUnknownRecipeItem"/>): e.g. 3906 "Recipe: The Outcast" (561 The Bigger They Are) and
+        /// the 500-kill tiers' armour recipes (Achievements.Tiers.cs) — trace/0695/item-sources-audit-695.md §3.
+        /// </summary>
+        public static bool IsRewardItem(uint item) => rewardItems.Contains(item);
 
         /// <summary>
         /// Parses the captured AchievementInitialize with the client's layout (FUN_142d8bf90 → FUN_142b7ca00 per
@@ -95,6 +135,9 @@ namespace LandmarkEmulator.WorldServer.Game
             template = File.ReadAllBytes(path).AsSpan(2).ToArray(); // drop the u16 opcode
             Parse();
             AddDailies();
+            AddTiers();
+            AddTutorialGoals();
+            rewardItems = achievements.Values.SelectMany(a => a.Rewards).Select(r => r.Item).ToHashSet();
             log.Info($"{achievements.Count} achievements, {byObjective.Count} objectives ({achievements.Values.Count(a => a.Daily)} daily).");
         }
 
@@ -117,15 +160,17 @@ namespace LandmarkEmulator.WorldServer.Game
                 a.StartedOffset = r.Position; r.U64();
                 a.CompletedOffset = r.Position; r.U64();
                 a.ProgressOffset = r.Position; r.U32();
-                RewardBundle(r, a.Rewards);
+                RewardBundle(r, a.Rewards, a.RecipientOffsets);
+                a.RewardEnd = r.Position;
                 uint objectives = r.U32();
                 for (uint o = 0; o < objectives; o++)
                 {
+                    int keyOffset = r.Position;
                     r.U32();                                       // list key (= objective id)
-                    var objective = new Objective { Id = r.U32() };
+                    var objective = new Objective { Id = r.U32(), KeyOffset = keyOffset };
                     objective.TextId = r.U32();
                     r.U32();                                       // unknown
-                    RewardBundle(r, null);
+                    RewardBundle(r, null, a.RecipientOffsets);
                     objective.StateOffset = r.Position; objective.CapturedState = (byte)r.U32();
                     objective.CurrentOffset = r.Position; r.U32();
                     objective.Required = r.U32();
@@ -135,18 +180,26 @@ namespace LandmarkEmulator.WorldServer.Game
                     a.Objectives.Add(objective);
                     byObjective[objective.Id] = a;
                 }
-                r.Skip(5 * 4 + 1 + 4 + 1 + 10 * 4 + 3);           // 5 x u32, i8, u32, bool, 10 x u32, 3 x bool
+                r.U32(); r.U32(); r.U32();                         // +0x2258, +0x225c, +0x2260
+                a.PointsOffset = r.Position;
+                a.Points = r.U32();                                // +0x2264 Luminary Score points
+                r.U32();                                           // +0x2268
+                r.Skip(1 + 4 + 1 + 10 * 4 + 3);                    // i8, u32, bool, 10 x u32, 3 x bool
                 r.Skip(r.U32() * 4);                               // u32 list
                 uint hints = r.U32();
                 for (uint h = 0; h < hints; h++) { r.U32(); r.Skip(r.U32() * 16); }
-                r.Skip(r.U32() * 8);                               // u32 → u32 map
+                uint mapped = r.U32();                             // u32 → u32 map: meta objective → child goal
+                for (uint m = 0; m < mapped; m++)
+                    a.Map.Add((r.U32(), r.U32()));
                 r.U32();
                 a.RecordEnd = r.Position;
                 a.Daily = DailyGoals.IsDaily(a.Id);
+                a.UnlockedBy = TierPredecessor(a.Id);
                 achievements[a.Id] = a;
             }
             if (r.Position != template.Length)
                 log.Warn($"Achievement capture: parsed {r.Position} of {template.Length} bytes.");
+            IndexLinks();
         }
 
         /// <summary>
@@ -209,13 +262,17 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>
-        /// Reward bundle (FUN_142b95550): bool, u32, u32→u32 map, 3 x u32, u64, 5 x u32, 2 x u64, 2 x u32, entries, u32.
+        /// Reward bundle (FUN_142b95550; fields named in Model.Shared.RewardBundle): bool, u32 coins, currency map
+        /// {u32, u32}, u32 experience, 2 x u32, u64, 5 x u32, u64, u64 recipient, u32 icon, u32 name text, entries, u32.
         /// Entries are {u32 type} + the type's reader (vtable +0x78; factory FUN_143ac8420), all starting with the
         /// base FUN_143ac4130: bool, 6 x u32 (icon, ?, name text, count, item id, ?), string, u32, bool, 2 x u32.
         /// </summary>
-        private static void RewardBundle(Reader r, List<(uint, uint)> items)
+        private static void RewardBundle(Reader r, List<(uint, uint)> items, List<int> recipients)
         {
             r.U8(); r.U32(); r.Skip(r.U32() * 8);
+            int recipientAt = r.Position + 3 * 4 + 8 + 5 * 4 + 8;
+            if (BinaryPrimitives.ReadUInt64LittleEndian(template.AsSpan(recipientAt)) != 0)
+                recipients.Add(recipientAt);
             r.Skip(3 * 4 + 8 + 5 * 4 + 16 + 2 * 4);
             uint entries = r.U32();
             for (uint e = 0; e < entries; e++)
@@ -275,36 +332,70 @@ namespace LandmarkEmulator.WorldServer.Game
                 return;
             ulong character = session.PlayerGuid;
             HashSet<uint> dailies = DailyGoals.Assign(session);
-            byte[] body = (byte[])template.Clone();
+            var output = new MemoryStream();
+            output.WriteByte(InitializeSub);
+            var catchUp = new List<CharacterObjectiveModel>();
             lock (sync)
             {
-                foreach (Achievement a in achievements.Values)
-                {
-                    bool started = false;
-                    foreach (Objective o in a.Objectives)
-                    {
-                        var (state, current) = StateOf(character, o, a);
-                        BinaryPrimitives.WriteUInt32LittleEndian(body.AsSpan(o.StateOffset), state);
-                        BinaryPrimitives.WriteUInt32LittleEndian(body.AsSpan(o.CurrentOffset), current);
-                        started |= state != 0;
-                    }
-                    bool complete = IsComplete(character, a);
-                    // Start/completion times are only shown; the server doesn't keep them, so use "now" when set.
-                    ulong now = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                    BinaryPrimitives.WriteUInt64LittleEndian(body.AsSpan(a.StartedOffset), started ? now : 0);
-                    BinaryPrimitives.WriteUInt64LittleEndian(body.AsSpan(a.CompletedOffset), complete ? now : 0);
-                    BinaryPrimitives.WriteSingleLittleEndian(body.AsSpan(a.ProgressOffset), complete ? 1f : ProgressOf(character, a));
-                }
+                CatchUpSteps(character, catchUp);   // tutorial step goals (Achievements.Tutorial.cs)
+                // Every record but the Daily goals this character doesn't have today and the goal tiers it hasn't
+                // unlocked yet (those come one by one as AchievementAdd, Achievements.Tiers.cs).
+                var kept = achievements.Values.Where(a => (!a.Daily || dailies.Contains(a.Id)) && IsAvailable(character, a))
+                    .OrderBy(a => a.RecordStart).ToList();
+                output.Write(BitConverter.GetBytes((uint)kept.Count));
+                ulong now = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                foreach (Achievement a in kept)
+                    WriteRecord(output, character, a, now);
             }
-            // Every record but the Daily goals this character doesn't have today.
-            var kept = achievements.Values.Where(a => !a.Daily || dailies.Contains(a.Id)).OrderBy(a => a.RecordStart).ToList();
-            var output = new MemoryStream();
-            output.WriteByte(body[0]);
-            output.Write(BitConverter.GetBytes((uint)kept.Count));
-            foreach (Achievement a in kept)
-                output.Write(body, a.RecordStart, a.RecordEnd - a.RecordStart);
+            Save(catchUp);
             session.EnqueueMessage(ZoneMessageOpcode.AchievementBase, output.ToArray());
             SendTracker(session);
+        }
+
+        /// <summary>
+        /// One achievement record (FUN_142b7ca00; the layout is in docs/protocol.md "Achievements") with this character's
+        /// progress patched in: each objective's state and count, the start and completion times, the progress
+        /// float and the reward bundles' recipient guid. The same record is an Initialize list element (sub 3) and the
+        /// whole body of AchievementAdd (sub 2: 0.589 reader FUN_142d8c370 / 0.695 FUN_142e2a340 read it with the same
+        /// record reader as the list). Call
+        /// under <see cref="sync"/>.
+        /// </summary>
+        private static void WriteRecord(Stream output, ulong character, Achievement a, ulong now)
+        {
+            byte[] rec = template.AsSpan(a.RecordStart, a.RecordEnd - a.RecordStart).ToArray();
+            int at(int offset) => offset - a.RecordStart;
+            bool started = false;
+            foreach (Objective o in a.Objectives)
+            {
+                var (state, current) = StateOf(character, o, a);
+                BinaryPrimitives.WriteUInt32LittleEndian(rec.AsSpan(at(o.StateOffset)), state);
+                BinaryPrimitives.WriteUInt32LittleEndian(rec.AsSpan(at(o.CurrentOffset)), current);
+                started |= state != 0;
+            }
+            bool complete = IsComplete(character, a);
+            // Start/completion times are only shown; the server doesn't keep them, so use "now" when set.
+            BinaryPrimitives.WriteUInt64LittleEndian(rec.AsSpan(at(a.StartedOffset)), started ? now : 0);
+            BinaryPrimitives.WriteUInt64LittleEndian(rec.AsSpan(at(a.CompletedOffset)), complete ? now : 0);
+            BinaryPrimitives.WriteSingleLittleEndian(rec.AsSpan(at(a.ProgressOffset)), complete ? 1f : ProgressOf(character, a));
+            // The capture's reward bundles name the captured character as the recipient; name this one instead.
+            foreach (int recipient in a.RecipientOffsets)
+                BinaryPrimitives.WriteUInt64LittleEndian(rec.AsSpan(at(recipient)), character);
+            output.Write(rec);
+        }
+
+        /// <summary>
+        /// AchievementAdd (AchievementBase sub 2 {one achievement record}): the client adds the goal to its list
+        /// (handler 0.589 FUN_142d8f4a0 / 0.695 FUN_142e2d470: a new achievement object filled from the record, filed by
+        /// id with its name and objective texts) so it shows in the Journal without a new Initialize.
+        /// </summary>
+        public static void SendAdd(WorldSession session, Achievement a)
+        {
+            var output = new MemoryStream();
+            output.WriteByte(AddSub);
+            lock (sync)
+                WriteRecord(output, session.PlayerGuid, a, (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            session.EnqueueMessage(ZoneMessageOpcode.AchievementBase, output.ToArray());
+            log.Info($"{session.CharacterName}: goal {a.Id} added (AchievementAdd).");
         }
 
         /// <summary>
@@ -330,9 +421,50 @@ namespace LandmarkEmulator.WorldServer.Game
         private const int MaxTracked = 64;
 
         /// <summary>
-        /// AchievementBase from the client. Sub 0x0C TrackerUpdate (ObjectivesController.SetTrackingAchievement →
-        /// FUN_142d95870 → FUN_142d8d920): one change, captured as u32 0, u32 n, n × u32 achievement, u32 removed
-        /// (0 = now tracked, 1 = no longer tracked). Kept per character and sent back at login (TrackerInitialize).
+        /// The goal a recipe record's TrackerAchievementId (record +0x40) may name: the recipe's
+        /// TRACKER_ACHIEVEMENT_ID when that goal is one the client gets (the Journal's Replicator goals), else 0.
+        /// <para>
+        /// Why (trace 2026-10-18, "the Watch button in the craft menus does not work"): the crafting window's Watch
+        /// button (0.695 CraftingWidget CraftingView.as) is enabled only when the selected recipe's AchievementId column
+        /// is not "0" and, when clicked, calls ObjectivesController.SetTrackingAchievement(AchievementId, selected)
+        /// (native FUN_143605450 → FUN_142e33840). That adds the id to the player's tracked set (player +0x1e600, the
+        /// set the window's IsTracking column reads, row builder FUN_14360e950), tells the watch list (FUN_14355baa0)
+        /// and sends TrackerUpdate. The watch list shows the goal only if the client holds its record
+        /// (FUN_14355baa0 → FUN_142e2f980 lookup → FUN_14355d070 row with the record's ObjectiveItemHint: item, count,
+        /// image, recipe → the recipe's components); without a record nothing appears, so the button looks dead [P].
+        /// 186 of the 363 station recipes with a tracker id have their goal in the live capture (one objective "the item
+        /// name", one ObjectiveItemHint, "can watch after completion" set, e.g. 1558 Cut Agate → 728). The other 177
+        /// (e.g. 38 Smelted Copper → 306, 17 → 146) have no record anywhere: the 20 Apr 2015 notes (P3248-P3253) say
+        /// the Journal's recipe tab holds a recipe goal for every recipe that is not free (free recipes need no
+        /// tracking). Sending 0 for those disables the button instead of leaving a button that does nothing
+        /// [I: what live put in +0x40 for those recipes is not captured].
+        /// </para>
+        /// </summary>
+        public static uint WatchableGoal(uint trackerAchievementId)
+            => trackerAchievementId != 0 && achievements.ContainsKey(trackerAchievementId) ? trackerAchievementId : 0;
+
+        /// <summary>
+        /// A completed goal leaves the tracked set: the client's AchievementComplete handler (FUN_142e2e390) drops the id
+        /// from its set (player +0x1e600) whether or not the goal may be watched again [P], so the server drops it too —
+        /// otherwise the next TrackerInitialize (relog, the next Getting Started goal) would put it back. Watching it again
+        /// (a Replicator goal has "can watch after completion") arrives as a new TrackerUpdate.
+        /// </summary>
+        private static void StopTrackingCompleted(WorldSession session, uint achievementId)
+        {
+            List<uint> tracked = Unlocks.Values(session.PlayerGuid, Unlocks.TrackedAchievement);
+            if (tracked.Remove(achievementId))
+                Unlocks.Replace(session, Unlocks.TrackedAchievement, tracked);
+        }
+
+        /// <summary>
+        /// AchievementBase from the client. Sub 0x0C TrackerUpdate (ObjectivesController.SetTrackingAchievement: the
+        /// Journal's right-click / watch button and the crafting window's Watch button → 0.695 FUN_143605450 →
+        /// FUN_142e33840, packet ctor FUN_142e2b8f0): one change, u32 n × {u32 id, AchievementData} (always 0 from the
+        /// client), u32 n, n × u32 achievement, u32 removed (0 = now tracked, 1 = no longer tracked) — reader
+        /// FUN_142e28e60 (FUN_142e29d50 list, FUN_142e29c10 set) [P]. The client has already changed its own set and
+        /// watch list, so no reply is needed (its S2C TrackerUpdate handler FUN_142e33d00 would be a no-op for a goal it
+        /// holds). Kept per character and sent back at login (TrackerInitialize). Ids of goals the server doesn't have
+        /// are not kept: the client can show nothing for them.
         /// </summary>
         [ZoneMessageHandler(ZoneMessageOpcode.AchievementBase)]
         public static void HandleRequest(WorldSession session, AchievementRequest request)
@@ -355,11 +487,57 @@ namespace LandmarkEmulator.WorldServer.Game
             if (removed)
                 tracked.ExceptWith(changed);
             else
-                tracked.UnionWith(changed);
+                tracked.UnionWith(changed.Where(achievements.ContainsKey));
             if (tracked.Count > MaxTracked)
                 return;
             Unlocks.Replace(session, Unlocks.TrackedAchievement, tracked);
             log.Debug($"{session.CharacterName} {(removed ? "stops tracking" : "tracks")} {string.Join(", ", changed)}; tracked now {string.Join(", ", tracked)}.");
+            // Your Home Is Your Castle: "Open your Journal [J] and right-click on "Props To You" in the Getting Started
+            // category to track it" (1322) — the right-click arrives as this TrackerUpdate with 480 in the list.
+            if (!removed && changed.Contains(PropsToYou))
+                Progress(session, TrackPropsToYou);
+        }
+
+        /// <summary>Getting Started goals and objectives counted by the hooks below (TASKS 5.5; texts 576227-576239).</summary>
+        private const uint PropsToYou = 480, TrackPropsToYou = 1322, PlaceCampfire = 1315,
+            LikeGallerySite = 1307, TravelToPlayerSite = 1308, FireGrapple = 1309;
+
+        /// <summary>
+        /// Cry Havoc!: "Place a campfire [5] for out-of-combat healing. Extra campfires can be crafted in the Lumen
+        /// Station." (1315, required 0 in the capture → 1). A Cozy Campfire was placed (Consumables).
+        /// </summary>
+        public static void CampfirePlaced(WorldSession session) => Progress(session, PlaceCampfire);
+
+        /// <summary>
+        /// Getting Around: "Visit a Build Site that is published in the gallery. and use the claim banner to give them a
+        /// 'Like'" (1307). A Like counted for another player's site (Ratings): since 2026-10-16 only sites published to
+        /// the gallery can be liked at all (Store.Gallery lists only those; TASKS 6.43), so every counted Like is one.
+        /// </summary>
+        public static void LikedSite(WorldSession session, ulong claimId)
+        {
+            if (WorldChannel.WorldChannelServices.Commerce.IsOnGallery(claimId))
+                Progress(session, LikeGallerySite);
+        }
+
+        /// <summary>
+        /// Getting Around: "Use the Travel menu to visit another player's build site." (1308). The player travelled to
+        /// a build site that isn't theirs (the gallery's Visit).
+        /// </summary>
+        public static void TravelledToSite(WorldSession session, ulong claimId)
+        {
+            if (Claims.OwnerOf(claimId) != session.PlayerGuid)
+                Progress(session, TravelToPlayerSite);
+        }
+
+        /// <summary>
+        /// Getting Around: "Ensure you are NOT in build mode or combat, then fire your grappling hook [Q] at your mouse
+        /// cursor position" (1309). HeroicMovement 0x105 sub 1 is the hook firing; the client fires it only outside
+        /// build mode and combat (inferred from the objective's wording), so every fire counts.
+        /// </summary>
+        public static void HeroicMovement(WorldSession session, byte sub)
+        {
+            if (sub == 1)
+                Progress(session, FireGrapple);
         }
 
         /// <summary>
@@ -369,6 +547,11 @@ namespace LandmarkEmulator.WorldServer.Game
         /// </summary>
         public static void Progress(WorldSession session, uint objectiveId, uint amount = 1)
         {
+            // Lost Crystal reached (TASKS 5.10): the one server event for it is the daily Cavern Crawler count
+            // (Outposts → DailyGoals.CrystalReached → objective 665 + 588), which arrives here whether or not that daily
+            // is assigned today; it also counts for Speak Friend and Enter 622 and its tiers 623 / 624.
+            if (objectiveId == DailyGoals.CavernCrawler + 588 && amount > 0)
+                ProgressByText(session, "Lost Crystal reached", amount);
             if (!byObjective.TryGetValue(objectiveId, out Achievement a))
                 return;
             Objective o = a.Objectives.First(x => x.Id == objectiveId);
@@ -377,6 +560,9 @@ namespace LandmarkEmulator.WorldServer.Game
             bool achievementDone = false;
             lock (sync)
             {
+                // A goal tier not unlocked yet (the client doesn't have it): nothing counts for it.
+                if (!IsAvailable(character, a))
+                    return;
                 var (state, current) = StateOf(character, o, a);
                 // Not started yet (captured state 0: meta goals "<X> completed", the secret emote goals, Guild joined,
                 // Blocks removed ...): the first thing that counts for it starts it (ObjectiveActivated), so every goal
@@ -409,6 +595,9 @@ namespace LandmarkEmulator.WorldServer.Game
                         w.Write(a.Id); w.Write(o.Id); w.Write(BitConverter.SingleToUInt32Bits(fraction)); w.Write(0u); w.Write(false);
                     }));
                     achievementDone = IsComplete(character, a);
+                    // Tutorial step goals: the next step starts once this one is done (Achievements.Tutorial.cs).
+                    if (!achievementDone && IsStepGoal(a.Id))
+                        ActivateNextStep(character, a, saves, session);
                 }
             }
             if (achievementDone)
@@ -422,6 +611,8 @@ namespace LandmarkEmulator.WorldServer.Game
         public const uint VisitNonPioneer = 1318;           // Becoming a Luminary: travel to an Underground Adventure
         private const uint AxeTutorial = 741, PickTutorial = 742; // Getting Around: harvest 25 wood / 50 ore, gems, stone
         private const uint AxeLifetime = 1122, PickLifetime = 1119;
+        /// <summary>630 I Feel the Earth ...Move (a tier with no capture record, Achievements.Tiers.cs): objective id inferred.</summary>
+        private const uint PickLifetimeTier2 = 1120;
 
         /// <summary>Harvested item → its "X harvested" objective (This Stuff is EVERYWHERE, Obtain ...ium?, What About Teak?).</summary>
         private static readonly Dictionary<uint, uint> harvestObjectives = new()
@@ -447,12 +638,26 @@ namespace LandmarkEmulator.WorldServer.Game
             else if (!commonGround.Contains(item))
             {
                 Progress(session, PickTutorial, count);
+                // 630 counts only once 629 is complete (unlocked); counted first, so the swing that completes 629
+                // doesn't count for 630 too (as ProgressByText).
+                Progress(session, PickLifetimeTier2, count);
                 Progress(session, PickLifetime, count);
             }
-            if (harvestObjectives.TryGetValue(item, out uint objective))
+            uint objective = harvestObjectives.GetValueOrDefault(item);
+            if (objective != 0)
                 Progress(session, objective, count);
             DailyGoals.Harvested(session, woods.Contains(item), commonGround.Contains(item), count);
-            ProgressByText(session, ItemName(item) + " harvested", count);
+            // 13 Apr 2016 (P4559): harvesting dailies count for everyone who receives a share of the harvest
+            // (TASKS 6.55). The receivers are the party members Gathering.GiveHarvest shared this harvest with (the same
+            // Groups.NearbyMembers call and range); each counts the same amount for their own daily. Only the dailies:
+            // the note names no other goal, so the achievement objectives above stay with the gatherer.
+            foreach (WorldSession member in Groups.NearbyMembers(session, Gathering.PartyShareRange))
+                DailyGoals.Harvested(member, woods.Contains(item), commonGround.Contains(item), count);
+            // The objective counted by id above has this very text for most of those items (1133 "Stone harvested" for item
+            // 46 Stone, 1148 "Plain Wood harvested" for 71 …): it must not count a second time by its text, which made
+            // This Stuff is EVERYWHERE / What About Teak? (and Obtain ...ium? where the ore's name matches) advance twice
+            // per harvest (bughunt-combat.md B3).
+            ProgressByText(session, ItemName(item) + " harvested", count, except: objective);
         }
 
         private static Dictionary<string, List<uint>> objectivesByText;
@@ -479,15 +684,45 @@ namespace LandmarkEmulator.WorldServer.Game
             }
         }
 
-        /// <summary>Counts towards every objective whose text is exactly <paramref name="text"/> (case-insensitive).</summary>
-        private static void ProgressByText(WorldSession session, string text, uint amount = 1)
+        /// <summary>
+        /// Counts towards every objective whose text is exactly <paramref name="text"/> (case-insensitive);
+        /// <paramref name="unmappedOnly"/> leaves out the objectives a meta goal's capture map names (those count by the
+        /// map, <see cref="Complete"/>); <paramref name="except"/>: an objective the caller already counted by its id.
+        /// </summary>
+        private static void ProgressByText(WorldSession session, string text, uint amount = 1, bool unmappedOnly = false, uint except = 0)
         {
             if (string.IsNullOrWhiteSpace(text))
                 return;
-            if (ObjectivesByText.TryGetValue(text.Trim().ToLowerInvariant(), out List<uint> ids))
-                foreach (uint id in ids)
-                    if (!byObjective[id].Daily)      // dailies are counted by DailyGoals
-                        Progress(session, id, amount);
+            if (!ObjectivesByText.TryGetValue(text.Trim().ToLowerInvariant(), out List<uint> ids))
+                return;
+            // Dailies are counted by DailyGoals. The goal tiers open now are picked before counting, so the count that
+            // completes one tier (and unlocks the next, e.g. the 10th "Monsters killed") does not count for the next
+            // tier too (inferred: the live rule is not known).
+            List<uint> open;
+            lock (sync)
+                open = ids.Where(id => id != except && !byObjective[id].Daily && IsAvailable(session.PlayerGuid, byObjective[id])
+                    && !(unmappedOnly && mappedObjectives.Contains(id))).ToList();
+            foreach (uint id in open)
+                Progress(session, id, amount);
+        }
+
+        /// <summary>
+        /// Like <see cref="ProgressByText"/> for several texts at once (e.g. every name of one prop): each objective any
+        /// of them names counts once, so one placement never counts twice for one objective.
+        /// </summary>
+        private static void ProgressByTexts(WorldSession session, IEnumerable<string> texts, uint amount = 1)
+        {
+            var ids = new HashSet<uint>();
+            foreach (string text in texts)
+                if (!string.IsNullOrWhiteSpace(text) && ObjectivesByText.TryGetValue(text.Trim().ToLowerInvariant(), out List<uint> found))
+                    ids.UnionWith(found);
+            if (ids.Count == 0)
+                return;
+            List<uint> open;
+            lock (sync)
+                open = ids.Where(id => !byObjective[id].Daily && IsAvailable(session.PlayerGuid, byObjective[id])).ToList();
+            foreach (uint id in open)
+                Progress(session, id, amount);
         }
 
         private static string ItemName(uint item)
@@ -506,11 +741,45 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>
+        /// A prop recipe was learned (a "Recipe:" item that teaches a prop, RecipeBook.LearnProp / TeachPropOf; TASKS
+        /// 5.7): the recipe item's own name (Recipe Discoveries, e.g. "Recipe: Dust Devil Mote Emitter") and
+        /// "&lt;prop item&gt; recipe unlocked" (Fit For A King "Regal Fireplace recipe unlocked", Winter is Coming...). The
+        /// prop item is named by the recipe item without "Recipe: " and by the items that place the prop; each distinct
+        /// name counts once.
+        /// </summary>
+        public static void PropRecipeLearned(WorldSession session, uint recipeItem, uint propId)
+        {
+            string recipeName = ItemName(recipeItem);
+            ProgressByText(session, recipeName);
+            // Recipe Discoveries records whose objective text is not the recipe's name ("Recipe: Apples" 913 →
+            // objective 1575 "Recipe unlocked"): the goal named like the recipe item counts (TASKS 5.10).
+            RecipeGoalByName(session, recipeName);
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            const string prefix = "Recipe: ";
+            if (recipeName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                names.Add(recipeName[prefix.Length..].Trim());
+            foreach (var item in Inventory.ItemDefinitionManager.ItemsForProp(propId))
+                if (ItemName(item.Id) is { Length: > 0 } name)
+                    names.Add(name.Trim());
+            // Goal texts put the qualifier first: "Table (Small Round Regal)" → "Small Round Regal Table recipe unlocked",
+            // "Rug (Large Rectangular)" → "Large Rectangular Rug", "Shag Rug (Sliding)" → "Sliding Shag Rug" (TASKS 5.10).
+            foreach (string name in names.ToList())
+                if (Reordered(name) is string turned)
+                    names.Add(turned);
+            ProgressByTexts(session, names.Select(n => n + " recipe unlocked"));
+            // "<creature> unlocked" (The Bigger They Are, Furry Woodland Creatures, Scalewind Squared, I'm NOT the Tin
+            // Dog, Night and Day: 18 objectives, e.g. "Magma Giant unlocked"): the creature prop's recipe item
+            // ("Recipe: Magma Giant" 3641 → prop 2483) was used. No other objective text ends in "<prop name> unlocked".
+            ProgressByTexts(session, names.Select(n => n + " unlocked"));
+        }
+
+        /// <summary>
         /// Voxels built: "Blocks placed", "&lt;material name&gt; blocks placed", and the biome goals ("Blocks placed in old
         /// growth forests" / "volcanic areas") for where the builder stands.
         /// </summary>
         public static void BlocksPlaced(WorldSession session, string materialName, uint count)
         {
+            Progress(session, PlaceBlocks, count);   // Building Block Basics "Place blocks" (Achievements.Tutorial.cs)
             ProgressByText(session, "Blocks placed", count);
             if (!string.IsNullOrEmpty(materialName))
                 ProgressByText(session, materialName + " blocks placed", count);
@@ -524,6 +793,7 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <summary>Voxels taken down by building tools: "Blocks removed" and "&lt;material name&gt; blocks removed".</summary>
         public static void BlocksRemoved(WorldSession session, string materialName, uint count)
         {
+            Progress(session, DeleteBlocks, count);  // Building Block Basics "Delete blocks" (Achievements.Tutorial.cs)
             ProgressByText(session, "Blocks removed", count);
             if (!string.IsNullOrEmpty(materialName))
                 ProgressByText(session, materialName + " blocks removed", count);
@@ -531,6 +801,15 @@ namespace LandmarkEmulator.WorldServer.Game
 
         /// <summary>"Group joined" (So Happy Together).</summary>
         public static void GroupJoined(WorldSession session) => ProgressByText(session, "Group joined");
+
+        public static bool IsFungus(string creatureName)
+            => creatureName.Contains("Fung", StringComparison.OrdinalIgnoreCase) || creatureName.Contains("Mushroom", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// "You Can Kill Those Things" (objective "Dispatch explode-y mushrooms"): a Fiery Fungus died near the player,
+        /// whoever or whatever killed it (it counts any Fiery Fungus that dies near you, P5753, 7 Jun 2016).
+        /// </summary>
+        public static void FungusDied(WorldSession session) => ProgressByText(session, "Dispatch explode-y mushrooms");
 
         private static DateTime nextGroupTick = DateTime.UtcNow;
 
@@ -548,10 +827,11 @@ namespace LandmarkEmulator.WorldServer.Game
                 if (DailyGoals.NewDay(session))
                     SendInitial(session);
             foreach (WorldSession session in PlayerManager.Snapshot())
-                if (Groups.MembersOf(session).Count > 1)
+                if (Groups.IsGrouped(session))
                 {
                     ProgressByText(session, "Spend 10 minutes grouped up", 60);
                     ProgressByText(session, "Spend 60 minutes grouped up", 60);
+                    ProgressByText(session, "Spend 5 hours grouped up", 60);   // 506 Wind Beneath My Wings (tier)
                 }
         }
 
@@ -601,19 +881,21 @@ namespace LandmarkEmulator.WorldServer.Game
         };
 
         /// <summary>
-        /// A build site switched mode (F5). Play: "Switch your Build Site to Play Mode" (747) and "enable Play Mode on
-        /// your site once again" (838, 2 times); Edit: "Return your site to Edit Mode" (1317). Only active objectives count.
+        /// A build site switched mode (F5). Play: "Switch your Build Site to Play Mode" (747); Edit: "Return your site
+        /// to Edit Mode" (1317). Only active objectives count. 838 ("…enable Play Mode [F5] on your site once again, and
+        /// defeat the Barren Flameblades!", 2 times) is counted by the Flameblade kills (<see cref="Killed"/>), not here:
+        /// the count is the two Flameblades the goal had the player place (goals audit 2026-10-16).
         /// </summary>
         public static void SiteModeChanged(WorldSession session, bool play)
         {
             if (play)
-            {
                 Progress(session, 747);
-                Progress(session, 838);
-            }
             else
                 Progress(session, 1317);
         }
+
+        /// <summary>Cry Havoc!: "…enable Play Mode [F5] on your site once again, and defeat the Barren Flameblades!" (838, 2).</summary>
+        private const uint DefeatFlameblades = 838;
 
         /// <summary>"Close build mode [Tab] and equip your weapon".</summary>
         public const uint EquipWeapon = 1272;
@@ -630,6 +912,7 @@ namespace LandmarkEmulator.WorldServer.Game
         public static void UiEvent(WorldSession session, uint eventId)
         {
             log.Debug($"{session.CharacterName} UI event {eventId}.");
+            TutorialUiEvent(session, eventId);   // Blocks tab, Fine Tuning paste options (Achievements.Tutorial.cs)
             if (uiObjectives.TryGetValue(eventId, out uint objective))
                 Progress(session, objective);
             else if (eventId == BuildModeOpened && Claims.IsOnOwnSite(session))
@@ -667,19 +950,28 @@ namespace LandmarkEmulator.WorldServer.Game
             return set;
         });
 
-        /// <summary>The player tinted one of their props (build tray tint tab).</summary>
-        public static void PropTinted(WorldSession session, uint propId)
+        /// <summary>
+        /// The player tinted one of their props (build tray tint tab) with the tint <paramref name="alias"/> (a
+        /// GlobalTint_* alias of the prop tint palette; empty when not known): Props To You's stool, "Props tinted" (Just
+        /// Like Crayons!, 5) and the colour goals (<see cref="ColourTinted"/>, Achievements.Triggers.cs).
+        /// </summary>
+        public static void PropTinted(WorldSession session, uint propId, string alias = "")
         {
             if (simpleStools.Value.Contains(propId))
                 Progress(session, TintSimpleStool);
+            ProgressByText(session, "Props tinted");
+            ColourTinted(session, propId, alias ?? "");
         }
 
         /// <summary>A prop was placed for the first time.</summary>
         public static void PropPlaced(WorldSession session, uint propId)
         {
-            // "<prop> placed" goals (e.g. "Padded Sofa placed"), named like the item that places the prop.
-            foreach (var item in Inventory.ItemDefinitionManager.ItemsForProp(propId).Take(1))
-                ProgressByText(session, ItemName(item.Id) + " placed");
+            // "<prop> placed" goals (e.g. "Padded Sofa placed"), named like the items that place the prop, with the
+            // goal texts' word orders and plurals (PlacedNames, Achievements.Triggers.cs: "Rug (Large Rectangular)" →
+            // "Large Rectangular Rug placed", "Mug" → "Mugs placed").
+            ProgressByTexts(session, PlacedNames(propId).Select(n => n + " placed"));
+            PlacedTriggers(session, propId);
+            TutorialPropPlaced(session, propId);   // Getting Crafty: the Replicator (Achievements.Tutorial.cs)
             if (simpleStools.Value.Contains(propId))
                 Progress(session, PlaceSimpleStool);
             else if (placeObjectives.TryGetValue(propId, out uint objective))
@@ -688,9 +980,13 @@ namespace LandmarkEmulator.WorldServer.Game
                 Progress(session, PlaceFlameblade);
         }
 
-        /// <summary>The player finished crafting an item.</summary>
-        public static void Crafted(WorldSession session, uint itemDefinitionId)
+        /// <summary>
+        /// The player finished crafting an item (one crafting job of <paramref name="crafts"/> crafts). Only the tutorial
+        /// goals count the crafts (Achievements.Tutorial.cs); the other crafting objectives count one per job, as before.
+        /// </summary>
+        public static void Crafted(WorldSession session, uint itemDefinitionId, uint crafts = 1)
         {
+            TutorialCrafted(session, itemDefinitionId, Math.Max(crafts, 1));
             if (itemDefinitionId == DungeonStarterSetItem)
                 Progress(session, CraftDungeonStarterSet);
             if (CraftObjectives.TryGetValue(itemDefinitionId, out List<uint> objectives))
@@ -699,6 +995,7 @@ namespace LandmarkEmulator.WorldServer.Game
             // "Extractor acquired" (Power! Unlimited ...Power!): the NovaTech Extractor is the 0.589 extractor.
             if (ItemName(itemDefinitionId).Contains("Extractor", StringComparison.OrdinalIgnoreCase))
                 ProgressByText(session, "Extractor acquired");
+            CraftedTriggers(session, itemDefinitionId);
         }
 
         private static Dictionary<uint, List<uint>> craftObjectives;
@@ -747,22 +1044,55 @@ namespace LandmarkEmulator.WorldServer.Game
         public const uint ItemTraded = 845;
         /// <summary>"Designs placed in a Build Site" (Building Better Worlds).</summary>
         public const uint DesignsPlaced = 783;
+        /// <summary>"Designs placed in a Build Site" of the tier 531 All Of Them ...Better Worlds (id inferred, Achievements.Tiers.cs).</summary>
+        private const uint DesignsPlacedTier2 = 784;
 
         /// <summary>
-        /// A creature kill: "Monsters killed" (every tier with that text), the creature family's "&lt;Family&gt; killed"
-        /// (Barren, Scalewind, Highfall, NovaTech, Ebonguard, Stoneskin — the names the creature kinds carry), "Dispatch
-        /// explode-y mushrooms" for Fiery Fungus, and "Kills with a(n) &lt;Element&gt; weapon" for the held weapon's
-        /// affinity (Physical is the Earth line, as for the daily wielder goals).
+        /// Creatures that count as "Monsters" for "Monsters killed" (TASKS 5.11): the Chaos Caverns monsters, by the
+        /// names their kinds carry — "Slaug" (Wood / Rotten / Magma … Slaug, the story spawners' "Slaug"), "Abomination"
+        /// and "Chomper" (Forest / Putrid / Scorched … Chomper). Reconciled sources:
+        /// <list type="bullet">
+        /// <item>wiki They Got In My Way / Hunting the Beasts / Murderer of Monsters: monsters are Slaugs,
+        /// Abominations, Chompers and the exploding mushrooms, and nothing else counts;</item>
+        /// <item>P4801 (26 Apr 2016, after the launch-era wiki text): Fiery Fungi stop counting for any kill goal. The
+        /// later patch note wins for the mushrooms: a Fiery Fungus never counts here (it counts only for
+        ///   "Dispatch explode-y mushrooms", <see cref="FungusDied"/>, P5753).</item>
+        /// </list>
+        /// Barren, Scalewind, Highfall, NovaTech, Ebonguard and Stoneskin characters, kobolds, animals and other story
+        /// creatures are not monsters: they count for their own "&lt;Family&gt; killed" goals only.
+        /// </summary>
+        public static bool IsCaveMonster(string creatureName)
+        {
+            string n = creatureName ?? "";
+            return !IsFungus(n) && (n.Contains("Slaug", StringComparison.OrdinalIgnoreCase)
+                || n.Contains("Abomination", StringComparison.OrdinalIgnoreCase)
+                || n.Contains("Chomper", StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// A creature kill: "Monsters killed" (every tier with that text) for cave monsters only (<see cref="IsCaveMonster"/>,
+        /// TASKS 5.11), the creature family's "&lt;Family&gt; killed" (Barren, Scalewind, Highfall, NovaTech, Ebonguard,
+        /// Stoneskin — the names the creature kinds carry), "Kills with a(n) &lt;Element&gt; weapon" for the held weapon's
+        /// affinity (Physical is the Earth line, as for the daily wielder goals), and the kill-in-a-biome goals
+        /// (<see cref="KilledTriggers"/>). Fiery Fungi count for none of them (P4801, 26 Apr 2016): their deaths count
+        /// only toward "You Can Kill Those Things"
+        /// (<see cref="FungusDied"/>).
         /// </summary>
         public static void Killed(WorldSession session, string creatureName = "")
         {
-            ProgressByText(session, "Monsters killed");
             string name = creatureName ?? "";
+            if (IsFungus(name))
+                return;
+            if (IsCaveMonster(name))
+                ProgressByText(session, "Monsters killed");
+            // Cry Havoc! 838: a Barren Flameblade (creature prop 2451 "Barren Flameblade", placed from item 3162 for 745)
+            // killed; the story creature's kind carries the prop's name (Creatures.SpawnerKind).
+            if (name.Contains("Flameblade", StringComparison.OrdinalIgnoreCase))
+                Progress(session, DefeatFlameblades);
+            KilledTriggers(session, name);
             foreach (string family in new[] { "Barren", "Scalewind", "Highfall", "NovaTech", "Ebonguard", "Stoneskin" })
                 if (name.Contains(family, StringComparison.OrdinalIgnoreCase))
                     ProgressByText(session, family + " killed");
-            if (name.Contains("Fung", StringComparison.OrdinalIgnoreCase) || name.Contains("Mushroom", StringComparison.OrdinalIgnoreCase))
-                ProgressByText(session, "Dispatch explode-y mushrooms");
             string element = HitEffects.HeldAffinity(session) switch { "Physical" => "Earth", null => null, var a => a };
             if (!string.IsNullOrEmpty(element))
             {
@@ -801,6 +1131,8 @@ namespace LandmarkEmulator.WorldServer.Game
             {
                 ProgressByText(session, $"\"Like\" a {tag} Build Site");
                 ProgressByText(session, $"\"Like\" an {tag} Build Site");
+                if (RiddleLikes.TryGetValue(tag, out uint riddle))
+                    Progress(session, riddle);
             }
         }
 
@@ -815,6 +1147,7 @@ namespace LandmarkEmulator.WorldServer.Game
         public static void ScanCompleted(WorldSession session) => ProgressByText(session, "Scan completed");
         public static void DesignPlaced(WorldSession session, string name = "")
         {
+            Progress(session, DesignsPlacedTier2);   // 531 All Of Them ...Better Worlds, once 530 is complete (first: see Harvested)
             Progress(session, DesignsPlaced);
             // Getting Started: "Place Castle Courtyard design", "Place Castle Wall Entry design on your Build Site"…
             if (name.Length > 0)
@@ -844,7 +1177,8 @@ namespace LandmarkEmulator.WorldServer.Game
         /// the Things → Warmaster (3915), 618 There Can Be Only One → Elementalist (3923), 645 → Researcher (3927),
         /// 655 Ridiculously Good Outfits → Fashion Mogul (3928), 685 Becoming a Luminary → Luminary (3929). Deforester
         /// (3926, "finally got enough burled wood!") has no achievement in the 0.589 data but is listed for completeness;
-        /// 575535 "has obtained the unobtainable!" belongs to Treasure Hunter or Strip Miner (neither awarded in 0.589).
+        /// 575535 "has obtained the unobtainable!" most likely belongs to Strip Miner [I] (trace/0695/agent-leads2-c.md L46;
+        /// neither it nor Treasure Hunter is awarded in 0.589).
         /// </summary>
         private static readonly Dictionary<uint, uint> AnnouncedTitles = new()
         {
@@ -879,14 +1213,27 @@ namespace LandmarkEmulator.WorldServer.Game
         private static void Complete(WorldSession session, Achievement a, List<CharacterObjectiveModel> saves)
         {
             session.EnqueueMessage(ZoneMessageOpcode.AchievementBase, Build(CompleteSub, w => w.Write(a.Id)));
-            // Meta goals: "<achievement name> completed".
-            ProgressByText(session, (LandmarkEmulator.Shared.GameTable.Text.TextManager.Instance.GetTextForId(a.NameId) ?? "") + " completed");
+            StopTrackingCompleted(session, a.Id);
+            // Meta goals: "<achievement name> completed" — only for objectives no capture map names. The maps below are
+            // the live link; by text alone, 656 A Light in the Darkness (500 Lightstones) would also tick There Can Be
+            // Only One's 1091 "A Light in the Darkness completed", which the map gives to 606 Beacon of Hope (the 10
+            // Radiance kills), and finishing a Water tier would tick both 1086 and 1087 (goals audit 2026-10-16).
+            ProgressByText(session, (LandmarkEmulator.Shared.GameTable.Text.TextManager.Instance.GetTextForId(a.NameId) ?? "") + " completed", 1, unmappedOnly: true);
             foreach ((uint item, uint count) in a.Rewards)
                 session.GiveItem(item, Math.Max(count, 1));
             log.Info($"{session.CharacterName} completed achievement {a.Id}.");
             foreach ((uint item, _) in a.Rewards)
                 if (AnnouncedTitles.TryGetValue(item, out uint announce))
                     Announce(session, a, announce);
+            // Meta goals by the capture's own objective → child map (TASKS 5.9): also covers the children whose
+            // objective text differs from their name ("If It Bleeds ... Completed", "Between a Rock ... Completed").
+            if (metaObjectivesByChild.TryGetValue(a.Id, out List<uint> metaObjectives))
+                foreach (uint objective in metaObjectives)
+                    Progress(session, objective);
+            // The next goal tier ("Unlocks ..." on the wiki pages) arrives as AchievementAdd.
+            if (unlockedByTier.TryGetValue(a.Id, out List<Achievement> unlocked))
+                foreach (Achievement tier in unlocked)
+                    SendAdd(session, tier);
 
             int chain = Array.IndexOf(GettingStarted, a.Id);
             if (chain < 0 || chain + 1 >= GettingStarted.Length || Get(GettingStarted[chain + 1]) is not Achievement next)
@@ -894,6 +1241,12 @@ namespace LandmarkEmulator.WorldServer.Game
             lock (sync)
                 foreach (Objective o in next.Objectives)
                 {
+                    // A tutorial step goal starts with its first step only (Achievements.Tutorial.cs).
+                    if (IsStepGoal(next.Id))
+                    {
+                        ActivateNextStep(session.PlayerGuid, next, saves, session);
+                        break;
+                    }
                     if (StateOf(session.PlayerGuid, o, next).State != 0)
                         continue;
                     Set(session.PlayerGuid, next, o, 1, 0, saves);
@@ -918,6 +1271,16 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>Is the achievement complete for this character?</summary>
+        /// <summary>
+        /// A character's Luminary Score, as its own client works it out (AchievementInfo "TotalPoints"): the points of every
+        /// goal it has completed. Known for characters whose progress is loaded (in the world).
+        /// </summary>
+        public static uint LuminaryScore(ulong character)
+        {
+            lock (sync)
+                return (uint)achievements.Values.Where(a => IsComplete(character, a)).Sum(a => (long)a.Points);
+        }
+
         public static bool IsComplete(ulong character, uint achievementId)
         {
             lock (sync)

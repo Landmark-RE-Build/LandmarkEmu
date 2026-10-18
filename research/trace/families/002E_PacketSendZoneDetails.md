@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 0 (0 not handled) · S2C 1 (0 never sent / opcode unknown)
 
 ## S2C PacketSendZoneDetails  `0x2E`
-- server: SENT (264× in opcode_stats) · seen in play 264×
+- server: SENT (38× in opcode_stats) · seen in play 1071×
 - case functions (dispatcher): FUN_142bcc350 FUN_142b8aee0 FUN_142cb9720 FUN_142a8c1c0
 - data sources: GameData.WorldZoneLocation · GameData.
 - text keys: Landmark.log

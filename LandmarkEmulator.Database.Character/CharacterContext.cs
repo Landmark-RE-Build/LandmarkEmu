@@ -19,11 +19,22 @@ namespace LandmarkEmulator.Database.Character
         public DbSet<CharacterPaletteEntryModel> CharacterPaletteEntry { get; set; }
         public DbSet<WorldPropBindingModel> WorldPropBinding { get; set; }
         public DbSet<WorldPropSettingModel> WorldPropSetting { get; set; }
+        /// <summary>Trigger volumes made with the Area Tool (Linking Area boxes): Game.AreaDefinitions.</summary>
+        public DbSet<WorldAreaModel> WorldArea { get; set; }
         public DbSet<ClaimVendorItemModel> ClaimVendorItem { get; set; }
         public DbSet<CharacterFriendModel> CharacterFriend { get; set; }
         public DbSet<CharacterIgnoreModel> CharacterIgnore { get; set; }
+        /// <summary>Client preference documents (PreferencePacketClientXml 0x03; Game.Preferences).</summary>
+        public DbSet<CharacterPreferenceModel> CharacterPreference { get; set; }
+        /// <summary>Saved bag filters (PlayerFilterUpdatePacket 0xDD sub 4; Game.InventoryFilters).</summary>
+        public DbSet<CharacterInventoryFilterModel> CharacterInventoryFilter { get; set; }
         public DbSet<PlayerStudioProductModel> PlayerStudioProduct { get; set; }
         public DbSet<PlayerStudioReviewModel> PlayerStudioReview { get; set; }
+        /// <summary>Comments on build sites' gallery entries (Game.Gallery).</summary>
+        public DbSet<GalleryCommentModel> GalleryComment { get; set; }
+        public DbSet<ShowcaseFollowModel> ShowcaseFollow { get; set; }
+        public DbSet<ShowcaseDigestRunModel> ShowcaseDigestRun { get; set; }
+        public DbSet<SiteTemplateInstanceModel> SiteTemplateInstance { get; set; }
         public DbSet<CharacterObjectiveModel> CharacterObjective { get; set; }
         public DbSet<GuildModel> Guild { get; set; }
         public DbSet<GuildMemberModel> GuildMember { get; set; }
@@ -50,6 +61,14 @@ namespace LandmarkEmulator.Database.Character
                 optionsBuilder.UseConfiguration(config, type);
         }
 
+        /// <remarks>
+        /// Keep this model, the migrations and Migrations/CharacterContextModelSnapshot.cs in step: a text or blob column a
+        /// migration creates <c>nullable: false</c> needs <c>.IsRequired()</c> here (this project has no nullable reference
+        /// types, so a string or byte[] property is otherwise nullable), or the model reports pending changes against the
+        /// snapshot. 2026-10-18: 21 such columns (claim, mail, template, world_area, world_prop, player_studio_product,
+        /// character_ignore) lacked it; their migrations always created them NOT NULL (the strings with DEFAULT ''), so the database was right
+        /// and no migration was needed.
+        /// </remarks>
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<CharacterModel>(entity =>
@@ -107,6 +126,27 @@ namespace LandmarkEmulator.Database.Character
                     .HasColumnName("playedMinutes")
                     .HasColumnType("int(10) unsigned")
                     .HasDefaultValue(0u);
+
+                entity.Property(e => e.Bio)
+                    .IsRequired()
+                    .HasColumnName("bio")
+                    .HasColumnType("varchar(512)")
+                    .HasDefaultValue("");
+
+                entity.Property(e => e.ChatBubbleForeground)
+                    .HasColumnName("chatBubbleFg")
+                    .HasColumnType("int(10) unsigned")
+                    .HasDefaultValue(0xFFFFFFu);
+
+                entity.Property(e => e.ChatBubbleBackground)
+                    .HasColumnName("chatBubbleBg")
+                    .HasColumnType("int(10) unsigned")
+                    .HasDefaultValue(0xD4E2F0u);
+
+                entity.Property(e => e.ChatBubbleSize)
+                    .HasColumnName("chatBubbleSize")
+                    .HasColumnType("int(10) unsigned")
+                    .HasDefaultValue(1u);
 
                 entity.Property(e => e.PositionX)
                     .HasColumnName("positionX")
@@ -247,6 +287,19 @@ namespace LandmarkEmulator.Database.Character
                     .HasColumnType("float")
                     .HasDefaultValue(0f);
 
+                entity.Property(e => e.TradeableAfter)
+                    .HasColumnName("tradeableAfter")
+                    .HasColumnType("datetime");
+
+                entity.Property(e => e.ExpiresAt)
+                    .HasColumnName("expiresAt")
+                    .HasColumnType("datetime");
+
+                entity.Property(e => e.AutoResupply)
+                    .HasColumnName("autoResupply")
+                    .HasColumnType("tinyint(1)")
+                    .HasDefaultValue(false);
+
                 entity.HasOne(d => d.Character)
                     .WithMany(p => p.Items)
                     .HasForeignKey(d => d.CharacterId)
@@ -283,6 +336,21 @@ namespace LandmarkEmulator.Database.Character
                 entity.Property(e => e.Slot)
                     .HasColumnName("slot")
                     .HasColumnType("int(10) unsigned");
+
+                entity.Property(e => e.Wear)
+                    .HasColumnName("wear")
+                    .HasColumnType("float")
+                    .HasDefaultValue(0f);
+
+                entity.Property(e => e.DepositorGuid)
+                    .HasColumnName("depositorGuid")
+                    .HasColumnType("bigint(20) unsigned")
+                    .HasDefaultValue(0ul);
+
+                entity.Property(e => e.AutoResupply)
+                    .HasColumnName("autoResupply")
+                    .HasColumnType("tinyint(1)")
+                    .HasDefaultValue(false);
             });
 
             modelBuilder.Entity<WorldPropModel>(entity =>
@@ -366,16 +434,19 @@ namespace LandmarkEmulator.Database.Character
                     .HasDefaultValue(406u);
 
                 entity.Property(e => e.TintAlias)
+                    .IsRequired()
                     .HasColumnName("tintAlias")
                     .HasColumnType("varchar(64)")
                     .HasDefaultValue("");
 
                 entity.Property(e => e.CustomName)
+                    .IsRequired()
                     .HasColumnName("customName")
                     .HasColumnType("varchar(128)")
                     .HasDefaultValue("");
 
                 entity.Property(e => e.Text)
+                    .IsRequired()
                     .HasColumnName("text")
                     .HasColumnType("varchar(1024)")
                     .HasDefaultValue("");
@@ -384,6 +455,26 @@ namespace LandmarkEmulator.Database.Character
                     .HasColumnName("disabled")
                     .HasColumnType("tinyint(1)")
                     .HasDefaultValue(false);
+
+                entity.Property(e => e.PackGroup)
+                    .HasColumnName("packGroup")
+                    .HasColumnType("bigint(20) unsigned")
+                    .HasDefaultValue(0ul);
+
+                entity.Property(e => e.PackSpawner)
+                    .HasColumnName("packSpawner")
+                    .HasColumnType("int(10) unsigned")
+                    .HasDefaultValue(0u);
+
+                entity.Property(e => e.PaidByItem)
+                    .HasColumnName("paidByItem")
+                    .HasColumnType("int(10) unsigned")
+                    .HasDefaultValue(0u);
+
+                entity.Property(e => e.PaidByItemGuid)
+                    .HasColumnName("paidByItemGuid")
+                    .HasColumnType("bigint(20) unsigned")
+                    .HasDefaultValue(0ul);
             });
 
             modelBuilder.Entity<MailModel>(entity =>
@@ -410,16 +501,19 @@ namespace LandmarkEmulator.Database.Character
                     .HasColumnType("bigint(20) unsigned");
 
                 entity.Property(e => e.SenderName)
+                    .IsRequired()
                     .HasColumnName("senderName")
                     .HasColumnType("varchar(64)")
                     .HasDefaultValue("");
 
                 entity.Property(e => e.Subject)
+                    .IsRequired()
                     .HasColumnName("subject")
                     .HasColumnType("varchar(128)")
                     .HasDefaultValue("");
 
                 entity.Property(e => e.Body)
+                    .IsRequired()
                     .HasColumnName("body")
                     .HasColumnType("varchar(4096)")
                     .HasDefaultValue("");
@@ -438,6 +532,7 @@ namespace LandmarkEmulator.Database.Character
                     .HasColumnType("int(10) unsigned");
 
                 entity.Property(e => e.Attachments)
+                    .IsRequired()
                     .HasColumnName("attachments")
                     .HasColumnType("varchar(256)")
                     .HasDefaultValue("");
@@ -459,16 +554,19 @@ namespace LandmarkEmulator.Database.Character
                     .ValueGeneratedOnAdd();
 
                 entity.Property(e => e.AuthorName)
+                    .IsRequired()
                     .HasColumnName("authorName")
                     .HasColumnType("varchar(64)")
                     .HasDefaultValue("");
 
                 entity.Property(e => e.Name)
+                    .IsRequired()
                     .HasColumnName("name")
                     .HasColumnType("varchar(128)")
                     .HasDefaultValue("");
 
                 entity.Property(e => e.Tags)
+                    .IsRequired()
                     .HasColumnName("tags")
                     .HasColumnType("varchar(512)")
                     .HasDefaultValue("");
@@ -486,11 +584,13 @@ namespace LandmarkEmulator.Database.Character
                     .HasColumnType("int(10) unsigned");
 
                 entity.Property(e => e.Materials)
+                    .IsRequired()
                     .HasColumnName("materials")
                     .HasColumnType("varchar(1024)")
                     .HasDefaultValue("");
 
                 entity.Property(e => e.Blocks)
+                    .IsRequired()
                     .HasColumnName("blocks")
                     .HasColumnType("longblob");
 
@@ -593,6 +693,16 @@ namespace LandmarkEmulator.Database.Character
                     .HasColumnType("int(10) unsigned")
                     .HasDefaultValue(0u);
 
+                entity.Property(e => e.GroupPermissions)
+                    .HasColumnName("groupPermissions")
+                    .HasColumnType("int(10) unsigned")
+                    .HasDefaultValue(0u);
+
+                entity.Property(e => e.GuildPermissions)
+                    .HasColumnName("guildPermissions")
+                    .HasColumnType("int(10) unsigned")
+                    .HasDefaultValue(0u);
+
                 entity.Property(e => e.ZoneId)
                     .HasColumnName("zoneId")
                     .HasColumnType("int(10) unsigned")
@@ -619,13 +729,31 @@ namespace LandmarkEmulator.Database.Character
                     .HasDefaultValue(1f);
 
                 entity.Property(e => e.Description)
+                    .IsRequired()
                     .HasColumnName("description")
                     .HasColumnType("varchar(512)")
                     .HasDefaultValue("");
 
                 entity.Property(e => e.Tags)
+                    .IsRequired()
                     .HasColumnName("tags")
                     .HasColumnType("varchar(512)")
+                    .HasDefaultValue("");
+
+                entity.Property(e => e.PlayMode)
+                    .HasColumnName("playMode")
+                    .HasColumnType("tinyint(1)")
+                    .HasDefaultValue(false);
+
+                entity.Property(e => e.AdventureFlags)
+                    .HasColumnName("adventureFlags")
+                    .HasColumnType("bigint(20) unsigned")
+                    .HasDefaultValue(0ul);
+
+                entity.Property(e => e.Inventory)
+                    .IsRequired()
+                    .HasColumnName("inventory")
+                    .HasColumnType("varchar(4096)")
                     .HasDefaultValue("");
             });
 
@@ -661,6 +789,17 @@ namespace LandmarkEmulator.Database.Character
                 entity.Property(e => e.Price).HasColumnName("price").HasColumnType("int(10) unsigned");
                 entity.Property(e => e.FeePaid).HasColumnName("feePaid").HasColumnType("int(10) unsigned");
                 entity.Property(e => e.ListedAt).HasColumnName("listedAt").HasColumnType("datetime");
+            });
+
+            modelBuilder.Entity<WorldAreaModel>(entity =>
+            {
+                entity.ToTable("world_area");
+                entity.HasKey(e => e.Id).HasName("PRIMARY");
+                entity.Property(e => e.Id).HasColumnName("id").HasColumnType("bigint(20) unsigned").ValueGeneratedNever();
+                entity.Property(e => e.ZoneId).HasColumnName("zoneId").HasColumnType("int(10) unsigned");
+                entity.Property(e => e.OwnerId).HasColumnName("ownerId").HasColumnType("bigint(20) unsigned");
+                entity.Property(e => e.PropId).HasColumnName("propId").HasColumnType("bigint(20) unsigned");
+                entity.Property(e => e.Data).IsRequired().HasColumnName("data").HasColumnType("blob");
             });
 
             modelBuilder.Entity<WorldPropSettingModel>(entity =>
@@ -749,6 +888,10 @@ namespace LandmarkEmulator.Database.Character
                 entity.Property(e => e.Ranks)
                     .HasColumnName("ranks")
                     .HasColumnType("text");
+
+                entity.Property(e => e.Log)
+                    .HasColumnName("log")
+                    .HasColumnType("mediumtext");
             });
 
             modelBuilder.Entity<GuildMemberModel>(entity =>
@@ -838,9 +981,30 @@ namespace LandmarkEmulator.Database.Character
                     .HasColumnType("bigint(20) unsigned");
 
                 entity.Property(e => e.Name)
+                    .IsRequired()
                     .HasColumnName("name")
                     .HasColumnType("varchar(64)")
                     .HasDefaultValue("");
+            });
+
+            modelBuilder.Entity<CharacterPreferenceModel>(entity =>
+            {
+                entity.ToTable("character_preference");
+                entity.HasKey(e => new { e.CharacterId, e.Kind }).HasName("PRIMARY");
+                entity.Property(e => e.CharacterId).HasColumnName("characterId").HasColumnType("bigint(20) unsigned");
+                entity.Property(e => e.Kind).HasColumnName("kind").HasColumnType("int(10) unsigned");
+                entity.Property(e => e.Xml).IsRequired().HasColumnName("xml").HasColumnType("blob");
+                entity.Property(e => e.UpdatedAt).HasColumnName("updatedAt").HasColumnType("datetime");
+            });
+
+            modelBuilder.Entity<CharacterInventoryFilterModel>(entity =>
+            {
+                entity.ToTable("character_inventory_filter");
+                entity.HasKey(e => new { e.CharacterId, e.FilterId }).HasName("PRIMARY");
+                entity.Property(e => e.CharacterId).HasColumnName("characterId").HasColumnType("bigint(20) unsigned");
+                entity.Property(e => e.FilterId).HasColumnName("filterId").HasColumnType("int(10) unsigned");
+                entity.Property(e => e.Name).IsRequired().HasColumnName("name").HasColumnType("varchar(255)");
+                entity.Property(e => e.FilterString).IsRequired().HasColumnName("filterString").HasColumnType("varchar(2048)");
             });
 
             modelBuilder.Entity<PlayerStudioReviewModel>(entity =>
@@ -876,6 +1040,46 @@ namespace LandmarkEmulator.Database.Character
                     .HasColumnType("datetime");
             });
 
+            modelBuilder.Entity<GalleryCommentModel>(entity =>
+            {
+                entity.ToTable("gallery_comment");
+
+                entity.HasKey(e => e.Id)
+                    .HasName("PRIMARY");
+
+                entity.HasIndex(e => e.ClaimId)
+                    .HasDatabaseName("claimId");
+
+                entity.Property(e => e.Id)
+                    .ValueGeneratedOnAdd()
+                    .HasColumnName("id")
+                    .HasColumnType("bigint(20) unsigned");
+
+                entity.Property(e => e.ClaimId)
+                    .HasColumnName("claimId")
+                    .HasColumnType("bigint(20) unsigned");
+
+                entity.Property(e => e.AuthorGuid)
+                    .HasColumnName("authorGuid")
+                    .HasColumnType("bigint(20) unsigned");
+
+                entity.Property(e => e.AuthorName)
+                    .IsRequired()
+                    .HasColumnName("authorName")
+                    .HasColumnType("varchar(64)")
+                    .HasDefaultValue("");
+
+                entity.Property(e => e.Text)
+                    .IsRequired()
+                    .HasColumnName("text")
+                    .HasColumnType("varchar(512)")
+                    .HasDefaultValue("");
+
+                entity.Property(e => e.CreatedAt)
+                    .HasColumnName("createdAt")
+                    .HasColumnType("datetime");
+            });
+
             modelBuilder.Entity<PlayerStudioProductModel>(entity =>
             {
                 entity.ToTable("player_studio_product");
@@ -903,21 +1107,25 @@ namespace LandmarkEmulator.Database.Character
                     .HasColumnType("bigint(20) unsigned");
 
                 entity.Property(e => e.Name)
+                    .IsRequired()
                     .HasColumnName("name")
                     .HasColumnType("varchar(128)")
                     .HasDefaultValue("");
 
                 entity.Property(e => e.Description)
+                    .IsRequired()
                     .HasColumnName("description")
                     .HasColumnType("varchar(1024)")
                     .HasDefaultValue("");
 
                 entity.Property(e => e.Headline)
+                    .IsRequired()
                     .HasColumnName("headline")
                     .HasColumnType("varchar(256)")
                     .HasDefaultValue("");
 
                 entity.Property(e => e.Tags)
+                    .IsRequired()
                     .HasColumnName("tags")
                     .HasColumnType("varchar(512)")
                     .HasDefaultValue("");
@@ -945,6 +1153,124 @@ namespace LandmarkEmulator.Database.Character
 
                 entity.Property(e => e.CreatedAt)
                     .HasColumnName("createdAt")
+                    .HasColumnType("datetime");
+
+                entity.Property(e => e.ListedAt)
+                    .HasColumnName("listedAt")
+                    .HasColumnType("datetime");
+            });
+
+            modelBuilder.Entity<ShowcaseFollowModel>(entity =>
+            {
+                entity.ToTable("showcase_follow");
+
+                entity.HasKey(e => e.Id)
+                    .HasName("PRIMARY");
+
+                entity.HasIndex(e => new { e.FollowerGuid, e.CreatorGuid, e.Tags })
+                    .IsUnique()
+                    .HasDatabaseName("follow");
+
+                entity.Property(e => e.Id)
+                    .ValueGeneratedOnAdd()
+                    .HasColumnName("id")
+                    .HasColumnType("bigint(20) unsigned");
+
+                entity.Property(e => e.FollowerGuid)
+                    .HasColumnName("followerGuid")
+                    .HasColumnType("bigint(20) unsigned");
+
+                entity.Property(e => e.CreatorGuid)
+                    .HasColumnName("creatorGuid")
+                    .HasColumnType("bigint(20) unsigned");
+
+                entity.Property(e => e.CreatorName)
+                    .IsRequired()
+                    .HasColumnName("creatorName")
+                    .HasColumnType("varchar(64)")
+                    .HasDefaultValue("");
+
+                entity.Property(e => e.Tags)
+                    .IsRequired()
+                    .HasColumnName("tags")
+                    .HasColumnType("varchar(160)")
+                    .HasDefaultValue("");
+
+                entity.Property(e => e.FollowedAt)
+                    .HasColumnName("followedAt")
+                    .HasColumnType("datetime");
+            });
+
+            modelBuilder.Entity<ShowcaseDigestRunModel>(entity =>
+            {
+                entity.ToTable("showcase_digest_run");
+
+                entity.HasKey(e => e.Id)
+                    .HasName("PRIMARY");
+
+                entity.HasIndex(e => e.Slot)
+                    .IsUnique()
+                    .HasDatabaseName("slot");
+
+                entity.Property(e => e.Id)
+                    .ValueGeneratedOnAdd()
+                    .HasColumnName("id")
+                    .HasColumnType("bigint(20) unsigned");
+
+                entity.Property(e => e.Slot)
+                    .IsRequired()
+                    .HasColumnName("slot")
+                    .HasColumnType("varchar(32)");
+
+                entity.Property(e => e.RanAt)
+                    .HasColumnName("ranAt")
+                    .HasColumnType("datetime");
+
+                entity.Property(e => e.Mails)
+                    .HasColumnName("mails")
+                    .HasColumnType("int(10) unsigned");
+            });
+
+            modelBuilder.Entity<SiteTemplateInstanceModel>(entity =>
+            {
+                entity.ToTable("site_template_instance");
+
+                entity.HasKey(e => e.Id)
+                    .HasName("PRIMARY");
+
+                entity.HasIndex(e => new { e.ZoneId, e.SiteGuid })
+                    .HasDatabaseName("site");
+
+                entity.Property(e => e.Id)
+                    .ValueGeneratedOnAdd()
+                    .HasColumnName("id")
+                    .HasColumnType("bigint(20) unsigned");
+
+                entity.Property(e => e.ZoneId)
+                    .HasColumnName("zoneId")
+                    .HasColumnType("int(10) unsigned");
+
+                entity.Property(e => e.SiteGuid)
+                    .HasColumnName("siteGuid")
+                    .HasColumnType("bigint(20) unsigned");
+
+                entity.Property(e => e.TemplateGuid)
+                    .HasColumnName("templateGuid")
+                    .HasColumnType("bigint(20) unsigned");
+
+                entity.Property(e => e.PlacedBy)
+                    .HasColumnName("placedBy")
+                    .HasColumnType("bigint(20) unsigned");
+
+                entity.Property(e => e.MinX).HasColumnName("minX").HasColumnType("double");
+                entity.Property(e => e.MinY).HasColumnName("minY").HasColumnType("double");
+                entity.Property(e => e.MinZ).HasColumnName("minZ").HasColumnType("double");
+                entity.Property(e => e.MaxX).HasColumnName("maxX").HasColumnType("double");
+                entity.Property(e => e.MaxY).HasColumnName("maxY").HasColumnType("double");
+                entity.Property(e => e.MaxZ).HasColumnName("maxZ").HasColumnType("double");
+
+                entity.Property(e => e.PlacedAt)
+                    .HasColumnName("placedAt")
                     .HasColumnType("datetime");
             });
 

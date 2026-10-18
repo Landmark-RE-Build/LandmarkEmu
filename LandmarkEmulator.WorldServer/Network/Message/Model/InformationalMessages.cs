@@ -38,13 +38,17 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
     [ZoneMessage(ZoneMessageOpcode.RatingBase)]
     public class RatingRequest : InformationalMessage { }
 
-    /// <summary>PlayerUpdate Loading (C→S): the client's loading-screen state.</summary>
+    /// <summary>
+    /// PlayerUpdate ClientLoading 0x6C (C→S) {u8 loading}: 1 when the client's loading game state starts, 0 when it ends and
+    /// the loading screen is gone (GameStateLoading enter / exit, FUN_1436abc90 / FUN_1436abd00) [P].
+    /// </summary>
     [ZoneMessage(ZoneMessageOpcode.PlayerUpdateLoading)]
-    public class PlayerUpdateLoading : InformationalMessage { }
-
-    /// <summary>ClientPcDataBase (C→S): the player's PC hardware details.</summary>
-    [ZoneMessage(ZoneMessageOpcode.ClientPcDataBase)]
-    public class ClientPcData : InformationalMessage { }
+    public class PlayerUpdateLoading : InformationalMessage
+    {
+        /// <summary>The body says the loading screen is gone (u8 0). An empty body counts as gone: at login the client
+        /// sends only this one (its enter ran before the connection existed).</summary>
+        public static bool LeftLoading(byte[] body) => body == null || body.Length == 0 || body[0] == 0;
+    }
 
     /// <summary>ClientInitializationDetails (C→S): client start-up details.</summary>
     [ZoneMessage(ZoneMessageOpcode.ClientInitializationDetails)]

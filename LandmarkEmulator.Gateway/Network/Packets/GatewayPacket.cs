@@ -27,9 +27,12 @@ namespace LandmarkEmulator.Gateway.Network.Packets
             Size = (uint)Data.Length;
         }
 
-        public GatewayPacket(GatewayMessageOpcode opcode, IWritable message)
+        /// <param name="channel">Written in the top three bits of the first byte (tunnel packets and ChannelIsRoutable;
+        /// 0 for the rest). It used to be left 0 for every packet.</param>
+        public GatewayPacket(GatewayMessageOpcode opcode, IWritable message, Channel channel = Channel.Zone)
         {
             Opcode = opcode;
+            Channel = channel;
 
             List<byte> data = new();
             var writer = new GamePacketWriter(data);

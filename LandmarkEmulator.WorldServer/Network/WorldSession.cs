@@ -17,14 +17,46 @@ using System.IO;
 using System.Linq;
 using System.Diagnostics;
 using System.Numerics;
-using LandmarkEmulator.Database.Character.Model;
 using LandmarkEmulator.Shared.Database;
 using LandmarkEmulator.Shared.Game.Events;
 
 namespace LandmarkEmulator.WorldServer.Network
 {
-    public class WorldSession : GatewaySession
+    /// <summary>
+    /// The zone side of one connected character: its game state, the handlers' view of the client, and the packets
+    /// queued for it. The connection itself is the gateway's (<see cref="ClientSession"/> in this process today; its own
+    /// process later, trace/architecture/gateway-service.md): this session talks to it only through
+    /// <see cref="Link"/>, and gets the client's packets — as the 0.695 client sent them (the server speaks its
+    /// numbering natively, docs/protocol.md §1.6), past the transport flood limits — through <see cref="FromClient"/>.
+    /// </summary>
+    public class WorldSession
     {
+        private static readonly NLog.ILogger log = NLog.LogManager.GetCurrentClassLogger();
+
+        /// <summary>The connection to the client (gateway side).</summary>
+        public IClientLink Link { get; }
+        public Database.Auth.Model.AccountModel Account { get; }
+        public ClientProtocol ClientProtocol { get; }
+        public string ClientBuild { get; }
+
+        /// <summary>
+        /// The server ticket this client logged in with. The login server starts it with "R" when the client signed in
+        /// with a relogin key (back from character select in the same running client); see
+        /// Game.Inventory.ItemDefinitionManager.SendLoginList.
+        /// </summary>
+        public string LoginTicket { get; }
+
+        /// <summary>The connection has ended (closed by the client, timed out, or closed by the server).</summary>
+        public bool Disconnected => closed || Link.Closed;
+        private bool closed;
+
+        /// <summary>
+        /// A newer login of the same character took over (<see cref="Game.PlayerManager.ReplaceOlderSessions"/>): this
+        /// session has left the world and is being closed; it never enters the world again (a late ClientIsReady from its
+        /// client would otherwise kick the newer login).
+        /// </summary>
+        public bool Replaced { get; internal set; }
+
         // Other sessions enqueue here too (spawns, movement relay), hence concurrent.
         private readonly System.Collections.Concurrent.ConcurrentQueue<ZonePacket> outgoingPackets = new();
 
@@ -36,6 +68,15 @@ namespace LandmarkEmulator.WorldServer.Network
         /// Set once the client has finished loading the world.
         /// </summary>
         public bool WorldReady { get; set; }
+        /// <summary>
+        /// The client's login loading screen has dropped: its PlayerUpdate ClientLoading {u8 0} (sent by GameStateLoading's
+        /// exit, FUN_1436abd00, when HideLoadingscreen changes the game state, FUN_142ce8510) has arrived [P]. That is
+        /// 15-25 s after ClientFinishedLoading, which only means WaitForWorldReady is done (FUN_142cc3050) while the
+        /// screen stays up for the terrain (ShouldDrop FUN_142d54a00 in run state 0x12) [P, dev log 2026-10-18]. Other
+        /// players and this one are shown to each other then (PlayerManager.LoadingScreenLeft). Set on a re-attach: that
+        /// client is already in the world.
+        /// </summary>
+        public bool LoadingScreenDown { get; set; }
         /// <summary>The build mode HUD was put back for this login (MiscHandler.ClientFinishedLoading).</summary>
         public bool BuildHudReset { get; set; }
         /// <summary>The message of the day went out this login.</summary>
@@ -53,8 +94,14 @@ namespace LandmarkEmulator.WorldServer.Network
             return Path.GetFullPath(Path.Combine(parts.ToArray()));
         }
 
-        public WorldSession() : base(WorldServer.EncryptionKey)
+        public WorldSession(IClientLink link, Database.Auth.Model.AccountModel account, string clientBuild, ClientProtocol protocol,
+            string loginTicket)
         {
+            Link = link;
+            Account = account;
+            ClientBuild = clientBuild;
+            ClientProtocol = protocol;
+            LoginTicket = loginTicket ?? "";
             sendSelfPacket = File.ReadAllBytes(GetResourcePath("PacketDumps", "SendSelf.bin"));
             TerrainManifest = File.ReadAllBytes(GetResourcePath("PacketDumps", "TerrainCellManifest.bin"));
         }
@@ -69,8 +116,25 @@ namespace LandmarkEmulator.WorldServer.Network
         public Quaternion Facing => lastRotation ?? (currentCharacter == null ? Quaternion.Identity
             : new Quaternion(currentCharacter.RotationX, currentCharacter.RotationY, currentCharacter.RotationZ, currentCharacter.RotationW));
 
+        /// <summary>The movement state word of the newest type 0 / 1 body (<see cref="PositionUpdate.TryReadState"/>).</summary>
+        public uint MovementState { get; private set; }
+
+        /// <summary>
+        /// Creatures this client has made full entities (LightweightToFullNpc sent, Creatures.SendFull): guid → the
+        /// transient id it had then, so a respawn (new transient id) counts as lightweight again. Only full entities can
+        /// speak a DisplayPropText bubble or a chat [*speaker*] line (OPEN-LEADS L96).
+        /// </summary>
+        public System.Collections.Concurrent.ConcurrentDictionary<ulong, uint> FullNpcs { get; } = new();
+
         /// <summary>The newest full (type 0) movement body this client sent (dev: a template for NPC movement).</summary>
         public byte[] LastFullMovement { get; private set; }
+
+        /// <summary>
+        /// The velocity of the newest movement update that carried one (type 0 / 2, m/s, local frame) and when it came.
+        /// A client sends movement only while it moves, so an old one means the player stands still.
+        /// </summary>
+        public Vector3 LastVelocity { get; private set; }
+        public DateTime LastVelocityAt { get; private set; }
 
         /// <summary>
         /// Where the player is now (latest movement update, else the saved position).
@@ -79,6 +143,40 @@ namespace LandmarkEmulator.WorldServer.Network
         public Vector3? RezoneTarget { get; set; }
         /// <summary>When the pending re-zone (<see cref="RezoneTarget"/>) was sent.</summary>
         public DateTime RezoneStarted { get; set; }
+
+        /// <summary>
+        /// Counts the re-zones sent to this client (Teleport.RezoneNow, one per ClientBeginZoning). An arrival hold
+        /// (MiscHandler.ClientIsReady → Teleport.After) captures it and does nothing when it has changed meanwhile: the
+        /// hold belonged to a re-zone the client has already left, and its zone-done flags would arrive in the middle of
+        /// the next load (review 2026-10-18 #3).
+        /// </summary>
+        public int RezoneSerial { get; set; }
+
+        /// <summary>
+        /// A real re-zone (ClientBeginZoning) went out and its arrival (Teleport.FinishRezone) has not run yet; unlike
+        /// <see cref="RezoneTarget"/> it is not set by a short move or by a re-zone still waiting to be sent. Another
+        /// landscape's re-zone waits for it (Teleport.Rezone: one zone change at a time).
+        /// </summary>
+        public bool RezoneInFlight { get; set; }
+
+        /// <summary>Where the re-zone in flight put the client (ClientBeginZoning's position), to see if it was retargeted.</summary>
+        public Vector3 RezoneZonedTo { get; set; }
+
+        /// <summary>This re-zone already sent the Spire's props ahead of the zone-done flags (MiscHandler.ClientIsReady).</summary>
+        public bool SpireSentEarly { get; set; }
+
+        /// <summary>The last re-zone moved the player to another landscape (false: same landscape; the client deletes its
+        /// entities either way).</summary>
+        public bool RezoneChangedLandscape { get; set; }
+
+        /// <summary>
+        /// The next move must be a real re-zone (ClientBeginZoning), never a TeleportToLocation in place: set while an arrival
+        /// from another world places the player (<see cref="ReattachRezone"/>). The client still has the other world's
+        /// terrain and entities then, and only ClientBeginZoning carries the new world id (+0xa8) that makes it change world
+        /// (Teleport.RezoneNow; OPEN-LEADS L114) — a short move on the same landscape id would leave it on the old world's
+        /// copy. <see cref="Game.Teleport.To"/> honours it while it is set.
+        /// </summary>
+        public bool FullRezoneNext { get; set; }
 
         /// <summary>The landscape the player is on (StaticZoneData zone id, <see cref="Game.Landscapes"/>).</summary>
         public uint ZoneId => currentCharacter?.ZoneId ?? Game.Terrain.TerrainStore.HomeContinent;
@@ -182,12 +280,28 @@ namespace LandmarkEmulator.WorldServer.Network
         /// <summary>Recipes learned from recipe items (default-learned ones are implied).</summary>
         public HashSet<uint> LearnedRecipes { get; private set; } = new();
 
+        /// <summary>The recipe ids the client was last told to hide (<see cref="Game.RecipeBook.RefreshHidden"/>; null before SendSelf).</summary>
+        public HashSet<uint> HiddenRecipes { get; set; }
+        /// <summary>Hidden unlocks whose SendSelf recipe record was left out at login (bandwidth R1); an unhide of one
+        /// shows nothing until the next login.</summary>
+        public HashSet<uint> RecipeRecordsWithheld { get; set; }
+
         /// <summary>
         /// Gives the player items and tells the client about every stack that changed.
         /// </summary>
         public void GiveItem(uint definitionId, uint count)
         {
             foreach ((CharacterItemModel item, bool isNew) in Inventory.Add(definitionId, count))
+                SendItem(item, replace: !isNew);
+        }
+
+        /// <summary>
+        /// Gives the player items that keep their instance state (a traded, mailed or stored item keeps its wear,
+        /// <see cref="Game.Inventory.ItemState"/>) and tells the client about every stack that changed.
+        /// </summary>
+        public void GiveItem(uint definitionId, uint count, Game.Inventory.ItemState state)
+        {
+            foreach ((CharacterItemModel item, bool isNew) in Inventory.Add(definitionId, count, state))
                 SendItem(item, replace: !isNew);
         }
 
@@ -324,8 +438,12 @@ namespace LandmarkEmulator.WorldServer.Network
                 Guid = PlayerGuid,
                 TransientId = TransientId,
                 ModelId = modelId,
+                // The character's current profile (entity +0x1474), as its own client got in SendSelfToClient.
+                ProfileId = profileId,
                 Position = new Vector4(position + RemoteFrameOffset, 1f),
-                Rotation = new Vector4(rotation.X, rotation.Y, rotation.Z, rotation.W)
+                Rotation = new Vector4(rotation.X, rotation.Y, rotation.Z, rotation.W),
+                // Other clients keep each player's membership on the entity (TASKS 3.12, Game.Membership).
+                IsMember = Game.Membership.IsMember(this)
             };
             message.Identity.FirstName = currentCharacter.Name;
             return message;
@@ -333,6 +451,37 @@ namespace LandmarkEmulator.WorldServer.Network
 
         /// <summary>The character's race (CharCustomizationSlotCost RACE_ID: 1 humen, 5 large humen).</summary>
         public uint Race => currentCharacter?.Race ?? 1;
+
+        /// <summary>The character's gender (1 male, 2 female).</summary>
+        public uint GenderId => currentCharacter?.Gender ?? 1;
+
+        /// <summary>
+        /// Changes the character's size (race) and gender (the 0.695 Crimson Parlor): saves race, gender and the profile
+        /// that goes with them (character creation takes it from the same preset), and the model other clients are sent
+        /// (the profile's male / female base actor). The caller re-introduces the player.
+        /// </summary>
+        public void SetBody(uint race, uint gender, uint profileId)
+        {
+            ulong characterId = currentCharacter.Id;
+            currentCharacter.Race = (byte)race;
+            currentCharacter.Gender = (byte)gender;
+            currentCharacter.ProfileTypeId = profileId;
+            modelInfo.Race = race;
+            modelInfo.Gender = gender;
+            if (GameTableManager.Instance.ProfileDefinitions.GetEntry(profileId) is ProfileDefinitionEntry profile)
+                modelId = gender == (uint)Shared.Game.Entity.Static.Gender.Female ? profile.FemaleModelId : profile.MaleModelId;
+            DatabaseManager.Instance.CharacterDatabase.Save(c =>
+            {
+                var model = new CharacterModel { Id = characterId };
+                c.Character.Attach(model);
+                model.Race = (byte)race;
+                model.Gender = (byte)gender;
+                model.ProfileTypeId = profileId;
+                c.MarkModified(model, nameof(model.Race));
+                c.MarkModified(model, nameof(model.Gender));
+                c.MarkModified(model, nameof(model.ProfileTypeId));
+            });
+        }
 
         /// <summary>The character's appearance: customisations (slot → option, tint) and skin tint.</summary>
         public (IReadOnlyDictionary<uint, (uint Option, uint Tint)> Slots, uint SkinTint) Appearance
@@ -368,6 +517,9 @@ namespace LandmarkEmulator.WorldServer.Network
 
         // Appearance as sent in SendSelfToClient, and the newest full (type 0) movement body, for other clients.
         private Shared.Network.Message.Model.Shared.CharacterModelInfo modelInfo = new();
+
+        /// <summary>The character's look as the client's customization data (slots, skin, race, gender).</summary>
+        public Shared.Network.Message.Model.Shared.CharacterModelInfo ModelInfo => modelInfo;
         private byte[] lastFullMovement;
 
         /// <summary>
@@ -381,9 +533,12 @@ namespace LandmarkEmulator.WorldServer.Network
                 TransientId = TransientId,
                 ModelId = modelId,
                 Model = modelInfo,
-                Movement = lastFullMovement ?? PlayerUpdateLightweightToFullPc.EmptyMovement
+                Movement = lastFullMovement ?? PlayerUpdateLightweightToFullPc.EmptyMovement,
+                ChatBubble = ChatBubble
             };
             message.Stats.AddRange(Game.Abilities.CalculatedStats(this));
+            // The movement acceleration times live copied to other players (once, with the character; L162).
+            message.CharacterStats.AddRange(Game.CharacterStats.ForOthers());
             return message;
         }
 
@@ -401,9 +556,9 @@ namespace LandmarkEmulator.WorldServer.Network
         private readonly Stopwatch sinceLastPositionSave = Stopwatch.StartNew();
 
         #region Session Handlers
-        public override void OnCharacterLogin(CharacterModel model)
+        /// <summary>The gateway attached the connection with this character loaded (AttachConnection).</summary>
+        public void OnCharacterLogin(CharacterModel model)
         {
-            base.OnCharacterLogin(model);
             // A login during a shutdown (Play pressed just before the login server heard) loads as usual and is sent
             // back once in the world (Game.Shutdown.SendPlayersToCharacterSelect): a relogin session before the client
             // has the world crashes it as it starts the relogin (2026-10-14).
@@ -412,13 +567,18 @@ namespace LandmarkEmulator.WorldServer.Network
             Inventory = new Game.Inventory.Inventory(model);
             LearnedRecipes = Game.RecipeBook.LoadLearned(model.Id);
             Game.Achievements.LoadCharacter(model.Id);
+            PreferenceXml = Game.Preferences.Load(model.Id);
+            InventoryFilters = Game.InventoryFilters.Load(model.Id);
             //EnqueueMessage((ZoneMessageOpcode)0x16015A04, File.ReadAllBytes("packets\\25-unknown").AsSpan().Slice(4).ToArray());
+            Game.Landscapes.LeaveClosedEventIsland(model);   // the Events world switched islands since the last login
+            Game.Pioneer.LeaveOldLand(model);   // saved on an old Pioneer land (417-421): to their site or the new land
             Game.Pioneer.Settle(model);   // a brand-new character starts on its own site on a Pioneer land
             EnqueueMessage(ZoneMessageOpcode.SendZoneDetails, Game.Landscapes.ZoneDetails(model.ZoneId));
 
             // Setup Player, Send Packets, etc.
             EnqueueMessage(ZoneMessageOpcode.InitializationParameters, Convert.FromHexString("04-00-00-00-6C-69-76-65".Replace("-", "")));
-            EnqueueMessage(ZoneMessageOpcode.ClientGameSettings, Convert.FromHexString("00-00-00-00-0A-00-00-00-00-00-00-00-00-00-00-80-3F-00-00-00-00-01-00-00-00-00-00-00-00-00-00-40-41-00-00-DC-42".Replace("-", "")));
+            // The live capture's settings, as they are (fields named in the model).
+            EnqueueMessage(ZoneMessageOpcode.ClientGameSettings, ClientGameSettings.LiveBody);
             EnqueueMessage(ZoneMessageOpcode.ReferenceDataItemClassDefinitions, Convert.FromHexString("00-00-00-00".Replace("-", "")));
             var catPath = GetResourcePath("PacketDumps", "39-ReferenceDataItemCategoryDefinitions");
             var profPath = GetResourcePath("PacketDumps", "41-ReferenceDataProfileDefinitions");
@@ -434,11 +594,167 @@ namespace LandmarkEmulator.WorldServer.Network
             //message.Read(reader);
 
             BuildSendToSelfPacket();
+            // An older session of this character still in the world (its client crashed, was killed or lost the network
+            // and hasn't timed out yet) goes now, not when this client has finished loading: the others stop seeing the
+            // dead one at once.
+            Game.PlayerManager.ReplaceOlderSessions(this);
         }
 
         /// <summary>
-        /// SendZoneDetails body from a live capture: zone OpenBetaGeometry_406 (type 5), Sky.xml, continent 406 and its
-        /// bitmaps, sky data. Also the source of the zone name and sky for <see cref="Game.Teleport"/>'s re-zoning.
+        /// The gateway re-attached a connection it held while this zone was away (AttachConnection with isReattach,
+        /// gateway-service.md §3.5): the client is still in the world with its own SendSelf, UI and inventory view, and
+        /// the entities and terrain of the zone that went away. The character is loaded as at login, without the login
+        /// packets; the session counts as past its first ClientIsReady; and as soon as the client reports where it is
+        /// (or after <see cref="ReattachWait"/>, at the saved position) it is re-zoned there. ClientBeginZoning makes the
+        /// client build a fresh terrain engine and drop every entity except the player (FUN_142ee4930, docs/terrain.md
+        /// "Long teleports"), and its ClientIsReady then gets the zone's entities again (MiscHandler.ClientIsReady,
+        /// re-zone path).
+        /// </summary>
+        public void OnReattach(CharacterModel model, bool transfer = false, ulong arriveNear = 0, ulong joinGame = 0,
+            Internal.WorldSpot returnTo = default, Internal.WorldSpot arriveAt = default,
+            Internal.CavernTripKind cavernTrip = Internal.CavernTripKind.None)
+        {
+            transferCavernTrip = transfer ? cavernTrip : Internal.CavernTripKind.None;
+            transferArriveNear = transfer ? arriveNear : 0;
+            transferJoinGame = transfer ? joinGame : 0;
+            transferReturnTo = transfer ? returnTo : default;
+            transferArriveAt = transfer ? arriveAt : default;
+            currentCharacter = model;
+            Game.Unlocks.Load(model.Id);
+            Inventory = new Game.Inventory.Inventory(model);
+            LearnedRecipes = Game.RecipeBook.LoadLearned(model.Id);
+            Game.Achievements.LoadCharacter(model.Id);
+            PreferenceXml = Game.Preferences.Load(model.Id);
+            InventoryFilters = Game.InventoryFilters.Load(model.Id);
+            BuildSendToSelfPacket(send: false);
+            // An arrival from another world replaces any older session of the character here at once. Not a re-attach
+            // after a zone restart: the gateway re-attaches every held connection, and of two of one character (a dead
+            // client not yet timed out and its new login) only the live one will report ready — PlayerManager.Enter then
+            // drops the other.
+            if (transfer)
+                Game.PlayerManager.ReplaceOlderSessions(this);
+            ReadySent = true;
+            MotdSent = true;
+            BuildHudReset = true;
+            WorldReady = true;
+            LoadingScreenDown = true;
+            transferArrival = transfer;
+            if (transfer)
+            {
+                // From another world's zone (cross-world travel, B.10): straight to the landscape it saved, as the Landscapes
+                // window's travel does here (its Spire), not where the client still thinks it is.
+                reattachRezoneDue = DateTime.UtcNow;
+                log.Info($"{model.Name} arrives from another world for landscape {model.ZoneId}.");
+                return;
+            }
+            reattachRezoneDue = DateTime.UtcNow + ReattachWait;
+            log.Info($"{model.Name} re-attached after a zone restart; re-zoning once the client reports its position.");
+        }
+
+        /// <summary>The re-attach is an arrival from another world (its re-zone goes to the saved landscape's arrival).</summary>
+        private bool transferArrival;
+        /// <summary>An arrival from another world by Travel to Friend: the friend to land beside (0 = none).</summary>
+        private ulong transferArriveNear;
+        /// <summary>An arrival from another world for a Game Finder match (L31): the site game to join (0 = none).</summary>
+        private ulong transferJoinGame;
+        /// <summary>That match's way back after the game (FinderReturnHome on the world it came from; unset = stays here).</summary>
+        private Internal.WorldSpot transferReturnTo;
+        /// <summary>An arrival back from a Game Finder trip: the spot it left from (unset = the landscape's usual arrival).</summary>
+        private Internal.WorldSpot transferArriveAt;
+        /// <summary>An arrival from another world on a Lost Crystal / Underground Adventure trip (L131): a cavern here.</summary>
+        private Internal.CavernTripKind transferCavernTrip;
+
+        /// <summary>
+        /// Leaving for another world (cross-world travel, B.10): the target landscape and world (LastServerId, so the next
+        /// login goes there too) are saved; the returned task finishes when they are written, before the hand-over.
+        /// </summary>
+        public System.Threading.Tasks.Task SaveForWorldMove(uint zoneId, ulong serverWorld)
+        {
+            if (currentCharacter == null)
+                return System.Threading.Tasks.Task.CompletedTask;
+            currentCharacter.ZoneId = zoneId;
+            currentCharacter.LastServerId = serverWorld;
+            ulong characterId = currentCharacter.Id;
+            return DatabaseManager.Instance.CharacterDatabase.Save(c =>
+            {
+                var model = new CharacterModel { Id = characterId };
+                c.Character.Attach(model);
+                model.ZoneId = zoneId;
+                model.LastServerId = serverWorld;
+                c.MarkModified(model, nameof(model.ZoneId));
+                c.MarkModified(model, nameof(model.LastServerId));
+            });
+        }
+
+        /// <summary>How long a re-attached session waits for the client's position before re-zoning at the saved one.</summary>
+        private static readonly TimeSpan ReattachWait = TimeSpan.FromSeconds(3);
+        private DateTime? reattachRezoneDue;
+
+        /// <summary>The re-zone that rebuilds a re-attached client's world, once.</summary>
+        private void ReattachRezone()
+        {
+            if (reattachRezoneDue == null)
+                return;
+            reattachRezoneDue = null;
+            if (transferArrival)
+            {
+                transferArrival = false;
+                ulong near = transferArriveNear, join = transferJoinGame;
+                Internal.WorldSpot returnTo = transferReturnTo, arriveAt = transferArriveAt;
+                Internal.CavernTripKind trip = transferCavernTrip;
+                transferArriveNear = 0;
+                transferJoinGame = 0;
+                transferReturnTo = default;
+                transferArriveAt = default;
+                transferCavernTrip = Internal.CavernTripKind.None;
+                // Whatever places the player now must zone for real (FullRezoneNext): the client is still on the other
+                // world, often on a landscape with this same id.
+                FullRezoneNext = true;
+                try
+                {
+                    PlaceTransferArrival(near, join, returnTo, arriveAt, trip);
+                }
+                finally
+                {
+                    FullRezoneNext = false;
+                }
+                return;
+            }
+            Game.Teleport.Rezone(this, Position);
+        }
+
+        /// <summary>Where an arrival from another world goes (<see cref="ReattachRezone"/>): the first that applies.</summary>
+        private void PlaceTransferArrival(ulong near, ulong join, Internal.WorldSpot returnTo, Internal.WorldSpot arriveAt,
+            Internal.CavernTripKind trip)
+        {
+            if (join != 0)
+            {
+                bool joining = Game.InstancedGames.ArriveToJoin(this, join);
+                // Taken back home after the game (or at once when it's gone) when the world they came from asked for it.
+                Game.InstancedGames.ExpectReturn(this, join, returnTo, joining);
+                if (joining)
+                    return;
+            }
+            if (arriveAt.IsSet && arriveAt.Zone == ZoneId)
+            {
+                // Back from a Game Finder trip on another world: to the spot they left from.
+                Game.Teleport.Rezone(this, new Vector3(arriveAt.X, arriveAt.Y, arriveAt.Z), arriveAt.Zone);
+                log.Info($"{CharacterName} is back from another world's game at the spot they left from.");
+                return;
+            }
+            // A Lost Crystal / Underground Adventure trip from another world (L131): a cavern of this world (beside the
+            // group member they follow, for an accepted group trip).
+            if (trip != Internal.CavernTripKind.None && Game.CrossWorld.ArriveOnCavernTrip(this, trip, near))
+                return;
+            if (near != 0 && Game.Abilities.ArriveBesideFriend(this, near))
+                return;
+            Game.Landscapes.TravelTo(this, ZoneId);
+        }
+
+        /// <summary>
+        /// SendZoneDetails body from a live capture: zone OpenBetaGeometry_406 (type 5), Sky.xml, world 2, and continent
+        /// 406's settings and bitmaps (fields named in SendZoneDetails / ContinentDefinition). Also the source of the zone
+        /// name and continent for <see cref="Game.Teleport"/>'s re-zoning.
         /// </summary>
         public static readonly byte[] ZoneDetails = Convert.FromHexString("14-00-00-00-4F-70-65-6E-42-65-74-61-47-65-6F-6D-65-74-72-79-5F-34-30-36-05-00-00-00-00-07-00-00-00-53-6B-79-2E-78-6D-6C-00-00-00-00-96-01-00-00-FF-FF-FF-FF-FF-FF-FF-FF-96-01-00-00-02-00-00-00-10-8F-08-00-96-01-00-00-05-00-00-00-4C-B8-08-00-15-00-00-00-4F-70-65-6E-42-65-74-61-43-6F-6E-74-69-6E-65-6E-74-5F-34-30-36-21-00-00-00-4F-70-65-6E-42-65-74-61-5F-44-6F-5F-4E-4F-54-5F-43-68-61-6E-67-65-54-68-69-73-54-65-78-74-5F-31-36-00-00-00-00-00-00-44-40-00-00-00-00-E0-84-43-41-00-00-00-00-00-40-9F-40-00-00-00-00-11-81-43-41-00-00-00-00-00-40-BF-40-00-00-00-00-00-40-AF-40-00-00-00-00-00-40-BF-40-01-00-1A-00-00-00-43-6F-6E-74-69-6E-65-6E-74-5F-42-69-6F-6D-65-49-64-73-5F-34-30-36-2E-62-6D-70-CD-CC-CC-40-17-00-00-00-43-6F-6E-74-69-6E-65-6E-74-5F-53-68-61-70-65-5F-34-30-36-2E-62-6D-70-CD-CC-CC-40-20-00-00-00-43-6F-6E-74-69-6E-65-6E-74-5F-48-65-69-67-68-74-4C-61-79-65-72-49-64-73-5F-34-30-36-2E-62-6D-70-00-00-C8-43-10-27-00-00-00-00-80-3E-00-00-80-3E-00-00-80-3E-00-00-40-3F-00-00-00-3F-00-00-00-40-03-00-00-00-0A-D7-23-3C-00-40-9C-44-00-C0-41-45-00-00-F0-41-01-00-00-00-00-00-00-00-00-6E-A7-40-DA-01-00-00-00-00-00-00-00-B5-36-00-00-01-00-00-80-3E-CD-CC-CC-3D-01-00-00-00-00-00-00-00-00".Replace("-", ""));
 
@@ -489,6 +805,9 @@ namespace LandmarkEmulator.WorldServer.Network
             writer.Write(CoinCurrency);
             writer.Write(Coins);
             EnqueueMessage(ZoneMessageOpcode.PlayerUpdateCurrencyChangeWire, output.ToArray());
+            // The commerce wallet carries the Lumens while the Player Studio listing fee is charged (the client checks
+            // the fee against it): kept current with the coins.
+            Game.Commerce.WalletChanged(this);
         }
 
         /// <summary>The character's coins: Lumens in the currency container (see Inventory.CurrencyItem).</summary>
@@ -512,28 +831,18 @@ namespace LandmarkEmulator.WorldServer.Network
         }
 
         /// <summary>Chat flood guard (see Game.Chat.Handle) and how often the player is told about it.</summary>
-        public Game.RateLimiter ChatLimiter { get; } = new(5, 1 / 1.5);
-        public Game.RateLimiter ChatWarnLimiter { get; } = new(1, 1 / 10.0);
+        public global::LandmarkEmulator.Shared.Game.RateLimiter ChatLimiter { get; } = new(5, 1 / 1.5);
+        public global::LandmarkEmulator.Shared.Game.RateLimiter ChatWarnLimiter { get; } = new(1, 1 / 10.0);
 
         /// <summary>
         /// Actions that are written to the database or disk (Links added or removed): bursts of 30, 10 a second — far
         /// above what the Links window sends, low enough that a modified client can't keep the database busy.
         /// </summary>
-        public Game.RateLimiter StorageLimiter { get; } = new(30, 10);
+        public global::LandmarkEmulator.Shared.Game.RateLimiter StorageLimiter { get; } = new(30, 10);
         /// <summary>Contest entries (screenshots are written to disk): 2 at once, then one every 30 seconds.</summary>
-        public Game.RateLimiter ContestLimiter { get; } = new(2, 1 / 30.0);
+        public global::LandmarkEmulator.Shared.Game.RateLimiter ContestLimiter { get; } = new(2, 1 / 30.0);
         /// <summary>Bug / build site reports (saved to disk): 2 at once, then one a minute.</summary>
-        public Game.RateLimiter ReportLimiter { get; } = new(2, 1 / 60.0);
-
-        /// <summary>
-        /// Zone packets (not movement) a session may send: bursts of 300, 100 a second sustained — far above a normal
-        /// client (building, a few dozen a second at most). Packets beyond it are dropped unread.
-        /// </summary>
-        private readonly Game.RateLimiter packetLimiter = new(300, 100);
-        /// <summary>Terrain cell requests and build edits (see the flood check in the packet path).</summary>
-        private readonly Game.RateLimiter terrainLimiter = new(200, 50);
-        private readonly Game.RateLimiter packetWarnLimiter = new(1, 1 / 60.0);
-        private long droppedPackets;
+        public global::LandmarkEmulator.Shared.Game.RateLimiter ReportLimiter { get; } = new(2, 1 / 60.0);
 
         /// <summary>When the player entered the world this session (for played time).</summary>
         private DateTime? enteredWorld;
@@ -542,6 +851,73 @@ namespace LandmarkEmulator.WorldServer.Network
         /// Adds the whole minutes spent in the world since the last call to the character's played minutes (on logout
         /// and with each periodic position save, so a server stop loses less than one save interval).
         /// </summary>
+        /// <summary>The character's profile text (0.695 Bio; "" for none).</summary>
+        public string Bio => currentCharacter?.Bio ?? "";
+
+        /// <summary>The character's id in the character database (0 before a character is loaded).</summary>
+        public ulong CharacterId => currentCharacter?.Id ?? 0;
+
+        /// <summary>
+        /// The character's client preference document (Game.Preferences, zone opcode 0x03): as stored at login or as the
+        /// client last sent it; null when none is stored (the live default is sent then).
+        /// </summary>
+        public byte[] PreferenceXml { get; set; }
+
+        /// <summary>
+        /// The character's saved bag filters (Game.InventoryFilters, PlayerFilterUpdatePacket 0xDD sub 4): loaded at login,
+        /// changed as the client reports, sent in SendSelfToClient's InventoryFilterManager. Lock the list to use it.
+        /// </summary>
+        public List<CharacterInventoryFilterModel> InventoryFilters { get; set; }
+
+        /// <summary>The client's Bio limit (BioLengthMax); its own bad-word filter runs before it sends.</summary>
+        public const int BioLengthMax = 512;
+
+        /// <summary>The player changed their bio (PlayerUpdate SetPlayerBio): saved on the character.</summary>
+        public void SetBio(string bio)
+        {
+            if (currentCharacter == null)
+                return;
+            bio ??= "";
+            if (bio.Length > BioLengthMax)
+                bio = bio[..BioLengthMax];
+            currentCharacter.Bio = bio;
+            ulong characterId = currentCharacter.Id;
+            DatabaseManager.Instance.CharacterDatabase.Save(c =>
+            {
+                var model = new CharacterModel { Id = characterId };
+                c.Character.Attach(model);
+                model.Bio = bio;
+                c.MarkModified(model, nameof(model.Bio));
+            });
+        }
+
+        /// <summary>The character's chat bubble colours and size (fg, bg, size; <see cref="Game.ChatBubbleColor"/>).</summary>
+        public (uint Foreground, uint Background, uint Size) ChatBubble => currentCharacter == null
+            ? (Game.ChatBubbleColor.DefaultForeground, Game.ChatBubbleColor.DefaultBackground, Game.ChatBubbleColor.DefaultSize)
+            : (currentCharacter.ChatBubbleForeground, currentCharacter.ChatBubbleBackground, currentCharacter.ChatBubbleSize);
+
+        /// <summary>The player chose new chat bubble colours (Command 0x15): kept on the character and saved.</summary>
+        public void SetChatBubble(uint foreground, uint background, uint size)
+        {
+            if (currentCharacter == null)
+                return;
+            currentCharacter.ChatBubbleForeground = foreground;
+            currentCharacter.ChatBubbleBackground = background;
+            currentCharacter.ChatBubbleSize = size;
+            ulong characterId = currentCharacter.Id;
+            DatabaseManager.Instance.CharacterDatabase.Save(c =>
+            {
+                var model = new CharacterModel { Id = characterId };
+                c.Character.Attach(model);
+                model.ChatBubbleForeground = foreground;
+                model.ChatBubbleBackground = background;
+                model.ChatBubbleSize = size;
+                c.MarkModified(model, nameof(model.ChatBubbleForeground));
+                c.MarkModified(model, nameof(model.ChatBubbleBackground));
+                c.MarkModified(model, nameof(model.ChatBubbleSize));
+            });
+        }
+
         private void SavePlayedTime(bool leaving = false)
         {
             if (currentCharacter == null || enteredWorld is not DateTime start)
@@ -644,7 +1020,11 @@ namespace LandmarkEmulator.WorldServer.Network
             }
         }
 
-        public void BuildSendToSelfPacket()
+        /// <summary>
+        /// Builds SendSelfToClient and queues it; with <paramref name="send"/> false only sets what it fixes for the
+        /// session (player guid, model, profile) — a re-attached client still has its SendSelf.
+        /// </summary>
+        public void BuildSendToSelfPacket(bool send = true)
         {
             // TODO: Replace all this junk below with an actual Player entity.
             uint GetModelForGenderFromProfile(ProfileDefinitionEntry profile, Gender gender)
@@ -671,7 +1051,14 @@ namespace LandmarkEmulator.WorldServer.Network
             var ProfileData = GameTableManager.Instance.ProfileDefinitions.GetEntry(Character.ProfileTypeId);
 
             var message = new SendSelfToClient();
-            message.Use589Layout = ZoneOpcodeTranslator.Uses589Opcodes(ClientBuild);
+            message.Bio = Character.Bio ?? "";
+            // The client's admin-player flag (0.695 player +0x7b0d8; trace/architecture/admin-monitor.md "Admin player"):
+            // unlocks its admin slash commands (/goto, /hideme, /runspeed, /gametime, /prop...), the Demo input action and
+            // the admin options of the voxel paste and world map, and stops it sending HexPermissions (0x1E / 0x34).
+            message.IsAdminMaybe = Game.Admin.IsAdmin(this);
+            // Membership type (player +0xfc: 0 none, 1 trial, 2 member; Lua Ui.IsMember / IsTrialMember), the account's
+            // (Game/Membership, TASKS 3.12). The nag-screen flag stays off: nothing on this server nags.
+            message.MembershipStatus = Game.Membership.SendSelfType(this);
             // Unique per player so other clients can tell characters apart.
             message.Guid = Character.Id;
             message.CharacterId = Character.Id;
@@ -685,9 +1072,12 @@ namespace LandmarkEmulator.WorldServer.Network
             message.PlayedMinutes = Character.PlayedMinutes;
             message.Coin = Inventory.CountOf(Game.Inventory.Inventory.CurrencyItem);
             message.Titles = Game.Titles.SelfData(Character.Id);
+            message.InventoryFilters = Game.InventoryFilters.SelfData(InventoryFilters);
             // First-time help pages: the client's manager on (unless the player turned it off) and the ones already seen.
             message.SendFirstTimeEvents = Game.FirstTimeEvents.Enabled(Character.Id);
             message.FirstTimeEventsSeen = Game.FirstTimeEvents.Seen(Character.Id);
+            // Grief points / damage points / level (player +0x76920; Game/Grief): the client's lock checks read the level.
+            message.Grief = Game.Grief.SelfData(this);
             if (Character.PositionX != 0f || Character.PositionY != 0f || Character.PositionZ != 0f)
             {
                 // Never log in inside a tree that grew where the character was saved.
@@ -723,27 +1113,35 @@ namespace LandmarkEmulator.WorldServer.Network
             modelInfo = message.Model;
             message.Identity.FirstName = Character.Name;
             
+            // The profile record as live sent it for profile 46 (SendSelfToClient.Profile; live 2.8 / 1.4 / 2.75 / 1 / 0.4 /
+            // 15 and 3 / 3 / 3): until 2026-10-18 the floats went out in the table's column order (line of sight in the
+            // crouch-camera slot +0x74, which the client reads, capsule radius in the line-of-sight slot, crouch height in
+            // the capsule slot) and CHAR_SIZE / ARMOR / FEET one slot late (+0x9c / +0xa0 / +0x88), so the footstep and
+            // foley sounds used char size 1 and feet = the armor value. NoJump / NoStrafe are the record's bits 0x08 / 0x04,
+            // which act as those columns do (FUN_143325480, FUN_143010260); the columns are 0 for every player profile.
             message.Profiles.Add(new SendSelfToClient.Profile
             {
-                Unknown0 = ProfileData.Id,
+                ProfileId = ProfileData.Id,
                 NameId = new Shared.Game.LandmarkText(ProfileData.NameId),
-                Unknown3 = ProfileData.ProfileType,
-                Unknown15 = true,
-                Unknown19 = ProfileData.StandCameraHeight, //1077097267,
-                Unknown20 = ProfileData.LineOfSightHeight, //1068708659,
-                Unknown21 = ProfileData.CapsuleRadius, //1076887552,
-                Unknown22 = 1,
-                Unknown23 = ProfileData.CrouchCameraHeight, //1053609165,
-                Unknown24 = ProfileData.Mass, //1097859072,
-                Unknown29 = ProfileData.CharSize, //3,
-                Unknown30 = ProfileData.Armor, //3,
-                Unknown31 = ProfileData.Feet, //3
+                ProfileType = ProfileData.ProfileType,
+                FactionId = (byte)ProfileData.FactionId,
+                NoJump = ProfileData.NoJump,
+                NoStrafe = ProfileData.NoStrafe,
+                StandCameraHeight = ProfileData.StandCameraHeight,
+                CrouchCameraHeight = ProfileData.CrouchCameraHeight,
+                LineOfSightHeight = ProfileData.LineOfSightHeight,
+                UiModelCameraId = ProfileData.UiModelCameraId,
+                CapsuleRadius = ProfileData.CapsuleRadius,
+                Mass = ProfileData.Mass,
+                CharSize = ProfileData.CharSize,
+                Feet = ProfileData.Feet,
+                Armor = ProfileData.Armor,
             });
             message.CurrentProfile = ProfileData.Id;
             profileId = ProfileData.Id;
             message.ClassProgressions.Add((ProfileData.Id, ProfileData.Id, 0));
-            message.Unknown30.Add((ProfileData.ProfileType, ProfileData.Id));
-            message.Loadouts[0].Unknown1.Unknown1 = ProfileData.Id;
+            // LastPlayedProfileByType stays empty, as live sent it (SendSelfToClient.LastPlayedProfileByType).
+            message.Loadouts[0].Record.ProfileId = ProfileData.Id;
 
 
             foreach (CharacterItemModel item in Inventory.Items)
@@ -757,18 +1155,34 @@ namespace LandmarkEmulator.WorldServer.Network
 
             message.Hotbars.AddRange(BuildHotbars());
             message.KnownPropIds.AddRange(Game.Unlocks.Values(Character.Id, Game.Unlocks.PropTaught));
+            // Crimson Parlor knowledge (0.695 reader FUN_142c19bd0 → ClientKnownCharCustomizationManager at player
+            // +0x7ae28): unlocked CharacterCreateOptions ids into set A (+0x7ae30), ArtTint ids into set B (+0x7ae48).
+            // Without them the 0.695 Parlor hides every non-default option / tint (trace/0695/leads-L39.md, Game/Unlockers.cs).
+            message.CustomizationKnowledge.AddRange(Game.Unlockers.KnownOptions(Character.Id));
+            message.CustomizationKnowledge4.AddRange(Game.Unlockers.KnownTints(Character.Id));
             // Known recipes: every default-learned one plus those learned from recipe items. Records go out for those
             // and for recipes of recipe items in the bag, so learning one this session shows it straight away.
             foreach (var recipe in GameTableManager.Instance.Recipes.Entries)
                 if (recipe.DefaultLearned || LearnedRecipes.Contains(recipe.Id))
-                    message.Recipes.Unknown0.Add(recipe.Id);
+                    message.Recipes.KnownRecipeIds.Add(recipe.Id);
+            // Lumen Station unlocks the character already owns: the client leaves them out of the station's list.
+            HiddenRecipes = Game.RecipeBook.HiddenUnlocks(this);
+            // Bandwidth (audit-bandwidth-2026-10-18 R1): the full record (~124 B) of an owned unlock is never listed or
+            // started by the client, so it is left out; its id stays in the known list (KnownRecipeIds) and the hidden list
+            // (4 B each), which still guard the client's own start paths. Known ids without a record are normal (the
+            // log shows 1,364 known vs 1,302 records) [P]. Up to ~72 KB per login for a player owning all 581 unlocks.
+            // Owned unlocks never become unowned in play (taught props stay, expansions only grow), so no 0x20 unhide
+            // should need the record mid-session; RecipeBook.RefreshHidden logs it if one ever does.
             message.Recipes.RecipeList.AddRange(Game.CraftingStations.BuildRecipeRecords(
-                Game.RecipeBook.RecordsFor(this, message.Recipes.Unknown0).ToList()));
+                Game.RecipeBook.RecordsFor(this, message.Recipes.KnownRecipeIds).Where(r => !HiddenRecipes.Contains(r)).ToList()));
+            RecipeRecordsWithheld = new HashSet<uint>(HiddenRecipes);
+            message.Recipes.HiddenRecipeIds.AddRange(HiddenRecipes.OrderBy(r => r));
             var recipeBytes = new List<byte>();
             message.Recipes.Write(new GamePacketWriter(recipeBytes));
-            log.Info($"SendSelf recipes: {message.Recipes.Unknown0.Count} known, {message.Recipes.RecipeList.Count} records, {recipeBytes.Count} bytes.");
+            log.Info($"SendSelf recipes: {message.Recipes.KnownRecipeIds.Count} known, {message.Recipes.HiddenRecipeIds.Count} hidden, {message.Recipes.RecipeList.Count} records, {recipeBytes.Count} bytes.");
 
-            EnqueueMessage(message);
+            if (send)
+                EnqueueMessage(message);
 
             PlayerGuid = message.Guid;
         }
@@ -776,7 +1190,7 @@ namespace LandmarkEmulator.WorldServer.Network
 
         #region Packet Management
         // Other players' movement waiting to be sent, keyed by (transient id, update type): only the newest of each is
-        // kept, so a burst of updates between ticks costs one packet per kind.
+        // kept, so a burst of updates between ticks costs one packet per kind; sent in body-time order per mover (L179).
         private readonly Dictionary<(uint, byte), byte[]> pendingMovement = new();
         private readonly MovementTiming movementIn = new("received from");
         private readonly MovementTiming movementOut = new("sent to");
@@ -790,26 +1204,70 @@ namespace LandmarkEmulator.WorldServer.Network
         private readonly System.Collections.Concurrent.ConcurrentQueue<byte[]> rawPackets = new();
 
         /// <summary>
-        /// Queues a raw zone packet (opcode bytes included), for developer experiments.
+        /// Queues a raw zone packet (opcode bytes included), for developer experiments. Sent exactly as given: not
+        /// translated for 0.695 clients.
         /// </summary>
         public void SendRaw(byte[] packet) => rawPackets.Enqueue(packet);
 
-        protected override void OnProcessZonePackets()
-        {
-            while (CanProcessPackets && rawPackets.TryDequeue(out byte[] raw))
-                PackTunnelPacket(raw);
+        private readonly object eventLock = new();
+        private readonly Queue<IEvent> events = new();
 
-            if (CanProcessPackets)
+        /// <summary>Queues work to run on this session's next <see cref="Flush"/> once it can (e.g. after a database task).</summary>
+        public void EnqueueEvent(IEvent gameEvent)
+        {
+            if (gameEvent == null)
+                return;
+            lock (eventLock)
+                events.Enqueue(gameEvent);
+        }
+
+        private void RunEvents()
+        {
+            lock (eventLock)
+            {
+                while (events.TryPeek(out IEvent next))
+                {
+                    if (!next.CanExecute())
+                        break;
+                    events.Dequeue();
+                    try
+                    {
+                        next.Execute();
+                    }
+                    catch (Exception exception)
+                    {
+                        log.Error(exception);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Once per tick (the gateway's update, while both halves share this process): runs queued events, sends the
+        /// queued packets to the client (raw dev packets, the newest movement of each other player, then the queue) and
+        /// saves the position now and then.
+        /// </summary>
+        public void Flush()
+        {
+            RunEvents();
+            if (reattachRezoneDue is DateTime due && DateTime.UtcNow >= due)
+                ReattachRezone();
+            bool canSend = Link.CanSend && !Disconnected;
+            while (canSend && rawPackets.TryDequeue(out byte[] raw))
+                Link.Send(raw);
+
+            if (canSend)
             {
                 lock (pendingMovement)
                 {
-                    foreach (((uint transientId, _), byte[] movement) in pendingMovement)
+                    // Each mover's bodies oldest first (MovementFanout.InTimeOrder, L179).
+                    foreach (((uint transientId, _), byte[] movement) in MovementFanout.InTimeOrder(pendingMovement, m => m))
                         EnqueueMessage(new PlayerUpdatePosition { TransientId = transientId, Movement = movement });
                     pendingMovement.Clear();
                 }
             }
 
-            while (CanProcessPackets && outgoingPackets.TryDequeue(out ZonePacket packet))
+            while (canSend && outgoingPackets.TryDequeue(out ZonePacket packet))
                 SendPacket(packet);
 
             if (sinceLastPositionSave.Elapsed >= PositionSaveInterval)
@@ -822,12 +1280,25 @@ namespace LandmarkEmulator.WorldServer.Network
             }
         }
 
-        public override void OnDisconnect()
+        /// <summary>Ends the connection (logout, kick, duplicate login): the gateway closes it and calls <see cref="LinkClosed"/>.</summary>
+        public void OnDisconnect()
         {
+            if (Link.Closed)
+                LinkClosed();
+            else
+                Link.Close();
+        }
+
+        /// <summary>The connection is gone (ConnectionClosed): the player leaves the world and is saved. Runs once.</summary>
+        public void LinkClosed()
+        {
+            if (closed)
+                return;
+            closed = true;
+            ZoneSessions.Remove(this);
             Game.PlayerManager.Leave(this);
             SavePosition();
             SavePlayedTime(leaving: true);
-            base.OnDisconnect();
         }
 
         private void SavePosition()
@@ -868,6 +1339,19 @@ namespace LandmarkEmulator.WorldServer.Network
 
         private void HandleZonePacket(ZonePacket packet)
         {
+            // Telemetry and external-service reports (Lua metrics, WallOfData, social share, …): recorded, never answered.
+            if (Game.Telemetry.IsTelemetry(packet.Opcode))
+            {
+                Game.WorldChannel.WorldChannelServices.WorldChannel.ClientTelemetry(this, packet.Opcode, packet.Data);
+                // CommerceSessionRequest 0x77: the client asks for a session ticket for a Spice REST payment request (fund
+                // wallet, credit cards, redeem code …). Answer CommerceSessionResponse 0x78 {bool ok = false, string ""}
+                // (reader FUN_142c4f100): the client then fails that request at once ("Failed to request commerce
+                // session.") instead of waiting forever. Never a ticket: nothing is paid with real money here
+                // (trace/0695/agent-leads2-d1.md L62).
+                if (packet.Opcode == ZoneMessageOpcode.CommerceSessionRequest)
+                    EnqueueMessage(ZoneMessageOpcode.CommerceSessionResponse, new byte[] { 0, 0, 0, 0, 0 });
+                return;
+            }
             IReadable message = ZoneMessageManager.Instance.GetZoneMessage(packet.Opcode, ClientProtocol);
             if (message == null)
             {
@@ -914,12 +1398,44 @@ namespace LandmarkEmulator.WorldServer.Network
             }
         }
 
-        private byte[] GetOpcodeBytes(ZoneMessageOpcode? opcode)
+        /// <summary>
+        /// The wire bytes of an opcode: the enum value's bytes without leading zeros (ChatBase 0x1300 → 13 00), except
+        /// PlayerUpdate 0x26, whose sub-opcode the 0.695 client reads as a u32 [P]: header writer FUN_142c13350 writes u16
+        /// base + 4 bytes (0.589 FUN_142b79bb0 wrote 1), the S→C dispatcher FUN_142cdfa60 reads <c>*(int *)</c> after the
+        /// u16 (0.589 FUN_142c45fa0 read a <c>char</c>); trace/0695/packets-695.md "Changed layouts" A1. The enum keeps a
+        /// PlayerUpdate sub as one byte (0x2600ss "…Wire" or 0x2600ss00), so 26 00 ss becomes 26 00 ss 00 00 00 here,
+        /// and a 4-byte value (0x2600ss00) gives the same 6 bytes: nothing is written after the u32 sub. Before the
+        /// wire audit (2026-10-17, trace/0695/audit-wire-a.md M3) the 4th enum byte was copied after it, which shifted
+        /// CustomizationChange's guid by one byte.
+        /// </summary>
+        internal static byte[] GetOpcodeBytes(ZoneMessageOpcode? opcode)
+        {
+            byte[] bytes = EnumBytes(opcode);
+            if (bytes.Length >= 3 && bytes[0] == PlayerUpdateBase0 && bytes[1] == 0x00)
+            {
+                byte[] wide = new byte[bytes.Length + 3];
+                wide[0] = PlayerUpdateBase0;
+                wide[2] = bytes[2];                     // u32 sub, little endian: ss 00 00 00
+                return wide[..6];
+            }
+            return bytes;
+        }
+
+        /// <summary>PlayerUpdate's base (wire bytes 26 00), the one family whose sub width the opcode codec knows.</summary>
+        private const byte PlayerUpdateBase0 = 0x26;
+
+        /// <summary>
+        /// The enum value's bytes, big-endian, leading zeros dropped (the opcode as the enum stores it), but never fewer than
+        /// the u16 base: DebugDrawBase 0x0001 is wire bytes 00 01, and dropping its zero left a one-byte opcode the client
+        /// cannot read (GetOpcode has no one-byte form either).
+        /// </summary>
+        private static byte[] EnumBytes(ZoneMessageOpcode? opcode)
         {
             var hexOpcode = $"{opcode:X}";
             // Two-byte bases stored as their wire bytes (InstancedGameBase 0x0D01) print with an odd digit count.
             if (hexOpcode.Length % 2 != 0)
                 hexOpcode = "0" + hexOpcode;
+            hexOpcode = hexOpcode.PadLeft(4, '0');
             int position = 0;
             List<byte> hexBytes = new();
             while (position < hexOpcode.Length)
@@ -927,7 +1443,7 @@ namespace LandmarkEmulator.WorldServer.Network
                 var opByte = hexOpcode.Substring(position, 2);
                 byte num = byte.Parse(opByte, System.Globalization.NumberStyles.AllowHexSpecifier);
 
-                if (hexBytes.Count == 0 && num == 0)
+                if (hexBytes.Count == 0 && num == 0 && hexOpcode.Length - position > 4)
                 {
                     position += 2;
                     continue;
@@ -946,9 +1462,24 @@ namespace LandmarkEmulator.WorldServer.Network
         /// There is no one-byte form: it used to be tried first and, once DebugDrawBase (wire bytes 00 01) was given
         /// the value 0x0001, it caught every packet starting with byte 01 (Notifications, bytes 01 00: the answers to
         /// group / guild popups were dropped as unreadable DebugDraw packets).
+        /// PlayerUpdate 0x26 is read the 0.695 way (<see cref="GetOpcodeBytes"/>): u16 base, u32 sub, then the body; the
+        /// sub is looked up as the enum's 0x2600ss, else 0x2600ss00, and the body starts after the 6 header bytes.
         /// </summary>
         public static (ZoneMessageOpcode?, int) GetOpcode(byte[] data)
         {
+            if (data.Length >= 2 && data[0] == PlayerUpdateBase0 && data[1] == 0x00)
+            {
+                // Every PlayerUpdate sub of both clients fits a byte (0.695's highest is 0x80 SetPlayerBio); a larger one is
+                // no packet the client builds.
+                if (data.Length < 6 || data[3] != 0 || data[4] != 0 || data[5] != 0)
+                    return (null, 0);
+                uint sub = data[2];
+                if (Enum.IsDefined(typeof(ZoneMessageOpcode), 0x260000u | sub))
+                    return ((ZoneMessageOpcode)(0x260000u | sub), 6);
+                if (Enum.IsDefined(typeof(ZoneMessageOpcode), 0x26000000u | (sub << 8)))
+                    return ((ZoneMessageOpcode)(0x26000000u | (sub << 8)), 6);
+                return (null, 0);
+            }
             if (data.Length > 1)
             {
                 uint opcode = (uint)((data[0] << 8) + data[1]);
@@ -987,6 +1518,30 @@ namespace LandmarkEmulator.WorldServer.Network
         public void EnqueueMessage(ZoneMessageOpcode opcode, byte[] data)
         {
             outgoingPackets.Enqueue(new ZonePacket(opcode, data));
+        }
+
+        private uint clientClockMs;
+        private long clientClockAt = -1;
+
+        /// <summary>
+        /// Notes the client's own game clock from a KeepAlive (0x63): the client sends FUN_142cd2690, its timeGetTime
+        /// clock plus the server sync offset (BaseClient +0x32be0 → +0x3c), the clock its timed HUD elements compare
+        /// against (the KeepAlive sender in the 0.695 main loop, part_0065.c "PacketKeepAlive") [P].
+        /// </summary>
+        public void NoteClientClock(uint ms)
+        {
+            clientClockMs = ms;
+            System.Threading.Interlocked.Exchange(ref clientClockAt, Environment.TickCount64);
+        }
+
+        /// <summary>The client's game clock now (ms), from the last KeepAlive plus the time since; null before the first.</summary>
+        public uint? ClientClockNow
+        {
+            get
+            {
+                long at = System.Threading.Interlocked.Read(ref clientClockAt);
+                return at < 0 ? null : unchecked(clientClockMs + (uint)(Environment.TickCount64 - at));
+            }
         }
 
         private void SendPacket(ZonePacket packet)
@@ -1028,7 +1583,7 @@ namespace LandmarkEmulator.WorldServer.Network
             }
             // #endregion
 
-            PackTunnelPacket(data.ToArray());
+            Link.Send(data.ToArray());
         }
 
         /// <summary>T-KIRMMIN-WIRE-TIMING: stamp ClientIsReady C→S relative to SendSelf t=0.</summary>
@@ -1040,13 +1595,57 @@ namespace LandmarkEmulator.WorldServer.Network
             log.Info($"WIRE-TIMING ClientIsReady(C→S) sinceSendSelfMs={sinceT0} utcMs={nowMs}");
         }
 
-        public override void OnTunnelData(Channel channel, byte[] data)
+        /// <summary>
+        /// A client packet from the gateway (TunnelPacketFromExternalConnection): movement on the PositionUpdate channel,
+        /// otherwise a zone packet as the 0.695 client sent it, past the gateway's flood limits.
+        /// </summary>
+        public void FromClient(Channel channel, byte[] data)
+        {
+            if (Disconnected)
+                return;
+            Receive(channel, data);
+        }
+
+        /// <summary>
+        /// A client packet that arrived before the client's own SOE Disconnect but was still waiting for the world thread
+        /// when the connection ended (the in-process gateway, <see cref="ClientSession.OnRemoved"/>). The link already
+        /// reads as closed, so <see cref="FromClient"/> would drop it; it is handled as long as the zone session has not
+        /// left yet. The client sends its last packets and its Disconnect back to back — e.g. Exit Game saves the
+        /// preference document (PreferencePacketClientXml, sender FUN_142d59850 on the Exit path, Game/Preferences.cs)
+        /// right before the process exits (review 2026-10-18b #1). Nothing is sent back (Flush sends nothing once the
+        /// link is closed); <see cref="Game.PlayerManager.Enter"/> refuses a closed connection, so a last movement packet
+        /// can't make a ghost.
+        /// </summary>
+        public void FromClientBeforeClose(Channel channel, byte[] data)
+        {
+            if (closed)
+                return;
+            Receive(channel, data);
+        }
+
+        private void Receive(Channel channel, byte[] data)
         {
             if (channel == Channel.PositionUpdate)
             {
                 // Movement packets aren't zone messages; only position and rotation are used so far.
                 if (data.Length > 0 && data[0] == 0x00)
                     LastFullMovement = data;
+                if (PositionUpdate.TryReadVelocity(data, out Vector3 velocity))
+                {
+                    LastVelocity = velocity;
+                    LastVelocityAt = DateTime.UtcNow;
+                }
+                // L121: log each change of the movement state word (which bits mean jumping / falling).
+                if (PositionUpdate.TryReadState(data, out uint moveState) && moveState != MovementState)
+                {
+                    log.Debug($"{CharacterName}: movement state 0x{MovementState:X} -> 0x{moveState:X} (type {data[0]}, vy {LastVelocity.Y:F1})");
+                    // The client's own /sit (and its end by moving / jumping / RequestAnimationSelection): relayed in
+                    // this movement to the other clients, which sit / stand the character by it (Game.Emotes).
+                    if (((moveState ^ MovementState) & PositionUpdate.SittingState) != 0)
+                        log.Info($"{CharacterName}: {((moveState & PositionUpdate.SittingState) != 0 ? "sits down" : "stands up")} (movement state bit 0x{PositionUpdate.SittingState:X}).");
+                    MovementState = moveState;
+                }
+                Game.SafeEject.Moved(this);   // a launched player who has landed: entity state bit 26 cleared
                 if (PositionUpdate.TryRead(data, out Vector3? position, out Quaternion? rotation))
                 {
                     // While arriving from a teleport, positions from before the client processed it are ignored; the
@@ -1067,6 +1666,8 @@ namespace LandmarkEmulator.WorldServer.Network
                     if (rotation.HasValue)
                         lastRotation = rotation;
                     positionDirty = lastPosition.HasValue;
+                    if (reattachRezoneDue != null && lastPosition.HasValue)
+                        ReattachRezone();
                 }
                 movementIn.Mark(CharacterName);
                 // Converted once here rather than per recipient.
@@ -1079,33 +1680,12 @@ namespace LandmarkEmulator.WorldServer.Network
                 return;
             }
 
-            // Abilities 0x27 sub 0x17 DelayedTargetInfo: while a power attack charges, the client sends its aim every frame
-            // (ClientAbilityManager vtable slot 2 → FUN_1433ad3e0; seen 617 in two seconds of charging 733). The server
-            // takes the aim from the cast, so these are dropped before the flood limiter, which they would otherwise
-            // exhaust, dropping the requests that matter (the charge's release among them).
-            if (data.Length >= 3 && data[0] == 0x27 && data[1] == 0x00 && data[2] == 0x17)
-                return;
-
-            // WorldEditingBase 0x10C: the build cursor, sent every frame while building (up to ~500 a second seen
-            // 2026-10-13). Game.WorldEditing throttles its relay itself (100 ms per builder). Through the flood limiter
-            // it used up the whole budget and the limiter then dropped terrain cell requests: never answered, the
-            // client drew the original ground after its 6 s scene timer (removed terrain came back) and refused new
-            // edits while the request stayed pending (the build tool hung).
+            // WorldEditingBase 0x10C: the build cursor, sent every frame while building (the gateway lets it past its
+            // flood limiter). Game.WorldEditing throttles its relay itself (100 ms per builder).
             if (data.Length >= 2 && data[0] == 0x0C && data[1] == 0x01)
             {
                 OpcodeStats.Received(data);
                 Game.WorldEditing.Received(this, data);
-                return;
-            }
-
-            // Terrain cell requests (0xEC) and build edits (0xF4) have their own allowance, so a flood of anything
-            // else can't drop them.
-            bool terrain = data.Length >= 2 && data[1] == 0x00 && (data[0] == 0xEC || data[0] == 0xF4);
-            if (!(terrain ? terrainLimiter.TryTake() : packetLimiter.TryTake()))
-            {
-                long dropped = System.Threading.Interlocked.Increment(ref droppedPackets);
-                if (packetWarnLimiter.TryTake())
-                    log.Warn($"{CharacterName ?? "A session"} is sending packets too fast; {dropped} dropped so far.");
                 return;
             }
 
@@ -1122,34 +1702,10 @@ namespace LandmarkEmulator.WorldServer.Network
                     Game.WorldEditing.Received(this, data);
                     return;
                 }
-                // WarpNetwork 0x113 sub 4 ClientRequest {u32 1, u32 zone, u32 world, ...} at ClientFinishedLoading: asks for
-                // the landscape's warp network (reply sub 2 WarpNetworkZoneNetwork, reader FUN_1434504c0: layers of
-                // warp points): handled as WarpNetworkWire (MiscHandler → Game/WarpNetwork.cs, Spire Local Travel).
-                // PlayerUpdate 0x6C Loading {u8}: the client's loading-screen state; informational.
-                if (data.Length >= 3 && data[0] == 0x26 && data[1] == 0x00 && data[2] == 0x6C)
-                    return;
-                // SocialShare 0x104 (u16 sub; 1 GetProviderStatusRequest, 3 PublishRequest): sharing to social networks,
-                // which this server doesn't offer; the client carries on without an answer.
-                if (data.Length >= 2 && data[0] == 0x04 && data[1] == 0x01)
-                    return;
-                // MarketplaceImageBase 0x107 sub 1 UploadRequest: a design screenshot (large or small JPEG).
-                if (data.Length >= 4 && data[0] == 0x07 && data[1] == 0x01 && data[2] == 0x01 && data[3] == 0x00)
-                {
-                    Game.Templates.StoreImage(this, data.AsSpan(4).ToArray());
-                    return;
-                }
-                // ToolBase 0x117 sub 1 ToolPacketActivate (FUN_1433aa0c0): the client switched build tool. Informational,
-                // no reply expected.
-                if (data.Length >= 3 && data[0] == 0x17 && data[1] == 0x01 && data[2] == 0x01)
-                    return;
-                // HeroicMovement 0x105 (u8 sub, u64 entity, body): grappling hook fire (1), swimming (3), hook effects
-                // end (4). The client sends its own entity as 0; others need the player's guid to show the rope and
-                // swim pose (client handler FUN_142c42ab0 ignores packets about itself).
-                if (data.Length >= 11 && data[0] == 0x05 && data[1] == 0x01)
-                {
-                    Game.PlayerManager.RelayHeroicMovement(this, data);
-                    return;
-                }
+                // The bases 0x104-0x117 that used to be read here as raw bytes (SocialShare 0x104, HeroicMovement 0x105,
+                // MarketplaceImage 0x107, ToolBase 0x117) have enum values in their wire form since b653b73, so GetOpcode
+                // finds them and they go through HandleZonePacket: telemetry (Game.Telemetry), Game.HeroicMovement,
+                // Game.Templates.HandleImage and Building.Tools. WarpNetwork 0x113 is WarpNetworkWire (MiscHandler).
                 Network.OpcodeStats.Unanswered("raw 0x" + (data.Length >= 2 ? $"{data[1]:X2}{data[0]:X2}" : "?"), data.Length > 2 ? data[2] : -1);
                 log.Warn($"Unknown Zone Packet : {BitConverter.ToString(data)}");
                 return;

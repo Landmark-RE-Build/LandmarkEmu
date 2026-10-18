@@ -46,11 +46,15 @@ C2S 5 (5 not handled) · S2C 5 (3 never sent / opcode unknown)
 ```
 
 ## S2C Skills::SkillPacketLoadSkillDefinitionManager  `0xBC, 0x4`
+
+> 2026-10-17: on 0.695 the dispatcher FUN_142f55e50 routes **sub 5** to LoadSkillDefinitionManager (FUN_143bf3460) and
+> sub 6 to SetSkillPointManager; the sub numbers in this file come from the 0.589 generator (trace/0695/agent-l138-c2.md).
+> The server sends the captured live body unchanged.
 - server: NOT SENT (not in opcode_stats, not in the server code)
 - case functions (dispatcher): FUN_143b38430
 
 ## S2C Skills::SkillPacketSetSkillPointManager  `0xBC, 0x5`
-- server: SENT (102× in opcode_stats)
+- server: SENT (18× in opcode_stats)
 - case functions (dispatcher): FUN_142eb8010
 
 ## S2C Skills::SkillPacketAddSkill  `0xBC, 0x6`

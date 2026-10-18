@@ -1,4 +1,4 @@
-using LandmarkEmulator.Database.Character.Model;
+﻿using LandmarkEmulator.Database.Character.Model;
 using LandmarkEmulator.Shared.Database;
 using LandmarkEmulator.Shared.GameTable.Text;
 using LandmarkEmulator.Shared.Network;
@@ -39,6 +39,12 @@ namespace LandmarkEmulator.WorldServer.Game
     /// Results: 1 success, 2 not enough coins, 3 no such item, else a generic failure (ClaimVendor.* strings). A
     /// vendor that still has stock can't be picked up (PickUpReply error 9, "Prop.PickUpErrorVendorInventoryNotEmpty").
     /// Earnings reach the owner by mail (coins attached), whether online or not.
+    /// <para>
+    /// Off by default (<see cref="Enabled"/>, setting VendorShops): live made the booth decorative on 1 Apr 2016 (P4378,
+    /// the Vendor Booth's old, broken window was removed and the booth kept as decoration).
+    /// Off, the booth has no interaction, the Showcase hides My vendors and refuses listings, and <see cref="StartUp"/>
+    /// mails any stock left in booths back to the owners.
+    /// </para>
     /// </summary>
     public static class Vendors
     {
@@ -68,7 +74,35 @@ namespace LandmarkEmulator.WorldServer.Game
             return listings;
         }
 
-        public static bool IsVendor(ulong guid) => Props.Find(guid) is { } prop && prop.PropId == VendorProp;
+        /// <summary>Are vendor shops on (setting VendorShops; off = live's decorative booth)?</summary>
+        public static bool Enabled => Shared.Configuration.ConfigurationManager<WorldServerConfiguration>.Instance.Config?.VendorShops == true;
+
+        public static bool IsVendor(ulong guid) => Enabled && Props.Find(guid) is { } prop && prop.PropId == VendorProp;
+
+        /// <summary>
+        /// Start-up: with shops off, every listing still holding items is mailed back to its owner (the booth stays as a
+        /// decorative prop and can be picked up).
+        /// </summary>
+        public static void StartUp()
+        {
+            if (Enabled)
+                return;
+            List<ClaimVendorItemModel> stocked;
+            lock (sync)
+                stocked = Listings().Where(l => l.Count > 0).ToList();
+            foreach (ClaimVendorItemModel listing in stocked)
+            {
+                uint count = listing.Count;
+                lock (sync)
+                    listing.Count = 0;
+                Save(listing);
+                Social.SocialServices.Service.SendSystemMail(listing.OwnerGuid, "Your vendor", $"Returned: {count} × {ItemName(listing.ItemDefinitionId)}",
+                    "Vendor shops are off on this server, so the items you listed on your Vendor Booth come back by mail.", 0,
+                    new[] { (listing.ItemDefinitionId, count) });
+            }
+            if (stocked.Count > 0)
+                log.Info($"Vendor shops are off: {stocked.Count} listing(s) mailed back to their owners.");
+        }
 
         public static bool HasStock(ulong vendor)
         {
@@ -150,7 +184,7 @@ namespace LandmarkEmulator.WorldServer.Game
         [ZoneMessageHandler(ZoneMessageOpcode.ClaimVendorBase)]
         public static void Handle(WorldSession session, ClaimVendorRequest request)
         {
-            if (request.Body.Length < 8)
+            if (!Enabled || request.Body.Length < 8)
                 return;
             var reader = new GamePacketReader(request.Body);
             ulong vendor = reader.ReadULong();
@@ -248,7 +282,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     session.GiveItem(listing.ItemDefinitionId, quantity);
                     Save(listing);
                     string name = ItemName(listing.ItemDefinitionId);
-                    Mail.SendSystemMail(listing.OwnerGuid, "Your vendor", $"Sold: {quantity} × {name}",
+                    Social.SocialServices.Service.SendSystemMail(listing.OwnerGuid, "Your vendor", $"Sold: {quantity} × {name}",
                         $"{session.CharacterName} bought {quantity} × {name} from your vendor for {total} coins.", total);
                     log.Info($"Vendor 0x{vendor:X}: {session.CharacterName} bought {quantity} × {name} for {total} coins.");
                     Refresh(vendor);
@@ -275,16 +309,30 @@ namespace LandmarkEmulator.WorldServer.Game
         /// </summary>
         public static (uint Result, uint Fee, uint Count) List(WorldSession session, ulong vendor, ulong itemGuid, uint count, uint price)
         {
-            if (Props.Find(vendor) is not { } prop || prop.PropId != VendorProp || prop.OwnerGuid != session.PlayerGuid)
+            if (!Enabled || Props.Find(vendor) is not { } prop || prop.PropId != VendorProp || prop.OwnerGuid != session.PlayerGuid)
                 return (Failed, 0, 0);
             CharacterItemModel item = session.Inventory.Get(itemGuid);
             if (item == null || item.Container != Inventory.Inventory.BagContainer || count == 0 || count > item.Count
                 || item.ItemDefinitionId == Inventory.Inventory.CurrencyItem)
                 return (NoSuchItem, 0, 0);
+            // What may not change hands may not be sold either: a NO_TRADE item (Lumen-bought, founder, soulbound), a
+            // store purchase still in its waiting period (Trades / Mail / Chests refuse both), a chest still holding items
+            // (its contents are keyed to its guid, which a listing doesn't keep) and a Player Design item (its design is
+            // keyed to the item's guid too). Before, all four could be listed and bought: the first two passed to any
+            // buyer, the last two arrived empty and their contents / design were lost.
+            if (Inventory.ItemDefinitionManager.Get(item.ItemDefinitionId) is { NoTrade: true } || Inventory.Inventory.IsTradeLocked(item)
+                || Chests.HasItems(item.Id) || item.ItemDefinitionId == DesignItems.PlayerDesignItem)
+            {
+                Chat.System(session, "That item can't be sold on a vendor.");
+                return (Failed, 0, 0);
+            }
             price = Math.Min(price, MaxPrice);
-            uint fee = (uint)Math.Ceiling((double)price * count * FeeRate);
-            if (fee > session.Coins)
-                return (NotEnoughCoins, fee, count);
+            // In doubles: price × count × 10 % can pass 2^32 (10,000,000 × 500 = 500,000,000 fine, × 5,000 is not), and an
+            // out-of-range double cast to uint is unspecified, which let a huge listing through for a tiny fee.
+            double exactFee = Math.Ceiling((double)price * count * FeeRate);
+            if (exactFee > session.Coins)
+                return (NotEnoughCoins, (uint)Math.Min(exactFee, uint.MaxValue), count);
+            uint fee = (uint)exactFee;
             uint definition = item.ItemDefinitionId;
             if (session.TakeFromStack(itemGuid, count) == null)
                 return (NoSuchItem, 0, 0);
@@ -337,7 +385,7 @@ namespace LandmarkEmulator.WorldServer.Game
             if (session.Inventory.SpaceFor(listing.ItemDefinitionId) >= count)
                 session.GiveItem(listing.ItemDefinitionId, count);
             else
-                Mail.SendSystemMail(session.PlayerGuid, "Your vendor", $"Returned: {count} × {name}",
+                Social.SocialServices.Service.SendSystemMail(session.PlayerGuid, "Your vendor", $"Returned: {count} × {name}",
                     "Your bag was full, so the items you took off your vendor come by mail.", 0,
                     new[] { (listing.ItemDefinitionId, count) });
             Refresh(listing.VendorId);

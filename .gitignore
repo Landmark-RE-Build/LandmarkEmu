@@ -359,3 +359,6 @@ network.env
 # The settings file (docker-compose.yml reads it; .env.example is the template)
 /.env
 server-data/
+
+# Server patch folder: the packs themselves (*.lmpatch, above) and the refused ones.
+docker/launcher/patches/rejected/

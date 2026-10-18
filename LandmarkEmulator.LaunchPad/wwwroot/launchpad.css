@@ -99,6 +99,9 @@ button:disabled { opacity: 0.5; cursor: default; }
 .badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; font-weight: 600; }
 .badge.official { background: rgba(124, 196, 127, 0.2); color: var(--ok); }
 .badge.refused { background: rgba(217, 104, 92, 0.2); color: var(--danger); }
+.pick { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+.pick > span:first-child { flex: 0 0 210px; }
+.pick .mono { flex: 1; font-size: 12px; }
 .problems { max-height: 200px; overflow: auto; font-family: Consolas, monospace; font-size: 12px; }
 
 /* Bottom bar */

@@ -22,5 +22,11 @@ namespace LandmarkEmulator.Database.Character.Model
         public uint Approvals { get; set; }
         public uint Rejections { get; set; }
         public DateTime CreatedAt { get; set; }
+        /// <summary>
+        /// When the product was listed (peer review or an admin accepted a design; a gallery listing is listed when
+        /// created). Null for products listed before this column existed (2026-10-18): <see cref="CreatedAt"/> stands in.
+        /// Read by the Showcase following digest (Game.ShowcaseFollow).
+        /// </summary>
+        public DateTime? ListedAt { get; set; }
     }
 }

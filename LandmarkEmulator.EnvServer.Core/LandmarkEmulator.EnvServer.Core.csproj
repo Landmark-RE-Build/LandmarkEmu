@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The Environment Server (terrain / voxel back end) as a library: the voxel stores and IEnvironmentServer, used
+    in-process by the world server (the default) and by the Environment Server service LandmarkEmulator.EnvServer
+    (trace/architecture/terrain-service.md section 7). Namespaces are still the world server's, so moving the code here
+    changed no caller.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LandmarkEmulator.Shared\LandmarkEmulator.Shared.csproj" />
+    <!-- The Environment Server messages (EnvironmentWire converts the stores' types to and from them). -->
+    <ProjectReference Include="..\LandmarkEmulator.Internal\LandmarkEmulator.Internal.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -61,6 +61,63 @@ namespace LandmarkEmulator.WorldServer.Game
         /// SetVoxelStorage (sub 0x1D {u32 old, u32 new}; "VoxelStorage.IncreasedSize"), reader FUN_142e81590.</summary>
         private const ushort SetSizeSub = 0x17, SetVoxelStorageSub = 0x1D;
 
+        /// <summary>
+        /// InventoryPacketShowActivationFailure (0x2D sub 0x1E, S→C; vtable 1446e10f0), new in 0.695: the 0.589 inventory
+        /// reader FUN_142e81590 has no case 0x1E. Read by the 0.695 inventory dispatcher FUN_142f202e0 case 0x1E:
+        /// u16 0x2D, i16 sub 0x1E, u32 text id, and nothing more (each field bounds-checked).
+        /// </summary>
+        private const ushort ShowActivationFailureSub = 0x1E;
+
+        /// <summary>
+        /// Refusal texts for <see cref="Refuse"/> (trace/0695/leads-L33-L35-L36.md, L35). All exist in the 0.695 text
+        /// table and none takes parameters (the client fills none in, see <see cref="Refuse"/>).
+        /// <list type="bullet">
+        /// <item>560768 Item.ErrorFailedItemRequirement "Error: Failed item requirement": the generic fallback when an
+        /// item has no refusal text of its own (storage expansions at their max, recipe items already known…). It is
+        /// also the last of the client's own Item.Error* texts 560758-560768 (FUN_143c500b0, used by the older item-line
+        /// result path FUN_142f01700 "HandleClientError", which is not this packet).</item>
+        /// <item>571174 "You already have the maximum number of Build Site Expansions!" (571175 is the attached-site
+        /// variant; the server has no attached-site expansion item).</item>
+        /// <item>568756 "You've already learned this prop!" — a prop recipe item whose prop is known.</item>
+        /// <item>568826 "You already know the Design this item contains!" — a design item whose design is known.</item>
+        /// <item>577178 Customization.OptionKnown / 577179 Customization.TintKnown — single customization option / tint
+        /// unlockers already known (no such item path on the server yet).</item>
+        /// <item>577416 "You've already unlocked the Crimson Parlor options in this pack." — Fantasy Parlor Pack 4419
+        /// (<see cref="Unlockers"/>); 577364 "You've already unlocked all of the faces in this pack!" is a faces-only
+        /// pack's text, kept for such an item.</item>
+        /// <item>577705 / 577706 / 577707 "You've already unlocked the Cowboy Hat / Ninja Mask / Samurai Helmet (Hair)
+        /// option for the Crimson Parlor." — hat unlockers 4521 / 4522 / 4523.</item>
+        /// </list>
+        /// The 0.695 Parlor texts have no CodeStringMappings key, which fits a packet that carries a text id (L35).
+        /// </summary>
+        public const uint FailedItemRequirementText = 560768, MaxSiteExpansionsText = 571174, MaxAttachedSiteExpansionsText = 571175,
+            PropKnownText = 568756, DesignKnownText = 568826, CustomizationOptionKnownText = 577178, CustomizationTintKnownText = 577179,
+            ParlorPackKnownText = 577416, ParlorFacesKnownText = 577364,
+            CowboyHatKnownText = 577705, NinjaMaskKnownText = 577706, SamuraiHelmetKnownText = 577707;
+
+        /// <summary>
+        /// Refuses an item use ("Use" from the bag: Inventory 0x2D sub 0x15 ActivateItem) with the client's own text
+        /// <paramref name="textId"/>. The item is never used up.
+        /// <para>
+        /// The client gets InventoryPacketShowActivationFailure (<see cref="ShowActivationFailureSub"/>). Its handler
+        /// (FUN_142f202e0 case 0x1E) looks the id up as plain client text (DAT_145431178 vtable +0x10, no parameter
+        /// filling: a text with [*name*] or %d would show raw, so never send one) and opens Lua
+        /// CreateConfirmationDialog("Activation Failure", text) (UI/Default/ConfirmationDialog.lua:113) without a callback:
+        /// a modal box under the literal, unlocalized title "Activation Failure". The client makes no item-use checks of
+        /// its own (Lua ClientInventory.ActivateItem → FUN_143457220 only splits tools, ToolPacketActivate 0x117, from
+        /// the rest), so every refusal is the server's decision. Items used through an ability cast keep the cast-fail
+        /// answer (AbilityCastError.*) instead.
+        /// </para>
+        /// </summary>
+        public static void Refuse(WorldSession session, uint textId)
+        {
+            var output = new List<byte>();
+            var w = new LandmarkEmulator.Shared.Network.GamePacketWriter(output);
+            w.WriteUShort(ShowActivationFailureSub);
+            w.Write(textId);
+            session.EnqueueMessage(Network.Message.ZoneMessageOpcode.InventoryBase, output.ToArray());
+        }
+
         public static uint VaultSizeOf(ulong characterId)
             => Unlocks.Values(characterId, Unlocks.VaultSize).DefaultIfEmpty(DefaultVaultSize).Max();
 
@@ -68,7 +125,31 @@ namespace LandmarkEmulator.WorldServer.Game
             => Unlocks.Values(characterId, Unlocks.DesignStorage).DefaultIfEmpty(DefaultDesignStorage).Max();
 
         /// <summary>Dungeon Builder's Starter Set (Lumen Station).</summary>
-        private const uint DungeonStarterSet = 3760;
+        public const uint DungeonStarterSet = 3760;
+
+        /// <summary>
+        /// For a storage expansion item (3710 Vault / 3711 Inventory / 3712 Design Expansion): how many more the player
+        /// can still use — the steps left to the most, less the unused copies they hold (bag or vault); null for any other
+        /// item. The Lumen Station's MAX_QUEUE of their recipes (2386-2388: 3 / 3 / 7, Recipes.txt) equals the steps from
+        /// a new character's size to the most (60→120 and 40→100 by 20, 6 M→48 M by 6 M) [P data]. Crafting refuses buying
+        /// past it (L43).
+        /// </summary>
+        public static int? ExpansionUsesLeft(WorldSession session, uint itemId)
+        {
+            if (!expansions.TryGetValue(itemId, out var e))
+                return null;
+            uint size = Unlocks.Values(session.PlayerGuid, e.Kind).DefaultIfEmpty(e.Start).Max();
+            int steps = size >= e.Max ? 0 : (int)((e.Max - size + e.Step - 1) / e.Step);
+            return Math.Max(0, steps - (int)session.Inventory.CountOf(itemId));
+        }
+
+        /// <summary>Is this storage expansion's storage already at its most (null = not an expansion)? Held copies don't count.</summary>
+        public static bool? ExpansionFull(WorldSession session, uint itemId)
+        {
+            if (!expansions.TryGetValue(itemId, out var e))
+                return null;
+            return Unlocks.Values(session.PlayerGuid, e.Kind).DefaultIfEmpty(e.Start).Max() >= e.Max;
+        }
 
         /// <summary>Does <see cref="TryActivate"/> have a use for the item?</summary>
         public static bool Handles(uint itemId)
@@ -76,7 +157,7 @@ namespace LandmarkEmulator.WorldServer.Game
             if (itemId == DungeonStarterSet)
                 return true;
             unpacks ??= BuildUnpacks();
-            return expansions.ContainsKey(itemId) || unpacks.ContainsKey(itemId) || siftedBags.ContainsKey(itemId) || DesignFile(itemId) != null;
+            return itemId == Inventory.ItemDefinitionBuilder.BuildSiteExpansion || Membership.IsTrialKey(itemId) || Fireworks.IsPack(itemId) || Pets.IsFigurine(itemId) || Unlockers.Handles(itemId) || expansions.ContainsKey(itemId) || unpacks.ContainsKey(itemId) || siftedBags.ContainsKey(itemId) || DesignFile(itemId) != null;
         }
 
         /// <summary>Uses an ability-less item; false when it has no use here (the caller tries other uses).</summary>
@@ -92,6 +173,33 @@ namespace LandmarkEmulator.WorldServer.Game
                 session.GiveItem(3162, 2);
                 session.GiveItem(3156, 1);
                 log.Info($"{session.CharacterName} opened the Dungeon Builder's Starter Set.");
+                return true;
+            }
+            if (item.ItemDefinitionId == Inventory.ItemDefinitionBuilder.BuildSiteExpansion)
+            {
+                Claims.UseExpansion(session);
+                return true;
+            }
+            // Trial keys (TASKS 3.12, Membership.UseTrialKey): the mailed copy gives trial membership; the sender's copy
+            // only says to mail it to a friend.
+            if (Membership.IsTrialKey(item.ItemDefinitionId))
+            {
+                Membership.UseTrialKey(session, item);
+                return true;
+            }
+            // Crimson Parlor unlockers 4419 / 4521-4523 (TASKS 4.9 / 4.10, trace/0695/leads-L39.md): add their options /
+            // tints to the character's customization knowledge, or refuse with the item's "already unlocked" text.
+            if (Unlockers.TryUse(session, item))
+                return true;
+            // Fireworks packs 4444-4449 (TASKS 4.12, trace/0695/spec-fireworks.md §5.2 D): unpack into the consumables
+            // their descriptions name, if they all fit. (4443, the Unstable pack, has an ability and is cast instead:
+            // Consumables → Fireworks.OpenUnstablePack.)
+            if (Fireworks.TryOpenPack(session, item))
+                return true;
+            if (Pets.KindOfItem(item.ItemDefinitionId) is Pets.PetKind pet)
+            {
+                // A cosmetic pet figurine (spec-pets.md): summons its pet; never used up ("Figurines have unlimited uses").
+                Pets.Summon(session, pet);
                 return true;
             }
             if (expansions.TryGetValue(item.ItemDefinitionId, out var expansion))
@@ -124,13 +232,17 @@ namespace LandmarkEmulator.WorldServer.Game
             uint size = Unlocks.Values(session.PlayerGuid, e.Kind).DefaultIfEmpty(e.Start).Max();
             if (size >= e.Max)
             {
-                Chat.System(session, $"Your {e.Name} storage is already at its maximum ({e.Max:N0}).");
+                // Live has no "at max" text for these (the most is stated in the item descriptions 574289 / 574287 /
+                // 574291), so the generic refusal.
+                Refuse(session, FailedItemRequirementText);
                 return;
             }
             if (!session.TakeItem(item.ItemDefinitionId, 1))
                 return;
             uint grown = Math.Min(e.Max, size + e.Step);
             Unlocks.Set(session, e.Kind, grown);
+            if (grown >= e.Max)
+                RecipeBook.RefreshHidden(session);   // the Lumen Station stops listing it
             var output = new List<byte>();
             var w = new LandmarkEmulator.Shared.Network.GamePacketWriter(output);
             if (e.Container == uint.MaxValue)
@@ -244,9 +356,98 @@ namespace LandmarkEmulator.WorldServer.Game
 
         private static Dictionary<string, uint> designNameIds;
 
-        /// <summary>A design item: its template joins the player's designs (Designs tab) and the item is used up.</summary>
+        /// <summary>
+        /// The grantId of the design item a game design came from (by its name), or 0: the live template database id
+        /// of its design, which the 0.695 Designs window looks up in ExportedTemplateCategoryMap to pick its tab
+        /// (Templates.WriteBasicData +0xec; e.g. 1727 "Design: arcs 7 to 9" → 7, 2641 Starter Home → 599,
+        /// 4358 Architecture Tools → 1318; trace/0695/spec-design-categories.md §2).
+        /// </summary>
+        public static uint DesignGrantId(string designName)
+        {
+            if (designGrantIds == null)
+            {
+                DesignFile(0);
+                var map = new Dictionary<string, uint>();
+                foreach (uint itemId in designFiles.Keys)
+                    if (GrantIdOf(itemId) is uint grant and not 0)
+                    {
+                        string name = NameOf(itemId);
+                        map.TryAdd(name.StartsWith("Design:") ? name["Design:".Length..].Trim() : name, grant);
+                    }
+                designGrantIds = map;
+            }
+            return designGrantIds.GetValueOrDefault(designName);
+        }
+
+        private static Dictionary<string, uint> designGrantIds;
+
+        /// <summary>
+        /// An item definition's grantId: the u32 at record length − 20 of the decompressed definition (the 6th u32 of
+        /// the record's last 40 bytes; trace/0695/spec-fireworks.md §2.1). ItemDefinitionManager.Parse skips it, so it is
+        /// read here from the kept LZ4 chunk {u16 compressed, u16 decompressed, block}. Checked against all 2,885
+        /// records of the live dump (gameData/items.json "grantId": all equal). TODO (TASKS 4.18): parse it into
+        /// ItemDefinition and use that here. 0 when the item is unknown or the record is short.
+        /// </summary>
+        private static uint GrantIdOf(uint itemId)
+        {
+            byte[] chunk = ItemDefinitionManager.Get(itemId)?.RawData;
+            if (chunk == null || chunk.Length < 4)
+                return 0;
+            try
+            {
+                ushort compressed = BitConverter.ToUInt16(chunk, 0), decompressed = BitConverter.ToUInt16(chunk, 2);
+                if (chunk.Length < 4 + compressed)
+                    return 0;
+                byte[] record = LandmarkEmulator.Shared.Network.Lz4Block.Decode(chunk.AsSpan(4, compressed), decompressed);
+                return record.Length >= 24 ? BitConverter.ToUInt32(record, record.Length - 20) : 0;
+            }
+            catch (Exception e)
+            {
+                log.Debug($"Item {itemId}: no grantId ({e.Message}).");
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// A design item: its template joins the player's designs (Designs tab) and the item is used up. A design the
+        /// player already has (a game design of the same name) is refused with 568826 "You already know the Design this
+        /// item contains!" (<see cref="Refuse"/>) and the item is kept.
+        /// <para>A Starter Castle piece's item (3706/3707/4072-4080/4085/4360/4361 from goal reward bundle 1051, the
+        /// Modular Castle items 4098-4105; Templates.StarterIndexOfItem) unlocks that piece instead
+        /// (Templates.UnlockStarterPiece, unlock kind 20): no template row is stored, so no storage is used and no
+        /// duplicate of the virtual "ST" design appears; the client files it under "Starter Castle" by its +0xec id
+        /// (spec-design-categories.md §4 S6). A piece already had (a default, or unlocked before) keeps the item with
+        /// the same 568826 refusal, so a second bundle-1051 grant (goal 477) stays tradeable; what live did here is
+        /// unknown (U-DC4).</para>
+        /// </summary>
         private static void LearnDesign(WorldSession session, CharacterItemModel item, string file)
         {
+            if (Templates.StarterIndexOfItem(item.ItemDefinitionId) is int piece and >= 0)
+            {
+                if (Templates.HasStarterPiece(session.PlayerGuid, piece))
+                {
+                    Refuse(session, DesignKnownText);
+                    return;
+                }
+                if (!session.TakeItem(item.ItemDefinitionId, 1))
+                    return;
+                TemplateModel learned = Templates.UnlockStarterPiece(session, piece);
+                string pieceName = learned?.Name ?? NameOf(item.ItemDefinitionId);
+                Templates.SendLearned(session, 0, pieceName);
+                log.Info($"{session.CharacterName} unlocked Starter Castle design {pieceName} (item {item.ItemDefinitionId}).");
+                return;
+            }
+            string known = NameOf(item.ItemDefinitionId);
+            if (known.StartsWith("Design:"))
+                known = known["Design:".Length..].Trim();
+            known = known.Trim();
+            if (known.Length > 64)
+                known = known[..64];   // as Templates.Store keeps the name
+            if (Templates.OwnedBy(session.PlayerGuid).Any(t => t.AuthorName == Templates.DesignerAuthor && t.Name == known))
+            {
+                Refuse(session, DesignKnownText);
+                return;
+            }
             Terrain.VoxelTemplate template;
             try
             {

@@ -3,6 +3,7 @@ using LandmarkEmulator.WorldServer.Network;
 using LandmarkEmulator.WorldServer.Network.Message.Model;
 using NLog;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -12,7 +13,8 @@ namespace LandmarkEmulator.WorldServer.Game
 {
     /// <summary>
     /// Common loot ("treasure") chests (wiki "Chests", launch 2016): found in surface caves and out in the open in the
-    /// Chaos Caverns, tucked in dead ends and dark corners; "a slight golden glow … gold swirls floating up". Anyone
+    /// Chaos Caverns, tucked in dead ends and dark corners, with a faint golden glow and gold swirls rising from them.
+    /// Anyone
     /// within 50 m of a chest when it opens gets loot, each their own — resources (raw wood, gems, ore). The chest then
     /// goes and comes back later.
     /// <para>
@@ -20,6 +22,12 @@ namespace LandmarkEmulator.WorldServer.Game
     /// surface caves' rooms (tiles 51 / 52 MediumRoom, 108 LargeRoom) and dead ends (32 / 33 Cap) and the caverns'
     /// middles (115 CavernMiddle02), a deterministic share of each; the chest stands on the cave floor there. Model: the
     /// "Treasure Chest" prop (2144); effects PFX_Loot_TreasureChest_Ambient_Generic 11279, _Open 11228.
+    /// </para>
+    /// <para>
+    /// Every landscape with Chaos Caverns (Caves.Landscapes, audit F2): the home continent's chests are read at start-up as
+    /// before (indices from 0); another landscape's sites are found in the background when its outposts' preparation
+    /// runs (<see cref="PrepareLandscape"/>, Outposts) and appended. A chest is only shown to, and shared with, players
+    /// on its own landscape.
     /// </para>
     /// </summary>
     public static class LootChests
@@ -36,6 +44,7 @@ namespace LandmarkEmulator.WorldServer.Game
         private sealed class Chest
         {
             public int Index;
+            public uint Zone;
             public Vector3 At;
             public bool Deep;
             public PlayerUpdateAddLightweightProp Prop;
@@ -48,16 +57,46 @@ namespace LandmarkEmulator.WorldServer.Game
         private static readonly object sync = new();
         private static readonly Random random = new();
         private static DateTime nextStream;
+        private static string gameDirectory;
+        /// <summary>Landscapes whose chest sites were looked for (the home continent at start-up).</summary>
+        private static readonly HashSet<uint> loaded = new();
+        /// <summary>Sites found in the background, made into chests on the world tick (<see cref="Update"/>).</summary>
+        private static readonly ConcurrentQueue<(uint Zone, List<(Vector3 At, bool Deep, int Record)> Sites)> found = new();
 
         public static void Load(string gameDirectory, uint continent)
         {
-            string caves = Path.Combine(gameDirectory, "CommonData", "Voxel", "caves");
-            AddSites(Path.Combine(caves, $"ContinentCavePlacements[{continent}]_Surface.cpa"), SurfaceTiles, 5, false);
-            AddSites(Path.Combine(caves, $"ContinentCavePlacements[{continent}]_Underground.cpa"), new[] { CavernTile }, 8, true);
+            LootChests.gameDirectory = gameDirectory;
+            loaded.Add(continent);
+            foreach (var site in Sites(continent))
+                AddChest(continent, site.At, site.Deep, site.Record);
             log.Info($"Loot chests: {chests.Count} ({chests.Count(c => !c.Deep)} in surface caves, {chests.Count(c => c.Deep)} in the caverns).");
         }
 
-        private static void AddSites(string path, uint[] tiles, int oneIn, bool deep)
+        /// <summary>
+        /// Background (Outposts' landscape preparation): another landscape's chest sites, from its own placement files and
+        /// cave pieces; they become chests on the next world tick. Once per landscape.
+        /// </summary>
+        public static void PrepareLandscape(uint zone)
+        {
+            lock (loaded)
+                if (gameDirectory == null || !loaded.Add(zone))
+                    return;
+            List<(Vector3 At, bool Deep, int Record)> sites = Sites(zone);
+            found.Enqueue((zone, sites));
+        }
+
+        /// <summary>A landscape's chest sites: surface cave rooms and dead ends (one in 5), cavern middles (one in 8).</summary>
+        private static List<(Vector3 At, bool Deep, int Record)> Sites(uint zone)
+        {
+            uint continent = Landscapes.Get(zone)?.Continent ?? zone;
+            string caves = Path.Combine(gameDirectory, "CommonData", "Voxel", "caves");
+            var sites = new List<(Vector3, bool, int)>();
+            AddSites(sites, Path.Combine(caves, $"ContinentCavePlacements[{continent}]_Surface.cpa"), SurfaceTiles, 5, false, zone);
+            AddSites(sites, Path.Combine(caves, $"ContinentCavePlacements[{continent}]_Underground.cpa"), new[] { CavernTile }, 8, true, zone);
+            return sites;
+        }
+
+        private static void AddSites(List<(Vector3 At, bool Deep, int Record)> sites, string path, uint[] tiles, int oneIn, bool deep, uint zone)
         {
             if (!File.Exists(path))
                 return;
@@ -66,31 +105,43 @@ namespace LandmarkEmulator.WorldServer.Game
             var origin = Terrain.TerrainStore.ZoneOrigin;
             for (int i = 0, o = 8; i < n && o + 39 <= d.Length; i++, o += 39)
             {
-                if (!tiles.Contains(BitConverter.ToUInt32(d, o)) || (uint)HashCode.Combine(i, deep, 0x4c43) % (uint)oneIn != 0)
+                if (!tiles.Contains(BitConverter.ToUInt32(d, o)) || (uint)Shared.StableHash.Combine(i, deep ? 1 : 0, 0x4c43) % (uint)oneIn != 0)
                     continue;
                 double x = BitConverter.ToDouble(d, o + 4), y = BitConverter.ToDouble(d, o + 12), z = BitConverter.ToDouble(d, o + 20);
                 var piece = new Vector3((float)((x - origin.X) / 10), (float)((y - origin.Y) / 10), (float)((z - origin.Z) / 10));
-                Vector3? floor = deep ? Caves.Floor(piece + new Vector3(0f, 10f, 0f)) : Caves.FloorNear(piece + new Vector3(0f, 2f, 0f), 12f);
+                Vector3? floor = deep ? Caves.Floor(piece + new Vector3(0f, 10f, 0f), zone) : Caves.FloorNear(piece + new Vector3(0f, 2f, 0f), 12f, zone);
                 if (floor is not Vector3 at)
                     continue;
-                var chest = new Chest { Index = chests.Count, At = at, Deep = deep };
-                chest.Prop = new PlayerUpdateAddLightweightProp
-                {
-                    Guid = GuidBase | (ulong)chest.Index,
-                    TransientId = PlayerManager.AllocateTransientId(),
-                    ModelId = Props.ModelOf(ChestProp),
-                    Position = new Vector4(at, 1f),
-                    Rotation = new Vector4(0f, MathF.Sin(i * 0.37f), 0f, MathF.Cos(i * 0.37f)),
-                    Scale = new Vector4(1f, 1f, 1f, 1f),
-                    NameId = GameTableManager.Instance.PropDefs.GetEntry(ChestProp)?.NameStringId ?? 0
-                };
-                chests.Add(chest);
+                sites.Add((at, deep, i));
             }
+        }
+
+        /// <summary>A chest at a site (world thread / start-up): its index is its place in the list, its guid's low bits.</summary>
+        private static void AddChest(uint zone, Vector3 at, bool deep, int i)
+        {
+            var chest = new Chest { Index = chests.Count, Zone = zone, At = at, Deep = deep };
+            chest.Prop = new PlayerUpdateAddLightweightProp
+            {
+                Guid = GuidBase | (ulong)chest.Index,
+                TransientId = PlayerManager.AllocateTransientId(),
+                ModelId = Props.ModelOf(ChestProp),
+                Position = new Vector4(at, 1f),
+                Rotation = new Vector4(0f, MathF.Sin(i * 0.37f), 0f, MathF.Cos(i * 0.37f)),
+                Scale = new Vector4(1f, 1f, 1f, 1f),
+                NameId = GameTableManager.Instance.PropDefs.GetEntry(ChestProp)?.NameStringId ?? 0
+            };
+            chests.Add(chest);
         }
 
         public static void Update()
         {
             DateTime now = DateTime.UtcNow;
+            while (found.TryDequeue(out var landscape))
+            {
+                foreach (var site in landscape.Sites)
+                    AddChest(landscape.Zone, site.At, site.Deep, site.Record);
+                log.Info($"Loot chests: {landscape.Sites.Count} on landscape {landscape.Zone} ({chests.Count} in all).");
+            }
             if (now < nextStream || chests.Count == 0)
                 return;
             nextStream = now.AddSeconds(1);
@@ -108,12 +159,13 @@ namespace LandmarkEmulator.WorldServer.Game
                 lock (sync)
                     if (!sent.TryGetValue(session, out have))
                         sent[session] = have = new HashSet<int>();
-                bool home = session.OnHomeContinent;
+                uint zone = session.ZoneId;
                 var shown = new List<ulong>();
                 foreach (Chest c in chests)
                 {
+                    bool here = c.Zone == zone;
                     float d = Vector3.Distance(c.At, session.Position);
-                    if (home && d <= ViewRange && have.Add(c.Index))
+                    if (here && d <= ViewRange && have.Add(c.Index))
                     {
                         if (c.Ready)
                         {
@@ -121,7 +173,7 @@ namespace LandmarkEmulator.WorldServer.Game
                             shown.Add(c.Prop.Guid);
                         }
                     }
-                    else if ((!home || d > DropRange) && have.Remove(c.Index) && c.Ready)
+                    else if ((!here || d > DropRange) && have.Remove(c.Index) && c.Ready)
                         session.EnqueueMessage(new PlayerUpdateRemovePlayer { Guid = c.Prop.Guid });
                 }
                 if (shown.Count > 0)
@@ -175,7 +227,7 @@ namespace LandmarkEmulator.WorldServer.Game
             HitEffects.PlayOn(c.Prop.Guid, Open, viewers);
             uint[] resources = { 34, 35, 36, 37, 39, 51, 56, 57, 58, 2000, 2001, 2002 };
             int sharers = 0;
-            foreach (WorldSession p in PlayerManager.Snapshot().Where(p => p.OnHomeContinent && !Health.IsDead(p)
+            foreach (WorldSession p in PlayerManager.Snapshot().Where(p => p.ZoneId == c.Zone && !Health.IsDead(p)
                 && Vector3.Distance(p.Position, c.At) <= ShareRange))
             {
                 var loot = new List<(uint, uint)>();
@@ -183,6 +235,8 @@ namespace LandmarkEmulator.WorldServer.Game
                     loot.Add((resources[random.Next(resources.Length)], (uint)random.Next(c.Deep ? 6 : 4, c.Deep ? 16 : 11)));
                 if (random.NextDouble() < 0.1)
                     loot.Add((Gathering.AdventureEssence, 1));
+                // Essences on each player's session curve (P4776, TASKS 6.17).
+                Pacing.PaceEssences(loot, p, random);
                 LootPinatas.SpawnBag(p, c.At + new Vector3(0f, 0.6f, 0f), loot);
                 sharers++;
             }

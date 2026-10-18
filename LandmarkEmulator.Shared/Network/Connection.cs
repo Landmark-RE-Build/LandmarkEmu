@@ -87,7 +87,19 @@ namespace LandmarkEmulator.Shared.Network
                     if (bytesReceived > 0)
                     {
                         Span<byte> data = new Span<byte>(buffer, 0, bytesReceived); // Remove the extra bytes that were unused in this packet.
-                        OnMessage(remoteEP, data.ToArray()); // Emit a MessageEvent to subscribers.
+                        // One bad datagram must never end this loop. Before this guard any exception from a session's
+                        // packet handling (e.g. a 1-byte datagram: ProtocolPacket reads a u16 opcode from it and
+                        // Buffer.BlockCopy throws) left the loop through the SocketException-only catch below, which
+                        // let it escape the thread: an unhandled exception on a thread ends the whole .NET process, so
+                        // any stray or forged UDP packet to the login or gateway port took the server down.
+                        try
+                        {
+                            OnMessage(remoteEP, data.ToArray()); // Emit a MessageEvent to subscribers.
+                        }
+                        catch (Exception e)
+                        {
+                            log.Warn($"Dropped a {bytesReceived}-byte datagram from {remoteEP} that failed to process: {e.Message}");
+                        }
                     }
                 }
 

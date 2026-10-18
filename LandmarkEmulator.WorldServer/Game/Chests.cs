@@ -29,7 +29,7 @@ namespace LandmarkEmulator.WorldServer.Game
     {
         private static readonly ILogger log = LogManager.GetCurrentClassLogger();
 
-        /// <summary>"You can place up to 50 chests on a claim" (update notes, 21 March 2016).</summary>
+        /// <summary>At most 50 chests per build site (update notes, 21 March 2016).</summary>
         public const int MaxPerSite = 50;
 
         public const uint EnableWindowSub = 1, StopObservingSub = 2, ListRequestSub = 3, ListResponseSub = 4,
@@ -186,10 +186,43 @@ namespace LandmarkEmulator.WorldServer.Game
                 InventoryId = item.ChestGuid,
                 ChestOwnerGuid = item.ChestGuid,
                 ChestSlot = item.Slot,
+                Wear = BitConverter.SingleToUInt32Bits(item.Wear),   // its condition, as in the bag
+                AutoResupply = item.AutoResupply && Inventory.Inventory.AutoResupplyKept,   // ClientItem +0xdc, as in the bag
                 SecondsSinceLastCast = int.MaxValue
             };
             Inventory.Inventory.FillDefinition(packet, item.ItemDefinitionId);
+            // A stored Player Design item still names its design (the bag's record block, DesignItems.ItemBlock).
+            if (item.ItemDefinitionId == DesignItems.PlayerDesignItem)
+                packet.Design = DesignItems.ItemBlock(item.Id);
             return packet;
+        }
+
+        /// <summary>
+        /// Hands <paramref name="count"/> of a chest item to a player's bag (or overflow) as the same item: with its wear
+        /// (audit-wiki-gaps #1). A Player Design item comes out as a new single item and its design moves onto it
+        /// (<see cref="DesignItems.Moved"/>, as a trade does; audit-wiki-gaps #3: before, the design stayed keyed to the
+        /// chest item's guid and the item came out empty). False when a Player Design item finds no free bag slot.
+        /// </summary>
+        private static bool GiveOut(WorldSession to, ChestItemModel item, uint count, bool toOverflow)
+        {
+            var state = new Inventory.ItemState(item.Wear, AutoResupply: item.AutoResupply);
+            if (item.ItemDefinitionId == DesignItems.PlayerDesignItem)
+            {
+                CharacterItemModel single = toOverflow
+                    ? to.Inventory.AddToOverflow(DesignItems.PlayerDesignItem, 1, state).Select(c => c.Item).FirstOrDefault()
+                    : to.Inventory.AddSingle(DesignItems.PlayerDesignItem);
+                if (single == null)
+                    return false;
+                DesignItems.Moved(item.Id, single.Id);
+                to.SendItem(single, replace: false);   // after the move: the record names the design it holds
+                return true;
+            }
+            if (toOverflow)
+                foreach ((CharacterItemModel changed, bool isNew) in to.Inventory.AddToOverflow(item.ItemDefinitionId, count, state))
+                    to.SendItem(changed, replace: !isNew);
+            else
+                to.GiveItem(item.ItemDefinitionId, count, state);
+            return true;
         }
 
         /// <summary>
@@ -197,10 +230,15 @@ namespace LandmarkEmulator.WorldServer.Game
         /// free chest slot; chest → bag puts it back in the bag (stacking as usual); chest → chest moves it to an
         /// empty slot. Returns whether anything moved.
         /// </summary>
-        /// <summary>TransferItemResponse results (client names, FUN_143b966c0).</summary>
-        public const uint TransferDone = 0x1, DestinationFull = 0x2, SourceNotFound = 0x3, TransferFailedInInventory = 0x13,
+        /// <summary>
+        /// TransferItemResponse results (client names, FUN_143b966c0 / 0.695 FUN_143c53a90). The client explains 0x16 /
+        /// 0x17, 0x20, 0x21, 0x12 and 0x25 with its own chest texts (0.589 FUN_142e81590, 0.695 FUN_142f202e0 case 0x19):
+        /// 0x21 "Can't take NO_TRADE item if you're not original owner of item" → 561999
+        /// Chest.ChestAccessCantTakeNoTradeItemIfNotOwner.
+        /// </summary>
+        public const uint TransferDone = 0x1, DestinationFull = 0x2, SourceNotFound = 0x3, FraudTimer = 0x12, TransferFailedInInventory = 0x13,
             NoSourceChestPermission = 0x16, NoDestinationChestPermission = 0x17, NoTradeIntoClaimChest = 0x20,
-            ChestWithItemsIntoChest = 0x25;
+            NoTradeNotOriginalOwner = 0x21, ChestWithItemsIntoChest = 0x25;
 
         public static uint Transfer(WorldSession session, TransferItemRequest request)
         {
@@ -218,22 +256,33 @@ namespace LandmarkEmulator.WorldServer.Game
             if (toChest && !fromChest)
                 return Deposit(session, chest, slots, request);
             if (fromChest && !toChest)
-                return Withdraw(session, chest, request);
+                return Withdraw(session, chest, prop, request);
             return MoveWithin(session, chest, slots, request);
         }
 
         private static uint Deposit(WorldSession session, ulong chest, uint slots, TransferItemRequest request)
         {
             CharacterItemModel item = session.Inventory.Get(request.ItemGuid);
-            if (item == null || item.Container == Inventory.Inventory.EquippedContainer)
+            // Vault items only while the vault is open within reach (InventoryHandler's rule): the item is found by guid,
+            // so a chest window was a way into the vault from anywhere.
+            if (item == null || item.Container == Inventory.Inventory.EquippedContainer
+                || (item.Container == Inventory.Inventory.VaultContainer && !Vaults.CanAccess(session)))
                 return SourceNotFound;
             if (HasItems(item.Id))
                 return ChestWithItemsIntoChest;
+            // A store purchase in its waiting period: 0x12 "Item can't be traded if it has fraud timer on it", shown as
+            // 562759 Chest.AccessDeniedFraudTimer "Recent purchases can't be placed into chests right away. Please wait and
+            // try again later." (0.695 FUN_142f202e0 case 0x19; audit-wiki-gaps #7).
+            if (Inventory.Inventory.IsTradeLocked(item))
+                return FraudTimer;
             // "Can't place NO_TRADE item into claim's chest if you're not claim owner" (client reason 0x20).
             if (Inventory.ItemDefinitionManager.Get(item.ItemDefinitionId) is { NoTrade: true }
                 && Props.Find(chest) is Props.PlacedProp placed && !OwnsSiteOf(session, placed))
                 return NoTradeIntoClaimChest;
             uint count = request.Quantity == 0 ? item.Count : Math.Min(request.Quantity, item.Count);
+            // A Player Design item's design is keyed by its guid: it goes in whole and keeps the guid (one per stack anyway).
+            if (item.ItemDefinitionId == DesignItems.PlayerDesignItem)
+                count = item.Count;
             ChestItemModel stored;
             lock (sync)
             {
@@ -250,7 +299,13 @@ namespace LandmarkEmulator.WorldServer.Game
                     ChestGuid = chest,
                     ItemDefinitionId = item.ItemDefinitionId,
                     Count = count,
-                    Slot = slot.Value
+                    Slot = slot.Value,
+                    // The item keeps its wear in the chest and comes back with it (audit-wiki-gaps #1).
+                    Wear = item.Wear,
+                    // Its auto-resupply switch stays with it too (Inventory 0x2D sub 0x0D).
+                    AutoResupply = item.AutoResupply,
+                    // Who it belonged to: a non-tradeable item comes out only for them (Withdraw, audit-wiki-gaps #2).
+                    DepositorGuid = session.PlayerGuid
                 };
                 list.Add(stored);
             }
@@ -270,7 +325,20 @@ namespace LandmarkEmulator.WorldServer.Game
             return Claims.ClaimAt(chest.Zone, at) is not ulong site || Claims.OwnerOf(site) == session.PlayerGuid;
         }
 
-        private static uint Withdraw(WorldSession session, ulong chest, TransferItemRequest request)
+        /// <summary>
+        /// May <paramref name="taker"/> take this chest item? A tradeable one always; a non-tradeable one only its depositor,
+        /// or the chest's owner when the row has no depositor (rows from before it was kept).
+        /// </summary>
+        internal static bool MayWithdraw(bool noTrade, ulong depositor, ulong chestOwner, ulong taker)
+            => !noTrade || (depositor != 0 ? depositor : chestOwner) == taker;
+
+        /// <summary>
+        /// Chest → bag. A non-tradeable item (NO_TRADE: Lumen-bought, founder and soulbound items) comes out only for the
+        /// player who put it in — rows from before the depositor was kept count as the chest owner's — else result 0x21,
+        /// which the client shows as 561999 "Can't take non-tradeable items that didn't originally belong to you."
+        /// (audit-wiki-gaps #2; without it any visitor with Pillage and Plunder took a site owner's no-trade items).
+        /// </summary>
+        private static uint Withdraw(WorldSession session, ulong chest, Props.PlacedProp prop, TransferItemRequest request)
         {
             ChestItemModel item;
             lock (sync)
@@ -278,8 +346,15 @@ namespace LandmarkEmulator.WorldServer.Game
                     ?? Of(chest).FirstOrDefault(i => i.Slot == request.Source.Slot);
             if (item == null)
                 return SourceNotFound;
+            if (!MayWithdraw(Inventory.ItemDefinitionManager.Get(item.ItemDefinitionId) is { NoTrade: true }, item.DepositorGuid,
+                prop.OwnerGuid, session.PlayerGuid))
+            {
+                log.Info($"{session.CharacterName}: may not take no-trade item {item.ItemDefinitionId} from chest 0x{chest:X} (depositor 0x{item.DepositorGuid:X}).");
+                return NoTradeNotOriginalOwner;
+            }
             uint count = request.Quantity == 0 ? item.Count : Math.Min(request.Quantity, item.Count);
-            session.GiveItem(item.ItemDefinitionId, count);
+            if (!GiveOut(session, item, count, toOverflow: false))
+                return DestinationFull;
             bool gone;
             lock (sync)
             {
@@ -421,6 +496,28 @@ namespace LandmarkEmulator.WorldServer.Game
             log.Info($"Chest contents ({items.Count} stack(s)) moved from 0x{from:X} to 0x{to:X}.");
         }
 
+        /// <summary>
+        /// Does a chest hold this player's item of a definition: a chest they placed, one on a build site they own (the
+        /// only chests a NO_TRADE item can be put into, <see cref="Deposit"/>), or a picked-up chest in their bag? For
+        /// "restore missing items" checks
+        /// (<see cref="Entitlements.RestoreFounderItems"/>).
+        /// </summary>
+        public static bool HoldsFor(WorldSession session, uint definitionId)
+        {
+            List<ulong> chests;
+            lock (sync)
+                chests = contents.Where(c => c.Value.Any(i => i.ItemDefinitionId == definitionId && i.Count > 0)).Select(c => c.Key).ToList();
+            foreach (ulong chest in chests)
+                if (session.Inventory.Get(chest) != null)
+                    return true;   // a picked-up chest in their bag keeps its contents under its item guid (Move)
+                else if (Props.Find(chest) is Props.PlacedProp placed
+                    && (placed.OwnerGuid == session.PlayerGuid
+                        || Claims.ClaimAt(placed.Zone, new System.Numerics.Vector3(placed.Spawn.Position.X, placed.Spawn.Position.Y,
+                            placed.Spawn.Position.Z)) is ulong site && Claims.OwnerOf(site) == session.PlayerGuid))
+                    return true;
+            return false;
+        }
+
         public static bool HasItems(ulong chest)
         {
             lock (sync)
@@ -441,8 +538,9 @@ namespace LandmarkEmulator.WorldServer.Game
                 foreach (var w in watching.Where(w => w.Value == chest).Select(w => w.Key).ToList())
                     watching.Remove(w);
             }
-            foreach (ChestItemModel item in items)
-                to?.GiveItem(item.ItemDefinitionId, item.Count);
+            if (to != null)
+                foreach (ChestItemModel item in items)
+                    GiveOut(to, item, item.Count, toOverflow: false);
             DatabaseManager.Instance.CharacterDatabase.SaveWorld(c => c.ChestItem.RemoveRange(c.ChestItem.Where(i => i.ChestGuid == chest)))
                 .ContinueWith(t => log.Error(t.Exception, "Failed to empty chest."),
                     System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
@@ -451,7 +549,7 @@ namespace LandmarkEmulator.WorldServer.Game
 
         /// <summary>
         /// A lapsed site's chest comes back through Build Site Contents: its items go to the owner's overflow tab (wiki
-        /// Chests: "the items from the chest are removed and placed in the overflow inventory, along with the chest").
+        /// Chests: the chest and its items go to the overflow inventory).
         /// Returns how many stacks moved.
         /// </summary>
         public static int EmptyToOverflow(ulong chest, WorldSession owner)
@@ -465,8 +563,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     watching.Remove(w);
             }
             foreach (ChestItemModel item in items)
-                foreach ((CharacterItemModel changed, bool isNew) in owner.Inventory.AddToOverflow(item.ItemDefinitionId, item.Count))
-                    owner.SendItem(changed, replace: !isNew);
+                GiveOut(owner, item, item.Count, toOverflow: true);
             DatabaseManager.Instance.CharacterDatabase.SaveWorld(c => c.ChestItem.RemoveRange(c.ChestItem.Where(i => i.ChestGuid == chest)))
                 .ContinueWith(t => log.Error(t.Exception, "Failed to empty chest."),
                     System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);

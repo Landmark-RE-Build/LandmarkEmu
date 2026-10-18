@@ -106,6 +106,8 @@ namespace LandmarkEmulator.WorldServer.Game
         /// </summary>
         public static void HandleCast(WorldSession session, AbilityCastAttempt attempt)
         {
+            // Any cast shows the client is not stuck in a channel it let go of (MovementEffects.Release).
+            MovementEffects.NoteCast(session);
             log.Debug($"Cast {attempt.AbilityId} by {session.CharacterName} at <{attempt.TargetX:F2}, {attempt.TargetY:F2}, "
                 + $"{attempt.TargetZ:F2}> ring {attempt.RingPoint?.ToString("F2") ?? "none"} tail {BitConverter.ToString(attempt.Tail ?? Array.Empty<byte>())}");
             if (TravelAbilities.Contains(attempt.AbilityId))
@@ -126,7 +128,7 @@ namespace LandmarkEmulator.WorldServer.Game
             {
                 // Weapon combo abilities aren't listed on items: with a weapon held, the cast is a melee swing.
                 // Shift's Heroic Movement (326) is cast with a weapon in hand too: it is not an attack.
-                if (HoldsWeapon(session) && attempt.AbilityId != HeroicMovementAbility)
+                if (HoldsWeapon(session) && attempt.AbilityId != HeroicMovementAbility && !BootAbilities.IsBootAbility(attempt.AbilityId))
                 {
                     // Which ids are the basic / power attack isn't decoded yet (the weapon set picks them); logged so a
                     // real fight shows them (goals 1273 basic attack, 1274 power attack).
@@ -134,6 +136,13 @@ namespace LandmarkEmulator.WorldServer.Game
                     // under the reticle comes in the tail (or as the player's target), so strike that first.
                     ulong target = TargetGuid(attempt, session);
                     var ray = attempt.AimRay(session.Position);
+                    if (Grief.EquipmentLocked(session))
+                    {
+                        // Grief equipment lock: the client itself fires no weapon then (Grief.EquipmentLocked).
+                        log.Info($"{session.CharacterName} weapon cast {attempt.AbilityId}: refused, grief level {Grief.LevelOf(session)}.");
+                        Refuse(session, attempt);
+                        return;
+                    }
                     if (!WeaponAttacks.PayEnergy(session, attempt.AbilityId))
                     {
                         log.Debug($"{session.CharacterName} weapon cast {attempt.AbilityId}: not enough energy.");
@@ -157,20 +166,51 @@ namespace LandmarkEmulator.WorldServer.Game
                         return;
                     // Site games and encounters (players as targets) first; then the held weapon's own attack
                     // (Combat.WeaponCombat: its shape, affinity properties and armour effects); a creature under the
-                    // reticle that the attack's shape missed still takes a plain hit.
+                    // reticle that the attack's shape missed still takes a plain hit - unless the swing waits for the
+                    // client's Sweep targeter (WeaponCombat.Targeters, L170), which is then the one authority for its hits.
                     Combat.WeaponCombat.CheckWeapon(session);
-                    bool hit = InstancedGames.Hit(session, target, ray, aimPoint, damage, CombatRange)
-                        || Encounters.Hit(session, target, ray, aimPoint, damage, CombatRange)
-                        || Combat.WeaponCombat.Use(session, attempt, HeldWeapon(session), attempt.AbilityId, damage)
-                        || (target != 0 && target != session.PlayerGuid && Creatures.Strike(session, target, damage, CombatRange));
-                    log.Info($"{session.CharacterName} weapon cast {attempt.AbilityId} ({WeaponAttacks.KindOf(attempt.AbilityId)} stage {stage}, {damage}, animation {swing?.Enter ?? 0}/{swing?.Release ?? 0}) at 0x{target:X}: {(hit ? "hit" : "missed")}.");
+                    // A blocking stance (Molten Rebuke, Corrupting Revenge) hits nothing when raised: only Use runs for it
+                    // (it puts the Block state on), and its false is no miss, so neither a duel / site-game opponent nor
+                    // the targeted creature takes a plain hit (before, raising the block with a creature targeted dealt it a
+                    // Power Attack's damage from up to 30 m; bughunt-combat.md B2). A dead player's cast hits nothing.
+                    bool noHit = Combat.WeaponCombat.IsBlock(HeldWeapon(session), attempt.AbilityId) || Health.IsDead(session);
+                    bool hit = false;
+                    try
+                    {
+                        hit = (!noHit && InstancedGames.Hit(session, target, ray, aimPoint, damage, CombatRange))
+                            || (!noHit && Encounters.Hit(session, target, ray, aimPoint, damage, CombatRange))
+                            || Combat.WeaponCombat.Use(session, attempt, HeldWeapon(session), attempt.AbilityId, damage)
+                            || (!noHit && target != 0 && target != session.PlayerGuid && !Combat.WeaponCombat.AwaitingSweep(session, attempt)
+                                && Creatures.Strike(session, target, damage, CombatRange));
+                    }
+                    catch (Exception e)
+                    {
+                        // An attack rule that throws must not cost the cast its answer: the client waits for every cast it
+                        // sent and refuses all further ones until it hears back (stuck "casting"; bughunt-combat.md B1).
+                        log.Error(e, $"{session.CharacterName} weapon cast {attempt.AbilityId}: the attack failed; the cast is still answered.");
+                    }
+                    log.Info($"{session.CharacterName} weapon cast {attempt.AbilityId} ({WeaponAttacks.KindOf(attempt.AbilityId)} stage {stage}, {damage}, animation {swing?.Enter ?? 0}/{swing?.Release ?? 0}) at 0x{target:X}: {(hit ? "hit" : Combat.WeaponCombat.AwaitingSweep(session, attempt) ? "waiting for the client's sweep" : "missed")}.");
                     Answer(session, attempt, animation: swing);
                     return;
                 }
                 if (attempt.AbilityId == HeroicMovementAbility)
                 {
-                    // Heroic movement (sprint): the movement itself is the client's; the cast just needs its answer.
-                    Answer(session, attempt);
+                    // Heroic movement (sprint): the movement itself is the client's. With the movement effects on it is
+                    // a channelled cast that lasts while Shift is held (MovementEffects); otherwise the cast just needs
+                    // its answer.
+                    if (!MovementEffects.HandleCast(session, attempt))
+                        Answer(session, attempt);
+                    return;
+                }
+                // A boot's movement ability (Dash Soles' directions, Roll Wraps' rolls, ...: the boot's input group,
+                // BootAbilities): like 326, the movement is the client's; answered while the boots are worn.
+                if (BootAbilities.BootOf(attempt.AbilityId) is { } boot && session.Inventory.Items.Any(i =>
+                        i.ItemDefinitionId == boot.ItemId && i.Container == Inventory.Inventory.EquippedContainer))
+                {
+                    // MovementEffects: Energy and cooldown, the channels (held until the key is let go), the charged
+                    // leaps (answered at release: a CastSuccess now would end the charge) and the instant ones.
+                    if (!MovementEffects.HandleCast(session, attempt))
+                        Answer(session, attempt);
                     return;
                 }
                 // Still answer: the client waits for every cast it sent ("cast pending") and refuses all further
@@ -187,6 +227,12 @@ namespace LandmarkEmulator.WorldServer.Game
             {
                 ulong target = TargetGuid(attempt, session);
                 var aim = new System.Numerics.Vector3(attempt.TargetX, attempt.TargetY, attempt.TargetZ);
+                if (Grief.EquipmentLocked(session))
+                {
+                    log.Info($"{session.CharacterName} gear ability {attempt.AbilityId}: refused, grief level {Grief.LevelOf(session)}.");
+                    Refuse(session, attempt);
+                    return;
+                }
                 if (!WeaponAttacks.PayEnergy(session, attempt.AbilityId))
                 {
                     Refuse(session, attempt);
@@ -244,9 +290,9 @@ namespace LandmarkEmulator.WorldServer.Game
             // cone) is aimed comes as the ring point, so a node is looked for there.
             var aimedAt = attempt.RingPoint ?? new System.Numerics.Vector3(attempt.TargetX, attempt.TargetY, attempt.TargetZ);
             if (used && LoggingAbilities.Contains(attempt.AbilityId))
-                Gathering.Chop(session, TargetGuid(attempt, session), aimedAt);
+                Gathering.Chop(session, TargetGuid(attempt, session), aimedAt, source.ItemDefinitionId);   // the axe's own perks (P4131)
             if (used && ReapingAbilities.Contains(attempt.AbilityId))
-                Gathering.Reap(session, TargetGuid(attempt, session), aimedAt);
+                Gathering.Reap(session, TargetGuid(attempt, session), aimedAt, source.ItemDefinitionId);
             if (used && ExtractorAbilities.Contains(attempt.AbilityId))
             {
                 ulong node = TargetGuid(attempt, session);
@@ -293,7 +339,7 @@ namespace LandmarkEmulator.WorldServer.Game
         /// CastFail, the client's own answer for it (see <see cref="AbilityCastFail"/>) — it ends the cast and gives the
         /// hotbar slot its cooldown back.
         /// </summary>
-        private static void Refuse(WorldSession session, AbilityCastAttempt attempt)
+        public static void Refuse(WorldSession session, AbilityCastAttempt attempt)
         {
             log.Info($"{session.CharacterName}: cast {attempt.AbilityId} refused (CastFail).");
             session.EnqueueMessage(new AbilityCastFail
@@ -305,7 +351,7 @@ namespace LandmarkEmulator.WorldServer.Game
             });
         }
 
-        private static void Answer(WorldSession session, AbilityCastAttempt attempt, bool swung = false,
+        public static void Answer(WorldSession session, AbilityCastAttempt attempt, bool swung = false,
             WeaponAttacks.Animation? animation = null)
         {
             session.EnqueueMessage(new AbilityCastSuccess
@@ -347,22 +393,29 @@ namespace LandmarkEmulator.WorldServer.Game
                 });
             System.Threading.Tasks.Task.Delay(AbilityEndDelay).ContinueWith(_ =>
             {
-                if (session.Disconnected)
-                    return;
-                // AbilityEnd (Abilities 0x27 sub 5, reader FUN_142d62d00): header, u64 cast guid, u32 cast hash,
-                // u32 ability, u64 caster.
-                var output = new List<byte>();
-                var writer = new LandmarkEmulator.Shared.Network.GamePacketWriter(output);
-                writer.Write((byte)5);
-                writer.Write((byte)0);
-                writer.Write((byte)0);
-                writer.Write(0u);
-                writer.Write(castGuid);
-                writer.Write(castHash);
-                writer.Write(ability);
-                writer.Write(caster);
-                session.EnqueueMessage(ZoneMessageOpcode.AbilityAbilityEnd, output.ToArray());
+                if (!session.Disconnected)
+                    SendAbilityEnd(session, castGuid, castHash, ability);
             });
+        }
+
+        /// <summary>
+        /// AbilityEnd (Abilities 0x27 sub 5; 0.589 reader FUN_142d62d00, 0.695 reader FUN_142e00d20 / handler
+        /// FUN_142e17870): header, u64 cast guid, u32 cast hash, u32 ability, u64 caster. The client clears its current
+        /// ability (+0x2ac) when it is this one.
+        /// </summary>
+        public static void SendAbilityEnd(WorldSession session, ulong castGuid, uint castHash, uint ability)
+        {
+            var output = new List<byte>();
+            var writer = new LandmarkEmulator.Shared.Network.GamePacketWriter(output);
+            writer.Write((byte)5);
+            writer.Write((byte)0);
+            writer.Write((byte)0);
+            writer.Write(0u);
+            writer.Write(castGuid);
+            writer.Write(castHash);
+            writer.Write(ability);
+            writer.Write(session.PlayerGuid);
+            session.EnqueueMessage(ZoneMessageOpcode.AbilityAbilityEnd, output.ToArray());
         }
 
         /// <summary>When the ability ends after its success: the tool casts' cast time.</summary>
@@ -379,12 +432,62 @@ namespace LandmarkEmulator.WorldServer.Game
         private static readonly TimeSpan TravelCastTime = TimeSpan.FromSeconds(4);
 
         /// <summary>
+        /// Work due later on the world thread: the travel casts' moves once their cast animation is over. Until 2026-10-18
+        /// these were Task.Delay continuations, so Teleport.ToZone / Spire.TravelTo / CrossWorld.TravelToFriend ran on a
+        /// thread-pool thread and changed the session's re-zone state, the streams and PlayerManager's views while the world
+        /// thread used them (bughunt-combat.md B7; MovementEffects moved its timers to the tick for the same reason).
+        /// </summary>
+        private static readonly List<(DateTime Due, Action Do)> timers = new();
+
+        private static void Later(TimeSpan delay, Action action)
+        {
+            lock (timers)
+                timers.Add((DateTime.UtcNow + delay, action));
+        }
+
+        /// <summary>World tick (HostedService "ability timers"): runs the timers that are due.</summary>
+        public static void Update()
+        {
+            List<Action> due;
+            DateTime now = DateTime.UtcNow;
+            lock (timers)
+            {
+                if (timers.Count == 0)
+                    return;
+                due = timers.Where(t => t.Due <= now).Select(t => t.Do).ToList();
+                if (due.Count == 0)
+                    return;
+                timers.RemoveAll(t => t.Due <= now);
+            }
+            foreach (Action action in due)
+            {
+                try
+                {
+                    action();
+                }
+                catch (Exception e)
+                {
+                    log.Error(e, "Ability timer failed.");
+                }
+            }
+        }
+
+        /// <summary>
         /// Travel window casts. Answers the cast, then, once the 4-second cast animation is over (the client ignores a
         /// teleport while it plays), moves the player: 186 "My Sites" to their build site, 185 "Spire" to the Spire.
         /// The cast only carries the caster's own position, so the destination is decided here.
         /// </summary>
         private static void Travel(WorldSession session, AbilityCastAttempt attempt)
         {
+            if (attempt.AbilityId == 187 && FriendTeleportCooldownLeft(session) is TimeSpan left)
+            {
+                // On cooldown (owner setting, off as live): CastFail ends the cast and gives the slot back.
+                Refuse(session, attempt);
+                string format = Shared.GameTable.Text.TextManager.Instance.GetTextForId(FriendTeleportCooldownText)
+                    ?? "This ability is on cooldown for another %d minutes and %d seconds.";
+                Chat.System(session, ReplaceFirst(ReplaceFirst(format, "%d", ((int)left.TotalMinutes).ToString()), "%d", left.Seconds.ToString()));
+                return;
+            }
             Answer(session, attempt);
             // The cast carries the caster's own position, not the destination (no destination packet is sent):
             // 186 from "My Sites" goes to the player's build site.
@@ -393,10 +496,10 @@ namespace LandmarkEmulator.WorldServer.Game
                 var ground = Terrain.TerrainHeights.OnGround(site.X, site.Z, siteZone) ?? site;
                 StoryTools.ExpectArrival(session, siteId, respawn: false);
                 // The client ignores a teleport while its travel cast is still playing, so wait for it to end.
-                System.Threading.Tasks.Task.Delay(TravelCastTime).ContinueWith(_ =>
+                Later(TravelCastTime, () =>
                 {
                     if (!session.Disconnected)
-                        Teleport.ToZone(session, ground + new System.Numerics.Vector3(0, 1, 0), siteZone);
+                        Teleport.ToZone(session, ground + new System.Numerics.Vector3(0, 1, 0), siteZone, Claims.ArrivalFacingOf(session.PlayerGuid));
                 });
                 log.Info($"{session.CharacterName} travels to their build site {ground}.");
                 return;
@@ -406,13 +509,45 @@ namespace LandmarkEmulator.WorldServer.Game
                 // Travel to a friend (StringHashToValue Teleport.FriendAbilityId = 187; the client's Lua TeleportToFriend
                 // casts it at the friend). The friend's guid should be the cast's target; failing that, any online
                 // player's guid found in the cast tail.
-                WorldSession friend = PlayerManager.FindByGuid(TargetGuid(attempt, session)) ?? FindPlayerIn(attempt.Tail, session);
+                ulong friendGuid = TargetGuid(attempt, session);
+                WorldSession friend = PlayerManager.FindByGuid(friendGuid) ?? FindPlayerIn(attempt.Tail, session);
+                if (friend == null && friendGuid != 0 && friendGuid != session.PlayerGuid)
+                {
+                    // Not on this world: ask the social service where they are (its presence lookup waits up to a second,
+                    // so off the tick), then travel to their world beside them (TASKS E.13, features audit #63).
+                    System.Threading.Tasks.Task.Run(() =>
+                    {
+                        Social.SocialPresence where = Social.SocialServices.Presence.Find(friendGuid);
+                        // Offline: the client's own "[player] is not online at this." with the friend's name (L175; the
+                        // name lookup stays off the world thread).
+                        string offline = where == null ? TargetNotOnline.NameOf(friendGuid) : null;
+                        // The travel itself on the world thread (Later), as every other travel cast's.
+                        Later(TravelCastTime, () =>
+                        {
+                            if (session.Disconnected)
+                                return;
+                            if (where == null)
+                            {
+                                if (offline == null || !TargetNotOnline.Tell(session, friendGuid, offline))
+                                    Chat.System(session, "Your friend isn't online.");
+                            }
+                            else if (!CrossWorld.TravelToFriend(session, where.WorldId, where.ZoneId, friendGuid))
+                                Chat.System(session, "Your friend is on a world you can't travel to from here.");
+                            else
+                            {
+                                StartFriendTeleportCooldown(session);
+                                log.Info($"{session.CharacterName} travels to {where.Name} on world {where.WorldId}.");
+                            }
+                        });
+                    });
+                    return;
+                }
                 if (friend == null || friend == session)
                 {
                     Chat.System(session, "Your friend isn't online.");
                     return;
                 }
-                System.Threading.Tasks.Task.Delay(TravelCastTime).ContinueWith(_ =>
+                Later(TravelCastTime, () =>
                 {
                     if (session.Disconnected || friend.Disconnected)
                         return;
@@ -423,12 +558,13 @@ namespace LandmarkEmulator.WorldServer.Game
                         at.Y = ground;
                     Teleport.ToZone(session, at + new System.Numerics.Vector3(0f, 1f, 0f), friend.ZoneId);
                 });
+                StartFriendTeleportCooldown(session);
                 log.Info($"{session.CharacterName} travels to {friend.CharacterName}.");
                 return;
             }
             if (attempt.AbilityId == 185)
             {
-                System.Threading.Tasks.Task.Delay(TravelCastTime).ContinueWith(_ =>
+                Later(TravelCastTime, () =>
                 {
                     if (!session.Disconnected)
                         Spire.TravelTo(session);
@@ -438,7 +574,83 @@ namespace LandmarkEmulator.WorldServer.Game
             log.Debug($"{session.CharacterName} travel cast {attempt.AbilityId} has no destination yet.");
         }
 
+        /// <summary>
+        /// Teleport to Friend's cooldown (trace/0695/audit-wiki-gaps.md #15). Live's history [P developer notes]: 2 May
+        /// 2014: the friend teleport keeps its 30 minute cooldown (design/forum/patches/2014-05-02-34889); 17 Sep 2014:
+        /// it shows an error while on cooldown (2014-09-16-48275); 5 May 2015 (the big wipe): the cooldown for
+        /// teleporting to a friend from the contact list is gone (2015-05-05-54485), and no later note brings it back.
+        /// So the 2016 game had none: the setting
+        /// FriendTeleportCooldownSeconds (Docker FRIEND_TELEPORT_COOLDOWN_SECONDS) is 0 by default; 1800 = the 2014 alpha's
+        /// 30 minutes. The wiki's "cool down period" (Chests page) describes the 2014 game.
+        /// <para>
+        /// The client refuses by itself [P, 0.695]: Lua Ui.TeleportToFriend (FUN_1435c91f0) reads Teleport.FriendAbilityId
+        /// (StringHashToValue 0xD84CF278 = 187) and computes cooldown − elapsed: the cooldown is the ability record's +0x14c
+        /// seconds (FUN_142e173d0; less the entity's +0x4a74 share when record +0x150 is set), the elapsed time the player's
+        /// timer keyed by record +0x7c (FUN_142e16440 → FUN_142fcd170, player +0x75420; a timer never started counts as
+        /// the full cooldown). Above 0 it shows AbilityCastError.OnCooldown = 562080 "This ability is on cooldown for
+        /// another %d minutes and %d seconds." itself (FUN_142b24220 with secs / 60, secs % 60) and does not cast.
+        /// The record comes from 187's caster info (store FUN_142e187a0: reply +0x70 → record +0x14c, +0xa0 → +0x7c,
+        /// bool +0xa4 → +0x80, bool +0xca → +0x150), and the timer starts when a CastSuccess for the player's own cast
+        /// arrives while record +0x80 is set (FUN_142e18340 → FUN_142fd1cb0). So the cooldown goes into 187's caster info
+        /// (MiscHandler.CapturedCasterInfo: +0x70 = <see cref="FriendTeleportCooldownSeconds"/>; the body's +0xa0 = 187 and
+        /// +0xa4 = 1 already). Before L182 it carried the 1098 capture's 60 s, a client-side cooldown live 2016 did not
+        /// have. The server keeps its own check as the fallback: CastFail (the client ends the cast and hands the slot
+        /// back) and the same text as a system line. Stat 53 cStatTeleportCooldown has no client reader [P negative,
+        /// agent-leadsC.md L182]. Per character, kept in memory (a restart clears it).
+        /// </para>
+        /// </summary>
+        private const uint FriendTeleportCooldownText = 562080;
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<ulong, DateTime> friendTeleportUsed = new();
+
+        /// <summary>Travel to a friend: StringHashToValue Teleport.FriendAbilityId (0xD84CF278).</summary>
+        public const uint FriendTeleportAbility = 187;
+
+        /// <summary>The setting FriendTeleportCooldownSeconds (0 = none, live 2016); also sent in 187's caster info (+0x70).</summary>
+        public static int FriendTeleportCooldownSeconds => Math.Max(0,
+            Shared.Configuration.ConfigurationManager<WorldServerConfiguration>.Instance.Config?.FriendTeleportCooldownSeconds ?? 0);
+
+        private static TimeSpan FriendTeleportCooldown => TimeSpan.FromSeconds(FriendTeleportCooldownSeconds);
+
+        /// <summary>Time left on the player's Teleport to Friend cooldown; null when they may teleport.</summary>
+        private static TimeSpan? FriendTeleportCooldownLeft(WorldSession session)
+        {
+            TimeSpan cooldown = FriendTeleportCooldown;
+            if (cooldown <= TimeSpan.Zero || !friendTeleportUsed.TryGetValue(session.PlayerGuid, out DateTime used))
+                return null;
+            TimeSpan left = used + cooldown - DateTime.UtcNow;
+            return left > TimeSpan.Zero ? left : null;
+        }
+
+        private static void StartFriendTeleportCooldown(WorldSession session)
+        {
+            if (FriendTeleportCooldown > TimeSpan.Zero)
+                friendTeleportUsed[session.PlayerGuid] = DateTime.UtcNow;
+        }
+
+        private static string ReplaceFirst(string text, string what, string with)
+        {
+            int at = text.IndexOf(what, StringComparison.Ordinal);
+            return at < 0 ? text : text.Substring(0, at) + with + text.Substring(at + what.Length);
+        }
+
         /// <summary>The first online player (other than the caster) whose guid appears anywhere in a cast's tail.</summary>
+        /// <summary>
+        /// The arrival of Travel to Friend from another world (WorldSession's transfer re-zone, TASKS E.13): beside the
+        /// friend if they are on this world, as the same-world travel places them. False when they aren't here (the
+        /// traveller then gets the landscape's usual arrival).
+        /// </summary>
+        public static bool ArriveBesideFriend(WorldSession session, ulong friendGuid)
+        {
+            if (PlayerManager.FindByGuid(friendGuid) is not WorldSession friend || friend.Disconnected)
+                return false;
+            var at = friend.Position + new System.Numerics.Vector3(1.5f, 0f, 1.5f);
+            if (Terrain.TerrainHeights.HeightAt(at.X, at.Z, friend.ZoneId) is float ground && ground > at.Y)
+                at.Y = ground;
+            Teleport.ToZone(session, at + new System.Numerics.Vector3(0f, 1f, 0f), friend.ZoneId);
+            log.Info($"{session.CharacterName} arrives from another world beside {friend.CharacterName}.");
+            return true;
+        }
+
         private static WorldSession FindPlayerIn(byte[] tail, WorldSession caster)
         {
             if (tail == null)
@@ -469,19 +681,34 @@ namespace LandmarkEmulator.WorldServer.Game
             }
         }
 
-        /// <summary>A weapon cast's damage: the base weapon damage × the attack's multiplier (<see cref="WeaponAttacks"/>).</summary>
+        /// <summary>
+        /// A weapon cast's damage: the base weapon damage × the attack's multiplier, which includes the held weapon's own
+        /// Basic / Power factor from the 26 April and 25 May 2016 balance passes (<see cref="WeaponAttacks.Balance"/>,
+        /// TASKS 6.9).
+        /// </summary>
         private static uint AttackDamage(WorldSession session, uint ability)
-            => (uint)Math.Round(DamageOf(session) * WeaponAttacks.DamageMultiplier(ability));
+            => (uint)Math.Round(DamageOf(session) * WeaponAttacks.DamageMultiplier(HeldWeapon(session), ability));
 
         /// <summary>The player's base weapon damage (revenge damage, shield bashes and bursts are shares of it).</summary>
         public static uint WeaponDamageFor(WorldSession session) => DamageOf(session);
 
-        /// <summary>Base weapon damage, halved while the wielded weapon is at 0 % condition (<see cref="Durability"/>).</summary>
+        /// <summary>
+        /// Base weapon damage: 70 (the Damage stat's default) × the worn armour's damage factor (light ×1.30, medium
+        /// ×1.20, heavy ×1.10, none ×1; Combat.GearStats, wiki "Armor Weight"), halved while the wielded weapon is at
+        /// 0 % condition (<see cref="Durability"/>). Every player hit (weapon kits, PvP, bursts, revenge) scales from this.
+        /// </summary>
         private static uint DamageOf(WorldSession session)
+            => (uint)Math.Round(WeaponDamage * Combat.GearStats.DamageFactor(session) * WeaponCondition(session)
+                * MovementEffects.DamageFactor(session));
+
+        /// <summary>
+        /// The wielded weapon's condition factor on its damage: 0.5 at 0 % condition, else 1 (<see cref="Durability.Strength"/>).
+        /// </summary>
+        public static float WeaponCondition(WorldSession session)
         {
             var weapon = session.Inventory.Items.FirstOrDefault(i => i.Container == Inventory.Inventory.EquippedContainer
                 && ItemDefinitionManager.Get(i.ItemDefinitionId) is { DurabilitySet: 2 });
-            return (uint)(WeaponDamage * Durability.Strength(weapon));
+            return Durability.Strength(weapon);
         }
 
         /// <summary>Is the player wielding something that isn't a gathering tool (pick, axe, sickle)?</summary>
@@ -530,9 +757,12 @@ namespace LandmarkEmulator.WorldServer.Game
         public static readonly HashSet<uint> ExtractorAbilities = new() { 1036, 1037 };
 
         /// <summary>
-        /// The player's calculated stats: the defaults plus the held tool's harvesting stats. The client sizes the
-        /// mining ring from cStatTypeHarvestingArea (stat 3, metres; FUN_142dbf9c0 → ActionStateMining SetParam 0),
-        /// so a pick needs a non-zero area for the ring to show.
+        /// The player's calculated stats: the defaults plus the held tool's harvesting stats and the worn armour's life
+        /// and damage. The client sizes the mining ring from cStatTypeHarvestingArea (stat 3, metres; FUN_142dbf9c0 →
+        /// ActionStateMining SetParam 0), so a pick needs a non-zero area for the ring to show. Stat 1 (text "Life",
+        /// hidden from the UI) carries the maximum life and stat 10 (Damage) 70 × the armour factor: the client's attack
+        /// parameters multiply stat 10 (AbilityParameterDefinitions StatMultiplier, ParameterCalculator FUN_1435079e0),
+        /// so its attack numbers follow the armour as the server's damage does (Combat.GearStats).
         /// </summary>
         public static IEnumerable<(uint StatId, float Value)> CalculatedStats(WorldSession session)
         {
@@ -554,9 +784,13 @@ namespace LandmarkEmulator.WorldServer.Game
                     // Harvesting area is a volume: the client's ring radius = 0.233 × area^(1/3) (measured: 1.2→0.248,
                     // 4.8→0.394, 9.6→0.496), so send the area whose ring matches the dig radius (m).
                     3 when held != null => (float)Math.Pow(radius / 10 * HarvestAreaScale / 0.233, 3),
+                    5 when AdminCommands.RunSpeedOf(session) is float adminSpeed => adminSpeed,   // admin /runspeed
+
                     11 when held != null => tier,                      // mining harvest tier
                     12 when held != null => HarvestDamagePerSwing,     // harvesting damage
                     13 => speed,                                       // harvest speed: held-button swing interval = 50 / speed s (FUN_142d77f20)
+                    Combat.GearStats.LifeStat => Combat.GearStats.MaxHealth(session),     // maximum life (900 + armour)
+                    Combat.GearStats.DamageStatId => Combat.GearStats.DamageStat(session), // 70 × armour damage factor
                     _ => value
                 };
         }
@@ -622,6 +856,12 @@ namespace LandmarkEmulator.WorldServer.Game
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<WorldSession, DateTime> lastSwing = new();
 
         /// <summary>
+        /// A player left (Combat.WeaponCombat.Forget, from PlayerManager.Leave): their harvest pace goes. It was never
+        /// removed, so every session that swung a tool once stayed in memory with its inventory (bughunt-combat.md B9).
+        /// </summary>
+        public static void Forget(WorldSession session) => lastSwing.TryRemove(session, out _);
+
+        /// <summary>
         /// Is this swing sooner than the tool allows? Interval = 50 / harvest speed seconds (the tool's speed raised by
         /// buffs such as the Potion of Nimble Harvesting), with a little slack for network jitter. Records the swing
         /// when it's allowed.
@@ -663,10 +903,18 @@ namespace LandmarkEmulator.WorldServer.Game
         /// rights, carves <paramref name="radius"/> (decimetres) at the target, pushes the changed cells to everyone and,
         /// when <paramref name="collect"/>, gives what was dug (raised by the Harvest Bonus stat) with chunks flying to
         /// the player. <paramref name="digOn"/>: a swing into air digs on along the aim (held-button mining).
-        /// Returns the voxels removed.
+        /// <para>
+        /// <paramref name="explosive"/> (dynamite): a temporary destruction tool (0.695, TASKS 2.1 / 2.6;
+        /// <see cref="VoxelDestruction"/>). It works on a build site in Play Mode unless the site's Play Mode Rules (bit 4)
+        /// or a Linking Area (row 102) block it there, carving the owner's building too (in the destruction layer, so it
+        /// comes back when it heals) and collecting nothing on the site; refused at the target it answers EffectEnd
+        /// result 9 (8 on a site in Edit Mode, inferred). It heals after <paramref name="healDelay"/> (dynamite 100 s,
+        /// P6037). Every other tool stays a gathering tool: refused on every site and kept out of sites at their edges.
+        /// </para>
+        /// Returns the voxels removed, or -1 when a site refused the destruction (the client was answered already).
         /// </summary>
         public static int Excavate(WorldSession session, System.Numerics.Vector3 target, double radius, bool collect, bool digOn, float reach,
-            double oreChance = 0.35)
+            double oreChance = 0.35, bool explosive = false, TimeSpan? healDelay = null)
         {
             uint zone = session.ZoneId;
             if (System.Numerics.Vector3.Distance(target, session.Position) > reach)
@@ -675,24 +923,51 @@ namespace LandmarkEmulator.WorldServer.Game
                 return 0;
             }
             var global = Terrain.TerrainEdits.ToGlobal(target);
-            // No gathering inside any build site, the player's own included ("You can not gather any materials found
-            // within the boundaries of any build site", wiki Gathering; the pick's ring turns red there). Building
+            if (explosive)
+            {
+                // Temporary destruction: decided at the target by the site's mode, Play Mode Rules and Linking Areas.
+                VoxelDestruction.Verdict verdict = VoxelDestruction.At(zone, global.X, global.Y, global.Z);
+                if (verdict is VoxelDestruction.Verdict.EditMode or VoxelDestruction.Verdict.Blocked)
+                {
+                    VoxelDestruction.Refuse(session, verdict);
+                    return -1;
+                }
+                // "This change does not impact the ability to harvest resources on your Site. (Still not possible.)"
+                if (verdict == VoxelDestruction.Verdict.Allowed)
+                    collect = false;
+            }
+            // No gathering inside any build site, the player's own included (wiki Gathering: nothing can be gathered
+            // inside any build site's boundary; the pick's ring turns red there). Building
             // tools change site terrain instead. The live server's text: Harvest.Fail.InClaim (562568).
-            if (Claims.IsInsideAny(session.ZoneId, global.X, global.Y, global.Z))
+            else if (Claims.IsInsideAny(session.ZoneId, global.X, global.Y, global.Z))
             {
                 log.Info($"{session.CharacterName} tried to mine inside a build site.");
                 // The client's own on-screen harvest failure, as for every refused harvest: "You cannot harvest here."
                 Gathering.HarvestFail(session, Gathering.HarvestNotAllowed);
                 return 0;
             }
+            // Not beside the Portal Spire (P4425; text 560944).
+            if (!Spire.MayEdit(session.PlayerGuid, zone, (global.X - radius, global.Y - radius, global.Z - radius),
+                    (global.X + radius, global.Y + radius, global.Z + radius)))
+                return 0;
+            // Which voxels of the sphere may go (global dm voxel centres): dynamite stops where a site does not allow
+            // destruction; gathering tools stop at every site boundary. Null: no site near, no filter. The dig-on steps
+            // below move the (local, metre) target up to 3 × radius × 0.7 m with radius in dm, so the box (dm) covers
+            // 3 × 0.7 × 10 = 21 radii beyond the sphere.
+            double span = radius * (digOn ? 22.1 : 1.1);
+            var near = (global.X - span, global.Y - span, global.Z - span);
+            var far = (global.X + span, global.Y + span, global.Z + span);
+            Terrain.VoxelFilter allowed = explosive ? VoxelDestruction.MaskFor(zone, near, far)
+                : VoxelDestruction.OutsideSites(zone, near, far);
             uint expected = Terrain.TerrainMaterials.YieldAt(target, session.Position, random, zone);
             // Hole walls in the local biome's material for what is dug (its sand, dirt or rock); the forest set
             // where the biome tables have none.
-            Terrain.TerrainEdits.ShellMaterial = Terrain.TerrainMaterials.WallMaterialAt(target, expected, zone)
+            ushort shell = Terrain.TerrainMaterials.WallMaterialAt(target, expected, zone)
                 ?? (ushort)(expected switch { 46 => 289, 45 => 287, _ => 297 });
             var oreMined = new Dictionary<ushort, int>();
             var oreCells = new HashSet<ulong>();
-            (List<ulong> cells, int voxels) = Terrain.TerrainEdits.Sphere(target, radius, 0, zone, oreMined, oreCells);
+            Terrain.IEnvironmentServer env = Terrain.EnvironmentServer.Instance;
+            (List<ulong> cells, int voxels) = env.Sphere(target, radius, 0, zone, oreMined, oreCells, shell, allowed, explosive, healDelay);
             // A swing right after the last one still aims at the old surface (the client hasn't re-cast its ring onto
             // the new hole yet): dig on along the swing instead of hitting air. Every swing must change the terrain,
             // because the client only re-checks a held mouse button when its cursor target changes.
@@ -700,11 +975,13 @@ namespace LandmarkEmulator.WorldServer.Game
             for (int step = 1; digOn && voxels == 0 && step <= 3 && !float.IsNaN(along.X); step++)
             {
                 target += along * (float)(radius * 0.7);
-                (cells, voxels) = Terrain.TerrainEdits.Sphere(target, radius, 0, zone, oreMined, oreCells);
+                (cells, voxels) = env.Sphere(target, radius, 0, zone, oreMined, oreCells, shell, allowed, explosive, healDelay);
             }
             if (cells.Count == 0 || voxels == 0)
                 return 0;
-            Terrain.TerrainEdits.Broadcast(cells, zone);
+            Terrain.ZoneTerrain.Broadcast(cells, zone);
+            // Digging into a Chaos Cavern outpost: its creatures' navigation gets the holes (Pathing.Dug, OPEN-LEADS L133).
+            Pathing.Dug(zone, cells);
             if (!collect)
             {
                 log.Debug($"{session.CharacterName} pulverized {voxels} voxels in {cells.Count} cell(s).");
@@ -713,15 +990,15 @@ namespace LandmarkEmulator.WorldServer.Game
             // One item per voxel dug, the rate building costs (BuildMaterials.VoxelsPerItem, the client's own count).
             // Harvest Bonus (stat 17, e.g. Potion of Minor Yield +10): that many percent more; the Harvestron more again.
             uint yield = (uint)Math.Max(1, voxels / Terrain.BuildMaterials.VoxelsPerItem * (1f + Buffs.Apply(session, 17, 0f) / 100f)
-                * Gathering.ToolYieldBonus(HeldToolOf(session)));
+                * Gathering.ToolYieldBonus(HeldToolOf(session)) * Durability.ToolStrength(session));   // a broken pick: half (6.53, as axes)
             uint item = expected;
             // Ore: the vein voxels the swing dug out (OreVeins), one item per VoxelsPerOre voxels (at least one), and
             // the rest of the swing's yield in the ground's own material.
             int oreVoxels = oreMined.Values.Sum();
             if (oreVoxels > 0)
             {
-                Terrain.OreVeins.Disturbed(oreCells, zone);
-                foreach (var byItem in oreMined.GroupBy(o => Terrain.OreVeins.ItemFor(o.Key)).Where(g => g.Key != 0))
+                env.DisturbVeins(oreCells, zone);
+                foreach (var byItem in oreMined.GroupBy(o => env.OreItemFor(o.Key)).Where(g => g.Key != 0))
                 {
                     int n = byItem.Sum(o => o.Value);
                     uint oreYield = (uint)Math.Max(1, n / Terrain.OreVeins.VoxelsPerOre * (1f + Buffs.Apply(session, 17, 0f) / 100f));
@@ -747,7 +1024,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 LootPinatas.SpawnChunk(session, target + new System.Numerics.Vector3(0, 0.5f, 0), item, Math.Max(1, yield / chunks));
             log.Debug($"{session.CharacterName} dug {voxels} voxels in {cells.Count} cell(s) "
                 + $"({Terrain.TerrainMaterials.BiomeName(Terrain.TerrainMaterials.BiomeAt(target, zone))}) for {yield} × item {expected}"
-                + (oreVoxels > 0 ? $" and ore {string.Join(", ", oreMined.Select(o => $"{o.Value} voxels of {o.Key} (item {Terrain.OreVeins.ItemFor(o.Key)})"))}." : "."));
+                + (oreVoxels > 0 ? $" and ore {string.Join(", ", oreMined.Select(o => $"{o.Value} voxels of {o.Key} (item {env.OreItemFor(o.Key)})"))}." : "."));
             return voxels;
         }
 

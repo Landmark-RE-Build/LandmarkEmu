@@ -6,7 +6,7 @@ re/out/coverage.md. Edit the "Notes" section of TRACE-PLAN / the system files, n
 C2S 0 (0 not handled) · S2C 38 (26 never sent / opcode unknown)
 
 ## S2C ClientUpdatePacketHitpoints  `0x29, 0x1`
-- server: SENT (354× in opcode_stats) · seen in play 354×
+- server: SENT (51× in opcode_stats) · seen in play 1486×
 - reader: FUN_142b83000
 - built in: FUN_142c3fec0
 - layout:
@@ -31,7 +31,7 @@ u32   +0x1c
 u16   +0x8
 i16   +0x10
 u32   +0x18
-i32   iVar3
+i32   <local>
 ```
 - handled in FUN_142c3fec0 (its switch case for this message)
 - code (handler case in FUN_142c3fec0):
@@ -57,7 +57,7 @@ u32   +0x1c
 ```
 
 ## S2C ClientUpdatePacketCoinCount  `0x29, 0x13`
-- server: SENT (6× in opcode_stats) · seen in play 6×
+- server: SENT (1× in opcode_stats) · seen in play 67×
 - reader: FUN_142bae9b0
 - built in: FUN_142c3fec0
 - handled in FUN_142c3fec0 (its switch case for this message)
@@ -84,9 +84,9 @@ u32   +0x1c
 ```
 u16   +0x8
 i16   +0x10
-i32   iVar3
+i32   <local>
 FUN_142ba3190 -> +0x28
-  i32   iVar2
+  i32   <local>
     [loop 1: list elements]
 u32   +0x4c
 u32   +0x48
@@ -138,7 +138,7 @@ u32   +0x24
 ```
 u16   +0x8
 i16   +0x10
-i32   iVar3
+i32   <local>
 ```
 - handled in FUN_142c3fec0 (its switch case for this message)
 - code (handler case in FUN_142c3fec0):
@@ -147,7 +147,7 @@ i32   iVar3
 ```
 
 ## S2C ClientUpdatePacketDoneSendingPreloadCharacters  `0x29, 0x1B`
-- server: SENT (162× in opcode_stats) · seen in play 162×
+- server: SENT (20× in opcode_stats) · seen in play 740×
 - reader: FUN_142baed10
 - built in: FUN_142c3fec0
 - handled in FUN_142c3fec0 (its switch case for this message)
@@ -200,7 +200,7 @@ u32   +0x30
 ```
 
 ## S2C ClientUpdatePacketZonePopulation  `0x29, 0x1F`
-- server: SENT (102× in opcode_stats) · seen in play 102×
+- server: SENT (16× in opcode_stats) · seen in play 325×
 - reader: FUN_142baf8a0
 - built in: FUN_142c3fec0
 - handled in FUN_142c3fec0 (its switch case for this message)
@@ -210,14 +210,14 @@ u32   +0x30
 ```
 
 ## S2C ClientUpdatePacketItemAdd  `0x29, 0x2`
-- server: SENT (70× in opcode_stats) · seen in play 70×
+- server: SENT (4× in opcode_stats) · seen in play 388×
 - reader: FUN_142b830c0
 - built in: FUN_142c3fec0
 - layout:
 ```
 u16   +0x8
 i16   +0x10
-i32   iVar3
+i32   <local>
 ```
 - handled in FUN_142c3fec0 (its switch case for this message)
 - text keys: ItemDefinitions.log
@@ -228,14 +228,14 @@ i32   iVar3
 ```
 
 ## S2C ClientUpdatePacketRespawnLocations  `0x29, 0x20`
-- server: SENT (16× in opcode_stats) · seen in play 16×
+- server: SENT (2× in opcode_stats) · seen in play 44×
 - reader: FUN_142b83ae0
 - built in: FUN_142c3fec0
 - layout:
 ```
 u16   +0x8
 i16   +0x10
-i32   iVar2
+i32   <local>
   [loop 1: list elements]
 ```
 - handled in FUN_142c3fec0 (its switch case for this message)
@@ -305,9 +305,9 @@ u16   +0x8
 i16   +0x10
 u64   +0x18
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
   [loop 2: list elements]
-u32   *puVar1
+u32   <element>
 bool  +0x40
 u8    +0x41
 ```
@@ -340,7 +340,7 @@ u32   +0x24
 ```
 
 ## S2C ClientUpdatePacketMovementVersion  `0x29, 0x26`
-- server: SENT (102× in opcode_stats) · seen in play 102×
+- server: SENT (16× in opcode_stats) · seen in play 325×
 - reader: FUN_142baef80
 - built in: FUN_142c3fec0
 - handled in FUN_142c3fec0 (its switch case for this message)
@@ -357,7 +357,7 @@ u32   +0x24
 ```
 u16   +0x8
 i16   +0x10
-  u8    *(byte *)param_2
+  u8    <computed>
   u8    +0x19
   u8    +0x19
   u8    +0x1a
@@ -398,7 +398,7 @@ u32   +0x20
 ```
 
 ## S2C ClientUpdatePacketUpdateCalculatedStats  `0x29, 0x2C`
-- server: SENT (184× in opcode_stats) · seen in play 184×
+- server: SENT (21× in opcode_stats) · seen in play 655×
 - built in: FUN_142c3fec0
 - handled in FUN_142c3fec0 (its switch case for this message)
 - data sources: ptr:CalculatedStat_log_145129560
@@ -418,10 +418,10 @@ u32   +0x20
 ```
 
 ## S2C ClientUpdatePacketItemUpdate  `0x29, 0x3`
-- server: SENT (343× in opcode_stats) · seen in play 343×
+- server: SENT (35× in opcode_stats) · seen in play 2184×
 
 ## S2C ClientUpdatePacketItemDelete  `0x29, 0x4`
-- server: SENT (41× in opcode_stats) · seen in play 41×
+- server: SENT (1× in opcode_stats) · seen in play 359×
 - reader: FUN_142bb5350
 - built in: FUN_142c3fec0
 - handled in FUN_142c3fec0 (its switch case for this message)
@@ -458,7 +458,7 @@ u32   +0x20
 ```
 u16   +0x8
 i16   +0x10
-i32   iVar3
+i32   <local>
 ```
 - handled in FUN_142c3fec0 (its switch case for this message)
 - code (handler case in FUN_142c3fec0):
@@ -525,9 +525,9 @@ u32   +0x1c
 u16   +0x8
 i16   +0x10
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
   [loop 2: list elements]
-u32   *puVar1
+u32   <element>
 u8    +0x40
 ```
 - handled in FUN_142c3fec0 (its switch case for this message)
@@ -546,9 +546,9 @@ u8    +0x40
 u16   +0x8
 i16   +0x10
   [loop 1: list elements]
-u32   *puVar1
+u32   <element>
   [loop 2: list elements]
-u32   *puVar1
+u32   <element>
 u8    +0x40
 bool  +0x41
 bool  +0x42
@@ -588,7 +588,7 @@ u32   +0x1c
 ```
 u16   +0x8
 i16   +0x10
-i32   iVar3
+i32   <local>
 ```
 - handled in FUN_142c3fec0 (its switch case for this message)
 - code (handler case in FUN_142c3fec0):

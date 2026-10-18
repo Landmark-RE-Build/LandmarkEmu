@@ -1,0 +1,14 @@
+{
+  "Network": {
+    "Host": "0.0.0.0",
+    "Port": 20200
+  },
+  "Database": {
+    "Social": {
+      "ConnectionString": "server=127.0.0.1;port=3306;user=landmarkemu;password=landmarkemu;database=lmemu_social",
+      "Provider": "MySql"
+    }
+  },
+  "ImportFrom": "lmemu_character",
+  "PresenceGraceSeconds": 30
+}

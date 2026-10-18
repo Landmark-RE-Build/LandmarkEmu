@@ -1,0 +1,59 @@
+<Project>
+  <!--
+    LandmarkEmulator.Tests: offline unit tests (no database, no network, no game client).
+
+    Written in xUnit syntax ([Fact], [Theory], [InlineData], [MemberData], Assert.*). The NuGet xUnit packages are not in
+    this machine's package cache and the build agents may not download, so Framework/ carries a small xUnit-compatible
+    attribute + Assert set and a console runner (Framework/TestRunner.cs). `dotnet test` runs it through the VSTest target
+    below; `dotnet run (project LandmarkEmulator.Tests) followed by a name filter` runs a subset. To move to the real xUnit later:
+    delete Framework/, remove the VSTest target and the Sdk imports, and add xunit + xunit.runner.visualstudio +
+    Microsoft.NET.Test.Sdk package references.
+  -->
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsTestProject>true</IsTestProject>
+    <IsPackable>false</IsPackable>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>LandmarkEmulator.Tests</RootNamespace>
+    <!-- The referenced servers ship their own nlog.config / json files; the tests only need their assemblies. -->
+    <ErrorOnDuplicatePublishOutputFiles>false</ErrorOnDuplicatePublishOutputFiles>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LandmarkEmulator.WorldServer\LandmarkEmulator.WorldServer.csproj" />
+    <ProjectReference Include="..\LandmarkEmulator.Shared\LandmarkEmulator.Shared.csproj" />
+    <ProjectReference Include="..\LandmarkEmulator.Internal\LandmarkEmulator.Internal.csproj" />
+    <ProjectReference Include="..\LandmarkEmulator.Gateway\LandmarkEmulator.Gateway.csproj" />
+    <ProjectReference Include="..\LandmarkEmulator.AuthServer\LandmarkEmulator.AuthServer.csproj" />
+    <!-- The services, for their configuration classes (ConfigConsistencyTests.Services). -->
+    <ProjectReference Include="..\LandmarkEmulator.CommerceServer\LandmarkEmulator.CommerceServer.csproj" />
+    <ProjectReference Include="..\LandmarkEmulator.SocialServer\LandmarkEmulator.SocialServer.csproj" />
+    <ProjectReference Include="..\LandmarkEmulator.EnvServer\LandmarkEmulator.EnvServer.csproj" />
+    <ProjectReference Include="..\LandmarkEmulator.WorldChannel\LandmarkEmulator.WorldChannel.csproj" />
+    <ProjectReference Include="..\LandmarkEmulator.GatewayServer\LandmarkEmulator.GatewayServer.csproj" />
+    <!-- The patch-pack rules shared by LaunchPad and the patch host (PatchPacks/PatchSecurityTests.cs). -->
+    <ProjectReference Include="..\LandmarkEmulator.PatchPacks\LandmarkEmulator.PatchPacks.csproj" />
+    <ProjectReference Include="..\LandmarkEmulator.WebAPI\LandmarkEmulator.WebAPI.csproj" />
+    <!-- The capture tools, for the CellsUpdate walk (Packets/CellsUpdateLayoutTests.cs). -->
+    <ProjectReference Include="..\LandmarkEmulator.Parser\LandmarkEmulator.Parser.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The 0.695 client's packet-id table (OpcodeCodecTests.SubCarryingValues_MatchThe695IdTable). -->
+    <None Include="Data\packet_ids_695.tsv" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+
+  <!--
+    `dotnet test` (VSTest mode) builds the project and calls its VSTest target; this one runs the console runner instead
+    of vstest.console. A failing test makes the runner exit non-zero, which fails `dotnet test`.
+  -->
+  <Target Name="VSTest" DependsOnTargets="Build">
+    <Exec Command="dotnet &quot;$(TargetPath)&quot;" WorkingDirectory="$(OutDir)" />
+  </Target>
+</Project>

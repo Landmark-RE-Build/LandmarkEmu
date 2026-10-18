@@ -1,4 +1,5 @@
-using LandmarkEmulator.Shared.Network;
+﻿using LandmarkEmulator.Shared.Network;
+using LandmarkEmulator.WorldServer.Game.WorldChannel;
 using LandmarkEmulator.WorldServer.Network;
 using LandmarkEmulator.WorldServer.Network.Message;
 using LandmarkEmulator.WorldServer.Network.Message.Model;
@@ -25,22 +26,32 @@ namespace LandmarkEmulator.WorldServer.Game
     /// → Finishing ("Game over! Resetting in N seconds") → Started again with whoever stayed. In a running game the
     /// players hurt each other (FFA: everyone; team games: the other team), kills score, and the dead respawn at the
     /// game's spawn points after the respawn delay instead of seeing the death window.
+    ///
+    /// The 0.695 Game Table rework (teams / names / switching from the table's general settings, rules switched in the
+    /// editor, Score / Victory Nodes, point-grant events) is in InstancedGames.Rework.cs; the editor in
+    /// InstancedGames.Editor.cs, the Game Finder in InstancedGames.Finder.cs, queues in InstancedGames.Queue.cs.
     /// </summary>
     public static partial class InstancedGames
     {
         private static readonly ILogger log = LogManager.GetCurrentClassLogger();
         private static readonly object sync = new();
 
-        // InstancedGameBase subs (u32). Server → client:
+        // InstancedGameBase subs (u32), 0.695 numbers [P]: the 0.695 client inserted GetConfigurationRequest at 0xD and
+        // moved every 0.589 sub from 0xD up by one (packets-695.md "Changed layouts" A5, coverage-695.md §0x10D; 0.695
+        // S→C dispatcher cases PropState 0x10 / PropInteraction 0x11 = sub - 2). Checked with Frida 2026-10-17: PropState
+        // must arrive as 0x12 (the 0.589 0x11 + 1; until the server spoke 0.695 natively it was written as 0.589 0x11 and
+        // the gateway's translation added the 1). Server → client (ObserverRegistration both ways), 0.589 in brackets:
         private const uint SubScoreboard = 3, SubPropRecipe = 4, SubState = 6, SubEvent = 7, SubRequest = 8, SubHud = 9,
-            SubTeamMembers = 0x14, SubObserverRegistration = 0x15;
+            SubPropState = 0x12 /* 0x11 */, SubPropInteraction = 0x13 /* 0x12 */, SubTeamMembers = 0x15 /* 0x14 */,
+            SubObserverRegistration = 0x16 /* 0x15 */, SubPlayerRemoval = 0x14 /* 0x13 */;
 
         // InstancedGameRequest types (i16). Client → server: 1 GainAuthorship (Claims.RequestGainActiveAuthorshipOfGame),
-        // 2 LoseAuthorship, 3 Join (Claims.JoinInstancedGame, walk-on "Join"), 7 Leave, 8 Respawn (u64 = the game).
+        // 2 LoseAuthorship, 3 Join (Claims.JoinInstancedGame, walk-on "Join"), 7 Leave, 8 Respawn (u64 = the game),
+        // 9 JoinTeam (0.695 only: InstancedGameRequestJoinTeamPacket, value = the team; see SwitchTeam).
         // Server → client (HandleGameRequestPacket FUN_143438d00): 4 left the queue, 5 queue position, 6 membership:
         // result 1 with value 1 = in the game (manager +0x38 = game), 0 = out of it (FUN_143432090 clears the game).
         private const short RequestGainAuthorship = 1, RequestLoseAuthorship = 2, RequestJoin = 3, RequestMembership = 6,
-            RequestLeave = 7, RequestRespawn = 8;
+            RequestLeave = 7, RequestRespawn = 8, RequestJoinTeam = 9;
 
         /// <summary>
         /// Game states (walk-on status text FUN_142d1d3b0; the client's state switch FUN_14343ff60: 3/4/6 show the game
@@ -56,11 +67,24 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <summary>How long the end-of-game scoreboard stays before the reset countdown, and that countdown.</summary>
         private static readonly TimeSpan VictoryTime = TimeSpan.FromSeconds(10), FinishingTime = TimeSpan.FromSeconds(10);
         private static readonly TimeSpan SyncInterval = TimeSpan.FromSeconds(2);
+
+        /// <summary>
+        /// Steps a capture's HUD control indicator (sub 9) is re-sent in: 5 = every 20 % (10 until the 2026-10-18
+        /// bandwidth audit R6, which halved the HUD resends during a capture: 2 → 1 a second per capturing point with the
+        /// default 5 s CaptureSeconds). The overhead PropInteraction bar is unaffected (it runs on the client's clock)
+        /// [I ours: live's HUD step is not known].
+        /// </summary>
+        private const float CaptureHudSteps = 5f;
         private static readonly TimeSpan ArrivalGrace = TimeSpan.FromSeconds(1);
 
-        /// <summary>Spawn props (IgPropRoleProps): 1371 spawn location (start / respawn / exit), 1223 and 1367 team spawns.</summary>
-        private const uint SpawnLocationProp = 1371, TeamSpawnProp0 = 1223, TeamSpawnProp1 = 1367;
-        private static readonly HashSet<uint> spawnProps = new() { SpawnLocationProp, TeamSpawnProp0, TeamSpawnProp1 };
+        /// <summary>
+        /// Spawn props (IgPropRoleProps): 1371 spawn location (start / respawn / exit); team spawns of role 2 in team order
+        /// (rows 4, 5, 17, 18): 1223 TeamSpawner - Blue, 1367 - Red, and the 0.695 3012 - Yellow, 3013 - Green (texts
+        /// 577680-577683), team t (0-based) using the t-th.
+        /// </summary>
+        private const uint SpawnLocationProp = 1371, TeamSpawnProp0 = 1223, TeamSpawnProp1 = 1367, TeamSpawnProp2 = 3012, TeamSpawnProp3 = 3013;
+        private static readonly uint[] teamSpawnProps = { TeamSpawnProp0, TeamSpawnProp1, TeamSpawnProp2, TeamSpawnProp3 };
+        private static readonly HashSet<uint> spawnProps = new() { SpawnLocationProp, TeamSpawnProp0, TeamSpawnProp1, TeamSpawnProp2, TeamSpawnProp3 };
 
         /// <summary>A rule set's settings, resolved from the Ig* tables (see <see cref="LoadRules"/>).</summary>
         public class Rules
@@ -68,16 +92,24 @@ namespace LandmarkEmulator.WorldServer.Game
             public uint Id;
             public uint NameId;
             public string Name = "";
-            /// <summary>0 = free for all.</summary>
+            /// <summary>0 = free for all. IgRuleSets DEFAULT_TEAM_COUNT (column 3), unless the game's settings change it.</summary>
             public int TeamCount;
+            /// <summary>
+            /// IgRuleSets HAS_FFA_TEAM_BY_DEFAULT (column 4): 1 only for 2 Deathmatch and 7 FFA Zone Control, 0 for 5 All
+            /// Scoring (agent-leads-sweep.md L97) [P table]. The free-for-all sets whose players fight each other.
+            /// </summary>
+            public bool HasFfaTeam;
             public int MinPlayers = 2, MaxPlayers = 16;
             public int TimeLimitSeconds = 600;
             public int PointLimit, TeamPointLimit;
             public int PointsPerKill = 1, PenaltyPerDeath, SelfKillPenalty, EnvironmentPenalty;
             public int RespawnDelaySeconds = 6;
             public int CountdownMs = 30000;
-            /// <summary>Adventure (rule set 8): players work together against the site's story; no PvP, creature kills
-            /// score, the site plays its story while a round is on.</summary>
+            /// <summary>
+            /// Nobody is anybody's enemy: one team, or free for all without PvP Allowed (ApplyGeneral). The score bars
+            /// show only with a score to reach; the Game Finder lists it as PvE. (Before the 0.695 settings this meant
+            /// the Adventure table; its site story now follows the rule set, <see cref="PlaysStory"/>.)
+            /// </summary>
             public bool Cooperative;
             /// <summary>The rule set's parameter values by IgRuleTypeParameters id (after IgRuleParameters overrides).</summary>
             public Dictionary<uint, int> Values = new();
@@ -93,6 +125,25 @@ namespace LandmarkEmulator.WorldServer.Game
             public bool ZoneControl;
             public int PointsPerCapture, PointsPerTick;
             public float TickSeconds = 10f, CaptureSeconds = 5f;
+            /// <summary>Rule type 1 "Time Limit" is on (0.695 Game Table: a game without it runs until a victory).</summary>
+            public bool HasTimeLimit = true;
+            /// <summary>
+            /// Rule type 2 "Score On Enemy Kill" is on: kills of enemy players and of creatures score Points Per Kill
+            /// (29 Sep 2016: "If you want killing other players or NPCs in the game to award points, add the Score on
+            /// Enemy Kill setting").
+            /// </summary>
+            public bool KillScoring = true;
+            /// <summary>
+            /// Per server team (index 0 = the client's team 1): the general settings InstancedGames_TeamName1-4,
+            /// InstancedGame_AllowPlayersTeam1-4 and InstancedGames_VictoryMessageTeam1-4 (RefIgGeneralSettingsTypes
+            /// 14-16 / 21, 17-20, 25-28). Empty name / message = the client's default (<see cref="TeamName(Game, int)"/>).
+            /// </summary>
+            public string[] TeamNames = Array.Empty<string>(), VictoryMessages = Array.Empty<string>();
+            public bool[] TeamOpen = Array.Empty<bool>();
+            /// <summary>InstancedGames_AllowSwitch (12): players may change team while a round is on (before it, always).</summary>
+            public bool AllowSwitch;
+            /// <summary>InstancedGames_Min / MaxPlayersPerTeam (2 / 3) as set on the table.</summary>
+            public int MinPerTeam = 1, MaxPerTeam = 16;
         }
 
         /// <summary>An IgRuleTypeParameters row a rule set uses: name text, range, and whether it's a yes/no.</summary>
@@ -128,9 +179,29 @@ namespace LandmarkEmulator.WorldServer.Game
             /// <summary>The side taking it and how far (0-1).</summary>
             public int Capturer = -1;
             public float Progress;
+            /// <summary>
+            /// While one side stands on it: when its capture would have started at a steady rate (now − Progress × Time to
+            /// Capture) and the player shown taking it; null when nobody is taking it (PropInteraction).
+            /// </summary>
+            public DateTime? CaptureOrigin;
+            public ulong CapturePlayer;
         }
 
         private const uint ControlPointProp = 1224;
+
+        /// <summary>
+        /// A control point's holder for an IF Gate (row 110 "Owning Team", 577709): the team number as the client counts
+        /// them (1-based, 0 = nobody / free-for-all slot), from whichever running game has that point.
+        /// </summary>
+        public static int ControlPointOwner(ulong propGuid)
+        {
+            lock (sync)
+                foreach (Game game in gamesByClaim.Values)
+                    foreach (ControlPoint cp in game.Points)
+                        if (cp.Guid == propGuid)
+                            return cp.Owner < 0 ? 0 : game.Rules.TeamCount > 0 ? cp.Owner + 1 : 0;
+            return 0;
+        }
 
         private class Game
         {
@@ -166,6 +237,13 @@ namespace LandmarkEmulator.WorldServer.Game
             public string EditorRecipe = "";
             /// <summary>Players waiting to join (InstancedGames.Queue.cs).</summary>
             public readonly List<Queued> Queue = new();
+            /// <summary>
+            /// What the score HUD's progress bars last showed everyone (<see cref="BarKey"/>): the HUD goes out again only
+            /// when this changes (<see cref="RefreshBars"/>), never per tick.
+            /// </summary>
+            public string ShownBars = "";
+            /// <summary>The site was in Play Mode before this round put it there (an Adventure table round): restored after.</summary>
+            public bool WasPlaying;
 
             public bool CanJoin => !Disabled && State != StateVictory && State != StateFinishing && Players.Count < Rules.MaxPlayers;
             public Player Find(WorldSession session) => Players.FirstOrDefault(p => p.Session == session);
@@ -201,64 +279,83 @@ namespace LandmarkEmulator.WorldServer.Game
         /// IgRuleTypeParameters their parameters with defaults, and IgRuleParameters overrides them per rule, in the
         /// same order as the type's parameters (row ids ascending).
         /// </summary>
+        /// <summary>IgRuleTypeParameters rows by rule type (ids ascending = the type's parameter order).</summary>
+        private static Dictionary<uint, List<(uint Id, uint Type, uint NameId, string Min, string Max, string Default)>> typeParamRows;
+        /// <summary>IgRuleParameters override values by IgRules row, in the type's parameter order.</summary>
+        private static Dictionary<uint, List<string>> ruleOverrides;
+
         private static Dictionary<uint, Rules> LoadRules()
         {
-            var typeParams = GameDataFiles.Rows("IgRuleTypeParameters.txt")
+            typeParamRows = GameDataFiles.Rows("IgRuleTypeParameters.txt")
                 .Select(r => (Id: r.U(0), Type: r.U(1), NameId: r.U(3), Min: r.S(4), Max: r.S(5), Default: r.S(6)))
                 .GroupBy(p => p.Type).ToDictionary(g => g.Key, g => g.OrderBy(p => p.Id).ToList());
-            var overrides = GameDataFiles.Rows("IgRuleParameters.txt")
+            ruleOverrides = GameDataFiles.Rows("IgRuleParameters.txt")
                 .Select(r => (Id: r.U(0), Rule: r.U(1), Value: r.S(2)))
                 .GroupBy(o => o.Rule).ToDictionary(g => g.Key, g => g.OrderBy(o => o.Id).Select(o => o.Value).ToList());
             var ruleRows = GameDataFiles.Rows("IgRules.txt").Select(r => (Id: r.U(0), Set: r.U(1), Type: r.U(2))).ToList();
-            var general = GameDataFiles.Rows("IgGeneralSetting.txt").Select(r => (Setting: r.U(1), Set: r.U(2), Value: r.I(3))).ToList();
 
             var result = new Dictionary<uint, Rules>();
             foreach (string[] row in GameDataFiles.Rows("IgRuleSets.txt"))
             {
-                var set = new Rules { Id = row.U(0), NameId = row.U(1), TeamCount = row.I(3) };
+                var set = new Rules { Id = row.U(0), NameId = row.U(1), TeamCount = row.I(3), HasFfaTeam = row.I(4) != 0 };
                 set.Name = Shared.GameTable.Text.TextManager.Instance.GetTextForId(set.NameId) ?? $"Game {set.Id}";
-                // Parameter values by IgRuleTypeParameters id.
-                var values = set.Values;
                 set.RuleRows = ruleRows.Where(r => r.Set == set.Id).Select(r => (r.Id, r.Type)).ToList();
-                foreach (var rule in ruleRows.Where(r => r.Set == set.Id))
-                {
-                    if (!typeParams.TryGetValue(rule.Type, out var parameters))
-                        continue;
-                    overrides.TryGetValue(rule.Id, out var own);
-                    for (int i = 0; i < parameters.Count; i++)
+                set.Values = ValuesFor(set.RuleRows);
+                // The 0.589-style settings window (TableSettings) offers the parameters of the set's own rules.
+                foreach ((uint _, uint type) in set.RuleRows)
+                    foreach (var p in typeParamRows.GetValueOrDefault(type) ?? new())
                     {
-                        string text = own != null && i < own.Count && own[i].Length > 0 ? own[i] : parameters[i].Default;
-                        bool flag = bool.TryParse(parameters[i].Default, out _);
-                        if (int.TryParse(text, out int v))
-                            values[parameters[i].Id] = v;
-                        else if (bool.TryParse(text, out bool b))
-                            values[parameters[i].Id] = b ? 1 : 0;
-                        float.TryParse(parameters[i].Min, NumberStyles.Float, CultureInfo.InvariantCulture, out float min);
-                        float.TryParse(parameters[i].Max, NumberStyles.Float, CultureInfo.InvariantCulture, out float max);
-                        if (parameters[i].NameId != 0 && set.Parameters.All(p => p.Id != parameters[i].Id))
-                            set.Parameters.Add(new Parameter(parameters[i].Id, parameters[i].NameId, flag ? 0 : min, flag ? 1 : max, flag));
+                        bool flag = bool.TryParse(p.Default, out _);
+                        float.TryParse(p.Min, NumberStyles.Float, CultureInfo.InvariantCulture, out float min);
+                        float.TryParse(p.Max, NumberStyles.Float, CultureInfo.InvariantCulture, out float max);
+                        if (p.NameId != 0 && set.Parameters.All(x => x.Id != p.Id))
+                            set.Parameters.Add(new Parameter(p.Id, p.NameId, flag ? 0 : min, flag ? 1 : max, flag));
                     }
-                }
                 ApplyValues(set);
-                int Setting(uint id, int fallback)
-                    => general.Where(g => g.Set == set.Id && g.Setting == id).Select(g => (int?)g.Value).FirstOrDefault() ?? fallback;
-                set.MinPlayers = Math.Max(1, Setting(2, 2));
-                set.MaxPlayers = Math.Max(set.MinPlayers, Setting(3, 16));
-                set.CountdownMs = Setting(4, 30000);
-                set.Cooperative = set.Id == AdventureRuleSet;
-                set.ZoneControl = values.ContainsKey(23);
-                set.Difficulty = Setting(10, 0);
+                // The general settings' defaults (IgGeneralSetting): teams, players, observers, PvP, names...
+                Func<uint, string> defaults = id => GeneralSettings().FirstOrDefault(g => g.Set == set.Id && g.SettingId == id)?.Default;
+                ApplyGeneral(set, defaults);
+                ApplyScoreVictorySetting(set, defaults);
                 result[set.Id] = set;
             }
             return result;
         }
 
-        /// <summary>The rule fields from the parameter values (IgRuleTypeParameters ids).</summary>
+        /// <summary>
+        /// Parameter values (by IgRuleTypeParameters id) of a list of rules: each rule type's defaults, overridden per
+        /// IgRules row by IgRuleParameters (same order as the type's parameters). Rows the server made up
+        /// (<see cref="SyntheticRuleBase"/>) have no overrides.
+        /// </summary>
+        private static Dictionary<uint, int> ValuesFor(IEnumerable<(uint Index, uint Type)> rows)
+        {
+            var values = new Dictionary<uint, int>();
+            foreach ((uint index, uint type) in rows)
+            {
+                if (!typeParamRows.TryGetValue(type, out var parameters))
+                    continue;
+                ruleOverrides.TryGetValue(index, out var own);
+                for (int i = 0; i < parameters.Count; i++)
+                {
+                    string text = index < SyntheticRuleBase && own != null && i < own.Count && own[i].Length > 0 ? own[i] : parameters[i].Default;
+                    if (int.TryParse(text, out int v))
+                        values[parameters[i].Id] = v;
+                    else if (bool.TryParse(text, out bool b))
+                        values[parameters[i].Id] = b ? 1 : 0;
+                }
+            }
+            return values;
+        }
+
+        /// <summary>The rule fields from the parameter values (IgRuleTypeParameters ids) and the rules present.</summary>
         private static void ApplyValues(Rules set)
         {
             int Value(uint param, int fallback) => set.Values.TryGetValue(param, out int v) ? v : fallback;
+            bool Has(uint type) => set.RuleRows.Any(r => r.Type == type);
+            set.HasTimeLimit = Has(1);
+            set.KillScoring = Has(2);
+            set.ZoneControl = Has(11);
             set.TimeLimitSeconds = Math.Max(10, Value(1, 600));
-            set.PointsPerKill = Value(2, 1);
+            set.PointsPerKill = set.KillScoring ? Value(2, 1) : 0;
             set.PenaltyPerDeath = Value(3, 0);
             set.SelfKillPenalty = Value(6, 0);
             set.EnvironmentPenalty = Value(7, 0);
@@ -284,33 +381,40 @@ namespace LandmarkEmulator.WorldServer.Game
         public static List<PropSettings.Definition> TableSettings(uint propId)
         {
             EnsureLoaded();
+            // The 0.695 Score Node's one setting (Point Amount, row 109; see InstancedGames.Rework.cs).
+            if (propId == ScoreNodeProp)
+                return ScoreNodeSettings();
             if (!placementProps.TryGetValue(propId, out uint setId) || !rules.TryGetValue(setId, out Rules set))
                 return new List<PropSettings.Definition>();
             return set.Parameters.Select(p => new PropSettings.Definition(10000 + p.Id, ParameterKey(p.Id), p.NameId, 0,
                 set.Values.TryGetValue(p.Id, out int v) ? v : 0, p.Max, p.Min, p.Flag ? 1 : Math.Max(1, (p.Max - p.Min) >= 600 ? 30 : 1))).ToList();
         }
 
-        /// <summary>The rule set with this table's own settings applied (a copy; read at each round start).</summary>
+        /// <summary>
+        /// The rule set with this table's own settings applied (a copy): the general settings saved in the game editor
+        /// (<see cref="ApplyGeneral"/>), the rules switched on / off there (<see cref="ActiveRuleRows"/>) and their
+        /// parameters. The running round keeps the copy it started with (<see cref="StartRound"/>); outside a round the
+        /// game follows every change (<see cref="SettingsChanged"/>).
+        /// </summary>
         private static Rules RulesFor(Game game)
         {
             Rules baseSet = rules[placementProps[game.PropId]];
             var own = new Rules
             {
-                Id = baseSet.Id, NameId = baseSet.NameId, Name = baseSet.Name, TeamCount = baseSet.TeamCount,
-                MinPlayers = baseSet.MinPlayers, MaxPlayers = baseSet.MaxPlayers, CountdownMs = baseSet.CountdownMs,
-                Cooperative = baseSet.Cooperative, ZoneControl = baseSet.ZoneControl, Difficulty = baseSet.Difficulty,
-                Parameters = baseSet.Parameters, RuleRows = baseSet.RuleRows, Values = new Dictionary<uint, int>(baseSet.Values)
+                Id = baseSet.Id, NameId = baseSet.NameId, Name = baseSet.Name, TeamCount = baseSet.TeamCount, HasFfaTeam = baseSet.HasFfaTeam,
+                CountdownMs = baseSet.CountdownMs, Parameters = baseSet.Parameters
             };
-            foreach (Parameter p in baseSet.Parameters)
-                if (PropSettings.TryGetSaved(game.Guid, ParameterKey(p.Id), out float v))
-                    own.Values[p.Id] = (int)v;
+            ApplyGeneral(own, id => GeneralSettings().FirstOrDefault(g => g.Set == baseSet.Id && g.SettingId == id) is GeneralSetting g
+                ? GeneralValue(game, g) : null);
+            own.RuleRows = ActiveRuleRows(game, baseSet, own.TeamCount);
+            own.Values = ValuesFor(own.RuleRows);
+            foreach ((uint _, uint type) in own.RuleRows)
+                foreach (var p in typeParamRows.GetValueOrDefault(type) ?? new())
+                    if (PropSettings.TryGetSaved(game.Guid, ParameterKey(p.Id), out float v))
+                        own.Values[p.Id] = (int)v;
             ApplyValues(own);
-            // The game editor's general settings (IgGeneralSetting: 2 / 3 players, 8 observers, 10 difficulty, 11 PvP).
-            own.MinPlayers = Math.Max(1, General(game, baseSet, 2, baseSet.MinPlayers));
-            own.MaxPlayers = Math.Max(own.MinPlayers, General(game, baseSet, 3, baseSet.MaxPlayers));
-            own.Difficulty = General(game, baseSet, 10, baseSet.Difficulty);
-            own.AllowsObservers = General(game, baseSet, 8, 1) != 0;
-            own.PvP = !own.Cooperative && General(game, baseSet, 11, 1) != 0;
+            ApplyScoreVictorySetting(own, id => GeneralSettings().FirstOrDefault(g => g.Set == baseSet.Id && g.SettingId == id) is GeneralSetting g
+                ? GeneralValue(game, g) : null);
             return own;
         }
 
@@ -319,8 +423,9 @@ namespace LandmarkEmulator.WorldServer.Game
         {
             EnsureLoaded();
             return string.Join("; ", rules.Values.Select(r => $"{r.Id} {r.Name}: teams {r.TeamCount}, players {r.MinPlayers}-{r.MaxPlayers}, "
-                + $"{r.TimeLimitSeconds}s, points {r.PointLimit}/{r.TeamPointLimit}, kill {r.PointsPerKill} death {r.PenaltyPerDeath} "
-                + $"self {r.SelfKillPenalty}, respawn {r.RespawnDelaySeconds}s, countdown {r.CountdownMs}ms"));
+                + $"{(r.HasTimeLimit ? r.TimeLimitSeconds + "s" : "no time limit")}, points {r.PointLimit}/{r.TeamPointLimit}, kill {r.PointsPerKill} death {r.PenaltyPerDeath} "
+                + $"self {r.SelfKillPenalty}, respawn {r.RespawnDelaySeconds}s, countdown {r.CountdownMs}ms, PvP {r.PvP}, "
+                + $"rules {string.Join(",", r.RuleRows.Select(x => x.Type))}"));
         }
 
         #endregion
@@ -357,8 +462,16 @@ namespace LandmarkEmulator.WorldServer.Game
                 writer.Write((uint)(game?.Rules.MaxPlayers ?? 0));
                 writer.Write(false);
                 writer.Write(game?.Rules.NameId ?? 0u);
-                writer.Write(game?.CustomName ?? "");
+                writer.Write(game != null ? NameOf(game) : "");
                 writer.Write(0u);
+                // 0.695 (FUN_142d9fc20): one more u32 (entry +0x15c), the game's team count. The walk-on fill (part_0069
+                // ~20740) reads the entry as +0x148 state, +0x154 max, +0x158 min, +0x15c, +0x160 current, +0x164
+                // difficulty, and the walk-on window FUN_142dc9660 offers "Switch Team" (CanSwitchTeam) only when +0x15c
+                // is ≥ 2, the player is in the game and not queued (and, from state 6 on, with InstancedGames_AllowSwitch)
+                // — exactly IgRuleSets DEFAULT_TEAM_COUNT's values: 2 for the team sets 3 / 4 / 6, 0 for the free-for-all
+                // 2 / 5 / 7, 1 for the Adventure 8 (agent-leads-sweep.md L37) [I strong]. The game's own count (its
+                // settings may change it), not just the rule set's default.
+                writer.Write((uint)Math.Max(0, game?.Rules.TeamCount ?? 0));
             }
         }
 
@@ -371,6 +484,14 @@ namespace LandmarkEmulator.WorldServer.Game
         {
             EnsureLoaded();
             DateTime now = DateTime.UtcNow;
+            List<Action> later;
+            lock (sync)
+            {
+                later = deferred.ToList();
+                deferred.Clear();
+            }
+            foreach (Action action in later)
+                action();
             List<Game> banners;
             lock (sync)
                 banners = gamesByClaim.Values.Where(g => g.BannerText != null && (now >= g.BannerAt || now >= g.BannerAgainAt)).ToList();
@@ -399,6 +520,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     queued = gamesByClaim.Values.Where(g => g.Queue.Count > 0).ToList();
                 foreach (Game game in queued)
                     TickQueue(game, now);
+                TickFinder();
             }
             List<Game> games;
             lock (sync)
@@ -440,7 +562,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     }
                     if (!rules.TryGetValue(placementProps[table.PropId], out Rules set))
                         continue;
-                    gamesByClaim[claim] = new Game
+                    var created = new Game
                     {
                         Guid = table.Guid,
                         PropId = table.PropId,
@@ -449,22 +571,34 @@ namespace LandmarkEmulator.WorldServer.Game
                         Position = table.Position,
                         CustomName = table.Name,
                         Rules = set,
-                        TeamScores = new int[Math.Max(1, set.TeamCount)],
                         Disabled = PropSettings.TryGetSaved(table.Guid, DisabledKey, out float off) && off != 0
                     };
+                    // The table's own settings (teams, players, rules) from the start: the walk-on window and the
+                    // Game Finder show them before any round.
+                    created.Rules = RulesFor(created);
+                    created.TeamScores = new int[Math.Max(1, created.Rules.TeamCount)];
+                    gamesByClaim[claim] = created;
                     changed.Add(claim);
-                    log.Info($"Site {claim} hosts a {set.Name} game (table 0x{table.Guid:X}).");
+                    log.Info($"Site {claim} hosts a {set.Name} game (table 0x{table.Guid:X}, {created.Rules.TeamCount} team(s)).");
                 }
             }
             foreach (Game game in ended)
             {
-                List<WorldSession> editors;
+                List<WorldSession> editors, watching;
                 lock (sync)
+                {
                     editors = game.Editors.ToList();
+                    watching = game.Observers.ToList();
+                    game.Observers.Clear();
+                }
                 foreach (WorldSession editor in editors)
                     SendRecipe(editor, null, false);
                 foreach (Player player in game.Players.ToList())
                     RemovePlayer(game, player, "the game table was removed");
+                // Observers of a game that is gone: out of observer mode (they kept the dialog, chat channel 0x11 and
+                // the observer camera before, L176).
+                foreach (WorldSession observer in watching.Where(o => !o.Disconnected))
+                    EndObservation(observer, game);
                 log.Info($"The {game.Rules.Name} game on site {game.ClaimId} ended (table gone).");
             }
             foreach (ulong claim in changed.Distinct())
@@ -493,7 +627,9 @@ namespace LandmarkEmulator.WorldServer.Game
             {
                 case StateIdle:
                 case StateStarted:
-                    if (game.Players.Count >= game.Rules.MinPlayers)
+                    // NPCs count toward the minimum players to start, not the maximum (dev reply, 29 Sep 2016; TASKS 3.21):
+                    // the site's living story creatures fill missing places, at least one real player needed.
+                    if (game.Players.Count > 0 && game.Players.Count + StoryTools.LiveCreaturesOn(game.ClaimId) >= game.Rules.MinPlayers)
                         BeginCountdown(game, now);
                     else if (game.State == StateIdle && game.Players.Count > 0)
                         SetState(game, StateStarted);
@@ -501,7 +637,7 @@ namespace LandmarkEmulator.WorldServer.Game
                         SetState(game, StateIdle);
                     break;
                 case StateWaitingForReady:
-                    if (game.Players.Count < game.Rules.MinPlayers)
+                    if (game.Players.Count == 0 || game.Players.Count + StoryTools.LiveCreaturesOn(game.ClaimId) < game.Rules.MinPlayers)
                         SetState(game, game.Players.Count > 0 ? StateStarted : StateIdle);
                     else if (now >= game.StateEnds)
                         StartRound(game, now);
@@ -509,7 +645,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 case StateRunning:
                     if (game.Players.Count == 0)
                         SetState(game, StateIdle);
-                    else if (now >= game.RoundEnds)
+                    else if (game.Rules.HasTimeLimit && now >= game.RoundEnds)
                         EndRound(game, now, "time is up");
                     else if (game.Rules.ZoneControl)
                         TickControlPoints(game, now);
@@ -553,21 +689,18 @@ namespace LandmarkEmulator.WorldServer.Game
             StartRound(game, DateTime.UtcNow);
         }
 
-        /// <summary>Dev "gamescore n": adds points to the player (and their team).</summary>
+        /// <summary>
+        /// Dev "gamescore n": adds points to the player (and their team) the way a Score Node's "...Add points to the
+        /// triggering Luminary's score." does (<see cref="GrantPlayerPoints"/>: point-grant chat line, scoreboard, victory
+        /// check).
+        /// </summary>
         public static void DevScore(WorldSession session, int points)
         {
             Game game = GameOf(session);
             Player player = game?.Find(session);
             if (player == null)
                 return;
-            lock (sync)
-            {
-                player.Score += points;
-                player.Kills += Math.Max(0, points);
-                if (game.Rules.TeamCount > 0)
-                    game.TeamScores[player.Team] += points;
-            }
-            SendScoreboard(game);
+            GrantPlayerPoints(game, player, points, 0);
         }
 
         /// <summary>Dev "gameend": ends the round now.</summary>
@@ -582,10 +715,9 @@ namespace LandmarkEmulator.WorldServer.Game
         {
             // The table's settings (its settings window) apply from this round on.
             game.Rules = RulesFor(game);
-            if (game.TeamScores.Length != Math.Max(1, game.Rules.TeamCount))
-                game.TeamScores = new int[Math.Max(1, game.Rules.TeamCount)];
+            FitTeams(game);
             ResetScores(game);
-            game.RoundEnds = now.AddSeconds(game.Rules.TimeLimitSeconds);
+            game.RoundEnds = game.Rules.HasTimeLimit ? now.AddSeconds(game.Rules.TimeLimitSeconds) : DateTime.MaxValue;
             if (game.Rules.ZoneControl)
                 SetUpControlPoints(game, now);
             // Moves first: the players being moved get the new state once they have arrived (SyncArrived).
@@ -594,21 +726,48 @@ namespace LandmarkEmulator.WorldServer.Game
                 players = game.Players.ToList();
             foreach (Player player in players)
             {
-                Trades.Moved(player.Session, intoGame: true);
+                WorldChannelServices.WorldChannel.TradePartyMoved(player.Session, intoGame: true);
                 Respawn(game, player);
             }
             SetState(game, StateRunning);
-            // An Adventure plays the site's story from the start for each round.
-            if (game.Rules.Cooperative && Claims.Get(game.ClaimId) is Database.Character.Model.ClaimModel site)
+            // An Adventure table (the 0.695 Game Table) plays the site's story from the start for each round: Links
+            // (Score / Victory Nodes, Control Point "Attempt to control") run only in Play Mode (storytools-695.md §6.5).
+            if (PlaysStory(game) && Claims.Get(game.ClaimId) is Database.Character.Model.ClaimModel site)
+            {
+                game.WasPlaying = Claims.IsPlaying(game.ClaimId);
                 Claims.ApplyMode(site, play: true, restart: true);
+            }
+            // The table's "On Game Started" Links, on the story that has just (re)started; no triggering character [I].
+            RaiseTableEvent(game, GameStartedEvent, null);
             SendScoreboard(game);
             Broadcast(game, $"{Title(game)} has begun! " + (game.Rules.PointLimit > 0 ? $"First to {game.Rules.PointLimit} points wins."
                 : game.Rules.TeamPointLimit > 0 ? $"First team to {game.Rules.TeamPointLimit} points wins." : ""));
-            log.Info($"{Title(game)} on site {game.ClaimId} started with {players.Count} player(s) ({game.Rules.TimeLimitSeconds} s, point limit {game.Rules.PointLimit}/{game.Rules.TeamPointLimit}, respawn {game.Rules.RespawnDelaySeconds} s).");
+            log.Info($"{Title(game)} on site {game.ClaimId} started with {players.Count} player(s) ({(game.Rules.HasTimeLimit ? game.Rules.TimeLimitSeconds + " s" : "no time limit")}, "
+                + $"point limit {game.Rules.PointLimit}/{game.Rules.TeamPointLimit}, respawn {game.Rules.RespawnDelaySeconds} s, teams {game.Rules.TeamCount}, PvP {game.Rules.PvP}).");
         }
 
-        private static void EndRound(Game game, DateTime now, string why)
+        /// <summary>
+        /// Ends the round. The winner is the best team / player by score, unless the caller names one: a Victory Node's
+        /// "...Declare Victory for Team n / the Triggering Team." (<paramref name="forcedTeam"/>, <paramref
+        /// name="forcedPlayer"/> in free for all) or a player reaching Player Score Victory's Point Limit in a team game
+        /// (rule type 8: "Team wins when one character reaches score") — their team. The banner shows the team's
+        /// Victory Message setting (InstancedGames_VictoryMessageTeam&lt;n&gt;, which the 0.695 scoreboard handler
+        /// FUN_1434e4a40 also reads itself) when the table has one.
+        /// </summary>
+        private static void EndRound(Game game, DateTime now, string why, int? forcedTeam = null, Player forcedPlayer = null)
         {
+            // From inside a story Link chain (a Victory / Score Node): on the next tick, so the Adventure table's Play
+            // Mode switch (StoryTools.PlayModeChanged) doesn't stop the site's story under the chain that is running.
+            if (inStoryChain)
+            {
+                lock (sync)
+                    deferred.Add(() =>
+                    {
+                        if (game.State == StateRunning)
+                            EndRound(game, DateTime.UtcNow, why, forcedTeam, forcedPlayer);
+                    });
+                return;
+            }
             string winner;
             lock (sync)
             {
@@ -616,13 +775,15 @@ namespace LandmarkEmulator.WorldServer.Game
                 {
                     int best = game.TeamScores.Max();
                     var top = Enumerable.Range(0, game.TeamScores.Length).Where(t => game.TeamScores[t] == best).ToList();
-                    game.WinnerTeam = top.Count == 1 ? top[0] : -1;
-                    winner = game.WinnerTeam >= 0 ? $"{TeamName(game.WinnerTeam)} wins" : "It's a draw";
-                    game.BannerText = game.WinnerTeam >= 0 ? $"{TeamName(game.WinnerTeam)} Wins!" : "Draw!";
+                    game.WinnerTeam = forcedTeam is int ft && ft >= 0 && ft < game.Rules.TeamCount ? ft : top.Count == 1 ? top[0] : -1;
+                    winner = game.WinnerTeam >= 0 ? $"{TeamName(game, game.WinnerTeam)} wins" : "It's a draw";
+                    string message = game.WinnerTeam >= 0 ? game.Rules.VictoryMessages.ElementAtOrDefault(game.WinnerTeam) : null;
+                    game.BannerText = game.WinnerTeam < 0 ? "Draw!" : !string.IsNullOrWhiteSpace(message) ? message : $"{TeamName(game, game.WinnerTeam)} Wins!";
                 }
                 else
                 {
-                    Player best = game.Players.OrderByDescending(p => p.Score).ThenBy(p => p.Deaths).FirstOrDefault();
+                    Player best = forcedPlayer != null && game.Players.Contains(forcedPlayer) ? forcedPlayer
+                        : game.Players.OrderByDescending(p => p.Score).ThenBy(p => p.Deaths).FirstOrDefault();
                     game.WinnerPlayer = best?.Session.PlayerGuid ?? 0;
                     game.WinnerTeam = 0;
                     winner = best != null ? $"{best.Session.CharacterName} wins with {best.Score} point(s)" : "Nobody won";
@@ -641,7 +802,10 @@ namespace LandmarkEmulator.WorldServer.Game
             // The final scoreboard (with the result) goes before the Victory state that opens the winner banner.
             SendScoreboard(game, final: true);
             SetState(game, StateVictory);
-            if (game.Rules.Cooperative && Claims.Get(game.ClaimId) is Database.Character.Model.ClaimModel site)
+            // The table's "On Game Ended" Links (P6517), while the site's story still runs.
+            RaiseGameEnded(game);
+            // An Adventure table round ran the site's story (StartRound): Play Mode goes back to what it was.
+            if (PlaysStory(game) && !game.WasPlaying && Claims.Get(game.ClaimId) is Database.Character.Model.ClaimModel site)
                 Claims.ApplyMode(site, play: false);
             Broadcast(game, $"{Title(game)} is over ({why}). {winner}!");
             log.Info($"{Title(game)} on site {game.ClaimId} ended ({why}): {winner}.");
@@ -708,6 +872,8 @@ namespace LandmarkEmulator.WorldServer.Game
                 SendState(watcher, game);
                 SendHud(watcher, game);
             }
+            lock (sync)
+                game.ShownBars = BarKey(game);
             Claims.SendGameInfo(game.ClaimId);
         }
 
@@ -731,6 +897,16 @@ namespace LandmarkEmulator.WorldServer.Game
                 return gamesByClaim.Values.FirstOrDefault(g => g.Guid == guid);
         }
 
+        /// <summary>The player's team in their site game as players see it (1-4), or 0 when not in a team game.</summary>
+        public static int TeamNumberOf(WorldSession session)
+        {
+            Game game = GameOf(session);
+            if (game == null || game.Rules.TeamCount == 0)
+                return 0;
+            lock (sync)
+                return game.Find(session) is Player p ? p.Team + 1 : 0;
+        }
+
         /// <summary>Is the player in a site game whose round is on?</summary>
         public static bool InRunningGame(WorldSession session) => GameOf(session)?.State == StateRunning;
 
@@ -747,7 +923,8 @@ namespace LandmarkEmulator.WorldServer.Game
                 Observe(session, flag == 1 ? GameByGuid(watched) ?? GameAt(session) : null, a);
                 return;
             }
-            if (HandleEditor(session, request.SubOpcode, request.Body))
+            if (HandleEditor(session, request.SubOpcode, request.Body) || HandleFinder(session, request.SubOpcode, request.Body)
+                || HandleRework(session, request.SubOpcode, request.Body))
                 return;
             if (request.SubOpcode != SubRequest)
             {
@@ -763,6 +940,9 @@ namespace LandmarkEmulator.WorldServer.Game
             reader.ReadUShort();
             ulong guid = reader.ReadULong();
             log.Info($"{session.CharacterName}: instanced game request {type} for 0x{guid:X}.");
+            // A Game Finder offer of a game on another world (its queue entry's Join Now / Leave Queue; L31).
+            if (HandleRemoteOffer(session, type, value, guid))
+                return;
             switch (type)
             {
                 case RequestJoin:
@@ -788,6 +968,9 @@ namespace LandmarkEmulator.WorldServer.Game
                     break;
                 case RequestLoseAuthorship:
                     LoseAuthorship(session);
+                    break;
+                case RequestJoinTeam:
+                    SwitchTeam(session, (guid != 0 ? GameByGuid(guid) : null) ?? GameOf(session), value);
                     break;
             }
         }
@@ -826,19 +1009,25 @@ namespace LandmarkEmulator.WorldServer.Game
                 game.Players.Add(player);
             }
             SendMembership(session, game.Guid, true);
+            // The 0.695 client keeps the game's settings (team names, PvPAllowed, AllowSwitch, joinable teams, victory
+            // messages) from GetConfigurationResponse; it asks on entering the site, a player who joined from elsewhere
+            // (Game Finder) may not have them yet.
+            SendConfiguration(session, game);
             if (game.State == StateRunning)
                 Respawn(game, player);
             else
                 MoveToSpawn(game, player, start: true);
             if (!player.Arriving)
-            {
                 SendState(session, game);
-                SendHud(session, game);
-            }
             SendTeamMembers(game);
-            SendScoreboard(game);
+            // Scoreboard before HUD: the client takes its own team (manager +0xa0, which the HUD's IsSelf bar needs)
+            // from the scoreboard's player list (FUN_1434e4a40). The scoreboard re-sends the HUD to everyone when the
+            // bars change; the newcomer gets it here otherwise.
+            bool barsSent = SendScoreboard(game);
+            if (!player.Arriving && !barsSent)
+                SendHud(session, game);
             Claims.SendGameInfo(game.ClaimId);
-            Broadcast(game, $"{session.CharacterName} joined {Title(game)}" + (game.Rules.TeamCount > 0 ? $" ({TeamName(player.Team)})." : "."));
+            Broadcast(game, $"{session.CharacterName} joined {Title(game)}" + (game.Rules.TeamCount > 0 ? $" ({TeamName(game, player.Team)})." : "."));
             log.Info($"{session.CharacterName} joined {Title(game)} on site {game.ClaimId} ({game.Players.Count} player(s)).");
         }
 
@@ -879,6 +1068,8 @@ namespace LandmarkEmulator.WorldServer.Game
             SendMembership(session, game.Guid, false);
             // State 0: the client puts the game HUD away (FUN_14343ff60 → FUN_14343bad0).
             SendState(session, game, StateNone);
+            // The server's removal (L176): also takes the client out of the observer camera.
+            SendRemoval(session, game.Guid);
             SendTeamMembers(game);
             SendScoreboard(game);
             Claims.SendGameInfo(game.ClaimId);
@@ -898,7 +1089,7 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>
-        /// ObserverRegistration 0x15 {u32, u64 game, u32 flag} (Lua InstancedGame.EnterObserverMode / ExitObserverMode;
+        /// ObserverRegistration 0x16 (0.589 0x15) {u32, u64 game, u32 flag} (Lua InstancedGame.EnterObserverMode / ExitObserverMode;
         /// the client also sends flag 0 on leaving a game). The server's echo (handler FUN_1434391f0) with flag 1 makes the
         /// client an observer of that game (manager +0x40) and opens GameEvents:OnOpenGameInProgressDialog; flag 0 closes
         /// it. Observers get the game's state, HUD and scoreboard (not the players' re-zones or hits).
@@ -926,8 +1117,8 @@ namespace LandmarkEmulator.WorldServer.Game
             if (game != null)
             {
                 SendState(session, game);
-                SendHud(session, game);
                 SendScoreboardTo(session, game);
+                SendHud(session, game);
                 log.Info($"{session.CharacterName} watches {Title(game)} on site {game.ClaimId}.");
             }
             else
@@ -937,17 +1128,41 @@ namespace LandmarkEmulator.WorldServer.Game
             }
         }
 
-        private static int PickTeam(Game game)
+        /// <summary>
+        /// The team a newcomer goes to: the emptiest team that allows players (InstancedGame_AllowPlayersTeam&lt;n&gt;;
+        /// all of them if none does), then the lowest score.
+        /// </summary>
+        private static int PickTeam(Game game, Player except = null)
         {
             if (game.Rules.TeamCount <= 0)
                 return 0;
-            return Enumerable.Range(0, game.Rules.TeamCount)
-                .OrderBy(t => game.Players.Count(p => p.Team == t)).ThenBy(t => game.TeamScores.ElementAtOrDefault(t)).First();
+            var open = Enumerable.Range(0, game.Rules.TeamCount).Where(t => TeamAllowsPlayers(game.Rules, t)).ToList();
+            if (open.Count == 0)
+                open = Enumerable.Range(0, game.Rules.TeamCount).ToList();
+            return open.OrderBy(t => game.Players.Count(p => p != except && p.Team == t)).ThenBy(t => game.TeamScores.ElementAtOrDefault(t)).First();
         }
 
-        private static string TeamName(int team) => team switch { 0 => "Blue team", 1 => "Yellow team", _ => $"Team {team + 1}" };
+        private static bool TeamAllowsPlayers(Rules set, int team)
+            => team >= 0 && team < set.TeamCount && (team >= set.TeamOpen.Length || set.TeamOpen[team]);
 
-        private static string Title(Game game) => game.CustomName.Length > 0 ? game.CustomName : game.Rules.Name;
+        /// <summary>
+        /// A team's name as the 0.695 client names it (FUN_1434e7570, used for the scoreboard's team rows and the kill
+        /// feed's sourceTeam / targetTeam): game setting InstancedGames_TeamName&lt;id&gt; if the game has one, else
+        /// InstancedGame.Teams.DefaultName_&lt;id&gt; (CodeStringMappings: _1 = text 564623 "Team Cobalt", _2 = 564624 "Team
+        /// Gold"; _0 = 564622 "FFA Team"), else "Team %d" — with id the client's number, team + 1 (<see cref="ClientSide"/>).
+        /// The bars, chat lines and banner use the same names so they read like the client's own rows.
+        /// </summary>
+        private static string TeamName(int team) => (team + 1) switch { 1 => "Team Cobalt", 2 => "Team Gold", int id => $"Team {id}" };
+
+        /// <summary>A team's name in this game: its InstancedGames_TeamName&lt;n&gt; setting when set (as the 0.695 client
+        /// names it, FUN_1434e7570), else the default names above.</summary>
+        private static string TeamName(Game game, int team)
+        {
+            string own = game?.Rules.TeamNames.ElementAtOrDefault(team);
+            return !string.IsNullOrWhiteSpace(own) ? own : TeamName(team);
+        }
+
+        private static string Title(Game game) => NameOf(game) is { Length: > 0 } name ? name : game.Rules.Name;
 
         private static void Broadcast(Game game, string text)
         {
@@ -963,26 +1178,40 @@ namespace LandmarkEmulator.WorldServer.Game
         /// A weapon attack by a player in a running game: another living player of the game (an enemy in team games) is
         /// hit when they are the attack's target, lie on its aim ray, or stand at the swing's aim point. Returns true
         /// if someone was hit (the creature checks are skipped then).
+        /// <para>Friendly fire (only with grief awards on, <see cref="Grief.Enabled"/>): in a team game a teammate who is
+        /// the attack's target or the first player on its aim ray is hit too — never by the swing's area — and the
+        /// damage earns the attacker grief (the client's warnings: "You have been firing on ally forces", Grief.cs),
+        /// except in rule sets that score team kills (IgRuleTypes 3; 4 Traitors!, 5 All Scoring), where hitting
+        /// teammates is part of the game. A teammate killed so is a team kill (<see cref="Died"/>, event 2) [I].</para>
         /// </summary>
         public static bool Hit(WorldSession attacker, ulong target, (Vector3 Origin, Vector3 Direction)? ray, Vector3 aim,
             uint damage, float range)
         {
             Game game = GameOf(attacker);
-            if (game == null || game.State != StateRunning || Health.IsDead(attacker) || game.Rules.Cooperative || !game.Rules.PvP)
+            // PvP follows the 0.695 client's hostility rule (FUN_142ea9630): other teams are enemies; in free for all
+            // everyone is, when PvPAllowed is set (Rules.PvP, ApplyGeneral).
+            if (game == null || game.State != StateRunning || Health.IsDead(attacker) || !game.Rules.PvP)
                 return false;
             Player me = game.Find(attacker);
-            List<Player> enemies;
+            List<Player> enemies, allies;
+            bool friendlyFire = Grief.Enabled && game.Rules.TeamCount > 0;
             lock (sync)
-                enemies = game.Players.Where(p => p != me && p.RespawnAt == null && !p.Arriving && !Health.IsDead(p.Session)
-                    && p.Session.ZoneId == attacker.ZoneId && (game.Rules.TeamCount == 0 || p.Team != me.Team)).ToList();
+            {
+                var others = game.Players.Where(p => p != me && p.RespawnAt == null && !p.Arriving && !Health.IsDead(p.Session)
+                    && p.Session.ZoneId == attacker.ZoneId).ToList();
+                enemies = others.Where(p => game.Rules.TeamCount == 0 || p.Team != me.Team).ToList();
+                allies = friendlyFire ? others.Where(p => p.Team == me.Team).ToList() : new List<Player>();
+            }
+            // Aimed hits (target, ray) can land on a teammate under friendly fire; the swing's area only on enemies.
+            List<Player> aimable = allies.Count > 0 ? enemies.Concat(allies).ToList() : enemies;
             Player victim = null;
             if (target != 0)
-                victim = enemies.FirstOrDefault(p => p.Session.PlayerGuid == target
+                victim = aimable.FirstOrDefault(p => p.Session.PlayerGuid == target
                     && Vector3.Distance(p.Session.Position, attacker.Position) <= range);
             if (victim == null && ray is var (origin, direction))
             {
                 float best = float.MaxValue;
-                foreach (Player p in enemies)
+                foreach (Player p in aimable)
                 {
                     Vector3 centre = p.Session.Position + new Vector3(0f, 1f, 0f);
                     float t = Vector3.Dot(centre - origin, direction);
@@ -1001,6 +1230,8 @@ namespace LandmarkEmulator.WorldServer.Game
             if (victim == null)
                 return false;
             Health.Damage(victim.Session, damage, attacker);
+            if (allies.Contains(victim) && !game.Rules.RuleRows.Any(r => r.Type == Grief.TeamKillRuleType))
+                Grief.AllyDamage(attacker, victim.Session, damage);
             // Floating damage numbers for both players (CombatResourceEvent, as for creature hits).
             Creatures.SendCombatEvent(attacker, attacker.PlayerGuid, victim.Session.PlayerGuid, damage);
             Creatures.SendCombatEvent(victim.Session, attacker.PlayerGuid, victim.Session.PlayerGuid, damage);
@@ -1048,12 +1279,38 @@ namespace LandmarkEmulator.WorldServer.Game
             if (by != null)
                 Chat.System(by.Session, $"You defeated {victim.CharacterName}.");
             log.Info($"{Title(game)}: {victim.CharacterName} died ({(by != null ? $"killed by {by.Session.CharacterName}" : "no killer")}).");
+            CheckScoreVictory(game, DateTime.UtcNow);
+            return true;
+        }
 
-            bool won = game.Rules.TeamCount == 0
-                ? game.Rules.PointLimit > 0 && by != null && by.Score >= game.Rules.PointLimit
-                : game.Rules.TeamPointLimit > 0 && by != null && game.TeamScores[by.Team] >= game.Rules.TeamPointLimit;
-            if (won)
-                EndRound(game, DateTime.UtcNow, "point limit reached");
+        /// <summary>
+        /// Ends a running round whose score reached a victory condition: Player Score Victory (rule type 8, Point Limit:
+        /// "Team wins when one character reaches score" — in a team game the player's team wins) or Team Score Victory
+        /// (rule type 9, Team Point Limit). True if the round ended.
+        /// </summary>
+        private static bool CheckScoreVictory(Game game, DateTime now)
+        {
+            if (game.State != StateRunning)
+                return false;
+            Player top;
+            int? team = null;
+            lock (sync)
+            {
+                top = game.Rules.PointLimit > 0
+                    ? game.Players.Where(p => p.Score >= game.Rules.PointLimit).OrderByDescending(p => p.Score).FirstOrDefault() : null;
+                if (top == null && game.Rules.TeamCount > 0 && game.Rules.TeamPointLimit > 0)
+                {
+                    int best = game.TeamScores.Max();
+                    if (best >= game.Rules.TeamPointLimit)
+                        team = Array.IndexOf(game.TeamScores, best);
+                }
+            }
+            if (top == null && team == null)
+                return false;
+            if (top != null)
+                EndRound(game, now, "point limit reached", game.Rules.TeamCount > 0 ? top.Team : null, game.Rules.TeamCount > 0 ? null : top);
+            else
+                EndRound(game, now, "team point limit reached", team);
             return true;
         }
 
@@ -1064,28 +1321,41 @@ namespace LandmarkEmulator.WorldServer.Game
         public static void CompleteAdventure(ulong claimId)
         {
             Game game = GameOn(claimId);
-            if (game == null || game.State != StateRunning || !game.Rules.Cooperative)
+            if (game == null || game.State != StateRunning || game.Rules.Id != AdventureRuleSet)
                 return;
             lock (sync)
                 foreach (Player p in game.Players)
-                    p.Score += game.Rules.PointLimit > 0 ? game.Rules.PointLimit : 10;
+                {
+                    int points = game.Rules.PointLimit > 0 ? game.Rules.PointLimit : 10;
+                    p.Score += points;
+                    if (game.Rules.TeamCount > 0 && p.Team < game.TeamScores.Length)
+                        game.TeamScores[p.Team] += points;
+                }
             game.ToCavern = true;
             EndRound(game, DateTime.UtcNow, "adventure complete");
         }
 
-        /// <summary>A player killed a creature: in a running Adventure it scores (points per kill).</summary>
+        /// <summary>
+        /// A player killed a creature: in a running game with Score On Enemy Kill (rule type 2) it scores Points Per Kill
+        /// for the player and their team (kills of players or NPCs score only with the Score on Enemy Kill setting, 29
+        /// Sep 2016). Whether a creature of the killer's own side would count is not
+        /// known (story creatures have no game team here).
+        /// </summary>
         public static void CreatureKilled(WorldSession killer)
         {
             Game game = killer == null ? null : GameOf(killer);
             Player p = game?.Find(killer);
-            if (p == null || game.State != StateRunning || !game.Rules.Cooperative)
+            if (p == null || game.State != StateRunning || !game.Rules.KillScoring)
                 return;
             lock (sync)
             {
                 p.Kills++;
                 p.Score += game.Rules.PointsPerKill;
+                if (game.Rules.TeamCount > 0 && p.Team < game.TeamScores.Length)
+                    game.TeamScores[p.Team] += game.Rules.PointsPerKill;
             }
             SendScoreboard(game);
+            CheckScoreVictory(game, DateTime.UtcNow);
         }
 
         /// <summary>The site's control points (props 1224), all neutral, for a new round.</summary>
@@ -1136,24 +1406,42 @@ namespace LandmarkEmulator.WorldServer.Game
                         {
                             cp.Capturer = sides[0];
                             cp.Progress = 0f;
+                            cp.CaptureOrigin = null;
+                            hudChanged = true;
                         }
+                        if (cp.CaptureOrigin == null)
+                        {
+                            cp.CaptureOrigin = now.AddSeconds(-cp.Progress * game.Rules.CaptureSeconds);
+                            cp.CapturePlayer = game.Players.FirstOrDefault(p => SideOf(game, p) == sides[0]
+                                && Vector3.Distance(p.Session.Position, cp.Position) <= cp.Radius)?.Session.PlayerGuid ?? 0ul;
+                        }
+                        // The HUD's control indicator follows in CaptureHudSteps steps (the overhead bar runs on the
+                        // client's clock, PropInteraction): re-sending it every tick sent ~700 packets a second (2026-10-17).
+                        int step = (int)(cp.Progress * CaptureHudSteps);
                         cp.Progress += dt / game.Rules.CaptureSeconds;
-                        hudChanged = true;
+                        hudChanged |= (int)(cp.Progress * CaptureHudSteps) != step;
                         if (cp.Progress >= 1f)
                         {
                             cp.Owner = cp.Capturer;
                             cp.Capturer = -1;
                             cp.Progress = 0f;
+                            cp.CaptureOrigin = null;
                             AddSideScore(game, cp.Owner, game.Rules.PointsPerCapture);
                             events.Add((cp, cp.Owner));
                         }
                     }
-                    else if (sides.Count == 0 && cp.Progress > 0f)
+                    else if (cp.CaptureOrigin != null)
                     {
+                        cp.CaptureOrigin = null;     // contested, left or held: the client's bar goes (PropInteraction)
+                        hudChanged = true;
+                    }
+                    if (sides.Count == 0 && cp.Progress > 0f)
+                    {
+                        int step = (int)MathF.Ceiling(cp.Progress * CaptureHudSteps);
                         cp.Progress = Math.Max(0f, cp.Progress - dt / game.Rules.CaptureSeconds);
                         if (cp.Progress == 0f)
                             cp.Capturer = -1;
-                        hudChanged = true;
+                        hudChanged |= (int)MathF.Ceiling(cp.Progress * CaptureHudSteps) != step;
                     }
                 }
                 if (now >= game.NextScoreTick)
@@ -1165,34 +1453,38 @@ namespace LandmarkEmulator.WorldServer.Game
                 }
             }
             foreach ((ControlPoint cp, int side) in events)
-            {
-                Player taker = game.Players.FirstOrDefault(p => SideOf(game, p) == side);
-                var output = new List<byte>();
-                var w = Begin(output, SubEvent);
-                w.Write(9u);                             // InstancedGame.ControlPtTaken
-                w.Write(game.Rules.TeamCount > 0 ? side : taker?.Team ?? -1);
-                w.Write(-1);
-                w.Write(taker?.Session.PlayerGuid ?? 0ul);
-                w.Write(cp.Guid);
-                w.Write(0u);
-                byte[] data = output.ToArray();
-                foreach (Player p in game.Players.Where(p => !p.Arriving).ToList())
-                    p.Session.EnqueueMessage(ZoneMessageOpcode.InstancedGameBase, data);
-                Broadcast(game, $"{(game.Rules.TeamCount > 0 ? TeamName(side) : taker?.Session.CharacterName ?? "Someone")} took {cp.Name}.");
-                log.Info($"{Title(game)}: {cp.Name} taken by side {side}.");
-            }
+                AnnounceCapture(game, cp, side, game.Players.FirstOrDefault(p => SideOf(game, p) == side));
             if (hudChanged)
             {
-                foreach (Player p in game.Players.Where(p => !p.Arriving).ToList())
-                    SendHud(p.Session, game);
+                // Control indicators and score bars: players and observers (the bars' key is noted so the
+                // scoreboard below does not send the HUD a second time).
+                SendHudAll(game);
                 if (events.Count > 0 || now.AddSeconds(game.Rules.TickSeconds) == game.NextScoreTick)
                     SendScoreboard(game);
             }
-            bool won = game.Rules.TeamCount > 0
-                ? game.Rules.TeamPointLimit > 0 && game.TeamScores.Any(s => s >= game.Rules.TeamPointLimit)
-                : game.Rules.PointLimit > 0 && game.Players.Any(p => p.Score >= game.Rules.PointLimit);
-            if (won)
-                EndRound(game, now, "point limit reached");
+            CheckScoreVictory(game, now);
+        }
+
+        /// <summary>
+        /// A control point changed hands: the ControlPtTaken event (type 9, kill-feed line 564493), a chat line, and the
+        /// point's "When control point is captured..." Links (577708) with the taker as triggering character.
+        /// </summary>
+        private static void AnnounceCapture(Game game, ControlPoint cp, int side, Player taker)
+        {
+            var output = new List<byte>();
+            var w = Begin(output, SubEvent);
+            w.Write(9u);                             // InstancedGame.ControlPtTaken
+            w.Write(game.Rules.TeamCount > 0 ? ClientSide(game, side) : taker != null ? ClientSide(game, taker.Team) : -1);
+            w.Write(-1);
+            w.Write(taker?.Session.PlayerGuid ?? 0ul);
+            w.Write(cp.Guid);
+            WriteEventTail(w, "", taker?.Session.CharacterName ?? "");
+            byte[] data = output.ToArray();
+            foreach (Player p in game.Players.Where(p => !p.Arriving).ToList())
+                p.Session.EnqueueMessage(ZoneMessageOpcode.InstancedGameBase, data);
+            Broadcast(game, $"{(game.Rules.TeamCount > 0 ? TeamName(game, side) : taker?.Session.CharacterName ?? "Someone")} took {cp.Name}.");
+            log.Info($"{Title(game)}: {cp.Name} taken by side {side}.");
+            StoryFire(cp.Guid, ControlPointCapturedEvent, taker?.Session);
         }
 
         /// <summary>Points for a side: the team's score (and its players'), or the free-for-all player's.</summary>
@@ -1240,7 +1532,7 @@ namespace LandmarkEmulator.WorldServer.Game
             // Already on the chosen spawn point there is no move (no re-zone, so no "arrived at a spawn point" later):
             // the player is revived where they stand, and the log says which happened.
             bool moving = MoveToSpawn(game, player, start: false);
-            if (!moving && (Health.IsDead(player.Session) || Health.Current(player.Session) < Health.MaxHealth))
+            if (!moving && (Health.IsDead(player.Session) || Health.Current(player.Session) < Health.Max(player.Session)))
                 Health.Revive(player.Session);
             log.Info($"{Title(game)}: {player.Session.CharacterName} respawned{(moving ? "" : " in place")}.");
         }
@@ -1251,6 +1543,9 @@ namespace LandmarkEmulator.WorldServer.Game
         /// </summary>
         /// <summary>Dev "gametp off": respawn in place (no spawn teleports), for isolating client problems.</summary>
         public static bool SpawnTeleports { get; set; } = true;
+
+        /// <summary>Dev "gamelabels off": no PropState / PropInteraction (control-point labels and bars), for isolating client problems.</summary>
+        public static bool ControlLabels { get; set; } = true;
 
         /// <summary>Returns true when the player is being moved (a re-zone is under way).</summary>
         private static bool MoveToSpawn(Game game, Player player, bool start)
@@ -1266,7 +1561,7 @@ namespace LandmarkEmulator.WorldServer.Game
             var choice = spawns;
             if (game.Rules.TeamCount > 0)
             {
-                uint teamProp = player.Team == 0 ? TeamSpawnProp0 : TeamSpawnProp1;
+                uint teamProp = teamSpawnProps[Math.Clamp(player.Team, 0, teamSpawnProps.Length - 1)];
                 if (spawns.Any(s => s.PropId == teamProp))
                     choice = spawns.Where(s => s.PropId == teamProp).ToList();
             }
@@ -1323,20 +1618,61 @@ namespace LandmarkEmulator.WorldServer.Game
                 return;
             foreach (Player p in ready)
             {
-                if (game.State == StateRunning && (Health.IsDead(p.Session) || Health.Current(p.Session) < Health.MaxHealth))
+                if (game.State == StateRunning && (Health.IsDead(p.Session) || Health.Current(p.Session) < Health.Max(p.Session)))
                     Health.Revive(p.Session);
                 SendState(p.Session, game);
-                SendHud(p.Session, game);
                 Claims.SendGameInfoTo(p.Session, game.ClaimId);
                 log.Info($"{Title(game)}: {p.Session.CharacterName} arrived at a spawn point (state {game.State}, {Health.Current(p.Session)} hp).");
             }
             SendTeamMembers(game);
-            SendScoreboard(game);
+            // Scoreboard before HUD (the client's own team, manager +0xa0, comes from the scoreboard: FUN_1434e4a40).
+            if (!SendScoreboard(game))
+                foreach (Player p in ready)
+                    SendHud(p.Session, game);
         }
 
         #endregion
 
         #region packets
+
+        /// <summary>
+        /// InstancedGamePlayerRemovalPacket 0x10D sub 0x14 (0.589 0x13; 0.695 dispatcher case 0x12, reader FUN_1434dbfb0,
+        /// consumed exactly) [P]: u64 game (the handler doesn't read it). Handler FUN_1434e8cd0: the full reset
+        /// FUN_1434e2330 (state 0 — closing the end-of-game scoreboard when it was 7 —, game +0x38 and observed game +0x40
+        /// cleared, team members / scoreboard lists emptied; the same reset Membership value 0 runs, FUN_1434e93e0 type 6),
+        /// then, if the camera is in mode 0x20 (the observer camera of Lua InstancedGame.EnterObserverMode,
+        /// FUN_143604470), back to the previous camera (FUN_142d4eaa0(client, 0)). Its last block (leave chat channel
+        /// 0x11, GameEvents:OnCloseGameInProgressDialog when +0x40 was set) never runs, as the reset has already cleared
+        /// +0x40; ObserverRegistration flag 0 (FUN_1434ea130) is what does that. Sent after Membership 0 + State 0 when
+        /// the server takes a player out of a game, and after ObserverRegistration 0 when it ends an observation.
+        /// </summary>
+        private static void SendRemoval(WorldSession session, ulong game)
+            => session.EnqueueMessage(ZoneMessageOpcode.InstancedGameBase, RemovalBody(game));
+
+        /// <summary>The removal's body: u32 sub 0x14, u64 game.</summary>
+        internal static byte[] RemovalBody(ulong game)
+        {
+            var output = new List<byte>();
+            Begin(output, SubPlayerRemoval).Write(game);
+            return output.ToArray();
+        }
+
+        /// <summary>
+        /// The server ends a player's observation: ObserverRegistration {u32 0, u64 game, u32 flag 0} (FUN_1434ea130: clears
+        /// +0x40, leaves chat channel 0x11, closes the game-in-progress dialog), state 0, then the removal (observer camera off).
+        /// </summary>
+        private static void EndObservation(WorldSession session, Game game)
+        {
+            var output = new List<byte>();
+            var w = Begin(output, SubObserverRegistration);
+            w.Write(0u);
+            w.Write(game.Guid);
+            w.Write(0u);
+            session.EnqueueMessage(ZoneMessageOpcode.InstancedGameBase, output.ToArray());
+            SendState(session, game, StateNone);
+            SendRemoval(session, game.Guid);
+            log.Info($"{session.CharacterName} no longer watches {Title(game)} (the game ended).");
+        }
 
         private static GamePacketWriter Begin(List<byte> output, uint sub)
         {
@@ -1382,31 +1718,234 @@ namespace LandmarkEmulator.WorldServer.Game
             session.EnqueueMessage(ZoneMessageOpcode.InstancedGameBase, output.ToArray());
         }
 
-        /// <summary>A HUD entry (FUN_1434284b0): u32 text id, string label, then seven u32 (+0x24, +0x28, +0x2c, +0x34,
-        /// +0x30, +0x3c, +0x38); a round timer's end time (the client's synced clock, ms) is +0x3c.</summary>
-        private static void WriteHudEntry(GamePacketWriter w, string label, uint endTime = 0)
+        /// <summary>
+        /// A HUD entry: 0x50 bytes in 0.695 (FUN_1434d8180; 0x40 in 0.589, reader FUN_1434284b0). Wire order (struct
+        /// offset): u32 text id (+0x00), string label (+0x08), u32 +0x24, u32 +0x28, u32 +0x2c, i32 value (+0x34: a control
+        /// point's progress %, a progress bar's value), i32 colour (+0x30: palette index, -1 white; for team bars also the
+        /// team the 0.695 client compares with its own), u32 +0x3c (a round timer's end time on the client's synced ms
+        /// clock; a control point's "owned" flag), i32 +0x38 (a control point's holder colour), then the 0.695 tail
+        /// (<see cref="WriteHudEntryTail"/>). The label the handler shows (FUN_143c1c7b0) is the string when non-empty,
+        /// else the text id's text, else "Missing Text". Layout: trace/0695/hud-progress-695.md.
+        /// </summary>
+        private static void WriteHudEntry(GamePacketWriter w, string label, uint endTime = 0, int value = 0,
+            int colour = 0, bool team = false, ulong player = 0)
         {
-            w.Write(0u);
-            w.Write(label);
-            for (int i = 0; i < 5; i++)
-                w.Write(0u);
-            w.Write(endTime);
-            w.Write(0u);
+            w.Write(0u);                                 // +0x00 text id (none: the label string is used)
+            w.Write(label);                              // +0x08
+            w.Write(0u);                                 // +0x24
+            w.Write(0u);                                 // +0x28
+            w.Write(0u);                                 // +0x2c
+            w.Write(value);                              // +0x34
+            w.Write(colour);                             // +0x30
+            w.Write(endTime);                            // +0x3c
+            w.Write(0u);                                 // +0x38
+            WriteHudEntryTail(w, team, player);
         }
 
         /// <summary>
-        /// HUD sub 9 (reader FUN_14342ba40 → FUN_143427640, handler FUN_143432bd0 → GameData.InstancedGameScoreHUD):
-        /// round counter entry (its label heads the HUD), lists of round timers, wave progress, control indicators,
-        /// progress bars (FUN_143428640 entries) and two more, then u32 state for the message line (3 "Waiting for
-        /// players...", 4 the countdown, 8 "Game over! Resetting in N seconds" with N = 1 + the next u32 / 1000).
+        /// 0.695 HUD entries (FUN_1434d8180; not in 0.589 FUN_1434284b0) end with bool +0x40 and u64 +0x48. The HUD
+        /// handler FUN_1434e2f70 uses them for the progress bars only: a team entry (+0x40 true) is the local player's
+        /// own when its +0x30 equals the client's team (manager +0xa0, taken from the scoreboard by FUN_1434e4a40), a
+        /// player entry when its +0x48 equals the local player's guid (BaseClient +0x32508; only while +0xa0 is set).
         /// </summary>
+        private static void WriteHudEntryTail(GamePacketWriter w, bool team = false, ulong player = 0)
+        {
+            w.Write(team);
+            w.Write(player);
+        }
+
+        /// <summary>
+        /// The client's number for a side. Team games number their teams from 1: index 0 of the scoreboard's team list
+        /// is the "FFA Team" slot (InstancedGame.Teams.DefaultName_0; _1 / _2 are "Team Cobalt" / "Team Gold"), which the
+        /// scoreboard handler FUN_1434e4a40 never shows as a team row, and the result +0xc0 names the winning row. So
+        /// server team t is t + 1 wherever the client compares it with its own team or colours by it (palette in
+        /// FUN_1434e2f70 / FUN_1434e4a40: index % 11 of AF7FAF, 0034f8, ff0000, D4AB1F, 00cc00, FF7F7F, 7F7FFF, 7FFF7F,
+        /// FFFF7F, FF7FFF, 7FFFFF; -1 FFFFFF). Free-for-all sides (player slots) and -1 (nobody) are sent as they are.
+        /// </summary>
+        private static int ClientSide(Game game, int side) => side < 0 ? -1 : game.Rules.TeamCount > 0 ? side + 1 : side;
+
+        /// <summary>One score-HUD progress bar: label, value, colour (palette index), team entry or the player's guid.</summary>
+        private readonly record struct Bar(string Label, int Value, int Colour, bool Team, ulong Player);
+
+        /// <summary>
+        /// The score bars show while a round is on and through its end screens: in competitive games, and in cooperative
+        /// ones (one team, or free for all without PvP) that have a score to reach.
+        /// </summary>
+        private static bool BarsShown(Game game) => (!game.Rules.Cooperative || ScoreGoal(game) > 0)
+            && (game.State == StateRunning || game.State == StateVictory || game.State == StateFinishing);
+
+        /// <summary>The score the bars fill towards: the rule set's team / player point limit, 0 = none.</summary>
+        private static int ScoreGoal(Game game) => game.Rules.TeamCount > 0 ? game.Rules.TeamPointLimit : game.Rules.PointLimit;
+
+        /// <summary>
+        /// The bar entries for one viewer, best first: every team in team games; in free for all the leader and the
+        /// runner-up, plus the viewer when neither. The 0.695 client picks two of them itself (FUN_1434e2f70): the
+        /// viewer's own (IsSelf, arrow) and the best other one, the higher value on top. With no own team known (an
+        /// observer, manager +0xa0 = -1) it keeps the two best in a single pass that only works on a best-first list.
+        /// </summary>
+        private static List<Bar> Bars(Game game, WorldSession viewer)
+        {
+            lock (sync)
+            {
+                if (game.Rules.TeamCount > 0)
+                    return Enumerable.Range(0, game.TeamScores.Length)
+                        .OrderByDescending(t => game.TeamScores[t]).ThenBy(t => t)
+                        .Select(t => new Bar(TeamName(game, t), game.TeamScores[t], ClientSide(game, t), true, 0)).ToList();
+                List<Player> shown = game.Players.OrderByDescending(p => p.Score).ThenBy(p => p.Slot).Take(2).ToList();
+                Player me = viewer != null ? game.Find(viewer) : null;
+                if (me != null && !shown.Contains(me))
+                    shown.Add(me);
+                return shown.Select(p => new Bar(p.Session.CharacterName ?? "", p.Score, p.Slot, false, p.Session.PlayerGuid)).ToList();
+            }
+        }
+
+        /// <summary>
+        /// What the bars show (empty when hidden): the state and every score they are built from. The HUD is re-sent
+        /// when this changes (<see cref="RefreshBars"/>), i.e. per score change, never per tick.
+        /// </summary>
+        private static string BarKey(Game game)
+        {
+            if (!BarsShown(game))
+                return "";
+            lock (sync)
+                return game.Rules.TeamCount > 0
+                    ? $"{game.State}|{ScoreGoal(game)}|{string.Join(",", game.TeamScores)}"
+                    : $"{game.State}|{ScoreGoal(game)}|{string.Join(",", game.Players.Select(p => $"{p.Session.PlayerGuid:X}:{p.Score}"))}";
+        }
+
+        /// <summary>The HUD to every player in place and every observer; notes what the bars now show.</summary>
+        private static void SendHudAll(Game game)
+        {
+            List<Player> players;
+            lock (sync)
+            {
+                players = game.Players.Where(p => !p.Arriving).ToList();
+                game.ShownBars = BarKey(game);
+            }
+            foreach (Player p in players)
+                SendHud(p.Session, game);
+            foreach (WorldSession watcher in Watchers(game))
+                SendHud(watcher, game);
+        }
+
+        /// <summary>Re-sends the HUD to everyone when the score bars changed; true if it did.</summary>
+        private static bool RefreshBars(Game game)
+        {
+            string key = BarKey(game);
+            lock (sync)
+                if (key == game.ShownBars)
+                    return false;
+            SendHudAll(game);
+            return true;
+        }
+
+        /// <summary>
+        /// HUD sub 9 (0.589 reader FUN_14342ba40 → FUN_143427640, handler FUN_143432bd0; 0.695 FUN_1434dbe10 →
+        /// FUN_1434d7120, handler FUN_1434e2f70 → GameData.InstancedGameScoreHUD): the round counter entry (its label
+        /// heads the HUD), entry lists of round timers, wave progress and control indicators, the progress-bar groups
+        /// (<see cref="WriteBars"/>), two more entry lists the handler does not read, then u32 state for the message line
+        /// (3 "Waiting for players...", 4 the countdown, 8 "Game over! Resetting in N seconds" with N = 1 + the next
+        /// u32 / 1000) and that u32.
+        /// </summary>
+        /// <summary>The control-point labels each client was last sent (session, game) → key (PropState).</summary>
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<(WorldSession, ulong), string> shownPropStates = new();
+
+        /// <summary>
+        /// PropState (InstancedGameBase sub 0x12, 0.695 number; 0.589 0x11; handler FUN_1434e8ea0; trace/0695/agent-leads2-a.md L32) [P]:
+        /// {bool clear all, u32 n × {u32 0, u32 0, string label, u64 prop, i32 controller (-1 nobody → "Not Controlled",
+        /// 0 a player → that player's name, n ≥ 1 team n → the team's name), u64 the controlling player}}. It puts the
+        /// client's overhead "InstancedGameObject" indicator (HudIndicators row 22) over each control point, labelled with
+        /// its holder. Sent with the HUD, only when the holders changed for that client; cleared when the round is over.
+        /// </summary>
+        private static void SendPropStates(WorldSession session, Game game)
+        {
+            if (!ControlLabels)
+                return;
+            bool show = game.State == StateRunning && game.Rules.ZoneControl;
+            List<(ulong Guid, string Name, int Controller, ulong Player)> points;
+            lock (sync)
+                points = show ? game.Points.Select(cp =>
+                {
+                    Player holder = cp.Owner < 0 || game.Rules.TeamCount > 0 ? null : game.Players.FirstOrDefault(p => p.Slot == cp.Owner);
+                    int controller = cp.Owner < 0 ? -1 : game.Rules.TeamCount > 0 ? ClientSide(game, cp.Owner) : 0;
+                    return (cp.Guid, cp.Name, controller, holder?.Session.PlayerGuid ?? 0ul);
+                }).ToList() : new();
+            string key = string.Join(";", points.Select(x => $"{x.Guid:X}.{x.Controller}.{x.Player:X}"));
+            var id = (session, game.Guid);
+            if (shownPropStates.TryGetValue(id, out string shown) ? shown == key : key.Length == 0)
+                return;
+            if (key.Length == 0)
+                shownPropStates.TryRemove(id, out _);
+            else
+                shownPropStates[id] = key;
+            var output = new List<byte>();
+            var w = Begin(output, SubPropState);
+            w.Write(true);                               // replace what the client holds
+            w.Write((uint)points.Count);
+            foreach (var (guid, name, controller, player) in points)
+            {
+                w.Write(0u);
+                w.Write(0u);
+                w.Write(name);
+                w.Write(guid);
+                w.Write(controller);
+                w.Write(player);
+            }
+            session.EnqueueMessage(ZoneMessageOpcode.InstancedGameBase, output.ToArray());
+        }
+
+        /// <summary>The capture bar each client was last sent per control point: (session, point) → key.</summary>
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<(WorldSession, ulong), string> shownInteractions = new();
+
+        /// <summary>
+        /// PropInteraction (InstancedGameBase sub 0x13, 0.695 number; 0.589 0x12; reader FUN_1434d7570, handler
+        /// FUN_1434e8d70; trace/0695/agent-leads2-a.md L32) [P]: {u64 player, u64 prop, u32 start, i32 duration ms}. A
+        /// positive duration puts a capture bar over the prop (FUN_1434f2c10: (client clock FUN_142cd2690 − start) /
+        /// duration, coloured by the player's team); 0 removes it. The start is on the client's own clock, which the
+        /// client reports in its KeepAlives (<see cref="WorldSession.ClientClockNow"/>), so it is written per client. The
+        /// bar only rises, so a point left alone (our progress decays) or contested gets a 0, and a fresh bar, back-dated by
+        /// the progress kept, when a side takes it up again [I: when live sent it].
+        /// </summary>
+        private static void SendPropInteractions(WorldSession session, Game game)
+        {
+            if (!ControlLabels || session.ClientClockNow is not uint clientNow)
+                return;
+            bool show = game.State == StateRunning && game.Rules.ZoneControl;
+            var bars = new List<(ulong Prop, ulong Player, DateTime? Origin)>();
+            int duration = (int)(game.Rules.CaptureSeconds * 1000f);
+            lock (sync)
+                foreach (ControlPoint cp in game.Points)
+                    bars.Add((cp.Guid, cp.CapturePlayer, show ? cp.CaptureOrigin : null));
+            DateTime now = DateTime.UtcNow;
+            foreach (var (prop, player, origin) in bars)
+            {
+                string key = origin is DateTime o ? $"{player:X}.{o.Ticks}.{duration}" : "";
+                var id = (session, prop);
+                if (shownInteractions.TryGetValue(id, out string shown) ? shown == key : key.Length == 0)
+                    continue;
+                if (key.Length == 0)
+                    shownInteractions.TryRemove(id, out _);
+                else
+                    shownInteractions[id] = key;
+                var output = new List<byte>();
+                var w = Begin(output, SubPropInteraction);
+                w.Write(player);
+                w.Write(prop);
+                w.Write(origin is DateTime start ? unchecked(clientNow - (uint)Math.Max(0, (now - start).TotalMilliseconds)) : 0u);
+                w.Write(origin != null ? duration : 0);
+                session.EnqueueMessage(ZoneMessageOpcode.InstancedGameBase, output.ToArray());
+            }
+        }
+
         private static void SendHud(WorldSession session, Game game)
         {
+            SendPropStates(session, game);
+            SendPropInteractions(session, game);
             var output = new List<byte>();
             var w = Begin(output, SubHud);
             WriteHudEntry(w, Title(game));
             uint now = (uint)ServerClock.Milliseconds;
-            if (game.State == StateRunning)
+            if (game.State == StateRunning && game.Rules.HasTimeLimit)
             {
                 w.Write(1u);
                 WriteHudEntry(w, "Time Left", now + (uint)Math.Max(0, (game.RoundEnds - DateTime.UtcNow).TotalMilliseconds));
@@ -1419,8 +1958,8 @@ namespace LandmarkEmulator.WorldServer.Game
             else
                 w.Write(0u);
             w.Write(0u);                                 // wave progress
-            // Control indicators (FUN_143432bd0 → InstancedGameScoreHUD.ControlIndicators): entry +0x34 progress (%),
-            // +0x30 the taking side's colour, +0x3c owned, +0x38 the holder's colour.
+            // Control indicators (InstancedGameScoreHUD.ControlIndicators): entry +0x34 progress (%), +0x30 the taking
+            // side's colour, +0x3c owned, +0x38 the holder's colour (team sides as the client numbers them, ClientSide).
             List<ControlPoint> points;
             lock (sync)
                 points = game.State == StateRunning ? game.Points.ToList() : new List<ControlPoint>();
@@ -1435,23 +1974,56 @@ namespace LandmarkEmulator.WorldServer.Game
                 // ControlIndicator.as: bar height = Progress / 100 in ProgressColor; owned points show the holder's colour.
                 bool taking = cp.Capturer >= 0;
                 w.Write(taking ? (uint)Math.Round(cp.Progress * 100f) : cp.Owner >= 0 ? 100u : 0u);
-                w.Write(taking ? cp.Capturer : cp.Owner);
+                w.Write(ClientSide(game, taking ? cp.Capturer : cp.Owner));
                 w.Write(cp.Owner >= 0 ? 1u : 0u);
-                w.Write(cp.Owner);
+                w.Write(ClientSide(game, cp.Owner));
+                WriteHudEntryTail(w);
             }
-            for (int i = 0; i < 3; i++)
-                w.Write(0u);
+            WriteBars(w, session, game);
+            w.Write(0u);                                 // entry list (body +0xa0 / 0.695 +0xb0), not read by the handler
+            w.Write(0u);                                 // entry list (body +0xb8 / 0.695 +0xc8), not read by the handler
             w.Write(game.State);
             w.Write(game.State == StateFinishing ? (uint)Math.Max(0, (game.StateEnds - DateTime.UtcNow).TotalMilliseconds - 1000) : 0u);
             session.EnqueueMessage(ZoneMessageOpcode.InstancedGameBase, output.ToArray());
         }
 
         /// <summary>
-        /// Scoreboard sub 3 (reader FUN_143427ea0, handler FUN_143434580 → GameData.InstancedGameScoreboard): teams
-        /// {u32 id, name {u32 text id, string}, f64 values (team columns), bool}, players {u32 team, u64 guid, name,
-        /// f64 values (player columns, "Param1".. in the window, sorted by the first; the handler reads them as
-        /// doubles and takes the best "Score" as a free-for-all's winner), bool}, a u64 list, three string
-        /// lists (unused, team column names, player column names: the header), u32 winning team (-1 none), bool.
+        /// The HUD's progress-bar groups (trace/0695/hud-progress-695.md): u32 n, then per group (0x40 bytes; 0.589
+        /// FUN_143429ea0 → FUN_143428640, 0.695 FUN_1434d9bb0 → FUN_1434d8360) u32 text id (+0x00), string label
+        /// (+0x08), bool time (+0x20: the header's Type "Time", else "Int"), i32 total (+0x24), entry list (+0x28).
+        /// Group g (at most 5) fills InstancedGameScoreHUD.ProgressBars.ProgressBar&lt;g&gt;: row 0 "LabelTotal" {Label,
+        /// Type, Value = total}, rows 1-2 "ProgressBar" {Color, Value, Position = entry +0x30, IsSelf, Label (0.695)}.
+        /// ProgressBarsDisplay.as draws the header label with the total as its amount and each bar's value out of that
+        /// total (values above it are capped). (0.589 made a row of every entry in order and printed Position instead of a
+        /// label, so it was sent the leader and its own bar only.) One group: the scores, out of the point limit (or out
+        /// of the best score when the rules have none).
+        /// </summary>
+        private static void WriteBars(GamePacketWriter w, WorldSession session, Game game)
+        {
+            List<Bar> bars = BarsShown(game) ? Bars(game, session) : null;
+            if (bars == null || bars.Count == 0)
+            {
+                w.Write(0u);
+                return;
+            }
+            int goal = ScoreGoal(game);
+            w.Write(1u);
+            w.Write(0u);                                 // +0x00 text id
+            w.Write(goal > 0 ? "Score Limit" : "Top Score"); // +0x08 header label
+            w.Write(false);                              // +0x20 Type "Int"
+            w.Write(goal > 0 ? goal : Math.Max(1, bars.Max(b => b.Value))); // +0x24 total = every bar's maximum
+            w.Write((uint)bars.Count);
+            foreach (Bar b in bars)
+                WriteHudEntry(w, b.Label, 0, b.Value, b.Colour, b.Team, b.Player);
+        }
+
+        /// <summary>
+        /// Scoreboard sub 3 (reader 0.589 FUN_143427ea0, 0.695 the same body; handler 0.589 FUN_143434580, 0.695
+        /// FUN_1434e4a40 → GameData.InstancedGameScoreboard, the PvPScoreboard window Tab opens and the end-of-game
+        /// banner): teams (+0x18) {u32 id, name {u32 text id, string}, f64 values (team columns), bool}, players (+0x30)
+        /// {u32 team, u64 guid, name, f64 values (player columns, "Param1".. in the window, sorted by the first), bool},
+        /// a u64 list, three string lists (unused, team column names, player column names: the header), i32 result
+        /// (+0xc0), bool rebuild (+0xc4). See <see cref="BuildScoreboard"/>.
         /// </summary>
         private static List<WorldSession> Watchers(Game game)
         {
@@ -1465,7 +2037,12 @@ namespace LandmarkEmulator.WorldServer.Game
             session.EnqueueMessage(ZoneMessageOpcode.InstancedGameBase, data);
         }
 
-        private static void SendScoreboard(Game game, bool final = false)
+        /// <summary>
+        /// The scoreboard to every player in place and every observer, then the HUD to everyone if the score bars
+        /// changed (the scoreboard goes first: it tells the client its team, which the HUD's own bar needs). True if
+        /// the HUD went out.
+        /// </summary>
+        private static bool SendScoreboard(Game game, bool final = false)
         {
             byte[] data = BuildScoreboard(game, final);
             List<Player> receivers;
@@ -1475,8 +2052,21 @@ namespace LandmarkEmulator.WorldServer.Game
                 p.Session.EnqueueMessage(ZoneMessageOpcode.InstancedGameBase, data);
             foreach (WorldSession watcher in Watchers(game))
                 watcher.EnqueueMessage(ZoneMessageOpcode.InstancedGameBase, data);
+            return RefreshBars(game);
         }
 
+        /// <summary>
+        /// The scoreboard body. Team list: free for all sends one team (id 0, the handler's "one team" = free for all);
+        /// team games send the client's empty slot 0 and then team t as id / index t + 1 (<see cref="ClientSide"/>):
+        /// FUN_1434e4a40 makes team rows of indexes 1.. only, marks the row whose index equals the result IsWinner, and
+        /// groups players by their team (TeamId), which also becomes the client's own team (manager +0xa0, set once
+        /// from the entry with the local guid when a player column is named "Score"). Result +0xc0: -1 none (round on),
+        /// the winning team's index, 0 = a draw in team games, game over / the best "Score" player in free for all.
+        /// The trailing bool selects the handler's path: false only updates rows it already has (players by guid:
+        /// Param values; teams by index: IsWinner, TeamScore), true clears and rebuilds the header, banner
+        /// (ScoreboardBanner, which the state-7 OpenEndGameScoreboard reads), team rows (+ Joinable) and player rows.
+        /// Every scoreboard here is complete, so it is always true (with false the client never had any rows).
+        /// </summary>
         private static byte[] BuildScoreboard(Game game, bool final = false)
         {
             List<Player> players;
@@ -1484,21 +2074,40 @@ namespace LandmarkEmulator.WorldServer.Game
                 players = game.Players.ToList();
             var output = new List<byte>();
             var w = Begin(output, SubScoreboard);
-            int teams = Math.Max(1, game.Rules.TeamCount);
-            w.Write((uint)teams);
-            for (int t = 0; t < teams; t++)
+            bool teamGame = game.Rules.TeamCount > 0;
+            if (teamGame)
             {
-                w.Write((uint)t);
+                w.Write((uint)(game.Rules.TeamCount + 1));
+                w.Write(0u);                            // slot 0 ("FFA Team"), never a row in team games
                 w.Write(0u);
-                w.Write(game.Rules.TeamCount > 0 ? TeamName(t) : "Players");
+                w.Write("");
                 w.Write(1u);
-                w.Write((double)(game.Rules.TeamCount > 0 ? game.TeamScores[t] : players.Sum(p => p.Kills)));
+                w.Write(0d);
+                w.Write(false);
+                for (int t = 0; t < game.Rules.TeamCount; t++)
+                {
+                    w.Write((uint)ClientSide(game, t));
+                    w.Write(0u);
+                    w.Write(TeamName(game, t));
+                    w.Write(1u);
+                    w.Write((double)game.TeamScores.ElementAtOrDefault(t));
+                    w.Write(false);
+                }
+            }
+            else
+            {
+                w.Write(1u);
+                w.Write(0u);
+                w.Write(0u);
+                w.Write("Players");
+                w.Write(1u);
+                w.Write((double)players.Sum(p => p.Kills));
                 w.Write(false);
             }
             w.Write((uint)players.Count);
             foreach (Player p in players)
             {
-                w.Write((uint)p.Team);
+                w.Write((uint)(teamGame ? ClientSide(game, p.Team) : 0));
                 w.Write(p.Session.PlayerGuid);
                 w.Write(0u);
                 w.Write(p.Session.CharacterName ?? "");
@@ -1513,19 +2122,30 @@ namespace LandmarkEmulator.WorldServer.Game
             w.Write(1u);
             w.Write("Score");                           // team columns
             w.Write(3u);
-            w.Write("Score");                           // player columns (Param1..3)
+            w.Write("Score");                           // player columns (Param1..3); "Score" also gives the client its team
             w.Write("Kills");
             w.Write("Deaths");
-            // Result (+0xc0, banner in the client's scoreboard handler FUN_143434580): -1 none (round on); a team id
-            // (1-based) = that team won ("InstancedGame.Teams.DefaultName_<id>", colour <id> % 13); 0 = a draw in team
-            // games, game over / the winner's name in free for all (one team in the list).
+            // Result (+0xc0; banner "InstancedGames.VictoryMessage" with the winning team's name, DrawMessage, or in free
+            // for all the best "Score" player / GameOverMessage; colour = palette[result]).
             bool over = final || game.State == StateVictory || game.State == StateFinishing;
-            w.Write(!over ? -1 : game.Rules.TeamCount > 0 && game.WinnerTeam >= 0 ? game.WinnerTeam + 1 : 0);
-            w.Write(false);
+            w.Write(!over ? -1 : teamGame && game.WinnerTeam >= 0 ? ClientSide(game, game.WinnerTeam) : 0);
+            w.Write(true);                              // rebuild (see above)
             return output.ToArray();
         }
 
-        /// <summary>TeamMembers sub 0x14 (reader FUN_14342bf40, handler FUN_1434390e0): {u64 guid, u32 team, string name, u32 team}.</summary>
+        /// <summary>
+        /// TeamMembers sub 0x15 (0.589 0x14; reader 0.589 FUN_14342bf40, 0.695 FUN_1434dc380 → FUN_1434d7e10;
+        /// handler 0.589 FUN_1434390e0, 0.695 FUN_1434e97c0): {u64 guid (+0x00), u32 (+0x08), string name (+0x10), u32
+        /// team (+0x28)}, kept in a map by guid (manager +0x2b8). Team is the client's number (<see cref="ClientSide"/>):
+        /// 0 = free for all, teams from 1, -1 = none (the local player's entry with a team != -1 ends observer mode).
+        /// The client reads +0x28 for: hostility FUN_142ea9630 (team 0 → everyone is an enemy if the game setting
+        /// InstancedGames_PvPAllowed is set, FUN_1434ec610; else enemies = a different team), friendliness
+        /// FUN_142ea8f90 (team 0 → the normal rules; else the same team), the team colour FUN_1434e7280 /
+        /// FUN_1434e7380 / FUN_1434f2c10 (palette index: 0 AF7FAF, 1 0034f8, 2 ff0000, 3 D4AB1F, 4 00cc00, as the HUD
+        /// and scoreboard) and the walk-on window FUN_142dc9660 (-1 = not on a team). Sending the server's 0-based
+        /// team made the first team "free for all" (hostile to its own players or to nobody) while the second saw it
+        /// as the enemy, so team games send team + 1 like the scoreboard.
+        /// </summary>
         private static void SendTeamMembers(Game game)
         {
             List<Player> players;
@@ -1537,9 +2157,9 @@ namespace LandmarkEmulator.WorldServer.Game
             foreach (Player p in players)
             {
                 w.Write(p.Session.PlayerGuid);
-                w.Write((uint)p.Team);
+                w.Write(ClientSide(game, p.Team));
                 w.Write(p.Session.CharacterName ?? "");
-                w.Write((uint)p.Team);
+                w.Write(ClientSide(game, p.Team));
             }
             byte[] data = output.ToArray();
             foreach (Player p in players.Where(p => !p.Arriving))
@@ -1547,23 +2167,41 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>
-        /// Event sub 7 (reader FUN_143427430, handler FUN_143437440): u32 type (1 enemy kill, 2 team kill, 3 self kill,
-        /// 4 environment kill, 7 flag taken, 8 flag captured, 9 control point taken), u32 team, u32 other team (-1
-        /// none), u64 actor, u64 other actor, u32 text id. The client adds a kill feed line and plays its sound.
+        /// Event sub 7 (reader FUN_143427430, handler FUN_143437440; 0.695 FUN_1434d6eb0, FUN_1434e7900): u32 type (1
+        /// enemy kill, 2 team kill, 3 self kill, 4 environment kill, 7 flag taken, 8 flag captured, 9 control point
+        /// taken), u32 team (+0x1c), u32 other team (+0x20, -1 none), u64 actor, u64 other actor, u32 text id. The
+        /// client adds a kill feed line and plays its sound. The teams are the client's numbers (<see cref="ClientSide"/>):
+        /// FUN_1434e7900 names them sourceTeam / targetTeam through FUN_1434e7570 (InstancedGame.Teams.DefaultName_&lt;id&gt;)
+        /// and colours them sourceColor / targetColor = palette[id % 11] (-1 FFFFFF), the same table as the HUD bars.
         /// </summary>
         private static void SendEvent(Game game, uint kind, Player by, Player victim)
         {
             var output = new List<byte>();
             var w = Begin(output, SubEvent);
             w.Write(kind);
-            w.Write(by != null ? by.Team : -1);
-            w.Write(victim.Team);
+            w.Write(by != null ? ClientSide(game, by.Team) : -1);
+            w.Write(ClientSide(game, victim.Team));
             w.Write(by?.Session.PlayerGuid ?? 0ul);
             w.Write(victim.Session.PlayerGuid);
-            w.Write(0u);
+            WriteEventTail(w, victim.Session.CharacterName ?? "", by?.Session.CharacterName ?? "");
             byte[] data = output.ToArray();
             foreach (Player p in game.Players.ToList())
                 p.Session.EnqueueMessage(ZoneMessageOpcode.InstancedGameBase, data);
+        }
+
+        /// <summary>
+        /// The end of an Event (0.589: only a u32 text id). 0.695 (reader FUN_1434d6eb0, handler FUN_1434e7900; proven
+        /// 2026-10-16): str target name (+0x38), str source name (+0x50), u32 object text id (+0x68), i32 pointCount
+        /// (+0x6c). The handler names "targetPlayer" from the other actor's entity (+0x1308 name) and only when the client
+        /// doesn't know that actor uses the target string, likewise "sourcePlayer" / the source string; the text id
+        /// fills "object" (empty when 0); pointCount fills the point-grant lines of types 10 / 11 (B9).
+        /// </summary>
+        private static void WriteEventTail(GamePacketWriter w, string targetName = "", string sourceName = "", int points = 0)
+        {
+            w.Write(targetName ?? "");
+            w.Write(sourceName ?? "");
+            w.Write(0u);
+            w.Write(points);
         }
 
         /// <summary>Dev "game": the game here and its players.</summary>
@@ -1576,10 +2214,14 @@ namespace LandmarkEmulator.WorldServer.Game
                 lock (sync)
                     return $"No game here. Site games: {string.Join(", ", gamesByClaim.Values.Select(g => $"{Title(g)} on site {g.ClaimId} (state {g.State}, {g.Players.Count} players)"))}";
             }
+            Rules now = RulesFor(game);
             lock (sync)
                 return $"{Title(game)} (rule set {game.Rules.Id}) on site {game.ClaimId}, table 0x{game.Guid:X}, state {game.State}, "
-                    + $"{game.Players.Count}/{game.Rules.MaxPlayers} players (min {game.Rules.MinPlayers}): "
-                    + string.Join(", ", game.Players.Select(p => $"{p.Session.CharacterName} t{p.Team} {p.Score}/{p.Kills}/{p.Deaths}"))
+                    + $"{game.Players.Count}/{game.Rules.MaxPlayers} players (min {game.Rules.MinPlayers}), "
+                    + $"{game.Rules.TeamCount} team(s) [{string.Join("/", Enumerable.Range(0, game.Rules.TeamCount).Select(t => $"{TeamName(game, t)} {game.TeamScores.ElementAtOrDefault(t)}"))}], "
+                    + $"PvP {game.Rules.PvP}, switch {game.Rules.AllowSwitch}, rules {string.Join(",", game.Rules.RuleRows.Select(r => r.Type))}"
+                    + (now.RuleRows.Count != game.Rules.RuleRows.Count || now.TeamCount != game.Rules.TeamCount ? $" (next round: {now.TeamCount} team(s), rules {string.Join(",", now.RuleRows.Select(r => r.Type))})" : "")
+                    + ": " + string.Join(", ", game.Players.Select(p => $"{p.Session.CharacterName} t{p.Team} {p.Score}/{p.Kills}/{p.Deaths}"))
                     + DescribeQueue(game);
         }
 
