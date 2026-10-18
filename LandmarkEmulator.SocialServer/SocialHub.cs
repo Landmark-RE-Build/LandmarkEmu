@@ -258,6 +258,9 @@ namespace LandmarkEmulator.SocialServer
                 case ClientRequestForward { Family: SocialMessages.CommandFamily, Sub: SocialMessages.ChatChannelOn or SocialMessages.ChatChannelOff } channel:
                     Chat.HandleChannel(world, channel);
                     break;
+                case ClientRequestForward { Family: SocialMessages.CommandFamily, Sub: SocialMessages.AdminForceAddFriend or SocialMessages.AdminForceRemoveFriend } admin:
+                    Friends.HandleAdminForce(world, admin);
+                    break;
                 case ClientRequestForward { Sub: SocialMessages.AddFriendRequest } add:
                     Friends.HandleAdd(world, add);
                     break;

@@ -23,8 +23,8 @@ The retail client's own commands, available to admins only (see [Who is an admin
 
 | Command | Who | What the server does |
 |---|---|---|
-| `/friend forceadd <target> [source]` | Admins | Adds the target to the source's friends list (the admin's own when no source is given; the source must be online). |
-| `/friend remove <target> [source]` | Admins | Removes the target from the source's friends list. |
+| `/friend forceadd <target> [source]` | Admins | Adds the target to the source's friends list without a friend request (the admin's own list when no source is given; the source may be offline). The admin is told the outcome. |
+| `/friend remove <target> [source]` | Admins | Removes the target from the source's friends list, as if the source had removed them. The admin is told the outcome (removed, or not on the list). |
 
 ## Dev commands
 

@@ -42,12 +42,16 @@ namespace LandmarkEmulator.Internal.Social
         public const uint AddFriendRequest = 0x10, RemoveFriendRequest = 0x12, ConfirmFriendResponse = 0x14, IgnoreRequest = 0x20;
         /// <summary>CommandPacketChatChannelOn / Off {string channel}: join / leave a public chat channel (General).</summary>
         public const uint ChatChannelOn = 0x22, ChatChannelOff = 0x23;
+        /// <summary>Admin /friend forceadd / remove (AdminCommandPacketForceAddFriendRequest / ...Remove...; AdminFriends.cs).</summary>
+        public const uint AdminForceAddFriend = AdminFriends.ForceAddSub, AdminForceRemoveFriend = AdminFriends.ForceRemoveSub;
 
         // Ours, Command family.
         public const uint PresenceSnapshotSub = 0x10001, CharacterEnteredWorldSub = 0x10002, CharacterLeftWorldSub = 0x10003,
             ZoneChangedSub = 0x10004, CharacterDirectoryUpdateSub = 0x10005, PresenceQuerySub = 0x10006, PresenceReplySub = 0x10007,
             // The login server's character select (CharacterSelectFriends.cs).
-            CharacterSelectFriendsQuerySub = 0x10008, CharacterSelectFriendsReplySub = 0x10009;
+            CharacterSelectFriendsQuerySub = 0x10008, CharacterSelectFriendsReplySub = 0x10009,
+            // The outcome of an admin force-add / force-remove (AdminFriends.cs).
+            AdminFriendResultSub = 0x1000A;
         // Ours, Friend family / Ignore family / Guild family.
         public const uint SocialStateForZoneSub = 0x10001, IgnoreListSyncSub = 0x10001, GuildJoinedSub = 0x10001;
 
@@ -72,7 +76,7 @@ namespace LandmarkEmulator.Internal.Social
             return (packet.Family, packet.Sub) switch
             {
                 (CommandFamily, AddFriendRequest or RemoveFriendRequest or ConfirmFriendResponse or IgnoreRequest
-                    or ChatChannelOn or ChatChannelOff) => ClientRequestForward.Read(packet.Sub, r),
+                    or ChatChannelOn or ChatChannelOff or AdminForceAddFriend or AdminForceRemoveFriend) => ClientRequestForward.Read(packet.Sub, r),
                 (GuildFamily, GuildJoinedSub) => GuildJoined.Read(r),
                 (GuildFamily, < 0x10000) => ClientRequestForward.Read(packet.Sub, r, GuildFamily),
                 (ChatFamily, ChatLineSub or JoinRoomSub or LeaveRoomSub) => ClientRequestForward.Read(packet.Sub, r, ChatFamily),
@@ -85,6 +89,7 @@ namespace LandmarkEmulator.Internal.Social
                 (CommandFamily, PresenceReplySub) => PresenceReply.Read(r),
                 (CommandFamily, CharacterSelectFriendsQuerySub) => CharacterSelectFriendsQuery.Read(r),
                 (CommandFamily, CharacterSelectFriendsReplySub) => CharacterSelectFriendsReply.Read(r),
+                (CommandFamily, AdminFriendResultSub) => AdminFriendResult.Read(r),
                 (FriendFamily, SocialStateForZoneSub) => SocialStateForZone.Read(r),
                 (IgnoreFamily, IgnoreListSyncSub) => IgnoreListSync.Read(r),
                 _ => null

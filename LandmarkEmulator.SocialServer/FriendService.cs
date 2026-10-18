@@ -23,6 +23,9 @@ namespace LandmarkEmulator.SocialServer
     /// client's own "UI.FriendRemoved" key lookup finds nothing in this client's CodeStringMappings, see
     /// Game/Friends.cs).</item>
     /// <item>The friends list (0x4D/1) with each friend online when the service counts them online on any world.</item>
+    /// <item>Admin /friend forceadd / remove (0x1E/0x4CF / 0x4D0, <see cref="HandleAdminForce"/>): the same changes and
+    /// client packets without the request round trip, on any character's list; the outcome goes back to the admin's
+    /// zone (AdminFriendResult).</item>
     /// </list>
     /// After any change the zone holding the listed character gets a fresh SocialStateForZone (its friend-of list).
     /// </summary>
@@ -264,6 +267,98 @@ namespace LandmarkEmulator.SocialServer
             hub.SendTo(player, ClientPackets.SystemMessage(ClientPackets.FriendRemovedText, ("player", friend.Name)));
             PushStateForZone(friend.Guid);
             log.Info($"{player} removed {friend.Name} as a friend.");
+        }
+
+        /// <summary>
+        /// Admin /friend forceadd | remove &lt;target&gt; [source] (AdminCommandPacketForceAddFriendRequest 0x1E/0x4CF /
+        /// ...ForceRemoveFriendRequest 0x4D0, rules in <see cref="AdminFriends"/>), handed on by the admin's zone, which
+        /// has checked that the sender is an admin (AdminCommands.Handle). The source is any character the directory
+        /// knows, online or not (empty = the admin). Force-add puts the target on the source's list without asking
+        /// (FriendAdd to the source when connected); force-remove is RemoveFriendRequest on the source's behalf
+        /// (FriendRemove + text 560713 to the source when connected). Either way the listed character's zone gets a fresh
+        /// SocialStateForZone (its friend-of list: online / offline notes), and the admin's zone gets
+        /// <see cref="AdminFriendResult"/> with the outcome.
+        /// </summary>
+        public void HandleAdminForce(WorldLink world, ClientRequestForward request)
+        {
+            OnlineCharacter admin = hub.Presence.FindConnected(world, request.CharacterGuid, request.ConnectionId);
+            if (admin == null)
+            {
+                log.Warn($"Admin friend command 0x{request.Sub:X} for {request.CharacterGuid:X} on {world} without a current connection: dropped.");
+                return;
+            }
+            AdminFriendOutcome outcome;
+            string targetName = "", sourceName = admin.Name;
+            ulong sourceGuid = 0;
+            if (!AdminFriends.TryRead(request.Body, out AdminFriends.Request command))
+                outcome = AdminFriendOutcome.Unreadable;
+            else
+            {
+                targetName = command.Target;
+                if (command.Source.Length > 0)
+                    sourceName = command.Source;
+                try
+                {
+                    SocialCharacterModel source = hub.Store.FindCharacterByName(sourceName);
+                    if (source != null)
+                    {
+                        sourceName = source.Name;
+                        sourceGuid = source.Guid;
+                    }
+                    outcome = request.Sub == AdminFriends.ForceAddSub
+                        ? AdminAdd(source, ref targetName)
+                        : AdminRemove(source, ref targetName);
+                }
+                catch (Exception e)
+                {
+                    log.Error(e, $"Admin {admin} /friend {AdminFriends.Verb(request.Sub)} {targetName} [{sourceName}]: the store failed.");
+                    outcome = AdminFriendOutcome.Failed;
+                }
+            }
+            log.Info($"Admin {admin} /friend {AdminFriends.Verb(request.Sub)} {targetName} [{sourceName}]: {outcome}.");
+            hub.SendService(world, new AdminFriendResult
+            {
+                AdminConnection = request.ConnectionId, AdminGuid = admin.Guid, CommandSub = request.Sub, Outcome = outcome,
+                Target = targetName, Source = sourceName, SourceGuid = sourceGuid
+            });
+        }
+
+        private AdminFriendOutcome AdminAdd(SocialCharacterModel source, ref string targetName)
+        {
+            SocialCharacterModel target = hub.Store.FindCharacterByName(targetName);
+            if (target != null)
+                targetName = target.Name;
+            IReadOnlyList<ulong> friends = source != null ? hub.Store.GetFriends(source.Guid) : Array.Empty<ulong>();
+            AdminFriendOutcome outcome = AdminFriends.DecideAdd(source?.Guid, target?.Guid, friends);
+            if (outcome != AdminFriendOutcome.Added)
+                return outcome;
+            if (!hub.Store.AddFriend(source.Guid, target.Guid))
+                return AdminFriendOutcome.AlreadyListed;
+            pending.Remove((source.Guid, target.Guid));
+            if (hub.Presence.Find(source.Guid) is { Connected: true } owner)
+                hub.SendTo(owner, ClientPackets.FriendAdd(ToFriend(target)));
+            PushStateForZone(target.Guid);
+            return outcome;
+        }
+
+        private AdminFriendOutcome AdminRemove(SocialCharacterModel source, ref string targetName)
+        {
+            IReadOnlyList<SocialCharacterModel> friends = source != null
+                ? hub.Store.GetCharacters(hub.Store.GetFriends(source.Guid).ToList()) : Array.Empty<SocialCharacterModel>();
+            AdminFriendOutcome outcome = AdminFriends.DecideRemove(source?.Guid, targetName, friends, f => f.Name,
+                out SocialCharacterModel friend);
+            if (outcome != AdminFriendOutcome.Removed)
+                return outcome;
+            targetName = friend.Name;
+            if (!hub.Store.RemoveFriend(source.Guid, friend.Guid))
+                return AdminFriendOutcome.NotOnList;
+            if (hub.Presence.Find(source.Guid) is { Connected: true } owner)
+            {
+                hub.SendTo(owner, ClientPackets.FriendRemove(friend.Guid));
+                hub.SendTo(owner, ClientPackets.SystemMessage(ClientPackets.FriendRemovedText, ("player", friend.Name)));
+            }
+            PushStateForZone(friend.Guid);
+            return outcome;
         }
 
         /// <summary>

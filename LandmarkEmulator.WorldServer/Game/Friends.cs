@@ -1,4 +1,5 @@
 using LandmarkEmulator.Database.Character.Model;
+using LandmarkEmulator.Internal.Social;
 using LandmarkEmulator.Shared.Database;
 using LandmarkEmulator.Shared.Network;
 using LandmarkEmulator.WorldServer.Network;
@@ -90,10 +91,10 @@ namespace LandmarkEmulator.WorldServer.Game
         /// Accept / Refuse send 0x14 with 1 / 0, FUN_1433da1c0 / FUN_1433da270; with the player's own "Automatically Refuse
         /// Friend Requests" option, /autofriendsoff, the client refuses by itself). The asker gets FriendMessage 5 "Friend
         /// request sent to [player]."; the answer arrives in <see cref="HandleResponse"/>. Who is asked while offline:
-        /// FriendMessage 3 "timed out" at once [I: the popup needs a client to show it]. Admin force-add
-        /// (<paramref name="confirm"/> false) adds at once, as before.
+        /// FriendMessage 3 "timed out" at once [I: the popup needs a client to show it]. Admin force-add adds without asking:
+        /// <see cref="HandleAdminForce"/>.
         /// </summary>
-        public static void HandleAdd(WorldSession session, byte[] body, bool confirm = true)
+        public static void HandleAdd(WorldSession session, byte[] body)
         {
             var reader = new GamePacketReader(body);
             string name = reader.ReadString()?.Trim() ?? "";
@@ -133,11 +134,6 @@ namespace LandmarkEmulator.WorldServer.Game
                 return;
             }
 
-            if (!confirm)
-            {
-                AddNow(session, target);
-                return;
-            }
             var online = OnlineByGuid();
             if (!online.TryGetValue(target.Id, out WorldSession asked))
             {
@@ -253,19 +249,6 @@ namespace LandmarkEmulator.WorldServer.Game
             return true;
         }
 
-        /// <summary>Adds at once (admin force-add): saved, FriendBase sub 6 Add, and a line to the one added.</summary>
-        private static void AddNow(WorldSession session, CharacterModel target)
-        {
-            ulong characterId = session.PlayerGuid, friendId = target.Id;
-            DatabaseManager.Instance.CharacterDatabase.Save(c => c.CharacterFriend.Add(new CharacterFriendModel { CharacterId = characterId, FriendId = friendId }));
-            var online = OnlineByGuid();
-            session.EnqueueMessage(ZoneMessageOpcode.FriendBase,
-                Build(w => { w.Write(AddSub); WriteFriend(w, target.Id, target.Name, online.ContainsKey(target.Id), target.LastOnline); }));
-            if (online.TryGetValue(target.Id, out WorldSession other))
-                Chat.System(other, $"{session.CharacterName} added you as a friend.");
-            log.Info($"{session.CharacterName} added {target.Name} as a friend.");
-        }
-
         /// <summary>FriendMessage (sub 8) {u8 code, u64 guid, name block player, name block new name}.</summary>
         private static byte[] Message(byte code, ulong guid, string player) => Build(w =>
         {
@@ -302,6 +285,14 @@ namespace LandmarkEmulator.WorldServer.Game
 
             ulong characterId = session.PlayerGuid, friendId = friend.Id;
             database.Save(c => c.CharacterFriend.Remove(new CharacterFriendModel { CharacterId = characterId, FriendId = friendId }));
+            SendRemoved(session, friend);
+            log.Info($"{session.CharacterName} removed {friend.Name} as a friend.");
+        }
+
+        /// <summary>FriendBase sub 7 Remove and text 560713 to the list's owner.</summary>
+        private static void SendRemoved(WorldSession session, CharacterModel friend)
+        {
+            ulong friendId = friend.Id;
             // The client drops the row (Character.FriendsList) and means to say "[X] has been removed from your friends
             // list." (FUN_143493b70 → FUN_143353000 with key "UI.FriendRemoved"), but this client's CodeStringMappings.txt
             // (the only source of its key lookup, FUN_142c78c20) has that text as "FriendRemoved", so the lookup finds
@@ -309,7 +300,79 @@ namespace LandmarkEmulator.WorldServer.Game
             // system-message path (PacketShowSystemMessage, text 560713, [*player*]).
             session.EnqueueMessage(ZoneMessageOpcode.FriendBase, Build(w => { w.Write(RemoveSub); w.Write(friendId); }));
             SystemMessages.Show(session, FriendRemovedText, ("player", friend.Name));
-            log.Info($"{session.CharacterName} removed {friend.Name} as a friend.");
+        }
+
+        /// <summary>
+        /// Admin /friend forceadd | remove &lt;target&gt; [source] in-process (0x1E/0x4CF / 0x4D0; rules and layout in
+        /// Internal/Social/AdminFriends.cs, the same the social service applies): the source is any living character,
+        /// online or not (empty = the admin). Force-add saves the row and, with the source online, sends them FriendAdd
+        /// (sub 6) with the friend's online state; force-remove deletes the row and sends the source sub 7 + text 560713,
+        /// as <see cref="HandleRemove"/>. Online / offline notes need nothing more here: <see cref="Watchers"/> reads
+        /// character_friend each time. The outcome goes to <see cref="AdminCommands.ReportFriendResult"/> only once the
+        /// database has the change.
+        /// </summary>
+        public static void HandleAdminForce(WorldSession admin, ushort sub, byte[] body)
+        {
+            if (!AdminFriends.TryRead(body, out AdminFriends.Request command))
+            {
+                AdminCommands.ReportFriendResult(admin, sub, AdminFriendOutcome.Unreadable, "", admin.CharacterName, true);
+                return;
+            }
+            var database = DatabaseManager.Instance.CharacterDatabase;
+            string sourceName = command.Source.Length > 0 ? command.Source : admin.CharacterName ?? "";
+            string targetName = command.Target;
+            CharacterModel source = null;
+            AdminFriendOutcome outcome;
+            try
+            {
+                source = sourceName.Length > 0 ? database.FindCharacterByName(sourceName) : null;
+                if (source != null)
+                    sourceName = source.Name;
+                List<CharacterModel> friends = source != null ? database.GetFriends(source.Id) : new List<CharacterModel>();
+                var online = OnlineByGuid();
+                WorldSession owner = source != null && online.TryGetValue(source.Id, out WorldSession s) ? s : null;
+                if (sub == AdminFriends.ForceAddSub)
+                {
+                    CharacterModel target = targetName.Length > 0 ? database.FindCharacterByName(targetName) : null;
+                    if (target != null)
+                        targetName = target.Name;
+                    outcome = AdminFriends.DecideAdd(source?.Id, target?.Id, friends.Select(f => f.Id).ToList());
+                    if (outcome == AdminFriendOutcome.Added)
+                    {
+                        ulong characterId = source.Id, friendId = target.Id;
+                        database.Save(c => c.CharacterFriend.Add(new CharacterFriendModel { CharacterId = characterId, FriendId = friendId }))
+                            .GetAwaiter().GetResult();
+                        lock (pending)
+                            pending.Remove((characterId, friendId));
+                        owner?.EnqueueMessage(ZoneMessageOpcode.FriendBase, Build(w =>
+                        {
+                            w.Write(AddSub);
+                            WriteFriend(w, target.Id, target.Name, online.ContainsKey(target.Id), target.LastOnline);
+                        }));
+                    }
+                }
+                else
+                {
+                    outcome = AdminFriends.DecideRemove(source?.Id, targetName, friends, f => f.Name, out CharacterModel friend);
+                    if (outcome == AdminFriendOutcome.Removed)
+                    {
+                        targetName = friend.Name;
+                        ulong characterId = source.Id, friendId = friend.Id;
+                        database.Save(c => c.CharacterFriend.Remove(new CharacterFriendModel { CharacterId = characterId, FriendId = friendId }))
+                            .GetAwaiter().GetResult();
+                        if (owner != null)
+                            SendRemoved(owner, friend);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                log.Error(e, $"Admin {admin.CharacterName} /friend {AdminFriends.Verb(sub)} {targetName} [{sourceName}]: reading or saving the friends list failed.");
+                outcome = AdminFriendOutcome.Failed;
+            }
+            bool sourceIsAdmin = source != null ? source.Id == admin.PlayerGuid
+                : string.Equals(sourceName, admin.CharacterName, StringComparison.OrdinalIgnoreCase);
+            AdminCommands.ReportFriendResult(admin, sub, outcome, targetName, sourceName, sourceIsAdmin);
         }
 
         /// <summary>

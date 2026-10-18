@@ -626,73 +626,38 @@ namespace LandmarkEmulator.WorldServer.Game
         // Friends
 
         /// <summary>
-        /// The player identity the friend commands carry (FUN_142ddc260, the struct of the client's friend requests —
-        /// the same as RemoveFriendRequest's body in <see cref="Friends.HandleRemove"/>): u32 (+0xA0), u32 (+0xA4),
-        /// u32 (+0xA8), string first (+0x00, StringFixed&lt;16&gt;), string second (+0x30, StringFixed&lt;16&gt;) [P].
-        /// The command (FUN_1433a5e60) puts the typed name in the first string (normalised by FUN_143b87120), leaves
-        /// the second empty and the three numbers 0.
-        /// </summary>
-        private static (string Name, string Second, uint A, uint B, uint C) ReadIdentity(GamePacketReader reader)
-        {
-            uint a = reader.ReadUInt(), b = reader.ReadUInt(), c = reader.ReadUInt();
-            string name = reader.ReadString(), second = reader.ReadString();
-            return (name, second, a, b, c);
-        }
-
-        /// <summary>
-        /// /friend forceadd &lt;target&gt; [source] — AdminCommandPacketForceAddFriendRequest 0x1E / 0x4CF (writer
-        /// FUN_143389b30): identity target (+0x20), identity source (+0xD0; empty = the admin) [P]. Adds the target to
-        /// the source's friends list without an invitation: the source must be online here (the add goes through the
-        /// normal <see cref="Friends.HandleAdd"/> on their session, so they see the list change).
+        /// /friend forceadd &lt;target&gt; [source] — AdminCommandPacketForceAddFriendRequest 0x1E / 0x4CF (command
+        /// FUN_1433a5e60, writer FUN_143389b30): identity target (+0x20), identity source (+0xD0; the client fills in the
+        /// player's own name when none is typed) [P]. Puts the target on the source's friends list without a request.
+        /// Handed to the social service like the player's own friend requests (<see cref="Social.ISocialService.AdminFriend"/>:
+        /// in-process <see cref="Friends.HandleAdminForce"/>, or the remote service when SOCIAL_ADDRESS is set), so the
+        /// change lands where the friends lists really live; layout and rules: Internal/Social/AdminFriends.cs.
         /// </summary>
         public static void ForceAddFriend(WorldSession session, byte[] body)
-        {
-            var reader = new GamePacketReader(body);
-            var target = ReadIdentity(reader);
-            var source = ReadIdentity(reader);
-            WorldSession from = string.IsNullOrWhiteSpace(source.Name) ? session : FindOnline(0, source.Name);
-            if (from == null)
-            {
-                Chat.System(session, $"/friend forceadd: source \"{source.Name}\" is not online.");
-                log.Info($"Admin {session.CharacterName} forceadd {target.Name} to {source.Name}: source offline.");
-                return;
-            }
-            var add = new List<byte>();
-            var writer = new GamePacketWriter(add);
-            writer.Write(target.Name ?? "");
-            writer.Write(0ul);
-            Friends.HandleAdd(from, add.ToArray(), confirm: false);
-            log.Info($"Admin {session.CharacterName} forceadd {target.Name} to {from.CharacterName}'s friends.");
-            if (from != session)
-                Chat.System(session, $"Added {target.Name} to {from.CharacterName}'s friends list.");
-        }
+            => Social.SocialServices.Service.AdminFriend(session, ForceAddFriendSub, body);
 
         /// <summary>
         /// /friend remove &lt;target&gt; [source] — AdminCommandPacketForceRemoveFriendRequest 0x1E / 0x4D0 (writer
-        /// FUN_143389ce0): identity target (+0x20), identity source (+0xD0; empty = the admin) [P]. Removes the target
-        /// from the source's list through <see cref="Friends.HandleRemove"/> (source online).
+        /// FUN_143389ce0; the client prints "Removing friend:  %s" itself): identity target, identity source [P]. Takes the
+        /// target off the source's list, as the source's own RemoveFriendRequest would, through the social service
+        /// (<see cref="ForceAddFriend"/>).
         /// </summary>
         public static void ForceRemoveFriend(WorldSession session, byte[] body)
+            => Social.SocialServices.Service.AdminFriend(session, ForceRemoveFriendSub, body);
+
+        /// <summary>
+        /// The outcome of a force-add / force-remove, wherever it was carried out: logged as it really ended, and told to
+        /// the admin (when still online) — except a removal from the admin's own list, for which their client already
+        /// shows text 560713 "[X] has been removed from your friends list.".
+        /// </summary>
+        public static void ReportFriendResult(WorldSession admin, ushort sub, Internal.Social.AdminFriendOutcome outcome,
+            string target, string source, bool sourceIsAdmin, string adminName = null)
         {
-            var reader = new GamePacketReader(body);
-            var target = ReadIdentity(reader);
-            var source = ReadIdentity(reader);
-            WorldSession from = string.IsNullOrWhiteSpace(source.Name) ? session : FindOnline(0, source.Name);
-            if (from == null)
-            {
-                Chat.System(session, $"/friend remove: source \"{source.Name}\" is not online.");
-                log.Info($"Admin {session.CharacterName} force-remove {target.Name} from {source.Name}: source offline.");
+            string line = Internal.Social.AdminFriends.Describe(sub, outcome, target, source, sourceIsAdmin);
+            log.Info($"Admin {admin?.CharacterName ?? adminName ?? "?"} /friend {Internal.Social.AdminFriends.Verb(sub)} {target} [{source}]: {outcome} — {line}");
+            if (admin == null || (sourceIsAdmin && outcome == Internal.Social.AdminFriendOutcome.Removed))
                 return;
-            }
-            var remove = new List<byte>();
-            var writer = new GamePacketWriter(remove);
-            writer.Write(0u); writer.Write(0u); writer.Write(0u);
-            writer.Write(target.Name ?? "");
-            writer.Write("");
-            Friends.HandleRemove(from, remove.ToArray());
-            log.Info($"Admin {session.CharacterName} force-removed {target.Name} from {from.CharacterName}'s friends.");
-            if (from != session)
-                Chat.System(session, $"Removed {target.Name} from {from.CharacterName}'s friends list.");
+            Chat.System(admin, line);
         }
 
         // ------------------------------------------------------------------------------------------------------------

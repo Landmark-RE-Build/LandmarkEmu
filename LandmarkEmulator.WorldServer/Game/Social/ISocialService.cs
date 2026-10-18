@@ -60,6 +60,15 @@ namespace LandmarkEmulator.WorldServer.Game.Social
         /// <summary>RemoveFriendRequest (Command 0x1E sub 0x12 {name block}).</summary>
         void RemoveFriend(WorldSession session, byte[] body);
 
+        /// <summary>
+        /// Admin /friend forceadd | remove (Command 0x1E sub 0x4CF / 0x4D0 {identity target, identity source};
+        /// LandmarkEmulator.Internal.Social.AdminFriends). The caller has checked the admin flag. Done where the friends
+        /// lists live (in-process, or the social service), the same changes and client packets as a normal add / remove;
+        /// the outcome is logged and told to the admin (<see cref="AdminCommands.ReportFriendResult"/>) — by the remote
+        /// service when its answer arrives.
+        /// </summary>
+        void AdminFriend(WorldSession admin, ushort sub, byte[] body);
+
         /// <summary>IgnoreRequest (Command 0x1E sub 0x20 {u64 guid, name block, u8 ignore / stop}).</summary>
         void Ignore(WorldSession session, byte[] body);
 

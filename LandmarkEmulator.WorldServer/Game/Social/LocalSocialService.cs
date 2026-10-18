@@ -45,6 +45,7 @@ namespace LandmarkEmulator.WorldServer.Game.Social
         public void AddFriend(WorldSession session, byte[] body) => Friends.HandleAdd(session, body);
         public void ConfirmFriend(WorldSession session, byte[] body) => Friends.HandleResponse(session, body);
         public void RemoveFriend(WorldSession session, byte[] body) => Friends.HandleRemove(session, body);
+        public void AdminFriend(WorldSession admin, ushort sub, byte[] body) => Friends.HandleAdminForce(admin, sub, body);
         public void Ignore(WorldSession session, byte[] body) => Ignores.Handle(session, body);
         public void Guild(WorldSession session, ushort sub, byte[] body) => Guilds.Handle(session, sub, body);
         public void ChatRoom(WorldSession session, ushort sub, byte[] body) => ChatRooms.Handle(session, sub, body);

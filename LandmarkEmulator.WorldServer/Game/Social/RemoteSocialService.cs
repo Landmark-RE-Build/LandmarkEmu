@@ -25,7 +25,8 @@ namespace LandmarkEmulator.WorldServer.Game.Social
     /// PresenceSnapshot first on every (re)connect (which world this is + everyone in it), CharacterEnteredWorld /
     /// CharacterLeftWorld from <see cref="PlayerManager"/> Enter / Leave, ZoneChanged, and the client's friend / ignore
     /// requests handed on unchanged with the connection id and the zone-verified character guid
-    /// (AddFriendRequest 0x1E/0x10, RemoveFriendRequest 0x1E/0x12, IgnoreRequest 0x1E/0x20).</item>
+    /// (AddFriendRequest 0x1E/0x10, RemoveFriendRequest 0x1E/0x12, IgnoreRequest 0x1E/0x20, and an admin's /friend
+    /// forceadd / remove 0x1E/0x4CF / 0x4D0 after the zone's admin check, answered by AdminFriendResult).</item>
     /// <item>Social → world: TunnelPacketToExternalConnection / ...List (0x16) frames, whose client packets are queued
     /// to the sessions with those connection ids exactly like the world's own (the 0.695 translation is applied per
     /// session on the way out, <see cref="WorldSession.EnqueueMessage(ZoneMessageOpcode, byte[])"/>); IgnoreListSync
@@ -292,6 +293,17 @@ namespace LandmarkEmulator.WorldServer.Game.Social
                 case GroupStateForZone groupState:
                     groups.State(groupState);
                     break;
+                case AdminFriendResult result:
+                    worldQueue.Enqueue(() =>
+                    {
+                        WorldSession admin;
+                        lock (sync)
+                            connections.TryGetValue(result.AdminConnection, out admin);
+                        AdminCommands.ReportFriendResult(admin is { Disconnected: false } ? admin : null, (ushort)result.CommandSub,
+                            result.Outcome, result.Target, result.Source,
+                            sourceIsAdmin: result.SourceGuid != 0 && result.SourceGuid == result.AdminGuid, adminName: $"{result.AdminGuid:X}");
+                    });
+                    break;
                 case PresenceReply reply:
                     TaskCompletionSource<PresenceReply> waiting;
                     lock (sync)
@@ -373,6 +385,34 @@ namespace LandmarkEmulator.WorldServer.Game.Social
 
         public void ConfirmFriend(WorldSession session, byte[] body) => Forward(session, SocialMessages.ConfirmFriendResponse, body);
         public void RemoveFriend(WorldSession session, byte[] body) => Forward(session, SocialMessages.RemoveFriendRequest, body);
+
+        /// <summary>
+        /// Admin /friend forceadd | remove: both names go to the directory first (the bridge, <see cref="AnnounceCharacter"/>),
+        /// then the client body is handed on whole (ClientRequestForward 0x1E/0x4CF or 0x4D0, as live's gateway routed these
+        /// World-channel subs to the social service, social-service.md §5.3). The service's AdminFriendResult brings the
+        /// outcome back (<see cref="OnServicePacket"/>); unreachable → reported at once, nothing changed.
+        /// </summary>
+        public void AdminFriend(WorldSession admin, ushort sub, byte[] body)
+        {
+            if (AdminFriends.TryRead(body, out AdminFriends.Request command))
+            {
+                try
+                {
+                    AnnounceCharacter(command.Target, 0);
+                    AnnounceCharacter(command.Source.Length > 0 ? command.Source : admin.CharacterName ?? "", 0);
+                }
+                catch (Exception e)
+                {
+                    log.Warn(e, $"Admin friend command: directory update for \"{command.Target}\" / \"{command.Source}\" failed.");
+                }
+            }
+            if (!Forward(admin, sub, body))
+            {
+                string source = command?.Source is { Length: > 0 } typed ? typed : admin.CharacterName;
+                AdminCommands.ReportFriendResult(admin, sub, AdminFriendOutcome.ServiceUnavailable, command?.Target ?? "", source,
+                    sourceIsAdmin: string.Equals(source, admin.CharacterName, StringComparison.OrdinalIgnoreCase));
+            }
+        }
 
         public void Ignore(WorldSession session, byte[] body)
         {
