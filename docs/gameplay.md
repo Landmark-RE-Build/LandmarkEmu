@@ -1074,7 +1074,7 @@ Write lines to the world's `dev_commands.txt` (next to the server executable; in
 |---|---|
 | `send <hex>` | Send raw zone bytes to everyone. |
 | `give <item> <n>` | Give items. |
-| `finditem <text>` | Search item names. |
+| `finditem <text\|#id>` | Search item names (or by id); at most 40 matches logged, empty refused. |
 | `timeofday <h>` | Set the world clock. |
 | `clock` | Log the world clock and tell the players in chat (compare with the client's `GameData.Time`). |
 | `carve`, `dig`, `digmode` | Shape terrain / change how digging shapes holes. |
