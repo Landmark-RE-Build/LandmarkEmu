@@ -13,50 +13,31 @@ namespace LandmarkEmulator.WorldServer.Game
 {
     /// <summary>
     /// The Portal Spires: one at the centre of every landscape (TASKS 6.49). Each is the teleporter hub "Spire" in the
-    /// Travel window takes players to (cast 185) and the landscape's hub / graveyard respawn. Built the way the live game
-    /// built it: the client's own template CommonData/Voxel/templates/base_portal_spire.otd
-    /// (<see cref="Terrain.VoxelTemplate"/>, the only Spire template in either client: the others in that folder are
-    /// contest ruins and underground hubs) is stamped into the terrain near the landscape's centre — its voxel platform —
-    /// and its props (the Spire pieces, Models.txt 596 Theme_Widgets_Teleporters_PortalSpires01, the Replicator, Repair
-    /// Station, Mailbox, The Crimson Parlor, the Portal Crystal) are placed where the template puts them. The stamp is
-    /// done once per landscape and saved with the terrain edits (marker TerrainEdits/spire_base.txt for the home
-    /// continent, spire_base_&lt;zone&gt;.txt for the others, holding "voxel x y z", the template's corner as a global
-    /// voxel); the props are static entities sent on zone-in.
+    /// Travel window takes players to (cast 185) and the landscape's hub / graveyard respawn. Props come from the client's
+    /// template CommonData/Voxel/templates/base_portal_spire.otd (<see cref="Terrain.VoxelTemplate"/>): the Hub (Models.txt
+    /// 596), Replicator, Repair Station, Mailbox, The Crimson Parlor, Portal Crystal. Marker TerrainEdits/spire_base.txt
+    /// (home) / spire_base_&lt;zone&gt;.txt holds the template corner as a global voxel.
     ///
-    /// Placement (OPEN-LEADS L100, trace/0695/agent-leads3-b.md §L100 / S2; fixed 2026-10-17). Both Spire templates hold
-    /// no solid voxel [P]: they are a 124 × 68 × 124 m air box over a vertex-only floor (template layer y = 0, its
-    /// surface ~0.2 m above the corner), i.e. a clearing that carves everything above the floor and keeps what lies
-    /// under it (trace/0695/ruin-stamping.md §1). The Spire model (596) reaches 20.94 m under its pivot [P: .dme header
-    /// AABB y −20.94 … +43.74], and its collision mesh (CommonData/Collision/Theme_Widgets_Teleporters_PortalSpires01.cdt,
-    /// "CDTA" v1: u32 vertex count, f32 ×3 vertices, u32 triangle count, u16 ×3 indices, then a cooked copy) stands on
-    /// that same plane: its legs' and the four diagonal ramps' feet are at pivot −20.94 (ramps reach it 60.5 m out
-    /// along the diagonals) [P: measured from the .cdt, 2026-10-17; docs/terrain.md "Collision meshes"]. The template's pivot is 21.24 m over its corner, so the model's
-    /// base is on the template floor: the template floor is meant to be the ground. Until 2026-10-17 the server put the
-    /// pivot at the ground and rounded the corner to the 16 m cell grid, carving a ~21 m (±8 m) pit with the deck at
-    /// about the old ground (in-game, landscape 395: floor 1088.2, ground 1106.9 at the centre, 1125.2 just outside).
-    /// Now the floor is put on the ground (<see cref="ReferenceGround"/>) on the 0.4 m voxel grid (VoxelTemplate.StampAt),
-    /// 0.8 m higher for P5647 (<see cref="Raise"/>), on the nearest ground level within 8 m across the box (<see cref="SpotFor"/>;
-    /// the home continent's stays at (0, 0), a 110 m slope on the 0.695 bake: its floor is on the median ground too); worlds stamped
-    /// the old way are reverted and stamped again on start-up / first use (<see cref="RevertOldStamp"/>). Where the ground
-    /// lies below the floor, the server fills it up to the floor with an embankment around (<see cref="Fill"/>; ours,
-    /// user decision 2026-10-17 "keep centre, fill ground"), so the Spire's feet meet the ground on any slope.
+    /// Placement (merge, 2026-10-19). The Spire template is only an air box over a vertex-only floor [P] — stamping it
+    /// carved cliffs into hillsides and needed a fill pad downhill. Instead the Hub prop is seated into the landscape:
+    /// the walkable deck (collision at pivot −2.924 m) sits just above the highest ground under its footprint
+    /// (<see cref="DeckReference"/>) plus <see cref="Raise"/> (P5647), so the ~18 m plinth and ramp feet sit underground
+    /// and players climb the ramps from natural ground. No embankment. The air template is not stamped; only columns
+    /// where baked ground still pokes through the deck are carved to air (<see cref="ClearDeck"/>). Older cell-aligned
+    /// and voxel+fill markers are reverted on start-up / first use (<see cref="RevertOldStamp"/>,
+    /// <see cref="RevertVoxelStamp"/>) and placed again this way.
     ///
-    /// Sources: wiki "Spire" / "Servers and Landscapes" (trace/systems/world-travel.md: a Spire "near each landscape's
-    /// centre"); P5647 (25 May 2016) central spires sit a little higher above the ground; P4946 (26 Apr)
-    /// the travel menu can always go to the nearest portal spire (<see cref="TravelTo"/>: the current
-    /// landscape's); P4965 (26 Apr) "When traveling to a pioneer landscape you should now correctly arrive at the spire"
-    /// (Landscapes.TravelTo arrives at <see cref="ArrivalOn"/>). The client data has no per-landscape Spire position
-    /// (no table or file names one; all 29 landscapes share one GEOMETRY_OFFSET in StaticZoneData, so local (0, 0) is
-    /// every landscape's centre): the spot is the server's, INFERRED as the centre — the home continent's at (0, 0) as
-    /// before, the others at the nearest dry, level ground to the centre that no build site occupies (a site already
-    /// placed at a centre before Spires existed keeps its ground). The live "raised slightly higher" offset is not known
-    /// exactly (<see cref="Raise"/>, [I]).
+    /// Sources: wiki "Spire" / "Servers and Landscapes"; P5647 central spires raised slightly; P4946 nearest portal
+    /// spire (<see cref="TravelTo"/>); P4965 pioneer arrival at <see cref="ArrivalOn"/>. No client per-landscape Spire
+    /// position: every landscape uses <see cref="SpotFor"/> (nearest dry, level ground to the centre — including home,
+    /// which left (0, 0) when that was a steep slope). Hub model AABB y −20.94 … +43.74, ramps' feet at pivot −20.94
+    /// [P: .dme / .cdt].
     /// </summary>
     public static class Spire
     {
         private static readonly ILogger log = LogManager.GetCurrentClassLogger();
 
-        /// <summary>Where the home continent's Spire stands (local metres, horizontal; the ground height is looked up).</summary>
+        /// <summary>Search origin for every landscape's Spire (local metres; the landscape centre).</summary>
         private const float X = 0f, Z = 0f;
         private const uint BaseModel = 612, SpiresModel = 596;
         private const ulong GuidBase = 0x5350_0000_0000_0000;
@@ -68,9 +49,9 @@ namespace LandmarkEmulator.WorldServer.Game
             public uint Zone;
             /// <summary>The template's corner (global voxel, 0.4 m grid); null for the template-less fallback.</summary>
             public (long X, long Y, long Z)? Corner;
-            /// <summary>The ground added under its floor (global voxels), null when none (<see cref="Fill"/>).</summary>
-            public FillBox? Fill;
-            /// <summary>The Spire's foot (local metres).</summary>
+            /// <summary>Air carved where ground poked through the deck (global voxels), null when none (<see cref="ClearDeck"/>).</summary>
+            public FillBox? Deck;
+            /// <summary>The Hub's pivot (local metres).</summary>
             public Vector3 Position;
             public List<PlayerUpdateAddLightweightProp> Props;
         }
@@ -279,40 +260,60 @@ namespace LandmarkEmulator.WorldServer.Game
 
             string marker = editsFolder == null ? null : Path.Combine(editsFolder, zone == Home ? Marker : $"spire_base_{zone}.txt");
             (long X, long Y, long Z)? saved = null;
-            FillBox? savedFill = null;
-            bool fillDone = false;
+            FillBox? savedDeck = null;
+            bool deckDone = false;
             if (marker != null && File.Exists(marker))
             {
                 string[] f = File.ReadAllText(marker).Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                if (f.Length >= 4 && f[0] == MarkerVoxel)
+                if (f.Length >= 4 && f[0] == MarkerMerge)
                 {
-                    saved = (long.Parse(f[1]), long.Parse(f[2]), long.Parse(f[3]));
-                    // "fill none" or "fill x0 y0 z0 x1 y1 z1": the fill is done. Without the word (the first voxel
-                    // markers, effe77a) the fill is still to do.
-                    if (f.Length >= 5 && f[4] == MarkerFill)
+                    var oldCorner = (long.Parse(f[1]), long.Parse(f[2]), long.Parse(f[3]));
+                    FillBox? oldDeck = null;
+                    if (f.Length == 11 && f[4] == MarkerDeck)
+                        oldDeck = new FillBox(long.Parse(f[5]), long.Parse(f[6]), long.Parse(f[7]), long.Parse(f[8]), long.Parse(f[9]), long.Parse(f[10]));
+                    Vector3 oldPivot = Local(oldCorner, templateSpire.Position);
+                    // Merge on a steep spot floats the downhill side (deck seats to the high ground). Re-pick.
+                    bool flatEnough = Survey(zone, oldPivot.X, oldPivot.Z, out _, out float deckSpread, out _)
+                        && deckSpread <= MaxDeckSpread;
+                    if (!flatEnough)
                     {
-                        fillDone = true;
-                        if (f.Length == 11)
-                            savedFill = new FillBox(long.Parse(f[5]), long.Parse(f[6]), long.Parse(f[7]), long.Parse(f[8]), long.Parse(f[9]), long.Parse(f[10]));
+                        RevertDeckCarve(zone, oldDeck);
+                        File.Move(marker, marker + ".steep-reverted", true);
+                        log.Info($"Landscape {zone}: Spire at ({oldPivot.X:F0}, {oldPivot.Z:F0}) deck relief "
+                            + $"{deckSpread:F1} m (need ≤ {MaxDeckSpread} m); picking a flatter spot.");
                     }
+                    else
+                    {
+                        saved = oldCorner;
+                        if (f.Length >= 5 && f[4] == MarkerDeck)
+                        {
+                            deckDone = true;
+                            savedDeck = oldDeck;
+                        }
+                    }
+                }
+                else if (f.Length >= 4 && f[0] == MarkerVoxel)
+                {
+                    // Pre-merge (2026-10-17 carve + fill): drop the air stamp and embankment, place again merged.
+                    FillBox? oldFill = null;
+                    if (f.Length == 11 && f[4] == "fill")
+                        oldFill = new FillBox(long.Parse(f[5]), long.Parse(f[6]), long.Parse(f[7]), long.Parse(f[8]), long.Parse(f[9]), long.Parse(f[10]));
+                    RevertVoxelStamp(zone, (long.Parse(f[1]), long.Parse(f[2]), long.Parse(f[3])), oldFill);
+                    File.Move(marker, marker + ".voxel-reverted", true);
                 }
                 else if (f.Length == 3 && uint.TryParse(f[0], out uint cx) && uint.TryParse(f[1], out uint cy) && uint.TryParse(f[2], out uint cz))
                 {
-                    // Stamped before 2026-10-17: pivot at the ground, corner on the 16 m cell grid (a ~21 m pit). Its cells
-                    // go back to the generated ground, the marker is kept aside, and the Spire is placed again below.
                     RevertOldStamp(zone, (cx, cy, cz));
                     File.Move(marker, marker + ".cell-reverted", true);
                 }
             }
             (long X, long Y, long Z) corner;
-            FillBox? fill = savedFill;
+            FillBox? deck = savedDeck;
             var broadcast = new List<ulong>();
             if (saved is { } known)
             {
                 corner = known;
-                // Marked permanent again after a restart (the heal would otherwise regrow them), from the boxes alone.
-                Terrain.EnvironmentServer.Instance.MarkPermanent(Terrain.VoxelTemplate.CellsCovering(corner.X, corner.Y, corner.Z, template.Size), zone);
-                if (savedFill is FillBox done)
+                if (savedDeck is FillBox done)
                     Terrain.EnvironmentServer.Instance.MarkPermanent(CellsOf(done), zone);
             }
             else
@@ -322,33 +323,26 @@ namespace LandmarkEmulator.WorldServer.Game
                     log.Warn($"Landscape {zone}: no ground found for its Spire (no baked heights or no free dry land near the centre).");
                     return null;
                 }
-                corner = CornerFor(spot);
-                (List<ulong> cells, List<ulong> changed) = Terrain.EnvironmentServer.Instance.StampTemplateAt(template, corner.X, corner.Y, corner.Z, zone);
-                Terrain.EnvironmentServer.Instance.Flush();
-                Terrain.EnvironmentServer.Instance.MarkPermanent(cells, zone);
-                Terrain.EnvironmentServer.Instance.CompactNow(true);
-                broadcast.AddRange(changed);
-                Vector3 floor = Local(corner, Vector3.Zero);
-                log.Info($"Stamped the Spire base of landscape {zone} at voxel {corner}: floor {floor.Y + FloorSurface:F1} m on ground {spot.Y:F1} m "
-                    + $"(+{Raise} m), pivot {floor.Y + templateSpire.Position.Y:F1} m, centre ({spot.X:F0}, {spot.Z:F0}); {Terrain.VoxelTemplate.LastStampReport}.");
+                corner = CornerFor(zone, spot);
+                Vector3 pivot = Local(corner, templateSpire.Position);
+                log.Info($"Spire of landscape {zone}: merge seat at voxel {corner}, pivot {pivot.Y:F1} m, deck "
+                    + $"{pivot.Y - DeckBelowPivot:F1} m (ground under deck ≤ {pivot.Y - DeckBelowPivot - Raise:F1} m +{Raise} m), "
+                    + $"centre ({spot.X:F0}, {spot.Z:F0}); no air-box stamp.");
             }
-            if (!fillDone)
+            if (!deckDone)
             {
-                // After the template: its vertex-only floor layer is made solid where the fill reaches it.
-                (fill, List<ulong> filled) = Fill(zone, corner);
-                broadcast.AddRange(filled);
+                (deck, List<ulong> cleared) = ClearDeck(zone, corner);
+                broadcast.AddRange(cleared);
                 if (marker != null)
                 {
                     Directory.CreateDirectory(editsFolder);
-                    File.WriteAllText(marker, $"{MarkerVoxel} {corner.X} {corner.Y} {corner.Z} {MarkerFill} "
-                        + (fill is FillBox b ? $"{b.MinX} {b.MinY} {b.MinZ} {b.MaxX} {b.MaxY} {b.MaxZ}" : "none"));
+                    File.WriteAllText(marker, $"{MarkerMerge} {corner.X} {corner.Y} {corner.Z} {MarkerDeck} "
+                        + (deck is FillBox b ? $"{b.MinX} {b.MinY} {b.MinZ} {b.MaxX} {b.MaxY} {b.MaxZ}" : "none"));
                 }
             }
-            var site = new Site { Zone = zone, Corner = corner, Fill = fill, Position = Local(corner, templateSpire.Position) };
+            var site = new Site { Zone = zone, Corner = corner, Deck = deck, Position = Local(corner, templateSpire.Position) };
             if (broadcast.Count > 0)
             {
-                // Players already on that landscape (a character who logged in there) get the new cells, and veins
-                // spawned there before the Spire existed go elsewhere (the home continent's: Load).
                 Terrain.ZoneTerrain.Broadcast(broadcast.Distinct().ToList(), zone);
                 if (zone != Home)
                 {
@@ -359,13 +353,17 @@ namespace LandmarkEmulator.WorldServer.Game
             return site;
         }
 
-        /// <summary>The marker's word before the fill's box ("fill x0 y0 z0 x1 y1 z1", global voxels, or "fill none").</summary>
-        private const string MarkerFill = "fill";
+        /// <summary>Marker word since merge placement (2026-10-19): "merge x y z".</summary>
+        private const string MarkerMerge = "merge";
+        /// <summary>Marker word before the deck-carve box ("deck none" or "deck x0 y0 z0 x1 y1 z1").</summary>
+        private const string MarkerDeck = "deck";
+        /// <summary>Pre-merge marker word (2026-10-17 carve + fill): still recognised to revert.</summary>
+        private const string MarkerVoxel = "voxel";
 
-        /// <summary>A box of global voxels, both ends included (the Spire's fill).</summary>
+        /// <summary>A box of global voxels, both ends included (deck carve).</summary>
         private readonly record struct FillBox(long MinX, long MinY, long MinZ, long MaxX, long MaxY, long MaxZ);
 
-        /// <summary>Every level-2 cell a fill box touches.</summary>
+        /// <summary>Every level-2 cell a voxel box touches.</summary>
         private static List<ulong> CellsOf(FillBox b)
         {
             int size = Terrain.BlockData.Size;
@@ -380,56 +378,66 @@ namespace LandmarkEmulator.WorldServer.Game
         private static long FloorDiv(long a, int b) => a >= 0 ? a / b : -((-a + b - 1) / b);
 
         /// <summary>
-        /// Half-width of the fill's flat top around the pivot, metres: the Spire model's footprint (AABB ±47.19 m; the
-        /// ramps' feet at ~±43 m on the diagonals) and a little more, so every foot stands on it [P footprint, I margin].
+        /// Half-width of the walkable deck / arms around the pivot, metres (model AABB ±47.19; arms to ~46 m on the axes)
+        /// [P footprint]. Used to seat the deck above ground and to carve only where ground still pokes through.
         /// </summary>
-        private const float FillFlatHalf = 48f;
+        private const float DeckHalf = 48f;
 
         /// <summary>
-        /// The fill's slope outside its flat top, metres down per metre out (1.5, ~56°), and how far out it may reach,
-        /// metres (ours). Gentler grades never meet the ground on the home continent's hillside, which falls about as
-        /// steeply below the Spire (measured on the 0.695 bake: 1:1 still left a 21.6 m drop 80 m out; 1:1.5 meets the
-        /// ground within 55 m everywhere).
+        /// Main deck collision below the Hub pivot, metres (.cdt deck at −2.924; dais −1.537, arms −1.144). Seating and
+        /// deck carve use this plane so the walk surface clears the landscape.
         /// </summary>
-        private const float FillGrade = 1.5f, FillReach = 60f;
+        private const float DeckBelowPivot = 2.924f;
+
+        /// <summary>Hub model base below pivot, metres (.dme AABB y −20.94) [P].</summary>
+        private const float ModelBaseBelow = 20.94f;
 
         /// <summary>
-        /// Ground added under the Spire where the generated ground lies below the template floor. OURS (user decision
-        /// 2026-10-17, "keep centre, fill ground"): live's home terrain and how live seated its Spires are not known. The
-        /// template only carves, so on a slope its floor, and the Spire's legs and ramp feet on it, hung over the
-        /// downhill ground. This adds solid voxels from the baked ground (TerrainHeights; one voxel into it, so no seam)
-        /// up to the floor within <see cref="FillFlatHalf"/> of the pivot, then sloping down at <see cref="FillGrade"/>
-        /// (corners rounded) until it meets the ground, at most <see cref="FillReach"/> further out.
-        /// - Material: each column takes the local biome's ground material for its top's slope
-        ///   (TerrainMaterials.GroundMaterialAt: the biome's flat material on the top, its slope material on the
-        ///   embankment), so it matches the generated ground around it.
-        /// - Surface: on the flat top it is the template floor's own surface (voxel <c>corner.Y</c>, centred vertex, 0.2 m
-        ///   up), which the fill makes solid where it reaches; on the embankment the top voxel's vertex is put at the exact
-        ///   height (its y offset), so the slope is smooth, not 0.4 m steps.
-        /// - Written once, on the 0.4 m grid, into the layer the template uses (layer 0, through IEnvironmentServer.Write,
-        ///   so a remote Environment Server gets it too), marked permanent; its box goes in the marker (restarts mark its
-        ///   cells permanent again; a later re-placement reverts it with RevertBox).
-        /// Nothing where the ground is at or above the floor. Returns the box written (null: nothing) and its cells.
+        /// How far the deck sits over the highest ground under it, metres. P5647: central spires raised slightly so grass
+        /// did not overgrow them [P text]; 0.8 m = two voxels [I], same as the pre-merge raise.
         /// </summary>
-        private static (FillBox? Box, List<ulong> Cells) Fill(uint zone, (long X, long Y, long Z) corner)
+        private const float Raise = 0.8f;
+
+        /// <summary>
+        /// Highest dry ground under the deck footprint around (x, z), or null if any sample is missing / under water.
+        /// The deck is seated on this so hills under the walk area do not poke through; ground outside the deck may still
+        /// bury legs and ramps (merge).
+        /// </summary>
+        private static float? DeckReference(uint zone, float x, float z)
+        {
+            float step = DeckHalf / 4f;
+            float high = float.MinValue;
+            for (int j = -4; j <= 4; j++)
+                for (int i = -4; i <= 4; i++)
+                {
+                    if (Terrain.TerrainHeights.HeightAt(x + i * step, z + j * step, zone) is not float h || h < DryLand)
+                        return null;
+                    high = MathF.Max(high, h);
+                }
+            return high;
+        }
+
+        /// <summary>
+        /// Air where baked ground still rises through the deck after seating. Only those columns — not a full template
+        /// clear — so surrounding slopes keep merging with the ramps and legs. Returns the box written (null: nothing).
+        /// </summary>
+        private static (FillBox? Box, List<ulong> Cells) ClearDeck(uint zone, (long X, long Y, long Z) corner)
         {
             var env = Terrain.EnvironmentServer.Instance;
             int size = Terrain.BlockData.Size;
             double voxel = Terrain.TerrainEdits.VoxelSize;
             var origin = Terrain.TerrainStore.ZoneOrigin;
             Vector3 pivot = Local(corner, templateSpire.Position);
-            long top = corner.Y;                                   // the floor's voxel (its surface at the voxel's middle)
-            double surface = (top + 0.5) * voxel;                  // global dm
-            float reach = FillFlatHalf + FillReach;
-            long x0 = (long)Math.Floor(((pivot.X - reach) * 10 + origin.X) / voxel), x1 = (long)Math.Ceiling(((pivot.X + reach) * 10 + origin.X) / voxel);
-            long z0 = (long)Math.Floor(((pivot.Z - reach) * 10 + origin.Z) / voxel), z1 = (long)Math.Ceiling(((pivot.Z + reach) * 10 + origin.Z) / voxel);
+            float deckY = pivot.Y - DeckBelowPivot;
+            long x0 = (long)Math.Floor(((pivot.X - DeckHalf) * 10 + origin.X) / voxel);
+            long x1 = (long)Math.Ceiling(((pivot.X + DeckHalf) * 10 + origin.X) / voxel);
+            long z0 = (long)Math.Floor(((pivot.Z - DeckHalf) * 10 + origin.Z) / voxel);
+            long z1 = (long)Math.Ceiling(((pivot.Z + DeckHalf) * 10 + origin.Z) / voxel);
+            // One voxel under the deck mesh so the walk surface is clear.
+            long deckLow = (long)Math.Floor((deckY * 10 + origin.Y) / voxel) - 1;
             int w = (int)(x1 - x0 + 1), d = (int)(z1 - z0 + 1);
-            // Per column: lowest and highest voxel (none when high < low), the top voxel's y offset byte, the material.
             var low = new long[w * d];
             var high = new long[w * d];
-            var vertex = new byte[w * d];
-            var material = new ushort[w * d];
-            float upSlope = 1f / MathF.Sqrt(1f + FillGrade * FillGrade);
             long minY = long.MaxValue, maxY = long.MinValue, minX = long.MaxValue, maxX = long.MinValue, minZ = long.MaxValue, maxZ = long.MinValue;
             long columns = 0;
             for (int k = 0; k < d; k++)
@@ -438,25 +446,18 @@ namespace LandmarkEmulator.WorldServer.Game
                     int c = k * w + i;
                     high[c] = long.MinValue;
                     float lx = (float)(((x0 + i + 0.5) * voxel - origin.X) / 10), lz = (float)(((z0 + k + 0.5) * voxel - origin.Z) / 10);
-                    float ox = MathF.Max(MathF.Abs(lx - pivot.X) - FillFlatHalf, 0f), oz = MathF.Max(MathF.Abs(lz - pivot.Z) - FillFlatHalf, 0f);
-                    float outside = MathF.Sqrt(ox * ox + oz * oz);
-                    if (outside > FillReach || Terrain.TerrainHeights.HeightAt(lx, lz, zone) is not float ground)
+                    if (MathF.Abs(lx - pivot.X) > DeckHalf || MathF.Abs(lz - pivot.Z) > DeckHalf)
                         continue;
-                    double want = surface - outside * FillGrade * 10;    // the fill's surface here, global dm
-                    double groundDm = ground * 10 + origin.Y;
-                    if (want <= groundDm + voxel / 2)
+                    if (Terrain.TerrainHeights.HeightAt(lx, lz, zone) is not float ground || ground <= deckY + 0.05f)
                         continue;
-                    // Solid samples up to the voxel whose cube holds the surface, its vertex at the surface (VoxelTemplate's
-                    // model: sample at grid point i, vertex in the cube i..i + 1; offset byte = floor((u + 1) · 85 + 0.5)).
-                    long highest = outside <= 0f ? top : (long)Math.Floor(want / voxel);
-                    double u = outside <= 0f ? 0.5 : want / voxel - highest;
-                    low[c] = (long)Math.Floor(groundDm / voxel) - 1;
-                    high[c] = highest;
-                    vertex[c] = (byte)Math.Floor((Math.Clamp(u, -1.0, 2.0) + 1) * 85 + 0.5);
-                    material[c] = Terrain.TerrainMaterials.GroundMaterialAt(new Vector3(lx, ground, lz), outside <= 0f ? 1f : upSlope, zone);
+                    long top = (long)Math.Floor((ground * 10 + origin.Y) / voxel);
+                    if (top < deckLow)
+                        continue;
+                    low[c] = deckLow;
+                    high[c] = top;
                     columns++;
                     minY = Math.Min(minY, low[c]);
-                    maxY = Math.Max(maxY, highest);
+                    maxY = Math.Max(maxY, top);
                     minX = Math.Min(minX, x0 + i);
                     maxX = Math.Max(maxX, x0 + i);
                     minZ = Math.Min(minZ, z0 + k);
@@ -465,11 +466,12 @@ namespace LandmarkEmulator.WorldServer.Game
             var written = new List<ulong>();
             if (columns == 0)
             {
-                log.Info($"Spire of landscape {zone}: no fill (the ground is nowhere below the floor).");
+                log.Info($"Spire of landscape {zone}: deck clear (no ground through the walk surface).");
                 return (null, written);
             }
             var box = new FillBox(minX, minY, minZ, maxX, maxY, maxZ);
             long voxels = 0;
+            byte mid = Terrain.BlockData.CentreOffset;
             var values = new List<Terrain.TerrainEdits.VoxelValue>();
             for (long cz = FloorDiv(minZ, size); cz <= FloorDiv(maxZ, size); cz++)
                 for (long cx = FloorDiv(minX, size); cx <= FloorDiv(maxX, size); cx++)
@@ -487,11 +489,8 @@ namespace LandmarkEmulator.WorldServer.Game
                                     continue;
                                 long from = Math.Max(low[c], cy * size), to = Math.Min(high[c], cy * size + size - 1);
                                 for (long gy = from; gy <= to; gy++)
-                                {
-                                    byte oy = gy == high[c] ? vertex[c] : Terrain.BlockData.CentreOffset;
-                                    values.Add(new Terrain.TerrainEdits.VoxelValue(Terrain.TerrainEdits.VoxelIndex(x, (int)(gy - cy * size), z), 3,
-                                        material[c], Terrain.BlockData.CentreOffset, oy, Terrain.BlockData.CentreOffset));
-                                }
+                                    values.Add(new Terrain.TerrainEdits.VoxelValue(
+                                        Terrain.TerrainEdits.VoxelIndex(x, (int)(gy - cy * size), z), 1, 0, mid, mid, mid));
                             }
                         if (values.Count == 0)
                             continue;
@@ -508,49 +507,29 @@ namespace LandmarkEmulator.WorldServer.Game
             env.Flush();
             env.MarkPermanent(written, zone);
             env.CompactNow(true);
-            log.Info($"Spire of landscape {zone}: filled the ground under its floor, {columns} columns, {voxels} voxels "
-                + $"({voxels * voxel * voxel * voxel / 1000:F0} m³), {written.Count} cells, box {box}.");
+            log.Info($"Spire of landscape {zone}: cleared {columns} deck columns ({voxels} air voxels, {written.Count} cells) where ground poked through.");
             return (box, written);
         }
 
-        /// <summary>The marker's first word since the voxel-aligned placement (2026-10-17): "voxel x y z" (global voxel).</summary>
-        private const string MarkerVoxel = "voxel";
-
         /// <summary>
-        /// Height of the template floor's surface over its corner, metres: layer y = 0 is vertex-only voxels with centred
-        /// vertices (0x22; 96,721 = 311² of them), i.e. a surface half a voxel (0.2 m) up [P: agent-leads3-b.md §L100].
+        /// Template corner for a Hub whose deck sits on <see cref="DeckReference"/> + <see cref="Raise"/> at
+        /// <paramref name="spot"/>'s x / z. Pivot = deck + <see cref="DeckBelowPivot"/>; base plane
+        /// (<see cref="ModelBaseBelow"/> under the pivot) ends up ~18 m under that ground — legs and lower ramps bury,
+        /// players climb from the landscape.
         /// </summary>
-        private const float FloorSurface = 0.2f;
-
-        /// <summary>
-        /// How far the template floor is put over the ground, metres. P5647 (25 May 2016): central spires sit a little
-        /// higher above the ground (grass overgrew them) [P text]. The amount is not in any source [I]: 0.8 m =
-        /// two voxels, the extra base clearance the pre-11 May template (portalspirebase.otd, Hub at 22.0 m, its props
-        /// 0.8 m higher) had over the post-7 Jun one we stamp (Hub at 21.24 m); the template itself went 0.8 m down, so
-        /// the raise must have been in live's placement (agent-leads3-b.md §L100). Small enough that the ramps' feet
-        /// (pivot −20.94) still meet the carved floor with a step of under a metre.
-        /// </summary>
-        private const float Raise = 0.8f;
-
-        /// <summary>
-        /// The template corner (global voxel) for a Spire whose pivot stands over <paramref name="spot"/> (local metres; its
-        /// y the ground reference): x / z = the spot minus the Hub's offset in the template, y = the floor's surface on the
-        /// ground plus <see cref="Raise"/>. All on the 0.4 m voxel grid (the vertical error is under 0.2 m, not ±8 m).
-        /// </summary>
-        private static (long X, long Y, long Z) CornerFor(Vector3 spot)
+        private static (long X, long Y, long Z) CornerFor(uint zone, Vector3 spot)
         {
             double voxel = Terrain.TerrainEdits.VoxelSize;
-            (double gx, double gy, double gz) = Terrain.TerrainEdits.ToGlobal(new Vector3(spot.X, spot.Y + Raise - FloorSurface, spot.Z));
-            return ((long)Math.Round((gx - templateSpire.Position.X * 10) / voxel), (long)Math.Round(gy / voxel),
+            float ground = DeckReference(zone, spot.X, spot.Z) ?? spot.Y;
+            float pivotY = ground + Raise + DeckBelowPivot;
+            (double gx, double gy, double gz) = Terrain.TerrainEdits.ToGlobal(new Vector3(spot.X, pivotY, spot.Z));
+            return ((long)Math.Round((gx - templateSpire.Position.X * 10) / voxel),
+                (long)Math.Round((gy - templateSpire.Position.Y * 10) / voxel),
                 (long)Math.Round((gz - templateSpire.Position.Z * 10) / voxel));
         }
 
         /// <summary>
-        /// Drops a pre-2026-10-17 Spire stamp (corner on the 16 m cell grid) from the terrain: every override in the
-        /// template's cells goes, so the client shows its generated ground there again (Outposts' re-stamp does the same
-        /// with RevertBox). The template has no solids, so the pit cannot be filled back by stamping again; the box is
-        /// inside the Spire's no-edit zone (<see cref="MayEdit"/>), so it holds nothing but the stamp. Players on the
-        /// landscape get the reverted cells.
+        /// Drops a pre-2026-10-17 Spire stamp (corner on the 16 m cell grid) from the terrain.
         /// </summary>
         private static void RevertOldStamp(uint zone, (uint X, uint Y, uint Z) cell)
         {
@@ -564,110 +543,184 @@ namespace LandmarkEmulator.WorldServer.Game
             log.Info($"Landscape {zone}: reverted the old cell-aligned Spire stamp at cell {cell} ({reverted.Count} cells); placing it again.");
         }
 
+        /// <summary>
+        /// Drops a 2026-10-17 voxel-aligned air stamp and its fill embankment so the landscape can be merge-placed.
+        /// </summary>
+        private static void RevertVoxelStamp(uint zone, (long X, long Y, long Z) corner, FillBox? fill)
+        {
+            double voxel = Terrain.TerrainEdits.VoxelSize;
+            var env = Terrain.EnvironmentServer.Instance;
+            var reverted = new List<ulong>();
+            reverted.AddRange(env.RevertBox(corner.X * voxel, corner.Y * voxel, corner.Z * voxel,
+                (corner.X + template.Size.X) * voxel, (corner.Y + template.Size.Y) * voxel, (corner.Z + template.Size.Z) * voxel, zone));
+            if (fill is FillBox f)
+                reverted.AddRange(env.RevertBox(f.MinX * voxel, f.MinY * voxel, f.MinZ * voxel,
+                    (f.MaxX + 1) * voxel, (f.MaxY + 1) * voxel, (f.MaxZ + 1) * voxel, zone));
+            env.Flush();
+            env.CompactNow(true);
+            Terrain.ZoneTerrain.Broadcast(reverted.Distinct().ToList(), zone);
+            log.Info($"Landscape {zone}: reverted the old voxel Spire stamp at {corner} ({reverted.Count} cells); merge-placing.");
+        }
+
         /// <summary>Dry land at least this high (local metres; sea level is about 1000), as Landscapes.ArrivalPoint.</summary>
         private const float DryLand = 1005f;
         /// <summary>
-        /// Largest ground height spread over the whole 124 m box (9 × 9 samples) for a spot to be taken at once, metres
-        /// (ours). Every metre of spread is a wall (ground over the floor, carved by the air box) or a gap (ground under
-        /// it: the vertex-only floor keeps what is underneath) of up to that height. The baked landscapes (gameData695)
-        /// have such ground for 28 of 37 within 3 km; the others take their flattest spot (8.1-11.5 m; 395: 10.7 m, 320 m out).
+        /// Max height spread under the walk footprint (±<see cref="DeckHalf"/>) for a spot, metres (ours). Deck seats to
+        /// the high ground there, so every metre of relief is hang under the downhill edge — capped near the deck→base
+        /// height (~18 m) so the low side still meets the plinth rather than floating under empty air.
         /// </summary>
-        private const float MaxSpread = 8f;
+        private const float MaxDeckSpread = 17f;
+        /// <summary>
+        /// Max height spread over the whole 124 m box for a spot, metres (ours). A little looser than
+        /// <see cref="MaxDeckSpread"/> so rim terrain outside the walk footprint does not veto an otherwise good seat.
+        /// </summary>
+        private const float MaxBoxSpread = 22f;
+        /// <summary>
+        /// Worst deck spread still accepted as a last-resort "flattest" fallback (ours). Same as
+        /// <see cref="MaxDeckSpread"/>: above the plinth height the landscape gets no Spire.
+        /// </summary>
+        private const float MaxDeckSpreadFallback = 17f;
         /// <summary>Ring spacing and reach of the spot search, metres (ours).</summary>
         private const float SearchStep = 20f, SearchReach = 3000f;
         /// <summary>Clear ground kept between a new Spire's platform and any build site, decimetres (ours: 20 m).</summary>
         private const double SiteMargin = 200;
 
         /// <summary>
-        /// The ground a Spire's floor is put on, around a pivot x / z (local metres), and how uneven the box is. Samples a
-        /// 9 × 9 grid over the template's 124 m box (15.5 m apart); null when any is missing or under water.
-        /// Reference = the median of the 7 × 7 samples within ±46.5 m: the Spire model's own footprint (AABB ±47.19 m),
-        /// where its collision meets its base plane (leg feet, and the four ramps reaching pivot −20.94 at ~±43 m on the
-        /// diagonals) [P: .cdt]. Not the centre alone (one sample, under the open deck, where nothing stands on the
-        /// ground) nor the box rim (outside the model): the median of the footprint is the height that the most of
-        /// the Spire's feet meet, so on a slope half of them stand on carved ground and half on ground they rest on,
-        /// and a bump or hollow under one sample does not move the whole Spire [I, the best fit; live's placement is
-        /// not in any source].
+        /// Ground relief around (x, z): box spread over the 124 m template, deck spread over ±<see cref="DeckHalf"/>,
+        /// and a median under the deck for ranking. Null when any sample is missing or under water.
         /// </summary>
-        private static bool Survey(uint zone, float x, float z, out float spread, out float reference)
+        private static bool Survey(uint zone, float x, float z, out float boxSpread, out float deckSpread, out float reference)
         {
-            spread = reference = 0f;
+            boxSpread = deckSpread = reference = 0f;
             if (Terrain.TerrainHeights.HeightAt(x, z, zone) is not float centre || centre < DryLand)
                 return false;
-            float half = template.Size.X * (float)Terrain.TerrainEdits.VoxelSize / 20f;   // 62 m
-            float step = half / 4f;
-            float low = float.MaxValue, high = float.MinValue;
-            Span<float> inner = stackalloc float[49];
+            float boxHalf = template.Size.X * (float)Terrain.TerrainEdits.VoxelSize / 20f;   // 62 m
+            float boxStep = boxHalf / 4f;
+            float boxLow = float.MaxValue, boxHigh = float.MinValue;
+            float deckLow = float.MaxValue, deckHigh = float.MinValue;
+            Span<float> deckSamples = stackalloc float[81];
             int n = 0;
             for (int j = -4; j <= 4; j++)
                 for (int i = -4; i <= 4; i++)
                 {
-                    if (Terrain.TerrainHeights.HeightAt(x + i * step, z + j * step, zone) is not float h || h < DryLand)
+                    float sx = x + i * boxStep, sz = z + j * boxStep;
+                    if (Terrain.TerrainHeights.HeightAt(sx, sz, zone) is not float h || h < DryLand)
                         return false;
-                    low = MathF.Min(low, h);
-                    high = MathF.Max(high, h);
-                    if (Math.Abs(i) <= 3 && Math.Abs(j) <= 3)
-                        inner[n++] = h;
+                    boxLow = MathF.Min(boxLow, h);
+                    boxHigh = MathF.Max(boxHigh, h);
+                    if (MathF.Abs(sx - x) <= DeckHalf && MathF.Abs(sz - z) <= DeckHalf)
+                    {
+                        deckLow = MathF.Min(deckLow, h);
+                        deckHigh = MathF.Max(deckHigh, h);
+                        deckSamples[n++] = h;
+                    }
                 }
-            inner.Sort();
-            spread = high - low;
-            reference = inner[n / 2];
+            // Denser ring inside the deck (box step is 15.5 m; fill gaps so a narrow ridge is not missed).
+            float deckStep = DeckHalf / 4f;
+            for (int j = -4; j <= 4; j++)
+                for (int i = -4; i <= 4; i++)
+                {
+                    if (i == 0 && j == 0)
+                        continue;
+                    float sx = x + i * deckStep, sz = z + j * deckStep;
+                    if (MathF.Abs(sx - x) > DeckHalf || MathF.Abs(sz - z) > DeckHalf)
+                        continue;
+                    if (Terrain.TerrainHeights.HeightAt(sx, sz, zone) is not float h || h < DryLand)
+                        return false;
+                    deckLow = MathF.Min(deckLow, h);
+                    deckHigh = MathF.Max(deckHigh, h);
+                    if (n < deckSamples.Length)
+                        deckSamples[n++] = h;
+                }
+            if (n == 0)
+                return false;
+            deckSamples.Slice(0, n).Sort();
+            boxSpread = boxHigh - boxLow;
+            deckSpread = deckHigh - deckLow;
+            reference = deckSamples[n / 2];
             return true;
         }
 
         /// <summary>
-        /// Where a landscape's Spire pivot stands (local x / z; y = the ground its floor goes on, <see cref="Survey"/>):
-        /// the home continent's at (0, 0) as it always has; elsewhere the nearest point to the centre (rings 20 m apart,
-        /// up to 3 km) whose whole box is level within <see cref="MaxSpread"/>, dry, and with no build site within 20 m
-        /// (Claims.BoxesIn); failing that, the flattest such point found. INFERRED spot (no client data names one). Until
-        /// 2026-10-17 only the box's four corners were compared with its centre, which passed slopes of 20 m and more
-        /// (landscape 395: 22 m across the box).
+        /// Where a landscape's Spire stands (local x / z; y = deck median for ranking — seating uses
+        /// <see cref="DeckReference"/>): nearest dry point to the centre whose deck relief is ≤
+        /// <see cref="MaxDeckSpread"/> and box relief ≤ <see cref="MaxBoxSpread"/>, clear of build sites; else the
+        /// flattest deck within <see cref="MaxDeckSpreadFallback"/> out to 3 km. Same rule for home (no longer locked
+        /// to (0, 0)). INFERRED (no client data names a spot).
         /// </summary>
         private static Vector3? SpotFor(uint zone)
         {
-            if (zone == Home)
-                return Survey(Home, X, Z, out _, out float home) ? new Vector3(X, home, Z) : Terrain.TerrainHeights.OnGround(X, Z);
-            if (!Terrain.TerrainHeights.Available(zone))
+            if (!Terrain.TerrainHeights.Available(zone) && zone != Home)
                 return null;
-            float half = template.Size.X * (float)Terrain.TerrainEdits.VoxelSize / 20f;   // half the footprint, metres
+            if (zone == Home && !Terrain.TerrainHeights.Available(Home)
+                && Terrain.TerrainHeights.OnGround(X, Z) is Vector3 bare)
+                return bare;
+            float half = DeckHalf;
             Vector3? flattest = null;
-            float flattestSpread = float.MaxValue;
+            float flattestDeck = float.MaxValue;
             for (float radius = 0f; radius <= SearchReach; radius += SearchStep)
             {
                 int steps = Math.Max(1, (int)(radius * 2 * MathF.PI / SearchStep));
                 for (int i = 0; i < steps; i++)
                 {
                     float angle = i * 2 * MathF.PI / steps;
-                    float x = radius * MathF.Cos(angle), z = radius * MathF.Sin(angle);
-                    if (!Survey(zone, x, z, out float spread, out float ground) || (spread > MaxSpread && spread >= flattestSpread))
+                    float x = X + radius * MathF.Cos(angle), z = Z + radius * MathF.Sin(angle);
+                    if (!Survey(zone, x, z, out float boxSpread, out float deckSpread, out float ground))
                         continue;
-                    // No build site within SiteMargin of the platform (any height: a site's box may not take the Spire).
+                    bool ok = deckSpread <= MaxDeckSpread && boxSpread <= MaxBoxSpread;
+                    if (!ok && deckSpread >= flattestDeck)
+                        continue;
                     var global = Terrain.TerrainEdits.ToGlobal(new Vector3(x, ground, z));
                     double reach = half * 10 + SiteMargin;
                     if (Claims.BoxesIn(zone, (global.X - reach, double.MinValue, global.Z - reach),
                             (global.X + reach, double.MaxValue, global.Z + reach)).Count > 0)
                         continue;
-                    if (spread <= MaxSpread)
+                    if (ok)
                         return new Vector3(x, ground, z);
-                    flattest = new Vector3(x, ground, z);
-                    flattestSpread = spread;
+                    if (deckSpread < flattestDeck)
+                    {
+                        flattest = new Vector3(x, ground, z);
+                        flattestDeck = deckSpread;
+                    }
                 }
             }
-            if (flattest is Vector3 best)
-                log.Warn($"Landscape {zone}: no Spire spot level within {MaxSpread} m within {SearchReach} m of the centre; "
-                    + $"the flattest ({flattestSpread:F1} m) at ({best.X:F0}, {best.Z:F0}).");
-            return flattest;
+            if (flattest is Vector3 best && flattestDeck <= MaxDeckSpreadFallback)
+            {
+                log.Warn($"Landscape {zone}: no Spire spot with deck relief ≤ {MaxDeckSpread} m within {SearchReach} m; "
+                    + $"using the flattest deck ({flattestDeck:F1} m) at ({best.X:F0}, {best.Z:F0}).");
+                return best;
+            }
+            if (flattest is Vector3 steep)
+                log.Warn($"Landscape {zone}: flattest Spire deck still {flattestDeck:F1} m at ({steep.X:F0}, {steep.Z:F0}) "
+                    + $"(over {MaxDeckSpreadFallback} m); no Spire.");
+            else
+                log.Warn($"Landscape {zone}: no dry free ground for a Spire within {SearchReach} m of the centre.");
+            return null;
+        }
+
+        /// <summary>Drops a previous merge deck-carve so a steeper spot can be abandoned.</summary>
+        private static void RevertDeckCarve(uint zone, FillBox? deck)
+        {
+            if (deck is not FillBox f)
+                return;
+            double voxel = Terrain.TerrainEdits.VoxelSize;
+            List<ulong> reverted = Terrain.EnvironmentServer.Instance.RevertBox(
+                f.MinX * voxel, f.MinY * voxel, f.MinZ * voxel,
+                (f.MaxX + 1) * voxel, (f.MaxY + 1) * voxel, (f.MaxZ + 1) * voxel, zone);
+            Terrain.EnvironmentServer.Instance.Flush();
+            Terrain.EnvironmentServer.Instance.CompactNow(true);
+            if (reverted.Count > 0)
+                Terrain.ZoneTerrain.Broadcast(reverted, zone);
         }
 
         /// <summary>
-        /// Is a point (local metres) on a landscape's Spire platform? Trees and plants are not grown there (the world
-        /// generator knows nothing of the stamped template). Only Spires already built count (see <see cref="Peek"/>).
+        /// Is a point (local metres) on a landscape's Spire platform? Trees and plants are not grown there. Only Spires
+        /// already built count (see <see cref="Peek"/>).
         /// </summary>
         public static bool Covers(uint zone, float x, float z)
         {
             if (template == null || Peek(zone) is not { Corner: not null } site)
                 return false;
-            // The platform box's footprint (template and fill, 2 m around), in local metres.
             var (lo, hi) = PlatformBox(site);
             var origin = Terrain.TerrainStore.ZoneOrigin;
             return x >= (lo.X - origin.X) / 10 && x <= (hi.X - origin.X) / 10 && z >= (lo.Z - origin.Z) / 10 && z <= (hi.Z - origin.Z) / 10;
@@ -736,21 +789,22 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>
-        /// The platform's box in global dm: the template's footprint plus 2 m around (as <see cref="Covers"/>), from 20 m
-        /// under it to 20 m over it (the caverns below keep their ore), grown to take the ground filled under it
-        /// (<see cref="Fill"/>, 2 m around and down to its bottom): no trees inside the embankment, no ore, no digging
-        /// into it (its cells are permanent, so a dig there would never heal).
+        /// The platform's box in global dm: the Hub model's footprint (±47.19 m, plus 2 m) from the base plane up through
+        /// the crown, grown for any deck-carve box. No trees / ore / digs there (deck-carve cells are permanent).
         /// </summary>
         private static ((double X, double Y, double Z) Min, (double X, double Y, double Z) Max) PlatformBox(Site site)
         {
             double voxel = Terrain.TerrainEdits.VoxelSize;
-            var c = site.Corner.Value;
-            (double X, double Y, double Z) min = (c.X * voxel - 20, c.Y * voxel - 200, c.Z * voxel - 20);
-            (double X, double Y, double Z) max = ((c.X + template.Size.X) * voxel + 20, (c.Y + template.Size.Y) * voxel + 200, (c.Z + template.Size.Z) * voxel + 20);
-            if (site.Fill is FillBox f)
+            var origin = Terrain.TerrainStore.ZoneOrigin;
+            Vector3 p = site.Position;
+            const float half = 47.19f + 2f;
+            const float top = 43.74f + 2f;
+            (double X, double Y, double Z) min = ((p.X - half) * 10 + origin.X, (p.Y - ModelBaseBelow - 2f) * 10 + origin.Y, (p.Z - half) * 10 + origin.Z);
+            (double X, double Y, double Z) max = ((p.X + half) * 10 + origin.X, (p.Y + top) * 10 + origin.Y, (p.Z + half) * 10 + origin.Z);
+            if (site.Deck is FillBox f)
             {
                 min = (Math.Min(min.X, f.MinX * voxel - 20), Math.Min(min.Y, f.MinY * voxel), Math.Min(min.Z, f.MinZ * voxel - 20));
-                max = (Math.Max(max.X, (f.MaxX + 1) * voxel + 20), max.Y, Math.Max(max.Z, (f.MaxZ + 1) * voxel + 20));
+                max = (Math.Max(max.X, (f.MaxX + 1) * voxel + 20), Math.Max(max.Y, (f.MaxY + 1) * voxel + 20), Math.Max(max.Z, (f.MaxZ + 1) * voxel + 20));
             }
             return (min, max);
         }
