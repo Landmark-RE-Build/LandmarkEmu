@@ -85,7 +85,7 @@ namespace LandmarkEmulator.WorldServer.Game
             ["respawn"] = "respawn [type]",
             ["creature"] = "creature [kobold|runt|shaman|skeleton|slaug|ogre] [dx dz]",
             ["kobold"] = "kobold [dx dz]",
-            ["npc"] = "npc <model> [dx dz]",
+            ["npc"] = "npc <model> [dx dz] | npc reload | npc goto <id> | npc talk <id> | npc reset | npc flag <id> <key> [value]",
             ["pos"] = "pos",
             ["lastmove"] = "lastmove",
             ["hurt"] = "hurt [hp]",

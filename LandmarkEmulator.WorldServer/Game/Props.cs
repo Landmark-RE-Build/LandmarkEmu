@@ -169,6 +169,22 @@ namespace LandmarkEmulator.WorldServer.Game
                         byCreature != null && Creatures.IsFullFor(session, creature) ? byCreature : body);
         }
 
+        /// <summary>
+        /// DisplayPropText to one player (world NPC dialogue). Same speaker / creature rules as
+        /// <see cref="DisplayTextBy"/>; Yes / No only when <paramref name="questionId"/> ≠ 0 and mode is 4 or 5, and
+        /// the packet's speaker entity is in that client's full actor table (L96 / L30).
+        /// </summary>
+        public static void DisplayTextTo(WorldSession session, ulong speaker, string text, uint mode, uint seconds,
+            ulong questionId = 0, ulong creature = 0)
+        {
+            if (session == null || session.RezoneTarget != null || string.IsNullOrEmpty(text))
+                return;
+            byte[] body = WritePropText(speaker, text, mode, seconds, questionId);
+            byte[] byCreature = creature == 0 ? null : WritePropText(creature, text, mode, seconds, questionId);
+            session.EnqueueMessage(ZoneMessageOpcode.PlayerUpdateDisplayPropText,
+                byCreature != null && Creatures.IsFullFor(session, creature) ? byCreature : body);
+        }
+
         /// <summary>The props whose text can be shown (Links "display the text"): Rustic Sign, Fjorden Books, Gold Scroll.</summary>
         private static readonly HashSet<uint> textProps = new()
         {

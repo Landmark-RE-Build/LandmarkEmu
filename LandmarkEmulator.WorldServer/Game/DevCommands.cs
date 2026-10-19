@@ -713,7 +713,14 @@ namespace LandmarkEmulator.WorldServer.Game
                         case "npc":
                         {
                             // npc <model> [dx dz]: spawn a creature model next to the player (visual test).
-                            string[] a = parts[1].Split(' ');
+                            // npc reload | goto <id> | reset | flag <id> <key> [value]: world NPC scripting helpers.
+                            string[] a = parts[1].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                            if (a.Length > 0 && a[0] is "reload" or "goto" or "talk" or "reset" or "flag")
+                            {
+                                foreach (WorldSession session in targets)
+                                    log.Info($"npc: {Npc.WorldNpcs.DevCommand(session, a)}");
+                                break;
+                            }
                             foreach (WorldSession session in targets)
                             {
                                 var at = session.Position + new System.Numerics.Vector3(a.Length > 2 ? float.Parse(a[1]) : 3f, 0f, a.Length > 2 ? float.Parse(a[2]) : 3f);

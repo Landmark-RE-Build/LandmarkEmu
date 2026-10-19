@@ -1,0 +1,67 @@
+{
+  "id": "fungus_scout",
+  "displayName": "Fungus Scout",
+  "spawnerName": "Spawner: Patroller",
+  "zone": 0,
+  "home": [ 58, 0, 35 ],
+  "yaw": 3.5,
+  "hailRange": 14,
+  "dwellSeconds": 4,
+  "waypoints": [
+    [ 58, 0, 35 ],
+    [ 70, 0, 22 ],
+    [ 52, 0, 52 ]
+  ],
+  "questAchievementId": 9101,
+  "questObjectiveId": 9111,
+  "questRequired": 3,
+  "lines": {
+    "hail": {
+      "text": "Over here! A word about those explode-y mushrooms, if you have a moment.",
+      "mode": 4,
+      "seconds": 5
+    },
+    "greet": {
+      "text": "Hold a moment, Luminary. Will you help me watch for fungus? Dispatch those explode-y mushrooms near the Spire — three will do.",
+      "mode": 5,
+      "seconds": 12,
+      "question": true
+    },
+    "greet_again": {
+      "text": "Changed your mind? Will you help dispatch three explode-y mushrooms?",
+      "mode": 5,
+      "seconds": 10,
+      "question": true
+    },
+    "accept": {
+      "text": "Thank you! The Journal will keep count — come back when three are down.",
+      "mode": 5,
+      "seconds": 8
+    },
+    "decline": {
+      "text": "No harm done. Wave if you change your mind.",
+      "mode": 5,
+      "seconds": 6
+    },
+    "reminder": {
+      "text": "Still need three explode-y mushrooms. Check your Journal tracker if you lose count.",
+      "mode": 5,
+      "seconds": 8
+    },
+    "turnin": {
+      "text": "That's the last of them — well done! Here's a little thanks from the Spire. The Herbalist east of here may have more for you.",
+      "mode": 5,
+      "seconds": 10
+    },
+    "done": {
+      "text": "You've done enough mushroom hunting for one day. Safe travels!",
+      "mode": 5,
+      "seconds": 6
+    },
+    "idle": {
+      "text": "Good to see you again.",
+      "mode": 5,
+      "seconds": 5
+    }
+  }
+}

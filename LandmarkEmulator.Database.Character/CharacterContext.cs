@@ -36,6 +36,7 @@ namespace LandmarkEmulator.Database.Character
         public DbSet<ShowcaseDigestRunModel> ShowcaseDigestRun { get; set; }
         public DbSet<SiteTemplateInstanceModel> SiteTemplateInstance { get; set; }
         public DbSet<CharacterObjectiveModel> CharacterObjective { get; set; }
+        public DbSet<CharacterNpcFlagModel> CharacterNpcFlag { get; set; }
         public DbSet<GuildModel> Guild { get; set; }
         public DbSet<GuildMemberModel> GuildMember { get; set; }
         public DbSet<MailModel> Mail { get; set; }
@@ -995,6 +996,16 @@ namespace LandmarkEmulator.Database.Character
                 entity.Property(e => e.Kind).HasColumnName("kind").HasColumnType("int(10) unsigned");
                 entity.Property(e => e.Xml).IsRequired().HasColumnName("xml").HasColumnType("blob");
                 entity.Property(e => e.UpdatedAt).HasColumnName("updatedAt").HasColumnType("datetime");
+            });
+
+            modelBuilder.Entity<CharacterNpcFlagModel>(entity =>
+            {
+                entity.ToTable("character_npc_flag");
+                entity.HasKey(e => new { e.CharacterId, e.NpcId, e.Key }).HasName("PRIMARY");
+                entity.Property(e => e.CharacterId).HasColumnName("characterId").HasColumnType("bigint(20) unsigned");
+                entity.Property(e => e.NpcId).IsRequired().HasColumnName("npcId").HasColumnType("varchar(64)");
+                entity.Property(e => e.Key).IsRequired().HasColumnName("key").HasColumnType("varchar(64)");
+                entity.Property(e => e.Value).HasColumnName("value").HasColumnType("int(11)");
             });
 
             modelBuilder.Entity<CharacterInventoryFilterModel>(entity =>

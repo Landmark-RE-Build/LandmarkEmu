@@ -137,6 +137,7 @@ namespace LandmarkEmulator.WorldServer.Game
             AddDailies();
             AddTiers();
             AddTutorialGoals();
+            AddNpcQuests();
             rewardItems = achievements.Values.SelectMany(a => a.Rewards).Select(r => r.Item).ToHashSet();
             log.Info($"{achievements.Count} achievements, {byObjective.Count} objectives ({achievements.Values.Count(a => a.Daily)} daily).");
         }
