@@ -163,9 +163,9 @@ namespace LandmarkEmulator.WorldServer.Game.Inventory
 
         /// <summary>
         /// Ids for items whose live id isn't known: ours, far above every dump id (largest 4524) so a later find of the
-        /// real id can't collide. Recorded with each spec.
+        /// real id can't collide. Recorded with each spec. Same value as <see cref="Shared.Game.OwnedItemIds.Base"/>.
         /// </summary>
-        public const uint OwnIdBase = 900000;
+        public const uint OwnIdBase = LandmarkEmulator.Shared.Game.OwnedItemIds.Base;
 
         /// <summary>Build Site Expansion (TASKS 3.5, L86): ours, id unknown.</summary>
         public const uint BuildSiteExpansion = OwnIdBase + 1;

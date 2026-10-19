@@ -1,13 +1,14 @@
 using System.Collections.Generic;
 using System.Linq;
 
-namespace LandmarkEmulator.WorldServer.Game
+namespace LandmarkEmulator.Shared.Game
 {
     /// <summary>
     /// Event / limited cosmetics and the late titles the live login list (Resources/PacketDumps/44-CommandBase) lacks
-    /// (TASKS 4.16 / 4.17 and the §4 "Outfits" line; trace/0695/cosmetics-695.md). Definitions are built by
-    /// <see cref="Inventory.ItemDefinitionBuilder"/> from a template record with the fields below patched in. [P] = proven
-    /// from the client's own data, [I] = inferred (see the trace file for the evidence).
+    /// (TASKS 4.16 / 4.17 and the §4 "Outfits" line; trace/0695/cosmetics-695.md). The world server builds item
+    /// definitions from these rows; the login server registers the same outfit looks into <see cref="ItemAppearances"/>
+    /// so character select matches what was last equipped. [P] = proven from the client's own data, [I] = inferred
+    /// (see the trace file for the evidence).
     ///
     /// What a worn outfit needs on the client (cosmetics-695.md §1): an item record with equip slot 1 (chest), the model
     /// path "Char_Biped_[RACE][GENDER]_Entities_&lt;mesh&gt;_Chest.adr" (the client expands [RACE][GENDER] to HumanMale /
@@ -19,12 +20,15 @@ namespace LandmarkEmulator.WorldServer.Game
     /// The picks below follow the item order of each family and the alias names the dump proves on other meshes of the
     /// same tint type; check each in game against its icon (cosmetics-695.md §6).
     ///
-    /// Ids: none of these items is in any capture, so all ids are ours (<see cref="Inventory.ItemDefinitionBuilder.OwnIdBase"/>
+    /// Ids: none of these items is in any capture, so all ids are ours (<see cref="OwnedItemIds.Base"/>
     /// + 201.. titles, + 301.. outfits). If a real id turns up it replaces ours here.
     /// </summary>
     public static class Cosmetics
     {
-        private const uint Own = Inventory.ItemDefinitionBuilder.OwnIdBase;
+        private const uint Own = OwnedItemIds.Base;
+
+        /// <summary>Equipment slot for outfits (InventoryDefinition appearance / chest slot 1).</summary>
+        public const uint OutfitEquipSlot = 1;
 
         /// <summary>
         /// One outfit. <paramref name="Mesh"/> is the part between "Entities_" and "_Chest.adr". <paramref name="Tint"/> is
@@ -133,11 +137,11 @@ namespace LandmarkEmulator.WorldServer.Game
         };
 
         /// <summary>
-        /// One title item ("Title: X", category 229). The title itself (its text and prefix / suffix type) is found by
-        /// <see cref="Titles"/> from the item name like every dump title. <paramref name="GrantId"/>: the dump's 30 title
-        /// items carry grantIds 31-60 in id order (4519 Champion of the People = 60) [P]; the later titles' grant ids are
-        /// unknown, 61-66 are a continuation [I]. <see cref="Titles"/> keys titles by item id, so the grant is only
-        /// written into the record.
+        /// One title item ("Title: X", category 229). The world server's Titles code finds the title itself (text and
+        /// prefix / suffix type) from the item name like every dump title. <paramref name="GrantId"/>: the dump's 30
+        /// title items carry grantIds 31-60 in id order (4519 Champion of the People = 60) [P]; the later titles' grant
+        /// ids are unknown, 61-66 are a continuation [I]. Titles are keyed by item id, so the grant is only written into
+        /// the record.
         /// </summary>
         public sealed record TitleItem(uint Id, string Name, uint NameId, uint GrantId, string Source);
 
