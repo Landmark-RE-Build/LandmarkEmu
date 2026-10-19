@@ -7,6 +7,7 @@ namespace LandmarkEmulator.Database.Auth
     public class AuthContext : DbContext
     {
         public DbSet<AccountModel> Account { get; set; }
+        public DbSet<AdminModel> Admin { get; set; }
         public DbSet<ZoneServerModel> ZoneServer { get; set; }
 
         private readonly IDatabaseConfig config;
@@ -119,6 +120,26 @@ namespace LandmarkEmulator.Database.Auth
                 entity.Property(e => e.MemberStipendAt)
                     .HasColumnName("memberStipendAt")
                     .HasColumnType("datetime");
+            });
+
+            modelBuilder.Entity<AdminModel>(entity =>
+            {
+                entity.ToTable("admin");
+
+                entity.HasIndex(e => e.Entry)
+                    .IsUnique()
+                    .HasDatabaseName("entry");
+
+                entity.Property(e => e.Id)
+                    .HasColumnName("id")
+                    .HasColumnType("bigint(20) unsigned")
+                    .ValueGeneratedOnAdd();
+
+                entity.Property(e => e.Entry)
+                    .IsRequired()
+                    .HasColumnName("entry")
+                    .HasColumnType("varchar(255)")
+                    .HasDefaultValue("");
             });
 
             modelBuilder.Entity<ZoneServerModel>(entity =>

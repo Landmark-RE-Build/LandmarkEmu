@@ -9,22 +9,23 @@ using System.Linq;
 namespace LandmarkEmulator.WorldServer.Game
 {
     /// <summary>
-    /// The admin menu: accounts or characters named in WorldServer.json "Admins" (<see cref="IsAdmin"/>) get a /admin chat command that opens
-    /// an Admin page in the in-game browser (the client's own OpenMarketplaceTo(url), global.lua; the page is served by
-    /// <see cref="WebPages"/> at /admin, opened with the player's Showcase token once and then by an admin cookie,
-    /// <see cref="AdminSessions"/>). The page's buttons run <see cref="DevCommands"/>
-    /// for the admin or any player online; the commands go through the same queue as dev_commands.txt and run on the
-    /// next world tick. Only admins' tokens are accepted, and every command run is logged with who ran it.
+    /// The admin menu: accounts or characters named in WorldServer.json / .env "Admins" or in the auth DB <c>admin</c>
+    /// table (<see cref="IsAdmin"/>) get a /admin chat command that opens an Admin page in the in-game browser (the
+    /// client's own OpenMarketplaceTo(url), global.lua; the page is served by <see cref="WebPages"/> at /admin, opened
+    /// with the player's Showcase token once and then by an admin cookie, <see cref="AdminSessions"/>). The page's
+    /// buttons run <see cref="DevCommands"/> for the admin or any player online; the commands go through the same queue
+    /// as dev_commands.txt and run on the next world tick. Only admins' tokens are accepted, and every command run is
+    /// logged with who ran it. The DB list is SQL-managed; .env stays an optional bootstrap.
     /// </summary>
     public static class Admin
     {
         private static readonly ILogger log = LogManager.GetCurrentClassLogger();
 
         /// <summary>
-        /// Is this player an admin (an entry in WorldServer.json "Admins", Docker ADMIN_ACCOUNT / ADMIN_2 / ADMIN_3, or in
-        /// the comma-separated "AdminList", Docker ADMINS)? An entry is <c>account:Name</c> (only the account username is
-        /// compared), <c>character:Name</c> (only the character name), or a bare name (either, under the contest rule of
-        /// <see cref="Contested"/>).
+        /// Is this player an admin (an entry in WorldServer.json / .env "Admins" / "AdminList", Docker ADMIN_ACCOUNT /
+        /// ADMIN_2 / ADMIN_3 / ADMINS, or in the auth DB <c>admin</c> table)? An entry is <c>account:Name</c> (only the
+        /// account username is compared), <c>character:Name</c> (only the character name), or a bare name (either, under
+        /// the contest rule of <see cref="Contested"/>).
         /// </summary>
         public static bool IsAdmin(WorldSession session)
         {
@@ -51,12 +52,36 @@ namespace LandmarkEmulator.WorldServer.Game
             return false;
         }
 
-        /// <summary>Every configured admin entry, trimmed, empty ones left out.</summary>
+        /// <summary>
+        /// Every admin entry: .env / WorldServer.json <see cref="WorldServerConfiguration.Admins"/> and
+        /// <see cref="WorldServerConfiguration.AdminList"/> (bootstrap), then the auth DB <c>admin</c> table. Trimmed,
+        /// empty ones left out. Prefer <see cref="Entries(WorldServerConfiguration, IEnumerable{string})"/> in tests.
+        /// </summary>
         internal static IEnumerable<string> Entries(WorldServerConfiguration config)
+            => Entries(config, DatabaseAdminEntries());
+
+        /// <summary>Union of config bootstrap entries and DB rows (tests pass a fixed DB list).</summary>
+        internal static IEnumerable<string> Entries(WorldServerConfiguration config, IEnumerable<string> dbEntries)
             => (config.Admins ?? new List<string>())
                 .Concat((config.AdminList ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                .Concat(dbEntries ?? Enumerable.Empty<string>())
                 .Where(a => !string.IsNullOrWhiteSpace(a))
                 .Select(a => a.Trim());
+
+        /// <summary>Auth DB admin rows, or none when the database is not initialised (unit tests).</summary>
+        private static IEnumerable<string> DatabaseAdminEntries()
+        {
+            try
+            {
+                return Shared.Database.DatabaseManager.Instance.AuthDatabase?.GetAdminEntries()
+                    ?? Enumerable.Empty<string>();
+            }
+            catch (Exception e)
+            {
+                log.Warn($"Admin DB entries unavailable ({e.Message}); using .env only.");
+                return Enumerable.Empty<string>();
+            }
+        }
 
         /// <summary>Which name an admin entry names (review 2026-10-18b #2).</summary>
         internal enum EntryKind
@@ -229,7 +254,7 @@ input,select{background:#2a2d34;color:#eee;border:1px solid #444;border-radius:4
 <button onclick="run('revive')">Revive</button><button onclick="ask('coins','Coins to give (e.g. +1000)')">Coins…</button></div>
 <div class="row">Give item: <input id="item" size="7" placeholder="item id"> x <input id="count" size="4" value="1">
 <button onclick="run('give '+v('item')+' '+v('count'))">Give</button>
-<input id="find" size="14" placeholder="find item by name"><button onclick="run('finditem '+v('find'))">Find (server log)</button></div>
+<input id="find" size="14" placeholder="find item by name"><button onclick="findItem()">Find (server log)</button></div>
 
 <h2>Travel</h2>
 <div class="row"><button onclick="run('spire')">Spire</button><button onclick="run('tpclaim')">My build site</button>
@@ -276,6 +301,7 @@ function call(path,cb){var x=new XMLHttpRequest();x.open('POST','/api/'+path);x.
 x.onload=function(){try{cb(JSON.parse(x.responseText));}catch(e){say('Bad answer: '+x.status);}};x.onerror=function(){say('Server not reachable.');};x.send('csrf='+encodeURIComponent(csrf));}
 function runFor(tg,c){call('admin/run?target='+encodeURIComponent(tg)+'&cmd='+encodeURIComponent(c),function(r){say(r.message);});}
 function run(c){runFor(v('target'),c);}
+function findItem(){var q=v('find').replace(/^\s+|\s+$/g,'');if(!q){say('Type a name fragment or #id first.');return;}run('finditem '+q);}
 function one(){var tg=v('target');if(tg=='me'||tg=='all'){say('Pick one player as the target first.');return false;}return true;}
 function kick(){if(!one())return;var s=parseInt(v('ksecs'),10);if(isNaN(s)||s<0)s=0;
 if(confirm('Kick '+v('target')+(s>0?' in '+s+' s':' now')+'?'))run('kick '+s+(v('kwhy')?' '+v('kwhy'):''));}

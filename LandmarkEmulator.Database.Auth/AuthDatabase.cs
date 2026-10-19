@@ -328,5 +328,47 @@ namespace LandmarkEmulator.Database.Auth
                 .AsNoTracking()
                 .ToImmutableList();
         }
+
+        /// <summary>
+        /// Global admin entries from the <c>admin</c> table (same string form as .env ADMIN_*). Cached about a minute so
+        /// every <c>Admin.IsAdmin</c> check is cheap; SQL inserts/deletes take effect within that window without a restart.
+        /// </summary>
+        public IReadOnlyList<string> GetAdminEntries()
+        {
+            DateTime now = DateTime.UtcNow;
+            lock (adminEntriesLock)
+            {
+                if (adminEntriesCache != null && now - adminEntriesCachedAt < AdminEntriesRecheck)
+                    return adminEntriesCache;
+            }
+            ImmutableList<string> next;
+            try
+            {
+                using var context = new AuthContext(config);
+                next = context.Admin.AsNoTracking()
+                    .Select(a => a.Entry)
+                    .AsEnumerable()
+                    .Where(e => !string.IsNullOrWhiteSpace(e))
+                    .Select(e => e.Trim())
+                    .ToImmutableList();
+            }
+            catch (Exception e)
+            {
+                log.Warn($"Admin entries could not be read ({e.Message}); using the last cache or none.");
+                lock (adminEntriesLock)
+                    return adminEntriesCache ?? ImmutableList<string>.Empty;
+            }
+            lock (adminEntriesLock)
+            {
+                adminEntriesCache = next;
+                adminEntriesCachedAt = now;
+                return next;
+            }
+        }
+
+        private static readonly object adminEntriesLock = new();
+        private static ImmutableList<string> adminEntriesCache;
+        private static DateTime adminEntriesCachedAt;
+        private static readonly TimeSpan AdminEntriesRecheck = TimeSpan.FromMinutes(1);
     }
 }
