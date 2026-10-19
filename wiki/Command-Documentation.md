@@ -15,13 +15,14 @@ LandmarkEmu has three kinds of commands:
 
 ## Who is an admin
 
-The world settings `ADMIN_ACCOUNT`, `ADMIN_2`, `ADMIN_3` and `ADMINS` (comma separated) name the admins (see
+Day-to-day admins live in the auth database table `admin` (global across worlds; SQL only — see
+[Account Creation](Account-Creation#admins)). Optional bootstrap: world settings `ADMIN_ACCOUNT`, `ADMIN_2`,
+`ADMIN_3` and `ADMINS` (comma separated; see
 [Settings Reference](Settings-Reference#admin_account-admin_2-admin_3-admins)). Write each entry as
 `account:<account name>` (every character of that account) or `character:<character name>` (that character, on
 any account). A bare name still works for either, but is ignored while an account and another player's character
-share it, so nobody can become admin by registering an admin's name in the other namespace. Admin rights are
-per world: each world reads its own list. An admin sees "You are an admin: type /admin to open the admin menu." when
-entering the world.
+share it, so nobody can become admin by registering an admin's name in the other namespace. An admin sees
+"You are an admin: type /admin to open the admin menu." when entering the world.
 
 ## Running dev commands
 

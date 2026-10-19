@@ -2,10 +2,22 @@
 
 The retail client has a set of admin slash commands that only run when the server marks the player as an admin:
 SendSelfToClient carries an admin-player bool (`IsAdminMaybe` in the server's SendSelf model, player +0x7b0d8 in the
-0.695 client), and the client checks "admin client OR admin player" before each command. The server sets it for the
-entries in WorldServer.json `Admins` and `AdminList` (Docker: `ADMIN_ACCOUNT`, `ADMIN_2`, `ADMIN_3` in `.env` →
-`Admins__0..2`, and `ADMINS`, comma separated → `AdminList`; see docker.md). An admin also gets the `/admin` web menu
-(`Game/Admin.cs`).
+0.695 client), and the client checks "admin client OR admin player" before each command. The server sets it for rows in
+the auth database table `admin` (global across worlds) and for any bootstrap entries in WorldServer.json `Admins` /
+`AdminList` (Docker: `ADMIN_ACCOUNT`, `ADMIN_2`, `ADMIN_3` in `.env` → `Admins__0..2`, and `ADMINS`, comma separated →
+`AdminList`; see docker.md). An admin also gets the `/admin` web menu (`Game/Admin.cs`).
+
+**Day-to-day management is SQL** on `lmemu_auth.admin` (host port `DB_PORT`, default 3307). There is no in-game grant
+or revoke: an admin who could change the list from the game could make anyone an admin. `.env` remains an optional
+bootstrap / emergency overlay (OR'd with the table). The world caches DB rows for about a minute, so inserts and
+deletes apply without a restart; the client flag and `/admin` bind still need a **relog**.
+
+```sql
+INSERT INTO admin (entry) VALUES ('account:Alice');
+INSERT INTO admin (entry) VALUES ('character:Bob');
+DELETE FROM admin WHERE entry = 'account:Alice';
+SELECT * FROM admin;
+```
 
 Each entry names an account or a character:
 
@@ -25,7 +37,7 @@ namespace). A contested entry makes nobody an admin — anyone could otherwise b
 character name as an account — and the world logs an error with the prefixed form to use instead. An uncontested bare
 entry logs the same advice once at Info level.
 
-Example `.env`:
+Optional `.env` bootstrap (same entry form):
 
 ```
 ADMIN_ACCOUNT=account:Alice
@@ -194,8 +206,9 @@ the page's value until then.
 match the Docker port mappings and the other containers. Ids (`ZoneServerId`, `ClientWorldId`). Folders and files
 (`GameDataPath`, `GameDirectory`, `HealthFile`, `SettingsOverridesFile`). `Continent`, `TerrainLodCopies`,
 `KeepVertexOnlyVoxels`: one `.env` line feeds the world and the Environment Server, and an override on the world alone
-would make them disagree. The admin list (`Admins`, `AdminList`): an admin who could change it on the page could make
-anyone an admin. `StoreLumenPrices` (the JSON dictionary form; edit `STORE_PRICES`).
+would make them disagree. The admin bootstrap (`Admins`, `AdminList`) and the auth DB `admin` table: an admin who could
+change either on the page could make anyone an admin (manage the table with SQL; docs above). `StoreLumenPrices` (the
+JSON dictionary form; edit `STORE_PRICES`).
 
 **Secrets.** The database connections (they carry `DB_PASSWORD`) are never sent to the page, only "set" / "not set";
 any setting whose name ends in ConnectionString / Password / Secret / Token is treated the same way.

@@ -157,7 +157,7 @@ Players allowed in the world at once; more logins wait in the login queue, membe
 
 ### `ADMIN_ACCOUNT`, `ADMIN_2`, `ADMIN_3`, `ADMINS`
 
-Admins: in-game admin commands and the /admin menu. Write each as account:&lt;account name&gt; or character:&lt;character name&gt; (e.g. ADMIN_ACCOUNT=account:Alice, ADMIN_2=character:AliceTheBuilder): then only that kind of name is checked, and nobody can take the entry away by registering the same name as the other kind. A bare name still works (account or character) but is ignored while an account and another player's character share it (docs/admin.md). ADMINS: any number more, comma separated (e.g. account:Alice,character:Bob).
+Admins (optional bootstrap): day-to-day staff live in the auth DB table admin (SQL: INSERT INTO admin (entry) VALUES ('account:Alice'); see docs/admin.md). The lines below are OR'd with that table for a first admin or emergency. Write each as account:&lt;account name&gt; or character:&lt;character name&gt; (e.g. ADMIN_ACCOUNT=account:Alice): then only that kind of name is checked. A bare name still works but is ignored while an account and another player's character share it. ADMINS: any number more, comma separated (e.g. account:Alice,character:Bob).
 
 | `.env` | Service setting | Default | Live |
 |---|---|---|---|
@@ -1249,6 +1249,7 @@ Read with `Environment.GetEnvironmentVariable`, not through the settings files.
 | Variable | Read by | In .env.example |
 |---|---|---|
 | `LOGIN_INTERNAL_ADDRESS` | `LandmarkEmulator.GatewayServer/HostedService.cs` | yes |
+| `DIGSHAPE_DUMP` | `LandmarkEmulator.Tests/Rules/DigShapeTests.cs` | no |
 | `GATEWAY_INTERNAL_ADDRESS` | `LandmarkEmulator.WorldServer/HostedService.cs` | no (internal: the older spelling of GatewayInternalAddress (Docker sets that key in docker/gateway/world.override.yml)) |
 | `ZONE_INTERNAL_PORT` | `LandmarkEmulator.WorldServer/HostedService.cs` | no (internal: set by docker/gateway/world.override.yml (the zone's port for the world channel)) |
 | `LANDMARK_NOSTREAM` | `LandmarkEmulator.WorldServer/Game/DevCommands.cs` | no (internal test switch: 1 = no trees, plants or creatures are streamed) |

@@ -391,16 +391,17 @@ namespace LandmarkEmulator.WorldServer
         public string MotdBody { get; set; } = "This server is LandmarkEmu, a fan-made recreation. Have fun building!";
 
         /// <summary>
-        /// Admins: accounts or characters allowed the in-game admin menu (/admin, <see cref="Game.Admin"/>). Each entry is
-        /// "account:Name" (only the account username is checked), "character:Name" (only the character name) or a bare
-        /// name (either; ignored while an account and another player's character share it, docs/admin.md).
-        /// Docker: ADMIN_ACCOUNT, ADMIN_2, ADMIN_3 (Admins__0-2); more in <see cref="AdminList"/>.
+        /// Bootstrap admins for the in-game admin menu (/admin, <see cref="Game.Admin"/>), OR'd with the auth DB
+        /// <c>admin</c> table. Each entry is "account:Name" (only the account username is checked), "character:Name"
+        /// (only the character name) or a bare name (either; ignored while an account and another player's character
+        /// share it, docs/admin.md). Docker: ADMIN_ACCOUNT, ADMIN_2, ADMIN_3 (Admins__0-2); more in <see cref="AdminList"/>.
         /// </summary>
         public System.Collections.Generic.List<string> Admins { get; set; } = new();
 
         /// <summary>
-        /// More admins, comma separated ("Alice,Bob,Carol"), added to <see cref="Admins"/> — one .env line for any number
-        /// of them (Docker: ADMINS). Empty = none.
+        /// More bootstrap admins, comma separated ("Alice,Bob,Carol"), added to <see cref="Admins"/> — one .env line for
+        /// any number of them (Docker: ADMINS). Empty = none. Prefer the auth DB <c>admin</c> table for day-to-day
+        /// adds/removes.
         /// </summary>
         public string AdminList { get; set; } = "";
 
