@@ -29,12 +29,11 @@ CRC32.
 
 | Build | Files | SHA-256 known |
 |---|---|---|
-| January 2017 build (Daybreak's list with three earlier files: `Landmark64.exe`, `Locale\en_us_data.dat`, `Locale\en_us_data.dir`) | 34,138 | all |
-| Daybreak's final build (February 2017) | 34,138 | all but those three files |
+| January 2017 build (Daybreak's list with three earlier files: `Landmark64.exe`, `Locale\en_us_data.dat`, `Locale\en_us_data.dir`; exe string `0.695.1.132647`) | 34,138 | all |
+| Daybreak's final build (February 2017; exe string `0.699.1.132863`) | 34,138 | all |
 
-A pack for the final build is refused until genuine copies of its three files are found. LaunchPad has an opt-in
-(off by default) to accept those three by size and CRC32 for local pack files only; it never applies to a server's
-update.
+Both builds are fully verified (Feb fingerprints added 2026-10-20). The February opt-in in LaunchPad settings is kept
+for older installs / tests; with the current strong list it has no effect.
 
 ## Making it
 
