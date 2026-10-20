@@ -324,6 +324,37 @@ namespace LandmarkEmulator.Database.Character
             context.SaveChanges();
         }
 
+        /// <summary>World NPC narrative flags for one character (Game.Npc.WorldNpcs).</summary>
+        public List<CharacterNpcFlagModel> GetNpcFlags(ulong characterId)
+        {
+            using var context = new CharacterContext(config);
+            return context.CharacterNpcFlag.AsNoTracking().Where(f => f.CharacterId == characterId).ToList();
+        }
+
+        /// <summary>Inserts or updates one world-NPC flag row.</summary>
+        public void SaveNpcFlag(CharacterNpcFlagModel row)
+        {
+            using var context = new CharacterContext(config);
+            CharacterNpcFlagModel existing = context.CharacterNpcFlag
+                .FirstOrDefault(f => f.CharacterId == row.CharacterId && f.NpcId == row.NpcId && f.Key == row.Key);
+            if (existing == null)
+                context.CharacterNpcFlag.Add(row);
+            else
+                existing.Value = row.Value;
+            context.SaveChanges();
+        }
+
+        /// <summary>Removes every world-NPC flag for a character (optional npc id filter).</summary>
+        public void ClearNpcFlags(ulong characterId, string npcId = null)
+        {
+            using var context = new CharacterContext(config);
+            IQueryable<CharacterNpcFlagModel> q = context.CharacterNpcFlag.Where(f => f.CharacterId == characterId);
+            if (!string.IsNullOrEmpty(npcId))
+                q = q.Where(f => f.NpcId == npcId);
+            context.CharacterNpcFlag.RemoveRange(q);
+            context.SaveChanges();
+        }
+
         /// <summary>The characters on this character's friends list.</summary>
         public List<CharacterModel> GetFriends(ulong characterId)
         {

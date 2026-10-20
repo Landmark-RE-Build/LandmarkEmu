@@ -578,6 +578,7 @@ namespace LandmarkEmulator.WorldServer.Network
             Inventory = new Game.Inventory.Inventory(model);
             LearnedRecipes = Game.RecipeBook.LoadLearned(model.Id);
             Game.Achievements.LoadCharacter(model.Id);
+            Game.Npc.WorldNpcs.LoadCharacter(model.Id);
             PreferenceXml = Game.Preferences.Load(model.Id);
             InventoryFilters = Game.InventoryFilters.Load(model.Id);
             //EnqueueMessage((ZoneMessageOpcode)0x16015A04, File.ReadAllBytes("packets\\25-unknown").AsSpan().Slice(4).ToArray());
@@ -635,6 +636,7 @@ namespace LandmarkEmulator.WorldServer.Network
             Inventory = new Game.Inventory.Inventory(model);
             LearnedRecipes = Game.RecipeBook.LoadLearned(model.Id);
             Game.Achievements.LoadCharacter(model.Id);
+            Game.Npc.WorldNpcs.LoadCharacter(model.Id);
             PreferenceXml = Game.Preferences.Load(model.Id);
             InventoryFilters = Game.InventoryFilters.Load(model.Id);
             BuildSendToSelfPacket(send: false);

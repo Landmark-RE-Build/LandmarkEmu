@@ -169,7 +169,12 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <see cref="sync"/>.
         /// </summary>
         private static bool IsAvailable(ulong character, Achievement a)
-            => a.UnlockedBy == 0 || (achievements.TryGetValue(a.UnlockedBy, out Achievement before) && IsComplete(character, before));
+        {
+            // World-NPC quests stay hidden until OfferNpcQuest activates an objective (Achievements.NpcQuests.cs).
+            if (!NpcQuestVisible(character, a))
+                return false;
+            return a.UnlockedBy == 0 || (achievements.TryGetValue(a.UnlockedBy, out Achievement before) && IsComplete(character, before));
+        }
 
         /// <summary>Makes the <see cref="Tiers"/> records, appends them to the template and parses everything again.</summary>
         private static void AddTiers()

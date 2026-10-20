@@ -114,6 +114,8 @@ namespace LandmarkEmulator.WorldServer
             Game.Terrain.VoxelTemplate.Folder = System.IO.Path.Combine(worldConfig.GameDirectory ?? "", "CommonData", "Voxel", "templates");
             Game.LandmarksOfLandmark.Load(System.IO.Path.Combine(System.AppContext.BaseDirectory, "TerrainEdits"));
             Game.Spire.Load(worldConfig.GameDirectory, System.IO.Path.Combine(System.AppContext.BaseDirectory, "TerrainEdits"));
+            // World NPCs after the Spire (homes are Spire-relative offsets) and achievements / terrain heights.
+            Game.Npc.WorldNpcs.Init();
             // Sites still on the old Pioneer lands 417-421 move to their replacements 464-468 (after the Spires: a new spot
             // keeps clear of the land's Spire; MoveOldPioneerSites, idempotent).
             Game.Pioneer.MoveOldSites();
@@ -195,6 +197,7 @@ namespace LandmarkEmulator.WorldServer
                 Run("world editing", Game.WorldEditing.Update);
                 Run("heroic movement", Game.HeroicMovement.Update);
                 Run("creatures", Game.Creatures.Update);
+                Run("world npcs", Game.Npc.WorldNpcs.Update);
                 Run("site pathing", Game.Pathing.UpdateSites);
                 Run("combat states", Game.Combat.Statuses.Update);
                 Run("outposts", Game.Outposts.Update);

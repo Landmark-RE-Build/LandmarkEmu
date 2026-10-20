@@ -2261,7 +2261,9 @@ namespace LandmarkEmulator.WorldServer.Game
         /// it isn't an enemy (11 May 2016, P5304: only creatures with an active interaction Link show it; P5305:
         /// enemy-faction creatures can't be interacted with).
         /// </summary>
-        private static bool Interactable(Creature c) => c.Story && c.Faction != 0 && StoryTools.CreatureHasClickLink(c.Guid);
+        private static bool Interactable(Creature c)
+            => c.Story && c.Faction != 0
+                && (StoryTools.CreatureHasClickLink(c.Guid) || Npc.WorldNpcs.Owns(c.Guid));
 
         /// <summary>Whether a story creature can be clicked now (<see cref="Interactable(Creature)"/>).</summary>
         public static bool IsInteractable(ulong guid) => FindStory(guid) is Creature c && Interactable(c);
@@ -3919,6 +3921,45 @@ namespace LandmarkEmulator.WorldServer.Game
             // On the surface: the ground there. Underground (well below it): the player's own height.
             if (TerrainHeights.HeightAt(at.X, at.Z, zone) is float ground && session.Position.Y > ground - 20f)
                 at.Y = ground;
+            Place(zone, at, kind);
+        }
+
+        /// <summary>
+        /// Seeds <paramref name="count"/> surface creatures around <paramref name="centre"/> (world NPC quest pockets).
+        /// Skips Spire platform, claims, graveyards, sea and steep ground — same rules as random surface fungus.
+        /// </summary>
+        public static int SeedNear(uint zone, Vector3 centre, string kindName, int count, float minRadius, float maxRadius)
+        {
+            if (!kindsByName.TryGetValue(kindName ?? "", out Kind kind))
+                kind = DevKind(kindName);
+            if (kind == null || count <= 0)
+                return 0;
+            var rng = new Random(Shared.StableHash.Combine((int)centre.X, (int)centre.Z, (int)zone ^ kind.Model.GetHashCode()));
+            int placed = 0;
+            for (int attempt = 0; attempt < count * 12 && placed < count; attempt++)
+            {
+                double ang = rng.NextDouble() * Math.PI * 2;
+                float dist = minRadius + (float)rng.NextDouble() * Math.Max(0.1f, maxRadius - minRadius);
+                float x = centre.X + MathF.Cos((float)ang) * dist;
+                float z = centre.Z + MathF.Sin((float)ang) * dist;
+                if (Spire.Covers(zone, x, z))
+                    continue;
+                if (TerrainHeights.HeightAt(x, z, zone) is not float y || y < 1002f || TerrainHeights.Slope(x, z, 2f, zone) > 0.7f)
+                    continue;
+                var at = new Vector3(x, y, z);
+                if (Graveyards.PreventsSpawning(zone, at))
+                    continue;
+                var global = TerrainEdits.ToGlobal(at);
+                if (!Claims.MayEdit(0, global.X, global.Y, global.Z, zone))
+                    continue;
+                Place(zone, at, kind);
+                placed++;
+            }
+            return placed;
+        }
+
+        private static void Place(uint zone, Vector3 at, Kind kind)
+        {
             long key = Pack(zone, (int)MathF.Floor(at.X / RegionSize), (int)MathF.Floor(at.Z / RegionSize));
             Creature c;
             lock (sync)

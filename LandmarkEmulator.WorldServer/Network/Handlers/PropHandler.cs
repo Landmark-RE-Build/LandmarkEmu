@@ -102,7 +102,12 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                     // PropPacketDialogResponse (0.695; Lua Prop.OnConfirmNpcDialog / OnDenyNpcDialog, FUN_1435fbf80 /
                     // FUN_1435fc030): {u64 question id as the server sent it, bool accepted}.
                     if (request.Body.Length >= 9)
-                        Game.StoryTools.DialogResponse(session, reader.ReadULong(), reader.ReadBool());
+                    {
+                        ulong questionId = reader.ReadULong();
+                        bool accepted = reader.ReadBool();
+                        if (!Game.Npc.WorldNpcs.DialogResponse(session, questionId, accepted))
+                            Game.StoryTools.DialogResponse(session, questionId, accepted);
+                    }
                     break;
                 case 0x0C:
                     // PropProcessorStateNotification: the client's placement tool reporting its state
