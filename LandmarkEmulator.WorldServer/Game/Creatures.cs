@@ -132,9 +132,21 @@ namespace LandmarkEmulator.WorldServer.Game
 
         /// <summary>Reach of the stationary spore cloud, the ranged spit, and the fungus fuse / blast.</summary>
         private const float SporeReach = 7f, SpitRange = 16f, SpitKeepAway = 6f, FuseRange = 3.5f, BlastRadius = 5f;
-        private static readonly TimeSpan FuseTime = TimeSpan.FromSeconds(1.5), BlastLinger = TimeSpan.FromSeconds(1.2);
+        /// <summary>
+        /// Fiery Fungus starts Agro Sequence1 (Stand_Break → AttackIdle swell) at this range so AttackIdle is already
+        /// playing when the <see cref="FuseRange"/> fuse + 10918 boom begin. Sequence Breaks alone eat the whole 1.5 s fuse.
+        /// </summary>
+        private const float FungusSwellRange = 10f;
+        /// <summary>
+        /// Fuse matches <see cref="FungusExplosion"/>'s boom trigger (1.5 s). Linger covers that composite's
+        /// material tail (ends at 3.0 s from arm = 1.5 s after detonate).
+        /// </summary>
+        private static readonly TimeSpan FuseTime = TimeSpan.FromSeconds(1.5), BlastLinger = TimeSpan.FromSeconds(1.5);
+        /// <summary>Grow-splode Dud composite: buildup then fizzle (no boom); longer than <see cref="FuseTime"/>.</summary>
+        private static readonly TimeSpan DudFuseTime = TimeSpan.FromSeconds(2.0);
         /// <summary>Composite effects (ActorCompositeEffectDefinitions): the monsters' own attacks.</summary>
-        private const uint FungusExplosion = 10918, FungusImpact = 10922, ChomperSporeRelease = 11676, ChomperSporeImpact = 11611,
+        private const uint FungusExplosion = 10918, FungusImpact = 10922, FungusDud = 11629,
+            ChomperSporeRelease = 11676, ChomperSporeImpact = 11611,
             AbominationSpitRelease = 11627, AbominationSpitImpact = 11625;
 
         /// <summary>
@@ -313,8 +325,14 @@ namespace LandmarkEmulator.WorldServer.Game
             public Vector3? FocusAt;
             /// <summary>The Chaos Cavern it lives in (index into <see cref="Caves.Caverns"/>), −1 on the surface.</summary>
             public int Cavern = -1;
+            /// <summary>
+            /// Homemade melee combo stage (0–2): picks NPC Enter/Release AttackIndex 0 / 1 / 2 (357/360, 356/361, 358/362).
+            /// </summary>
+            public byte AttackCombo;
             /// <summary>A Fiery Fungus's fuse: it explodes at this time.</summary>
             public DateTime FuseAt;
+            /// <summary>Fiery Fungus already got WeaponIdle 1 (Agro Sequence1) for an approaching player.</summary>
+            public bool FungusAgro;
             /// <summary>An exploded fungus stays visible until this time (its blast plays on it), then goes.</summary>
             public DateTime RemoveAt;
             /// <summary>
@@ -700,7 +718,7 @@ namespace LandmarkEmulator.WorldServer.Game
                         Combat.CreatureAbilities.Ability ability = c.Pending ?? Combat.CreatureAbilities.Basic(c.Kind.Name);
                         c.Pending = null;
                         uint damage = ability == null ? c.Kind.Damage : (uint)MathF.Round(c.Kind.Damage * ability.DamageFactor);
-                        PlayAnim(c, AnimAttack, tp);
+                        PlayNpcSwing(c, tp);
                         if (release == AbominationSpitRelease && c.Kind.Projectile != 0)
                         {
                             Shoot(c, f, t, tp, now, ability);
@@ -1435,11 +1453,11 @@ namespace LandmarkEmulator.WorldServer.Game
                 return false;
             session.EnqueueMessage(new PlayerUpdateLightweightToFullNpc { TransientId = c.TransientId, Disposition = DispositionOf(c) });
             session.FullNpcs[guid] = c.TransientId;
-            // [I] Equipped weapons once more after the full data: the selection only takes when the client's actor has its
-            // animation network (FUN_142dfc010 asks the actor for it, vtable +0x468), which a just-spawned entity may not
-            // have yet; the client asks for full data a frame or two later (FUN_142ee8540). 40 bytes, equipped ones only.
-            if (c.Story && c.WeaponsEquipped)
-                session.EnqueueMessage(ZoneMessageOpcode.AbilityPlayAnim, PlayAnimBody(c, AnimNpcWeaponsEquipped, Ahead(c)));
+            // [I] Weapon / NPC anim state once more after the full data: the selection only takes when the client's actor
+            // has its animation network (FUN_142dfc010 asks the actor for it, vtable +0x468), which a just-spawned entity
+            // may not have yet; the client asks for full data a frame or two later (FUN_142ee8540). Live re-sends 502 then
+            // too (5Iewo: often two RequestAnimationSelection per guid).
+            SendNpcAnimState(session, c);
             // [I] Its mood and stance once more for the same reason.
             SendPose(session, c);
             // Its weapon in hand (CreatureWeapons; on by default): only now, as the slot packet finds full entities only.
@@ -1669,14 +1687,18 @@ namespace LandmarkEmulator.WorldServer.Game
             if (hit.Kind.Style == Behaviour.Exploder)
             {
                 // Shooting or hitting a Fiery Fungus sets it off (wiki: shoot them to set them off from a safe
-                // distance):
-                // it blows up on the next AI step; the loot goes to whoever triggered it.
+                // distance). Same arming as approach: swell composite then boom; loot goes to the attacker.
+                bool arm = false;
                 lock (sync)
-                    if (hit.FuseAt == default || hit.FuseAt > DateTime.UtcNow)
+                    if (hit.FuseAt == default)
                     {
-                        hit.FuseAt = DateTime.UtcNow;
                         hit.Target = attacker;
+                        arm = true;
                     }
+                    else if (hit.FuseAt > DateTime.UtcNow)
+                        hit.Target = attacker;
+                if (arm)
+                    ArmExploder(hit, attacker, attacker.Position, DateTime.UtcNow);
                 SendCombatEvent(attacker, attacker.PlayerGuid, hit.Guid, damage);
                 Health.HitConfirmed(attacker);
                 HitEffects.Play(attacker, hit.Guid, ViewersOf(hit), ranged);
@@ -1850,6 +1872,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 // and loot for whoever lit it (bughunt-combat.md B5).
                 c.FuseAt = default;
                 c.Dud = false;
+                c.FungusAgro = false;
                 c.Pending = null;
             }
             if (c.Boss && c.Cavern >= 0)
@@ -1963,10 +1986,11 @@ namespace LandmarkEmulator.WorldServer.Game
 
         /// <summary>
         /// A Fiery Fungus or a Proximity Mine (<see cref="Behaviour.Exploder"/>): still until something it would go off for
-        /// comes within <see cref="FuseRange"/>; then it inflates (its attack animation; a mine shows its warning) and
-        /// after <see cref="FuseTime"/> explodes: the blast plays on it, everyone in <see cref="BlastRadius"/> it would hurt
-        /// takes its damage (a mine also knocks them down: Crush, "knocking them down"), it drops its loot for the player
-        /// who set it off (fungi only) and is gone a moment later. A hit sets it off at once (Hit).
+        /// comes within <see cref="FuseRange"/>; then it arms — fungus: <see cref="FungusExplosion"/> (buildup for
+        /// <see cref="FuseTime"/> then boom, plus WeaponIdle 1 for mesh swell); mine: warning — and after the fuse
+        /// detonates: everyone in <see cref="BlastRadius"/> it would hurt takes its damage (a mine also knocks them down:
+        /// Crush), it drops its loot for the player who set it off (fungi only) and is gone a moment later. A hit arms
+        /// the same way (<see cref="Hit"/>).
         ///
         /// Factions (story fungi and mines: "the same faction and respawn settings as other non-pathing creatures like
         /// fiery fungi", P5269; P4223 for what each faction does): world fungi and Enemy ones go off for players and for
@@ -1989,12 +2013,25 @@ namespace LandmarkEmulator.WorldServer.Game
                 else if (NearestFoe(c, FuseRange) is Creature foe)
                     at = foe.Position;
                 else
+                {
+                    // Start Stand_Break → AttackIdle before the fuse so swell is on when 10918 / damage fire.
+                    if (!c.Kind.Mine && !c.FungusAgro && c.Faction == FactionEnemy)
+                    {
+                        WorldSession swell = players.FirstOrDefault(p =>
+                            p.ZoneId == c.Zone && !Health.IsDead(p) && Dist(c, p.Position) <= FungusSwellRange);
+                        if (swell != null)
+                        {
+                            c.FungusAgro = true;
+                            foreach (WorldSession s in ViewersOf(c))
+                                if (!s.FullNpcs.ContainsKey(c.Guid))
+                                    SendFull(s, c.Guid);
+                            PlayFungusInflate(c, swell.Position);
+                        }
+                    }
                     return;
-                c.FuseAt = now + FuseTime;
+                }
                 c.Target = near;
-                if (c.Kind.Mine)
-                    HitEffects.PlayOn(c.Guid, MineWarning, ViewersOf(c));
-                PlayAnim(c, AnimAttack, at);
+                ArmExploder(c, near, at, now);
                 return;
             }
             if (now < c.FuseAt)
@@ -2004,7 +2041,9 @@ namespace LandmarkEmulator.WorldServer.Game
             bool dud = c.Dud;
             c.Dud = false;
             List<WorldSession> viewers = ViewersOf(c);
-            HitEffects.PlayOn(c.Guid, c.Kind.Mine ? MineExplosion : FungusExplosion, viewers);
+            // Mines: blast composite here. Fungus mesh Explode/Dud was started at arm (with 10918); damage/loot only here.
+            if (c.Kind.Mine)
+                HitEffects.PlayOn(c.Guid, MineExplosion, viewers);
             if (c.Faction != FactionAlly && !dud)
                 foreach (WorldSession p in players.Where(p => p.ZoneId == c.Zone && !Health.IsDead(p) && Dist(c, p.Position) <= BlastRadius))
                 {
@@ -2050,6 +2089,46 @@ namespace LandmarkEmulator.WorldServer.Game
             if (c.Story)
                 StoryTools.CreatureDied(c.Guid, byPlayer ? trigger : null);
             log.Debug($"A {c.Kind.Name} exploded at {c.Position}.");
+        }
+
+        /// <summary>
+        /// Lights an exploder's fuse and starts its arming visuals. Fiery Fungus: <see cref="FungusExplosion"/> (or
+        /// <see cref="FungusDud"/>) for particles, plus MESSAGE Release (<see cref="AnimFungusExplode"/> /
+        /// <see cref="AnimFungusDud"/>) at arm so Explode_01 / Dud_01 grow-then-pop runs during the fuse with 10918 —
+        /// not after loot (FINDINGS.md). Approach pre-swell may already have started Agro; Release leaves Stand for
+        /// Explode. Mines: warning only; blast on detonate.
+        /// </summary>
+        private static void ArmExploder(Creature c, WorldSession trigger, Vector3 face, DateTime now)
+        {
+            bool dud = c.Dud;
+            // Fuse before Full: SendFull → SendNpcAnimState must send Explode/Dud (not idle 353).
+            c.FuseAt = now + (dud && !c.Kind.Mine ? DudFuseTime : FuseTime);
+            if (trigger != null)
+                c.Target = trigger;
+            List<WorldSession> viewers = ViewersOf(c);
+            if (c.Kind.Mine)
+                HitEffects.PlayOn(c.Guid, MineWarning, viewers);
+            else
+            {
+                // Buildup particles (11188–11191, 11112) attach to FieryFungi bones (Top, B, D1, G, Spine05). On a
+                // lightweight-only entity those bones are missing → glow/light only, no expanding cloud. Full data first.
+                foreach (WorldSession s in viewers)
+                    if (!s.FullNpcs.ContainsKey(c.Guid))
+                        SendFull(s, c.Guid);
+                uint fx = dud ? FungusDud : FungusExplosion;
+                HitEffects.PlayOn(c.Guid, fx, viewers);
+                HitEffects.PlayAt(c.Position + new Vector3(0f, 0.8f, 0f), fx, viewers);
+                PlayFungusBurst(c, face, dud);
+                c.FungusAgro = true;
+                // Full attach is async; re-assert Release after the network exists (live often doubles selections around Full).
+                ulong guid = c.Guid;
+                System.Threading.Tasks.Task.Delay(300).ContinueWith(_ =>
+                {
+                    if (Find(guid) is not Creature still || still.FuseAt == default || still.State == State.Dead)
+                        return;
+                    PlaySelection(still, still.Dud ? AnimFungusDud : AnimFungusExplode);
+                });
+            }
         }
 
         /// <summary>
@@ -2135,6 +2214,7 @@ namespace LandmarkEmulator.WorldServer.Game
             TransientId = c.TransientId,
             Name = c.DisplayName ?? c.Kind.Name,
             ModelId = c.Kind.Model,
+            Scale = new Vector4(1f, 1f, 1f, 1f),
             Position = new Vector4(c.Position, 1f),
             Rotation = new Vector4(0f, MathF.Sin(c.Yaw / 2), 0f, MathF.Cos(c.Yaw / 2))
         };
@@ -2148,10 +2228,9 @@ namespace LandmarkEmulator.WorldServer.Game
         {
             session.EnqueueMessage(BuildSpawn(c));
             SendLife(session, c);
-            // A story creature with its weapons equipped: the selection's variables live only in each client's actor, so a
-            // player who sees it newly gets the selection once (Sheathed is the network's default and needs nothing).
-            if (c.Story && c.WeaponsEquipped)
-                session.EnqueueMessage(ZoneMessageOpcode.AbilityPlayAnim, PlayAnimBody(c, AnimNpcWeaponsEquipped, Ahead(c)));
+            // NPC anim network state (WeaponIdle / NPC flag): live sends RequestAnimationSelection 502 on almost every
+            // combat NPC at spawn (5IewoKPQE2BqKg6Q: 102× 502, 3× 353). Story Equipped still uses 352 (adds Class 1).
+            SendNpcAnimState(session, c);
             // A shield block still up: the newcomer's sweeps stop on it too (Combat.BlockStance). The Delta's lookup
             // (FUN_142f85390) is the guid table every character is in; the full data later upgrades the same entity [I].
             Combat.BlockStance.Introduce(session, c.Guid);
@@ -2327,8 +2406,29 @@ namespace LandmarkEmulator.WorldServer.Game
             }
         }
 
-        /// <summary>AnimationSelection.txt messages: 1 "Attack", 4 "Ouch" (hit reaction).</summary>
-        private const uint AnimAttack = 1, AnimOuch = 4;
+        /// <summary>
+        /// AnimationSelection ids used on creatures:
+        /// <list type="bullet">
+        /// <item>4 "Ouch" — hit reaction MESSAGE.</item>
+        /// <item>353 — fungus spawn idle (WeaponIdle 0); live 5nepi fungus guids. Same row as sheathed bipeds.</item>
+        /// <item>356–358 Enter + 360–362 Release — NPC Class 1 / WeaponIdle melee (AttackIndex 0–2). An Enter alone leaves
+        /// the actor in the wind-up pose (WeaponAttacks / Emotes.ShowSwing); Release must follow. Live biped combat is
+        /// AbilityEffectStart-driven (5Iewo); our homemade path uses these pairs. Fungus arm reuses 360/361 (Release +
+        /// AttackIndex 0/1) so Explode/Dud mesh runs during the fuse with 10918 — not at detonate after loot.</item>
+        /// <item>502 — biped spawn weapon-ready (WeaponIdle 1); fungus pre-swell uses it for Agro Sequence1 on approach.</item>
+        /// </list>
+        /// </summary>
+        private const uint AnimOuch = 4, AnimNpcReady = 502;
+        /// <summary>Fiery Fungus MRN path (FINDINGS.md): spawn Stand, approach Agro, arm Explode/Dud Release.</summary>
+        private const uint AnimFungusIdle = 353, AnimFungusArm = 502, AnimFungusExplode = 360, AnimFungusDud = 361;
+        /// <summary>PlayBackSpeed 2.5 — rushes Agro Sequence1 Breaks on approach pre-swell.</summary>
+        private const uint AnimFungusPlayFast = 838;
+        /// <summary>NPC Class 1 Enter/Release by AttackIndex 0, 1, 2 (see AnimationSelectionVariables).</summary>
+        private static readonly (uint Enter, uint Release)[] NpcMeleeSwings =
+        {
+            (357, 360), (356, 361), (358, 362)
+        };
+        private const int NpcMeleeReleaseMs = 350;
 
         /// <summary>
         /// An NPC's weapon visuals (Story Node row 41 "Weapon Visuals" 577234: Equipped 577235 / Sheathed 577236; spawner
@@ -2339,6 +2439,7 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <item>352 (MESSAGE "WeaponEnd", a request the player network has): WeaponIdle 1, Class 1, NPC 1 — Equipped.
         /// Class 1 with WeaponIdle 1 is what the NPC attack selections 356-359 / 364 / 781 set too.</item>
         /// <item>353 (no message): WeaponIdle 0, Class 0, NPC 1 — Sheathed, the variables' resting values.</item>
+        /// <item>502 (no message): WeaponIdle 1, NPC 1, OnGround 0 — live spawn default for combat NPCs (see above).</item>
         /// </list>
         /// [P] the client side: AbilityPlayAnim's handler (0.695 FUN_142e1b9d0) plays the selection on the entity
         /// (FUN_142dfc010 → AnimationSelectionManagerBase::PlayAnim FUN_143d95d40, which sets each of the row's variables
@@ -2361,14 +2462,107 @@ namespace LandmarkEmulator.WorldServer.Game
         public const uint AnimNpcWeaponsEquipped = 352, AnimNpcWeaponsSheathed = 353;
 
         /// <summary>
-        /// AbilityPlayAnim (Abilities 0x27 sub 0x12, reader FUN_142d650a0, handler FUN_142d7da00): u64 entity, u32
-        /// AnimationSelection id, then a point (4 floats) the entity turns to face before playing it.
+        /// Puts the creature's actor into the live NPC anim baseline for one viewer: story Equipped → 352, else 502;
+        /// Fiery Fungus → 353 idle, 502 if approach-agro'd, or 360/361 while the fuse is lit (FINDINGS.md); mines skip.
+        /// RequestAnimationSelection so the client queues until the actor is ready (5Iewo; AbilityPlayAnim was never used
+        /// for this). Called from <see cref="SendSpawn"/> and again from <see cref="SendFull"/> — on arm, Full must not
+        /// re-send idle 353 over the Explode Release.
+        /// </summary>
+        private static void SendNpcAnimState(WorldSession session, Creature c)
+        {
+            if (c.Kind.Style == Behaviour.Exploder)
+            {
+                if (c.Kind.Mine)
+                    return;
+                uint fungus = c.FuseAt != default
+                    ? (c.Dud ? AnimFungusDud : AnimFungusExplode)
+                    : (c.FungusAgro ? AnimFungusArm : AnimFungusIdle);
+                session.EnqueueMessage(ZoneMessageOpcode.PlayerUpdateRequestAnimationSelectionWire,
+                    Emotes.SelectionBody(c.Guid, fungus, clearSit: false));
+                return;
+            }
+            uint selection = c.Story && c.WeaponsEquipped ? AnimNpcWeaponsEquipped : AnimNpcReady;
+            session.EnqueueMessage(ZoneMessageOpcode.PlayerUpdateRequestAnimationSelectionWire,
+                Emotes.SelectionBody(c.Guid, selection, clearSit: false));
+        }
+
+        /// <summary>
+        /// Faces <paramref name="towards"/> on the server (yaw + movement) so observers see the turn without relying on
+        /// AbilityPlayAnim's heading rewrite.
+        /// </summary>
+        private static void FaceTowards(Creature c, Vector3 towards)
+        {
+            if (c.Kind.Style == Behaviour.Siege)
+                return;
+            float dx = towards.X - c.Position.X, dz = towards.Z - c.Position.Z;
+            if (dx * dx + dz * dz > 0.25f)
+            {
+                c.Yaw = MathF.Atan2(dx, dz);
+                SendMovement(c);
+            }
+        }
+
+        /// <summary>
+        /// Homemade NPC melee: Class 1 Enter then its Release (Emotes.ShowSwing / WeaponAttacks). Cycles AttackIndex 0–2.
+        /// </summary>
+        private static void PlayNpcSwing(Creature c, Vector3 towards)
+        {
+            FaceTowards(c, towards);
+            (uint enter, uint release) = NpcMeleeSwings[c.AttackCombo % NpcMeleeSwings.Length];
+            c.AttackCombo = (byte)((c.AttackCombo + 1) % NpcMeleeSwings.Length);
+            PlaySelection(c, enter);
+            ulong guid = c.Guid;
+            System.Threading.Tasks.Task.Delay(NpcMeleeReleaseMs).ContinueWith(_ =>
+            {
+                if (Find(guid) is not Creature still || still.State == State.Dead)
+                    return;
+                PlaySelection(still, release);
+            });
+        }
+
+        /// <summary>
+        /// Fiery Fungus approach Agro: WeaponIdle 1 → Stand Switch1 → Sequence1 (Stand_Break → AttackIdle), sped up.
+        /// The fuse's mesh grow-then-pop is <see cref="PlayFungusBurst"/> (Release → Explode/Dud), not this path.
+        /// </summary>
+        private static void PlayFungusInflate(Creature c, Vector3 towards)
+        {
+            FaceTowards(c, towards);
+            PlaySelection(c, AnimFungusArm);
+            PlaySelection(c, AnimFungusPlayFast);
+        }
+
+        /// <summary>
+        /// Fiery Fungus arm burst: MESSAGE Release + AttackIndex 0/1 → Explode_01 / Dud_01 (grow-then-pop during fuse).
+        /// </summary>
+        private static void PlayFungusBurst(Creature c, Vector3 towards, bool dud)
+        {
+            FaceTowards(c, towards);
+            PlaySelection(c, dud ? AnimFungusDud : AnimFungusExplode);
+        }
+
+        /// <summary>RequestAnimationSelection for one selection (no facing); used by swings, Ouch, story poses.</summary>
+        private static void PlaySelection(Creature c, uint animation)
+        {
+            byte[] body = Emotes.SelectionBody(c.Guid, animation, clearSit: false);
+            foreach (WorldSession s in ViewersOf(c))
+                s.EnqueueMessage(ZoneMessageOpcode.PlayerUpdateRequestAnimationSelectionWire, body);
+        }
+
+        /// <summary>
+        /// Plays an AnimationSelection on a creature for its viewers. Uses
+        /// <see cref="ZoneMessageOpcode.PlayerUpdateRequestAnimationSelectionWire"/> (0x26/0x65), not AbilityPlayAnim:
+        /// the latter always turns the actor toward a point and drops the play when the client actor is not ready yet
+        /// (FUN_142dfc010 fails with no queue). RequestAnimationSelection plays the same selection (FUN_142dfc010) and
+        /// queues until the actor is ready (case 100 → FUN_142e977b0) — the path player emotes use (Emotes.Play,
+        /// docs/protocol.md). Facing is applied on the server (yaw + movement) so observers still see the creature turn.
         /// </summary>
         private static void PlayAnim(Creature c, uint animation, Vector3 towards)
         {
-            byte[] body = PlayAnimBody(c, animation, towards);
-            foreach (WorldSession s in ViewersOf(c))
-                s.EnqueueMessage(ZoneMessageOpcode.AbilityPlayAnim, body);
+            if (c.Kind.Style == Behaviour.Siege)
+                towards = Ahead(c);
+            else
+                FaceTowards(c, towards);
+            PlaySelection(c, animation);
         }
 
         /// <summary>The AbilityPlayAnim body for one creature (see <see cref="PlayAnim"/>).</summary>
@@ -2594,7 +2788,7 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             c.NextHeal = now + HealInterval;
             c.NextAttack = now + AttackInterval;
-            PlayAnim(c, AnimAttack, patient.Position);
+            PlayNpcSwing(c, patient.Position);
             List<WorldSession> viewers = ViewersOf(c);
             HitEffects.PlayOn(c.Guid, HealRelease, viewers);
             HitEffects.PlayOn(patient.Guid, HealImpact, viewers);
@@ -3010,7 +3204,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 return;
             c.NextSwing = now.AddSeconds(4 + random.NextDouble() * 4);
             if (CanAct(c))
-                PlayAnim(c, AnimAttack, c.Position + new Vector3(MathF.Sin(c.Yaw), 0f, MathF.Cos(c.Yaw)));
+                PlayNpcSwing(c, c.Position + new Vector3(MathF.Sin(c.Yaw), 0f, MathF.Cos(c.Yaw)));
         }
 
         /// <summary>
@@ -3606,8 +3800,10 @@ namespace LandmarkEmulator.WorldServer.Game
                 if (c.Kind.Style == Behaviour.Exploder)
                 {
                     c.Dud = ability?.Role == Combat.CreatureAbilities.Role.Fizzle;
-                    if (c.FuseAt == default || c.FuseAt > DateTime.UtcNow)
-                        c.FuseAt = DateTime.UtcNow;   // goes off on its next step, as when hit (Hit)
+                    // Already armed or detonating: leave the fuse; Dud applies on detonate if set before arm.
+                    if (c.FuseAt != default)
+                        return true;
+                    ArmExploder(c, null, Ahead(c), DateTime.UtcNow);
                     return true;
                 }
                 if (ability?.Role == Combat.CreatureAbilities.Role.Block)

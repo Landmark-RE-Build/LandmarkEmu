@@ -588,8 +588,9 @@ world tick, and a second click within 5 s is ignored. Dev `founderchest`.
 - **Behaviours and effects:**
   - Chompers are stationary and spray a spore cloud within 7 m (effects 11676 / 11611).
   - Abominations close to 16 m, back off under 6 m and spit (11627 / 11625).
-  - Fiery Fungus arms when a player comes within 3.5 m. After 1.5 s it explodes (10918, impact 10922) for everyone
-    within 5 m and leaves dirt and stone; a hit sets it off.
+  - Fiery Fungus arms when a player comes within 3.5 m (or when hit): plays 10918 immediately (buildup then boom at
+    1.5 s in that composite) plus the attack anim for the mesh inflate; at 1.5 s it deals damage (impact 10922) for
+    everyone within 5 m and leaves dirt and stone.
   - Slaugs chase and hit.
 - Cavern creatures walk the cave floor and react to 3D distance, so players on the surface above don't wake them.
   Health, damage and loot are ours: live's were server data. Loot is Monster Essence, the affinity essence and
