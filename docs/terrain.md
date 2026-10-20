@@ -579,32 +579,22 @@ castles, floating islands, building platforms…). Reader `FUN_143470510`, versi
 | `u32 n` × `{u16 material, u32}` | Material list (empty in the Spire templates). |
 | varint `n` × prop | `u64` id, `u32` prop definition, `u32` model, `f32 ×3` position in metres from the corner, `f32 ×4` rotation, `f32 ×3` scale, `u64`, `u64`, `u32`, varint `n` × 16 bytes, varint `n` × 20 bytes `{u32, u32, u64 linked prop, u32}`. Varint (`FUN_14346f8f0`): bit 0 sign, bits 1–2 extra byte count, value >> 3. |
 
-The Spire (`Game/Spire.cs`) stamps its template once per landscape (marker `TerrainEdits/spire_base.txt` for the home
-continent, `spire_base_<zone>.txt` for the others, holding `voxel x y z fill x0 y0 z0 x1 y1 z1`: the corner as a global
-voxel and the box of ground filled under it, or `fill none`) and places the template's seven props where it puts them.
+The Spire (`Game/Spire.cs`) places its template props once per landscape (marker `TerrainEdits/spire_base.txt` for the
+home continent, `spire_base_<zone>.txt` for the others, holding `merge x y z deck …`: the template corner as a global
+voxel and any deck-carve box, or `deck none`).
 
 - **What the template is:** both Spire templates (`base_portal_spire.otd`, `portalspirebase.otd`) hold no solid voxel:
-  a 124 × 68 × 124 m box of air over a vertex-only floor (layer y = 0, surface ~0.2 m over the corner). Stamped, it is
-  a clearing: everything above the floor is carved, what lies under it stays.
-- **Where the Spire stands in it:** the Hub prop (model 596) is 21.24 m over the corner and its model reaches 20.94 m
-  under its pivot (`.dme` AABB y −20.94 … +43.74; collision below), so its base is on the template floor.
-- **Placement (since 2026-10-17):** the floor's surface goes on the ground + 0.8 m (P5647 "raised slightly higher out
-  of the ground"; the amount is ours), on the 0.4 m voxel grid (`StampAt`). The ground is the median of the baked
-  heights over the model's footprint (7 × 7 samples within ±46.5 m). The spot is the nearest to the landscape's centre
-  whose whole box is within 8 m (9 × 9 samples), or the flattest within 3 km; the home continent's stays at (0, 0).
-  Before, the Hub's pivot was put at the ground and the corner rounded to the 16 m cell grid: a ~21 m (±8 m) pit with
-  the deck at about the old ground. A marker in the old `x y z` (cell) form makes the world revert that stamp
-  (`RevertBox` over its cells) and stamp the Spire again; the old marker is kept as `….cell-reverted`.
-- **Fill (ours, user decision 2026-10-17):** the template only carves, so where the ground lies below the floor the
-  Spire's feet would hang over it. The server adds solid ground there: from the baked ground (one voxel into it) up to
-  the floor within 48 m of the pivot (the model's footprint), then an embankment falling 1.5 m per metre (rounded
-  corners) until it meets the ground, at most 60 m further out. Each column takes the local biome's ground material for
-  its slope (`TerrainMaterials.GroundMaterialAt`, from VoxelBiomeMaterials / VoxelProceduralMaterials angle ranges; the
-  bake's surface codes are not material ids). The embankment's top voxels carry their exact height in the vertex
-  offset, so it is a slope, not 0.4 m steps. Written once into layer 0 (`IEnvironmentServer.Write`), permanent, its box
-  in the marker; the platform box (no trees, ore or digging) grows to take it. A marker without `fill` (the first voxel
-  markers) gets the fill on the next start. Live's terrain under its Spires is not known; this is not live data.
-  Home continent (0, 0) on the 0.695 bake: 75,665 columns, 3.41 million voxels (218,000 m³), up to 42 m deep, 172 cells.
+  a 124 × 68 × 124 m box of air over a vertex-only floor. Stamping that air carved cliffs into hillsides; since
+  2026-10-19 the air box is **not** stamped.
+- **Where the Hub stands:** model 596 reaches 20.94 m under its pivot (`.dme` / `.cdt`); the main deck is at pivot
+  −2.924 m. Placement seats the deck just above the highest baked ground under the ±48 m walk footprint (+ 0.8 m for
+  P5647), so the ~18 m plinth and lower ramps sit in the landscape and players climb from natural ground. No
+  embankment fill. Only columns where ground still pokes through the deck are written as air (layer 0, permanent).
+- **Spot:** nearest to the landscape centre (including home — no longer locked to (0, 0)) whose walk footprint
+  (±48 m) has ≤ 17 m height spread (about the deck→base plinth) and the 124 m box ≤ 22 m, clear of build sites;
+  else the flattest deck ≤ 17 m within 3 km. Steeper than the plinth: no Spire (would float under the base plane).
+- **Migration:** old `x y z` (cell) → `….cell-reverted`; old `voxel … fill …` → `….voxel-reverted`; a `merge`
+  marker whose deck is still steeper than 17 m → `….steep-reverted` and a new flatter spot.
 - **Arrival:** pivot + (7.2, −0.5, −6.5): over the central dais (top at pivot −1.537 m, ~10 m across); the deck is at
   pivot −2.924 m (where the template's Replicator, Repair Station and Crimson Parlor stand) and the raised arms at
   −1.144 m.

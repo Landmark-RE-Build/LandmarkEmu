@@ -85,6 +85,10 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                     {
                         // A story-tool switch (flips in Play Mode).
                     }
+                    else if (Game.Npc.WorldNpcs.Click(session, guid))
+                    {
+                        // A world NPC (Game.Npc.WorldNpcs): dialogue / quest offer.
+                    }
                     else if (Game.StoryTools.ClickCreature(session, guid))
                     {
                         // A story creature: its spawner's "clicked" Links.

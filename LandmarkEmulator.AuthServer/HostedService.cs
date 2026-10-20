@@ -36,7 +36,7 @@ namespace LandmarkEmulator.AuthServer
             TunnelDataManager.Instance.Initialise();
 
             AuthAssetManager.Instance.Initialise();
-            // Equipped items' looks for the character list (the world server's item definitions file).
+            // Equipped items' looks for the character list: dump definitions + Cosmetics outfits (ItemAppearances).
             Shared.Game.ItemAppearances.Load(System.IO.Path.Combine(System.AppContext.BaseDirectory, "Resources", "PacketDumps", "44-CommandBase"));
 
             ThreadManager.Instance.Initialise(lastTick =>

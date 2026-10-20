@@ -1,0 +1,57 @@
+{
+  "id": "herbalist",
+  "displayName": "Spire Herbalist",
+  "spawnerName": "Spawner: Caster",
+  "zone": 0,
+  "home": [ 70, 0, -55 ],
+  "yaw": 1.2,
+  "hailRange": 12,
+  "dwellSeconds": 5,
+  "waypoints": [
+    [ 70, 0, -55 ],
+    [ 76, 0, -50 ]
+  ],
+  "questAchievementId": 9102,
+  "questObjectiveId": 9112,
+  "questRequired": 1,
+  "requiresNpcTurnedIn": "fungus_scout",
+  "lines": {
+    "hail": {
+      "text": "Ah — the Scout's helper. Come closer.",
+      "mode": 4,
+      "seconds": 5
+    },
+    "locked": {
+      "text": "[Spire Herbalist] I'm waiting on word from the Fungus Scout near the Spire. Help them first — I have no ask for you yet.",
+      "mode": 3,
+      "seconds": 8
+    },
+    "greet": {
+      "text": "The Scout said you cleared the fungi. Will you take a small herb pouch as thanks?",
+      "mode": 5,
+      "seconds": 12,
+      "question": true
+    },
+    "greet_again": {
+      "text": "Still interested in that herb pouch?",
+      "mode": 5,
+      "seconds": 8,
+      "question": true
+    },
+    "accept": {
+      "text": "Here you are — and a few Lumens for the road. You've earned a rest.",
+      "mode": 5,
+      "seconds": 8
+    },
+    "decline": {
+      "text": "Keep the thought, then. The offer stands.",
+      "mode": 5,
+      "seconds": 6
+    },
+    "done": {
+      "text": "Those herbs should keep. Visit the Scout if more fungi appear.",
+      "mode": 5,
+      "seconds": 6
+    }
+  }
+}

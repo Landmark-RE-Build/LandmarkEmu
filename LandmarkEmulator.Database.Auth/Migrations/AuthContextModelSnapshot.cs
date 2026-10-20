@@ -128,6 +128,31 @@ namespace LandmarkEmulator.Database.Auth.Migrations
                     b.ToTable("account", (string)null);
                 });
 
+            modelBuilder.Entity("LandmarkEmulator.Database.Auth.Model.AdminModel", b =>
+                {
+                    b.Property<ulong>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint(20) unsigned")
+                        .HasColumnName("id");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<ulong>("Id"));
+
+                    b.Property<string>("Entry")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(255)")
+                        .HasDefaultValue("")
+                        .HasColumnName("entry");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Entry")
+                        .IsUnique()
+                        .HasDatabaseName("entry");
+
+                    b.ToTable("admin", (string)null);
+                });
+
             modelBuilder.Entity("LandmarkEmulator.Database.Auth.Model.ZoneServerModel", b =>
                 {
                     b.Property<ulong>("Id")

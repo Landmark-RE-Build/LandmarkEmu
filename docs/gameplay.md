@@ -588,8 +588,9 @@ world tick, and a second click within 5 s is ignored. Dev `founderchest`.
 - **Behaviours and effects:**
   - Chompers are stationary and spray a spore cloud within 7 m (effects 11676 / 11611).
   - Abominations close to 16 m, back off under 6 m and spit (11627 / 11625).
-  - Fiery Fungus arms when a player comes within 3.5 m. After 1.5 s it explodes (10918, impact 10922) for everyone
-    within 5 m and leaves dirt and stone; a hit sets it off.
+  - Fiery Fungus arms when a player comes within 3.5 m (or when hit): plays 10918 immediately (buildup then boom at
+    1.5 s in that composite) plus the attack anim for the mesh inflate; at 1.5 s it deals damage (impact 10922) for
+    everyone within 5 m and leaves dirt and stone.
   - Slaugs chase and hit.
 - Cavern creatures walk the cave floor and react to 3D distance, so players on the surface above don't wake them.
   Health, damage and loot are ours: live's were server data. Loot is Monster Essence, the affinity essence and
@@ -1048,9 +1049,9 @@ Rates are ours; the patch notes only say "rare" or "a chance".
 - Build site time (Advanced Build Settings, `Claims.SetTime`): owner and visitor settings, hour -1 = the world clock
   ("Game Time" / "Custom Speed"), 0-23 = stopped at that hour, -2 = the visitor's PC clock (client-supported, no
   menu entry); speed 0.25-1000 as the client clamps it (the slider runs 1-1000).
-- `Game/Spire.cs`: the teleporter hub of every landscape (the client's Spire template, model 596 and its props): the
-  home continent's at the zone origin, the others at the nearest level ground to the centre; its floor on the ground
-  (docs/terrain.md "Voxel templates"). Usable props: Replicator, Repair Station, Mailbox, Crimson Parlor, Portal Crystal,
+- `Game/Spire.cs`: the teleporter hub of every landscape (the client's Spire template, model 596 and its props): nearest
+  level ground to the zone centre (home included; deck ≤ 17 m relief ≈ plinth height); deck seated into the landscape
+  (no air-box stamp / fill; docs/terrain.md "Voxel templates"). Usable props: Replicator, Repair Station, Mailbox, Crimson Parlor, Portal Crystal,
   Resupply Chest 884 (missing starter tools back) and the Founder's Chest 898 the server adds beside it (missing
   Founder's Pack items back).
 - `Game/Teleport.cs`: moves a player, snapped to the ground.
@@ -1074,7 +1075,7 @@ Write lines to the world's `dev_commands.txt` (next to the server executable; in
 |---|---|
 | `send <hex>` | Send raw zone bytes to everyone. |
 | `give <item> <n>` | Give items. |
-| `finditem <text>` | Search item names. |
+| `finditem <text\|#id>` | Search item names (or by id); at most 40 matches logged, empty refused. |
 | `timeofday <h>` | Set the world clock. |
 | `clock` | Log the world clock and tell the players in chat (compare with the client's `GameData.Time`). |
 | `carve`, `dig`, `digmode` | Shape terrain / change how digging shapes holes. |

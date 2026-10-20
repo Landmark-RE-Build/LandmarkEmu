@@ -6,7 +6,7 @@ Accounts and the server list. Shared by every world. Used by the login server (A
 
 Source: `LandmarkEmulator.Database.Auth/Migrations/AuthContextModelSnapshot.cs` and the model classes in `LandmarkEmulator.Database.Auth/Model`. Code: [LandmarkEmulator.Database.Auth](Project-Database-Auth).
 
-Tables: [`account`](#account), [`zone_server`](#zone_server)
+Tables: [`account`](#account), [`admin`](#admin), [`zone_server`](#zone_server)
 
 ## account
 
@@ -31,6 +31,17 @@ One row per account: the SRP-6a login data (salt and verifier; no password is st
 | `v` | varchar(512) |  |  | index |  |
 
 Indexes: `salt` (s); `username` (username); `verifier` (v).
+
+## admin
+
+A global admin entry in `lmemu_auth.admin`: the same string form as WorldServer.json /.env (`account:Name`, `character:Name`, or a bare name).
+
+| Column | Type | Null | Default | Key | Description |
+|---|---|---|---|---|---|
+| `id` | bigint(20) unsigned |  |  | PK, auto |  |
+| `entry` | varchar(255) |  |  | unique |  |
+
+Indexes: `entry` (entry) unique.
 
 ## zone_server
 

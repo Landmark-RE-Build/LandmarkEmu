@@ -22,8 +22,10 @@ Steam build 0.589.1.128895, on which most layouts were first traced; LaunchPad u
 | [vendors.md](vendors.md) | Build site vendors (player shops), the client script gaps patched at run time, the NPC merchant window, Point-of-Need purchases. |
 | [instanced-games.md](instanced-games.md) | Site games: rule sets from the client tables, the InstancedGame packets, zone control, adventures, the client's game editor, the Game Finder. |
 | [story-tools.md](story-tools.md) | Story tools: the ObjectScripting (Links) protocol, Play Mode, every story prop's events and actions, the prop settings window, story creatures. |
+| [npc-scripting.md](npc-scripting.md) | World NPCs: JSON definitions, per-player flags, dialogue bubbles, achievement quests, admin commands, playtests. |
 | [encounters.md](encounters.md) | Encounters (EncounterBase 0x2C): the packets in both directions, duels, the death window, the world-channel split. |
 | [unknowns.md](unknowns.md) | The record of how every field once called `Unknown*` was named, and the few slots whose reader is still not found. |
+| [bugs.md](bugs.md) | Known bugs found while running or developing the emulator (open and fixed). |
 
 `img_story_node_settings.png` is the screenshot story-tools.md refers to.
 

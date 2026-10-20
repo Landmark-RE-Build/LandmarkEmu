@@ -179,6 +179,30 @@ namespace LandmarkEmulator.Database.Character.Migrations
                     b.ToTable("character_preference", (string)null);
                 });
 
+            modelBuilder.Entity("LandmarkEmulator.Database.Character.Model.CharacterNpcFlagModel", b =>
+                {
+                    b.Property<ulong>("CharacterId")
+                        .HasColumnType("bigint(20) unsigned")
+                        .HasColumnName("characterId");
+
+                    b.Property<string>("NpcId")
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("npcId");
+
+                    b.Property<string>("Key")
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("key");
+
+                    b.Property<int>("Value")
+                        .HasColumnType("int(11)")
+                        .HasColumnName("value");
+
+                    b.HasKey("CharacterId", "NpcId", "Key")
+                        .HasName("PRIMARY");
+
+                    b.ToTable("character_npc_flag", (string)null);
+                });
+
             modelBuilder.Entity("LandmarkEmulator.Database.Character.Model.CharacterItemModel", b =>
                 {
                     b.Property<ulong>("Id")

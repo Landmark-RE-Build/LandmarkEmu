@@ -52,14 +52,19 @@ Admins can use the game's own admin slash commands (`/goto`, `/target`, `/hideme
 site, time of day, creatures, a shutdown countdown, the Player Studio staff queue, the monitor page, and any developer
 command, for yourself, everyone or one player. All commands: [Command Documentation](Command-Documentation).
 
-Admins are set in `.env`:
+Admins are stored in the auth database table `admin` (global for every world). Manage them with SQL only — there is no
+in-game grant/revoke. Create the account first (as above), then:
 
+```sql
+INSERT INTO admin (entry) VALUES ('account:Alice');
+-- or a single character:
+INSERT INTO admin (entry) VALUES ('character:AliceTheBuilder');
+DELETE FROM admin WHERE entry = 'account:Alice';
+SELECT * FROM admin;
 ```
-ADMIN_ACCOUNT=account:Alice
-ADMIN_2=character:AliceTheBuilder
-ADMIN_3=
-ADMINS=account:Bob,character:Carol
-```
+
+(Host port `DB_PORT`, default 3307.) The world caches the table for about a minute; log in again so the client gets the
+admin flag and `/admin` bind.
 
 | Entry | Who is an admin |
 |---|---|
@@ -67,15 +72,14 @@ ADMINS=account:Bob,character:Carol
 | `character:<name>` | That character, whichever account owns it |
 | `<name>` (no prefix, the old form) | The account or the character with that name |
 
-`ADMIN_ACCOUNT`, `ADMIN_2` and `ADMIN_3` take one entry each; `ADMINS` takes any number, comma separated. The prefixes
-and names ignore case.
-
 **Always use the prefixed forms.** Account names and character names are both chosen by players, so a bare name could
 be taken in the other kind by someone else. When that happens the bare entry makes **nobody** an admin, and the world
 logs an error with the prefixed form to use instead.
 
-Create the account first (as above), set the entry, run `docker compose up -d`, and log in again. `start.bat` asks for
-your account name on its first run; check that `ADMIN_ACCOUNT` in `.env` starts with `account:`.
+**Optional bootstrap.** `.env` still accepts `ADMIN_ACCOUNT`, `ADMIN_2`, `ADMIN_3` and `ADMINS` (same entry form); those
+are OR'd with the table for a first admin or emergency access. `start.bat` may write `ADMIN_ACCOUNT` on its first run;
+prefer moving day-to-day staff into the `admin` table. Details: [Command Documentation](Command-Documentation#who-is-an-admin)
+and `docs/admin.md` in the repository.
 
 ## Creating accounts as the server owner
 

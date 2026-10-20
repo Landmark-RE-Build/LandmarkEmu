@@ -57,7 +57,27 @@ namespace LandmarkEmulator.Tests.Rules
                 AdminList = "account:Bob, ,character:Carol",
             };
             Assert.Equal(new[] { "account:tester2", "character:RobinHood", "account:Bob", "character:Carol" },
-                Admin.Entries(config).ToArray());
+                Admin.Entries(config, dbEntries: null).ToArray());
+        }
+
+        [Fact]
+        public void Entries_UnionsConfigAndDatabase()
+        {
+            var config = new WorldServerConfiguration
+            {
+                Admins = new List<string> { "account:Alice" },
+                AdminList = "character:Bob",
+            };
+            Assert.Equal(
+                new[] { "account:Alice", "character:Bob", "account:Carol", "character:Dave" },
+                Admin.Entries(config, new[] { "account:Carol", "", "  character:Dave " }).ToArray());
+        }
+
+        [Fact]
+        public void Entries_DatabaseOnlyWhenConfigEmpty()
+        {
+            var config = new WorldServerConfiguration();
+            Assert.Equal(new[] { "account:OnlyDb" }, Admin.Entries(config, new[] { "account:OnlyDb" }).ToArray());
         }
     }
 }

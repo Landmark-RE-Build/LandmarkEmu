@@ -713,7 +713,14 @@ namespace LandmarkEmulator.WorldServer.Game
                         case "npc":
                         {
                             // npc <model> [dx dz]: spawn a creature model next to the player (visual test).
-                            string[] a = parts[1].Split(' ');
+                            // npc reload | goto <id> | reset | flag <id> <key> [value]: world NPC scripting helpers.
+                            string[] a = parts[1].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                            if (a.Length > 0 && a[0] is "reload" or "goto" or "talk" or "reset" or "flag")
+                            {
+                                foreach (WorldSession session in targets)
+                                    log.Info($"npc: {Npc.WorldNpcs.DevCommand(session, a)}");
+                                break;
+                            }
                             foreach (WorldSession session in targets)
                             {
                                 var at = session.Position + new System.Numerics.Vector3(a.Length > 2 ? float.Parse(a[1]) : 3f, 0f, a.Length > 2 ? float.Parse(a[2]) : 3f);
@@ -834,15 +841,35 @@ namespace LandmarkEmulator.WorldServer.Game
                         case "finditem":
                         {
                             // finditem <text|#id>: item definitions whose name contains the text (as this client names them), or by id.
-                            string needle = parts.Length > 1 ? parts[1] : "";
+                            // Cap matches: an empty needle used to match every name (Contains("")) and flood the world tick
+                            // with log lines, which froze the game and the /admin page (docs/bugs.md 2026-10-18).
+                            string needle = parts.Length > 1 ? parts[1].Trim() : "";
+                            if (needle.Length == 0)
+                            {
+                                Reply(commandSource, replies, "usage: finditem [text|#id] (type a name fragment or #id)");
+                                break;
+                            }
+                            const int findItemCap = 40;
+                            int matched = 0, shown = 0;
+                            bool byId = needle.StartsWith('#');
                             foreach (var d in Inventory.ItemDefinitionManager.All)
                             {
                                 string name = LandmarkEmulator.Shared.GameTable.Text.TextManager.Instance.GetTextForId(d.NameId) ?? "";
                                 // "#38" looks an item up by id.
-                                if (needle.StartsWith('#') ? needle[1..] == d.Id.ToString() : name.Contains(needle, StringComparison.OrdinalIgnoreCase))
-                                    log.Info($"item {d.Id}: {name} (max stack {d.MaxStack}, categories {string.Join(",", d.Categories)}{(d.PropId != 0 ? $", prop {d.PropId}" : "")}){(d.Abilities.Count > 0 ? " abilities " + string.Join(",", d.Abilities.Select(x => x.AbilityId)) : "")}"
-                                        + (parts.Length > 1 && needle.Length > 0 ? $" — {LandmarkEmulator.Shared.GameTable.Text.TextManager.Instance.GetTextForId(d.DescriptionId)}" : ""));
+                                if (!(byId ? needle[1..] == d.Id.ToString() : name.Contains(needle, StringComparison.OrdinalIgnoreCase)))
+                                    continue;
+                                matched++;
+                                if (shown >= findItemCap)
+                                    continue;
+                                shown++;
+                                log.Info($"item {d.Id}: {name} (max stack {d.MaxStack}, categories {string.Join(",", d.Categories)}{(d.PropId != 0 ? $", prop {d.PropId}" : "")}){(d.Abilities.Count > 0 ? " abilities " + string.Join(",", d.Abilities.Select(x => x.AbilityId)) : "")}"
+                                    + $" — {LandmarkEmulator.Shared.GameTable.Text.TextManager.Instance.GetTextForId(d.DescriptionId)}");
                             }
+                            Reply(commandSource, replies, matched == 0
+                                ? $"finditem: no items matching \"{needle}\"."
+                                : matched > shown
+                                    ? $"finditem: {matched} matches for \"{needle}\" (first {shown} in the server log)."
+                                    : $"finditem: {matched} match(es) for \"{needle}\" (server log).");
                             break;
                         }
                         case "shutdown":

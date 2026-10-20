@@ -143,8 +143,8 @@ namespace LandmarkEmulator.WorldServer.Game
             Fixed("Continent", SharedNote),
             Fixed("TerrainLodCopies", SharedNote),
             Fixed("KeepVertexOnlyVoxels", SharedNote),
-            Fixed("Admins", "The admin list stays in .env: an admin who could change it here could make anyone an admin."),
-            Fixed("AdminList", "The admin list stays in .env: an admin who could change it here could make anyone an admin."),
+            Fixed("Admins", "Bootstrap only (.env). Day-to-day admins live in the auth DB admin table (SQL); an admin who could change either list here could make anyone an admin."),
+            Fixed("AdminList", "Bootstrap only (.env). Day-to-day admins live in the auth DB admin table (SQL); an admin who could change either list here could make anyone an admin."),
             Fixed("DevClientCodeOnOthers", "Stays in .env: switched on, any admin could run code in every player's game client (and open their desktop browser); only the server owner decides that."),
             Fixed("StoreLumenPrices", "The WorldServer.json dictionary form of STORE_PRICES; edit STORE_PRICES (below) instead."),
 

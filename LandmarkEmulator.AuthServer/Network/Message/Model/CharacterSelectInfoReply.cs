@@ -51,8 +51,8 @@ namespace LandmarkEmulator.AuthServer.Network.Message.Model
                     public uint TintId { get; set; }
                     /// <summary>+0x184.</summary>
                     public uint CompositeEffectId { get; set; }
-                    /// <summary>+0x188: the equipment slot (the per-slot key).</summary>
-                    public AttachmentSlot Slot { get; set; }
+                    /// <summary>+0x188: the equipment slot id (outfit 1, chest armour 8, … — the per-slot key).</summary>
+                    public uint EquipSlot { get; set; }
                     /// <summary>+0x18c: 0 = nothing; else added to the character's id set (FUN_142e90e10).</summary>
                     public uint Value18C { get; set; }
                     /// <summary>+0x190: passed through to the actor attach (FUN_143b95320 last argument).</summary>
@@ -71,7 +71,7 @@ namespace LandmarkEmulator.AuthServer.Network.Message.Model
                         DecalAlias = reader.ReadString();
                         TintId = reader.ReadUInt();
                         CompositeEffectId = reader.ReadUInt();
-                        Slot = (AttachmentSlot)reader.ReadUInt();
+                        EquipSlot = reader.ReadUInt();
                         Value18C = reader.ReadUInt();
                         Flag190 = reader.ReadBool();
                         
@@ -85,7 +85,7 @@ namespace LandmarkEmulator.AuthServer.Network.Message.Model
                         writer.Write(DecalAlias);
                         writer.Write(TintId);
                         writer.Write(CompositeEffectId);
-                        writer.Write((uint)Slot);
+                        writer.Write(EquipSlot);
                         writer.Write(Value18C);
                         writer.Write(Flag190);
                     }
@@ -368,8 +368,8 @@ namespace LandmarkEmulator.AuthServer.Network.Message.Model
                     public uint TintId { get; set; }
                     /// <summary>+0x184.</summary>
                     public uint CompositeEffectId { get; set; }
-                    /// <summary>+0x188: the equipment slot (the per-slot key).</summary>
-                    public AttachmentSlot Slot { get; set; }
+                    /// <summary>+0x188: the equipment slot id (outfit 1, chest armour 8, … — the per-slot key).</summary>
+                    public uint EquipSlot { get; set; }
                     /// <summary>+0x18c: 0 = nothing; else added to the character's id set (FUN_142e90e10).</summary>
                     public uint Value18C { get; set; }
 
@@ -386,7 +386,7 @@ namespace LandmarkEmulator.AuthServer.Network.Message.Model
                         writer.Write(DecalAlias);
                         writer.Write(TintId);
                         writer.Write(CompositeEffectId);
-                        writer.Write((uint)Slot);
+                        writer.Write(EquipSlot);
                         writer.Write(Value18C);
                     }
                 }
