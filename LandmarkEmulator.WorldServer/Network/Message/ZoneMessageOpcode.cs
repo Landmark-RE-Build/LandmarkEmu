@@ -118,6 +118,12 @@
         PlayerUpdateAddNotifications = 0x26000500,
         PlayerUpdateRemoveNotifications = 0x26000600,
         PlayerUpdateNpcRelevance    = 0x26000700,
+        /// <summary>
+        /// PlayerUpdate sub 0x8 UpdateScale (S→C; reader FUN_142bb4770). Live never sent it (coverage-695). Body inferred
+        /// as {u64 entity, vec4 scale} to match AddLightweightNpc's Scale field. Not used for Fiery Fungus — swell is
+        /// FieryFungiAnimationNetwork64 Agro Sequence1 (WeaponIdle 1), not entity scale.
+        /// </summary>
+        PlayerUpdateUpdateScaleWire = 0x260008,
         PlayerUpdateUpdateScale     = 0x26000800,
         PlayerUpdateUpdateTemporaryAppearance = 0x26000900,
         PlayerUpdateRemoveTemporaryAppearance = 0x26000A00,
