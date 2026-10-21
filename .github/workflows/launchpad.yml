@@ -1,12 +1,9 @@
 # Builds LaunchPad.exe (self-contained single file: no .NET install needed; WebView2 ships with Windows 10/11).
 #
-# Uses no outside actions (the org allows only actions from its own repositories): the checkout is plain git, .NET
-# comes from Microsoft's dotnet-install script and uploads use the gh CLI that GitHub's runners already have.
-#
-# - Pull requests that touch LaunchPad or what it uses: the tests run and LaunchPad.exe is built (a check only).
-# - By hand (Actions > LaunchPad > Run workflow, on any branch) and pushes to main: the build goes to a pre-release
-#   "LaunchPad dev build (<branch>)" (tag launchpad-dev-<branch>), replaced by each new build, so a change can be
-#   tried without building it yourself.
+# - Pull requests that touch LaunchPad or what it uses, and pushes to main: the test suite runs and LaunchPad.exe (with a
+#   SHA-256 file) is kept as a build artifact. Download it from the run's page (Actions > LaunchPad > the run >
+#   Artifacts), so a change can be tried without building it yourself.
+# - By hand: Actions > LaunchPad > Run workflow, on any branch.
 # - A published release (Releases > Draft a new release > Publish) builds its tag and attaches LaunchPad.exe and the
 #   .sha256 to the release; re-running replaces them.
 #
@@ -44,59 +41,48 @@ jobs:
   build:
     runs-on: windows-latest
     permissions:
-      contents: write   # release assets and the dev pre-release
+      contents: write   # release assets (release runs only)
     env:
       DOTNET_NOLOGO: "1"
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
-      GH_TOKEN: ${{ github.token }}
-    defaults:
-      run:
-        shell: pwsh
     steps:
-      - name: Checkout (plain git)
-        env:
-          REF: ${{ github.event.release.tag_name || github.sha }}
-        run: |
-          git init -q .
-          git remote add origin "https://x-access-token:$env:GH_TOKEN@github.com/${{ github.repository }}.git"
-          git fetch -q --depth 1 origin "$env:REF"
-          git checkout -q FETCH_HEAD
-          git log -1 --format="Building %H (%s)"
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
 
-      - name: Install .NET 10 SDK
-        run: |
-          $dir = Join-Path $env:RUNNER_TEMP "dotnet"
-          $script = Join-Path $env:RUNNER_TEMP "dotnet-install.ps1"
-          Invoke-WebRequest "https://dot.net/v1/dotnet-install.ps1" -OutFile $script
-          & $script -Channel 10.0 -InstallDir $dir
-          $dir | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
-          "DOTNET_ROOT=$dir" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
 
       - name: Test
+        shell: pwsh
         run: dotnet test LandmarkEmulator.sln -c Release
 
       - name: Build LaunchPad.exe
+        shell: pwsh
         run: dotnet publish LandmarkEmulator.LaunchPad -c Release -o out/LaunchPad
 
       - name: Checksum
+        shell: pwsh
         run: |
           $hash = (Get-FileHash out/LaunchPad/LaunchPad.exe -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  LaunchPad.exe" | Out-File -Encoding ascii out/LaunchPad/LaunchPad.exe.sha256
           "LaunchPad.exe SHA-256: $hash" | Tee-Object -Append -FilePath $env:GITHUB_STEP_SUMMARY
 
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LaunchPad-${{ github.sha }}
+          path: |
+            out/LaunchPad/LaunchPad.exe
+            out/LaunchPad/LaunchPad.exe.sha256
+          if-no-files-found: error
+
       - name: Attach to the release
         if: github.event_name == 'release'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: gh release upload "${{ github.event.release.tag_name }}" out/LaunchPad/LaunchPad.exe out/LaunchPad/LaunchPad.exe.sha256 --clobber --repo "${{ github.repository }}"
-
-      - name: Dev pre-release for this branch
-        if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
-        run: |
-          $branch = "${{ github.ref_name }}" -replace '[^\w\.\-]+', '-'
-          $tag = "launchpad-dev-$branch"
-          # One pre-release per branch, rebuilt each time so its tag points at the commit that was built.
-          gh release delete $tag --cleanup-tag --yes --repo "${{ github.repository }}" 2>$null
-          gh release create $tag out/LaunchPad/LaunchPad.exe out/LaunchPad/LaunchPad.exe.sha256 --prerelease `
-            --target "${{ github.sha }}" --title "LaunchPad dev build ($branch)" `
-            --notes "Built from ${{ github.sha }} by the LaunchPad workflow. Not an official release." `
-            --repo "${{ github.repository }}"
-          "Download: https://github.com/${{ github.repository }}/releases/tag/$tag" | Out-File -Append $env:GITHUB_STEP_SUMMARY
