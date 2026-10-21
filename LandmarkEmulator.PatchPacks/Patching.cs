@@ -421,7 +421,7 @@ namespace LandmarkEmulator.PatchPacks
         /// genuine Daybreak files (trace/launchpad-patching.md).</item>
         /// </list>
         /// Each file carries its SHA-256 from the embedded strong list; a file with none can't be verified, so a pack that
-        /// carries it is refused (as of 2026-10-18 that is the final build's exe and English text: no local copy).
+        /// carries it is refused. (Both builds are fully covered as of 2026-10-20.)
         /// </summary>
         public static IReadOnlyList<TargetBuild> Targets
         {
@@ -442,15 +442,17 @@ namespace LandmarkEmulator.PatchPacks
                     january[path] = file;
                 return targets = new List<TargetBuild>
                 {
-                    new("final", "0.695 (Daybreak's final build, Feb 2017)", Build(l.Final)),
+                    // Labels keep the 0.695 pack version; the Feb exe's own build string is 0.699.1.132863 (GameFolder.Build).
+                    new("final", "0.695 / 0.699 (Daybreak's final build, Feb 2017)", Build(l.Final)),
                     new("january-2017", "0.695 (January 2017 build)", Build(january))
                 };
             }
         }
 
         /// <summary>
-        /// The final (Feb 2017) build's files that differ from the January build: Landmark64.exe and the English text. No
-        /// genuine local copy of them was found (2026-10-18), so their SHA-256 isn't in the strong list.
+        /// The final (Feb 2017) build's files that differ from the January build: Landmark64.exe and the English text.
+        /// Their SHA-256s are in the strong list (2026-10-20); <see cref="WeakAllowed"/> is kept for older LaunchPads /
+        /// tests that still omit those fingerprints.
         /// </summary>
         public static readonly string[] FebruaryOnlyPaths = { "Landmark64.exe", "Locale\\en_us_data.dat", "Locale\\en_us_data.dir" };
 

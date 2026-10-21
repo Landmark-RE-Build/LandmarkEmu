@@ -10,7 +10,8 @@ every file against Steam's own list of the install before it changes anything).
 
 ### Which version of the game do I need?
 
-The servers speak the last client build, **0.695.1.132647** (February 2017). Older clients are refused.
+The servers speak the last client build (February 2017): pack / docs version **0.695.1.132647**, exe build string
+**0.699.1.132863**. Older clients are refused.
 
 Steam still installs the older build **0.589.1.128895** (June 2016). [LaunchPad](LaunchPad) installs the update from
 0.589 to 0.695 on top of your Steam copy, from an update file (`.lmpatch`) you have, or from the server you play on

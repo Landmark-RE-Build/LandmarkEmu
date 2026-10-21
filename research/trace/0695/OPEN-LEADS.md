@@ -2124,22 +2124,15 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
 - **Try next:** Lua / AS3 names with "Adventure" (re/as3_695, UI scripts); the 2016 Adventure (game) system docs in
   design/wiki; xrefs from the GameFinder / instanced-game code.
 
-### L191. February 2017 build: strong fingerprints of Landmark64.exe, Locale\en_us_data.dat / .dir (2026-10-18)
-- **Need:** SHA-256 of the three Feb 2017 files (91222528 / ED231C3C; 1394363 / 10E110DF; 636374 / 7C48670B), so
-  LaunchPad can verify that build fully (today: AllowFebruaryWeak opt-in, local packs only).
-- **Known [P] (re/out/cdn-blob, dbg_blob_check.py):** Daybreak CDN blob = payload + codec byte (3 = LZMA, header
-  5d 00 00 10 00, 1 MiB dict) + 128-byte RSA-1024 e=3 signature over SHA-1(payload + codec); the digest `sha` is the
-  SHA-1 of the whole blob incl. the signature [I] — so it cannot be recomputed from a file (needs Daybreak's key), and
-  Daybreak's LZMA stream differs from 7-Zip 21.03 / liblzma at byte 74 (older encoder). The .dir can be rebuilt
-  byte-exact from the .dat + date line. The exe cannot be rebuilt from January's (random 128-bit PDB GUID, link
-  timestamps, build date/time strings, changelist in the version string). Wayback: no capture of the three blobs or
-  the digests (blob host: two 404 captures 2017-02-08).
-- **Usable checks if material turns up:** a real CDN blob → `dbg_blob_check.py blob` proves it forge-proof (signature
-  + SHA-1 + decode + CRC); a loose Feb copy → size + CRC32 + .dat→.dir rebuild + exe dates 14 Feb 2017 and a GUID
-  different from January's = "consistent" (not proof), then pin its SHA-256.
-- **Try next:** old Daybreak patcher caches on other people's PCs are out (no outreach); archived torrent / preservation
-  manifests listing SHA-256 / SHA-1 of the Feb exe (search the web for the CRC "ED231C3C" or the blob sha
-  36808d0732ebd7d4f7d11c127ba34976e402453d); shutdown-week patch text (~110 bytes) for the locale reconstruction.
+### L191. February 2017 build: strong fingerprints of Landmark64.exe, Locale\en_us_data.dat / .dir — **done 2026-10-20**
+- **Had:** SHA-256 of the three Feb 2017 files so LaunchPad can verify that build fully.
+- **Resolved:** genuine copies matched Daybreak size+CRC32; pinned in `landmark-0695-files-sha256.csv`. Exe build
+  string is `0.699.1.132863` (January's is `0.695.1.132647`); pack version stays `0.695.1.132647`.
+  - `Landmark64.exe` 91222528 / ED231C3C → `84D465705AEAA98E9D176DE5EAF02BD17649133FBC411001553D64B38B22CBF5`
+  - `Locale\en_us_data.dat` 1394363 / 10E110DF → `C455D39621241D8FAF66DC223C55F7837C09A46CB7796F4FCDEC4B7169753527`
+  - `Locale\en_us_data.dir` 636374 / 7C48670B → `08B9EA2A8C902AA14B381C15A81E47D5CBB269616C618E5A7C037E414A18180A`
+- **Prior notes kept:** CDN blob path still can't reconstruct hashes without Daybreak's key; AllowFebruaryWeak is now a
+  no-op on current LaunchPad.
 
 ### L192. Emote / animation details not provable without a live capture (animaudit 2026-10-18)
 - **Need:** (a) the live packet for emote chat lines (we send them like /playdead's); (b) whether /talking ends on move

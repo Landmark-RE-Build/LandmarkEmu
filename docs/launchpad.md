@@ -66,14 +66,16 @@ LaunchPad installs one kind of patch: an update from the Steam build
 (0.589.1.128895) to one of two known builds of 0.695.1.132647 (`Patching.Targets`).
 
 - **Daybreak's final build.** The files of their last update (14 Feb 2017), exactly as their own file list has them.
+  The exe's embedded build string is `0.699.1.132863` (live captures match); pack manifests still say
+  `0.695.1.132647`.
 - **The January 2017 build.** The same list, except for three files from before that last update, held to their exact
   size and CRC32:
-  - `Landmark64.exe` 2FF380AE, built 4 Jan 2017;
+  - `Landmark64.exe` 2FF380AE, built 4 Jan 2017 (build string `0.695.1.132647`);
   - `Locale\en_us_data.dat` FFF22327;
   - `Locale\en_us_data.dir` 6166AEA1.
 
   On 14 Feb Daybreak recompiled the exe and changed some English text. A compile stamps a new random debug ID into the
-  exe, so the February exe can't be rebuilt from the January one; the only surviving copies are the January ones.
+  exe, so the February exe can't be rebuilt from the January one.
 
 A pack passes only when all of these hold (`Patching.CheckUpdate`, `PackCheck`, `GameStore.Install`):
 1. It says it leads to that version from the Steam build.
@@ -97,23 +99,21 @@ checksums stripped); LaunchPad only ever copies Daybreak's files, it never rebui
 
 | | Files | SHA-256 known |
 |---|---|---|
-| January 2017 build | 34,138 | all |
-| Daybreak's final build (Feb 2017) | 34,138 | all but 3: `Landmark64.exe` (ED231C3C), `Locale\en_us_data.dat` (10E110DF), `Locale\en_us_data.dir` (7C48670B) |
+| January 2017 build (`0.695.1.132647` in the exe) | 34,138 | all |
+| Daybreak's final build (Feb 2017; exe build string `0.699.1.132863`) | 34,138 | all |
 
 Sources (2026-10-18): the two zips of the 0.695 files (1,094 files), and the Steam 0.589 install for the 33,044 files
-0.695 kept unchanged. No local copy of the final build's three files exists, so a pack for the final build is refused
-until one is found (its CRC32 alone is not enough). Independent check: a separate SHA-256 list of 106 exe/dll files (2026-10-14)
-agrees on all 95 files both lists have, including the
-January `Landmark64.exe` (8B0FC625...).
+0.695 kept unchanged. The final build's three differing files (`Landmark64.exe` ED231C3C, `Locale\en_us_data.dat`
+10E110DF, `Locale\en_us_data.dir` 7C48670B) were pinned 2026-10-20 from genuine copies (size + CRC32 match Daybreak's
+list). Pack manifests still use version `0.695.1.132647` (`Patching.FinalBuild`); `GameFolder.Build` reads the string
+embedded in the exe, so a final install shows `0.699.1.132863`. Independent check: a separate SHA-256 list of 106
+exe/dll files (2026-10-14) agrees on all 95 files both lists have, including the January `Landmark64.exe` (8B0FC625...).
 
 **The February opt-in** (Settings > Patch packs: "Allow the February 2017 build's three files without a strong
-fingerprint (local pack files only)", `AllowFebruaryWeak` in `launchpad.json`, off by default). With it on, a pack the
-player chose (file picker or drop) or made themselves may write the final build's `Landmark64.exe`,
-`Locale\en_us_data.dat` and `Locale\en_us_data.dir` checked by size and CRC32 against Daybreak's list only; the preview
-and the folder check name those files in a warning, and the installed pack records them (`WeakFiles`; Validate and the
-PLAY check accept them only while the setting is on). It never applies to a server's update (refused unless the strong
-list covers the files) or to any other file, and the server never serves such a pack. When a LaunchPad update adds their
-SHA-256 to the strong list, they are fully verified everywhere and the setting has no effect (`Patching.WeakAllowed`).
+fingerprint (local pack files only)", `AllowFebruaryWeak` in `launchpad.json`, off by default) is a no-op now that the
+strong list covers those files (`Patching.WeakAllowed`). It remains in the UI and in tests that deliberately omit the
+fingerprints. Before 2026-10-20 it let a local pack write those three files checked by size and CRC32 only; it never
+applied to a server's update.
 
 Does the SHA-256 refuse anything the old size + CRC32 check accepted for a genuine copy? No. Both need the exact bytes
 of Daybreak's file; the SHA-256 only stops a file made to have the right size and CRC32 with other bytes (forging a

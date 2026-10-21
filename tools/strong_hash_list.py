@@ -25,8 +25,9 @@
 #       "<0.695 install>-0695-files-not-in-0589.zip" "<0.695 install>/files-still-needed.zip" \
 #       "<Landmark folder>" "<0.695 install>"
 # Result (2026-10-18): 34,138 of 34,141 rows: 1,008 + 86 from the two zips, 33,044 from the Steam 0.589 install (files
-# 0.695 kept unchanged); not found: the final (Feb 2017) build's Landmark64.exe ED231C3C and Locale\en_us_data.dat
-# 10E110DF / .dir 7C48670B.
+# 0.695 kept unchanged); not found then: the final (Feb 2017) build's Landmark64.exe ED231C3C and Locale\en_us_data.dat
+# 10E110DF / .dir 7C48670B. Those three SHA-256s were filled 2026-10-20 from genuine copies (size + CRC32 match); the
+# CSV is now complete (34,141 / 34,141). Re-running this script without those sources as inputs will blank them again.
 import csv, hashlib, os, sys, zipfile, zlib
 
 BS = chr(92)

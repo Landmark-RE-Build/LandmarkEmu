@@ -69,13 +69,12 @@ hashes, downloads in progress).
 
 ## The update to 0.695
 
-LaunchPad installs exactly one kind of patch: the update from the Steam build (0.589.1.128895) to **0.695.1.132647**.
-It knows two genuine builds of 0.695:
+LaunchPad installs exactly one kind of patch: the update from the Steam build (0.589.1.128895) to **0.695.1.132647**
+(pack version; the February exe's own build string is **0.699.1.132863**). It knows two genuine builds:
 
-- **the January 2017 build**: fully verified (LaunchPad has the SHA-256 of every file);
-- **Daybreak's final build (14 February 2017)**: the same files except `Landmark64.exe` and the English text
-  (`Locale\en_us_data.dat` / `.dir`). LaunchPad doesn't have the SHA-256 of those three yet, so a pack with them is
-  refused unless you allow it yourself (see "The February build" below).
+- **the January 2017 build** (`0.695.1.132647` in the exe): fully verified;
+- **Daybreak's final build (14 February 2017)** (`0.699.1.132863` in the exe): the same files except `Landmark64.exe`
+  and the English text (`Locale\en_us_data.dat` / `.dir`). Fully verified (SHA-256 of those three pinned 2026-10-20).
 
 A pack is only installed when all of this holds:
 
@@ -133,12 +132,9 @@ LaunchPad.exe --store verify-pack <pack.lmpatch> [<Steam folder>]
 
 ### The February build
 
-Settings > Patch packs: **Allow the February 2017 build's three files without a strong fingerprint (local pack files
-only)**. Off by default. With it on, a pack you chose or made yourself may write the final build's `Landmark64.exe`,
-`Locale\en_us_data.dat` and `Locale\en_us_data.dir` checked only by size and CRC32 against Daybreak's list. A CRC32
-can be forged, so only use packs you trust. The preview names those files in a warning, and Validate and PLAY accept
-them only while the option is on. It never applies to an update from a server or to any other file. When a LaunchPad
-release adds their SHA-256, they are fully verified and the option has no effect.
+Settings > Patch packs still has **Allow the February 2017 build's three files without a strong fingerprint (local pack
+files only)** for older LaunchPads. With the current strong list those files are fully verified and the option has no
+effect. It never applied to an update from a server.
 
 ### Undo, back to Steam, and validating
 
