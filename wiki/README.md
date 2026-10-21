@@ -18,7 +18,7 @@ A GitHub wiki is a separate git repository next to the main one, `LandMarkEmu.wi
 been enabled in the repository's settings and a first page has been saved on GitHub (any text; it is replaced below).
 
 ```
-git clone https://github.com/XDigitalPixelX/LandMarkEmu.wiki.git
+git clone https://github.com/Landmark-RE-Build/LandmarkEmu.wiki.git
 cd LandMarkEmu.wiki
 git rm -q *.md                                   # start from an empty page set (so removed pages go too)
 cp ../LandMarkEmu/wiki/*.md .                   # the pages from this folder
