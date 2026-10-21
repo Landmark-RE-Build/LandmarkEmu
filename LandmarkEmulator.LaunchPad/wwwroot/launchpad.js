@@ -68,6 +68,8 @@
     $('optLocale').value = s.locale || '';
     $('optServerUpdates').checked = !!s.allowServerUpdates;
     $('optFebruary').checked = !!s.allowFebruaryWeak;
+    $('optAdvanced').checked = !!s.advanced;
+    showAdvanced(!!s.advanced);
     document.querySelectorAll('.steam-build').forEach(function (e) { e.textContent = s.steamBuild; });
     if (!s.ownSteamCopy && $('makeSteam').value === 'own') $('makeSteam').value = '';
     $('makeSteam').options[0].disabled = !s.ownSteamCopy;
@@ -317,10 +319,20 @@
   }
 
   // ---- settings
-  function openSettings(tab) {
-    $('lpSettings').classList.remove('hidden');
+  function showTab(tab) {
     document.querySelectorAll('#settingsMenu button').forEach(function (b) { b.classList.toggle('active', b.dataset.tab === tab); });
     document.querySelectorAll('.tab').forEach(function (t) { t.classList.toggle('hidden', t.id !== 'tab-' + tab); });
+    if (tab === 'client') loadClientConfig();
+  }
+  function openSettings(tab) {
+    $('lpSettings').classList.remove('hidden');
+    showTab(tab);
+  }
+  function currentTab() { var b = document.querySelector('#settingsMenu button.active'); return b ? b.dataset.tab : ''; }
+  // Advanced mode's tab; switching it off leaves it.
+  function showAdvanced(on) {
+    document.querySelectorAll('.advanced-only').forEach(function (b) { b.classList.toggle('hidden', !on); });
+    if (!on && currentTab() === 'client') showTab('options');
   }
   $('settingsButton').addEventListener('click', function () {
     if ($('lpSettings').classList.contains('hidden')) openSettings('servers'); else $('lpSettings').classList.add('hidden');
@@ -467,6 +479,84 @@
         'and every player use' + (r.replayed ? ' (' + r.replayed + ' edits and patches replayed on the Steam copy)' : '') + '.'));
       setProgress(100, 'Update pack made.');
     }).catch(function (err) { out.innerHTML = ''; out.appendChild(el('p', err.message, 'error')); });
+  });
+
+  // ---- advanced mode (Settings > Options): Client settings, the ClientConfig.ini values PLAY writes and the player's
+  //      choices (Bridge.cs: clientConfig, setConfigChoice).
+  function lineName(s) { return (s.section ? '[' + s.section + '] ' : '') + s.key; }
+  function shown(v) { return v == null ? 'no line' : v === '' ? '(empty)' : v; }
+
+  function loadClientConfig() {
+    return call('clientConfig').then(renderClientConfig).catch(function (e) {
+      $('ccList').innerHTML = ''; $('ccList').appendChild(el('p', e.message, 'error'));
+    });
+  }
+  function renderClientConfig(c) {
+    var list = $('ccList'); list.innerHTML = '';
+    c.settings.forEach(function (s) { list.appendChild(settingCard(s, c)); });
+  }
+
+  function settingCard(s, c) {
+    var card = el('div', null, 'card setting');
+    var head = el('h3', s.title + ' '); head.appendChild(el('span', lineName(s), 'key'));
+    card.appendChild(head);
+    card.appendChild(el('p', s.what, 'small'));
+    var table = el('table', null, 'values');
+    // prose: words, not a value from the file (shown without the code font).
+    function row(name, value, note, prose) {
+      var tr = el('tr'); tr.appendChild(el('td', name));
+      var td = el('td'); td.appendChild(el('span', value, prose ? 'prose' : 'mono'));
+      if (note) td.appendChild(el('span', ' (' + note + ')', 'muted'));
+      tr.appendChild(td); table.appendChild(tr);
+    }
+    row('Game\'s original', s.original == null ? (s.codeDefault ? 'no line: the game uses ' + s.codeDefault : 'no line') : shown(s.original),
+      s.originalSource, s.original == null);
+    if (s.editable) row('LaunchPad recommends', s.recommended);
+    else if (s.recommended) row('LaunchPad writes', s.recommended, c.server ? 'for ' + c.server : '');
+    else row('LaunchPad writes', 'the address of the server you play on, when you press PLAY', '', true);
+    row('In the file now', shown(s.current), '', s.current == null);
+    if (s.editable) row('Next PLAY writes', s.writes == null ? 'nothing: the line stays as it is' : s.writes, '', s.writes == null);
+    card.appendChild(table);
+    if (!s.editable) { card.appendChild(el('p', s.fixed, 'muted small')); return card; }
+
+    var box = el('div', null, 'choices'), err = el('p', '', 'error small');
+    var input = document.createElement('input');
+    input.type = 'text'; input.className = 'value'; input.maxLength = 3; input.inputMode = 'numeric';
+    input.value = s.value || ''; input.placeholder = s.min + '-' + s.max;
+    input.setAttribute('aria-label', 'Your value for ' + s.key);
+    function valid(v) { return /^\d{1,3}$/.test(v) && +v >= s.min && +v <= s.max; }
+    function choose(mode) {
+      err.textContent = '';
+      var v = input.value.trim();
+      if (mode === 'Custom' && !valid(v)) {
+        err.textContent = v === '' ? 'Type your value (' + s.min + ' to ' + s.max + '), then press Enter.' : s.key + ' must be a whole number from ' + s.min + ' to ' + s.max + '.';
+        input.focus();
+        return;
+      }
+      call('setConfigChoice', { key: s.key, mode: mode, value: valid(v) ? v : '' }).then(renderClientConfig)
+        .catch(function (e) { err.textContent = e.message; });
+    }
+    var custom = null;
+    function radio(mode, text, extra) {
+      var label = el('label', null, 'check'), r = document.createElement('input');
+      r.type = 'radio'; r.name = 'cc-' + s.key; r.value = mode; r.checked = s.mode === mode;
+      label.appendChild(r); label.appendChild(document.createTextNode(text));
+      if (extra) extra.forEach(function (x) { label.appendChild(x); });
+      r.addEventListener('change', function () { if (r.checked) choose(mode); });
+      box.appendChild(label);
+      return r;
+    }
+    radio('Recommended', 'LaunchPad sets it (recommended: ' + s.recommended + ')');
+    custom = radio('Custom', 'Use my value:', [input, el('span', 'a whole number from ' + s.min + ' to ' + s.max, 'muted small')]);
+    radio('Leave', 'Leave the file as it is');
+    input.addEventListener('change', function () { custom.checked = true; choose('Custom'); });
+    card.appendChild(box);
+    card.appendChild(err);
+    return card;
+  }
+
+  $('optAdvanced').addEventListener('change', function () {
+    call('setAdvanced', { on: this.checked }).then(apply).catch(function (e) { showError(e.message); });
   });
 
   // ---- start

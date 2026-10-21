@@ -847,11 +847,13 @@ namespace LandmarkEmulator.WorldServer.Game
         /// the model's one-time collision build, re-run by <see cref="ReassertCollision"/> after the arrival
         /// (trace/0695/agent-prop-collision.md, 2026-10-17: arrivals fell through the deck until then).
         /// </summary>
-        public static void Enter(WorldSession session)
+        public static void Enter(WorldSession session, SpirePart part = SpirePart.All)
         {
             if (Ensure(session.ZoneId) is not Site site)
                 return;
-            List<PlayerUpdateAddLightweightProp> props = PropsOf(site);
+            List<PlayerUpdateAddLightweightProp> props = PropsOf(site).Where(p => InPart(p, part)).ToList();
+            if (props.Count == 0)
+                return;
             foreach (PlayerUpdateAddLightweightProp prop in props)
                 session.EnqueueMessage(prop);
             if (SendFullAtOnce)
@@ -864,6 +866,23 @@ namespace LandmarkEmulator.WorldServer.Game
             if (flagging.Guids.Count > 0)
                 session.EnqueueMessage(flagging);
         }
+
+        /// <summary>
+        /// Which of a Spire's props <see cref="Enter"/> and <see cref="ReassertCollision"/> are for. While a loading screen
+        /// holds the world streams (PlayerManager "Stream hold") only the deck goes early, so a player arriving there has
+        /// collision; the stations, chests and crystal follow when the screen drops. A player arriving on the platform
+        /// gets all of them early (they stand among them).
+        /// </summary>
+        public enum SpirePart { All, Deck, Rest }
+
+        /// <summary>
+        /// The deck: the Hub structure the players walk on (the Spires model, and the base model of a Spire without a
+        /// template) [P models; the deck collision is the Hub model's, agent-prop-collision.md].
+        /// </summary>
+        private static bool IsDeck(PlayerUpdateAddLightweightProp prop) => prop.ModelId is SpiresModel or BaseModel;
+
+        private static bool InPart(PlayerUpdateAddLightweightProp prop, SpirePart part)
+            => part == SpirePart.All || IsDeck(prop) == (part == SpirePart.Deck);
 
         /// <summary>
         /// Answers the client's FullCharacterDataRequest for a Spire prop with LightweightToFullProp. Until it has it a
@@ -894,10 +913,14 @@ namespace LandmarkEmulator.WorldServer.Game
         /// after the arrival — 7 small packets per retry, only for players near the Spire. Unrequested full conversions
         /// do nothing for collision (FUN_142d532f0) [P].
         /// </summary>
-        public static void ReassertCollision(WorldSession session)
+        public static void ReassertCollision(WorldSession session, SpirePart part = SpirePart.All)
         {
             uint zone = session.ZoneId;
             if (Peek(zone) is not Site site || site.Props == null)
+                return;
+            // Only the props this client was sent (the deck alone while a loading screen holds the rest).
+            List<PlayerUpdateAddLightweightProp> props = site.Props.Where(p => InPart(p, part)).ToList();
+            if (props.Count == 0)
                 return;
             foreach (int ms in CollisionRetryMs)
                 Teleport.After(session, ms, () =>
@@ -905,7 +928,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     if (session.ZoneId != zone || session.RezoneTarget != null
                         || Vector3.Distance(session.Position, site.Position) > CollisionRetryRange)
                         return;
-                    foreach (PlayerUpdateAddLightweightProp prop in site.Props)
+                    foreach (PlayerUpdateAddLightweightProp prop in props)
                         session.EnqueueMessage(new PlayerUpdatePosition
                         {
                             TransientId = prop.TransientId,

@@ -2143,6 +2143,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
 - **Try next:** client tests for (b) (c) (d) (e) (g); 2016 videos for (f) (h); decompile for (c) (d).
 
 ### L193. Hotbar placement on the active bar (invequip 2026-10-18)
+- **2026-10-21 (auditshift, docs/client-to-server-shifts.md Shift-A1..A3):** 0.589 preferred the bar on screen (action bar manager +0x78); 0.695 never sends the active bar (Ui.SetActiveActionBar FUN_1435c8290 sends nothing). Also open: whether live placed the slot when the equip was refused, and whether a default (type 1) slot holding the item counted as "already on the bar". Next: a runtime capture of 0.695 switching bars.
 - **Need:** which bar live placed a right-clicked tool on (the client never tells the server the active bar; ours
   starts at bar 0), and what ToolBase "switched build tool to Location (7)" right after an equip means.
 - **Try next:** client's active-bar index in the ActionManager data source / Lua; the ToolBase sender after equips.
@@ -2163,6 +2164,47 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
   cell and the one above are loaded (FUN_143324910). Fix in place is a depth filter + fall guard (ours).
 - **Try next:** Frida on the cell request / collision build for a deep arrival (LOD / streaming depth limit in the
   client's VoxelFarm view distance), client logs VoxelFarm.log / CellRequests during such a trip.
+
+### L196. Observer-sync leftovers (auditobserver 2026-10-21; details docs/observer-sync.md OL-1..OL-6)
+- **Need:** (1) guild tag under names — live showed it (hotfix P1525); client packet 0xDF {u64, string} →
+  FUN_142cdf330 → entity +0x21a8, full-character string 3, DisplayPlayerGuildNames option; what live put in it is
+  unknown; (2) a dead player's body on other screens (remote knocked-out handler FUN_142ead890 is empty); (3) calculated
+  stats in the full character possibly sticking on observers after a buff; (4) build-preview setup for walk-ins;
+  (5) mining dust / crafting-station-in-use visuals for observers; (6) short combat states for late arrivals [I].
+- **Try next:** see docs/observer-sync.md per item; 2016 videos for (1) (2) (5).
+
+### L197. Request-variant leftovers (auditcallers 2026-10-21; docs/request-variants.md)
+- **Need:** the old leader's rank after a leadership transfer [I] (ours: the new leader's former rank); which
+  right-click rows live showed per target [I]; Guild.RankSetDescription (FUN_1435b8b10) sends the same packet as
+  Guild.SetDescription with nothing naming the rank; LuaClaimVendor.SetItemPriceBySlot "slot" meaning; feedback mail to
+  a contest winner on another world (guid looked up in this world's DB only).
+- **Try next:** live captures / dev posts for the guild items; a 0.695 window calling RankSetDescription.
+
+### L198. Allocator slots on many-core PCs beyond DirectThreadCount (castleprefab 2026-10-21)
+- **Need:** a way (without modifying the client) to keep threads within the 64 allocator slots on 16+ thread CPUs:
+  the Resource::Manager Decompression (FUN_143a8d560) and TaskManagerJob (FUN_143a98090) pools start one thread per
+  logical processor, uncapped; the design preview thread (FUN_143f99120) starts late and likely gets none. Also open:
+  where the finished preview thread is released; whether MaxVoxelsForPreview (default 41,500, FUN_14219be10) is read
+  in 0.695; whether every pool thread takes a slot (inferred).
+- **Try next:** ClientConfig / UserOptions keys those pool constructors read (thread-count overrides?); launching the
+  client with a processor affinity mask from LaunchPad (no game-file change) and measuring slots with re/tools/slots.py.
+
+### L199. Paste area vs the client's preview (placeoffset 2026-10-21)
+- **Need:** whether the client's paste area (FUN_1436cd920: −1 and −(|C|/2 + 1) margins on x/z, horizontal mask
+  (1,0,1,0) set at FUN_1428a2040) puts the copy's first voxel where the server puts it (the area's corner); a 1-2 voxel
+  margin could itself explain the "1 or 2 blocks off" report. Also: coarse distance copies (LOD) average voxels with no
+  surface → distant builds up to half a voxel off after they refresh (~20 s).
+- **Try next:** one in-game paste log line ("pasted … client area …, copy …, first voxel at …"), or a Frida capture
+  of FUN_1436cd920 vs the paste thread's area (FUN_143f98b80).
+
+### L200. Client calls the server could make for the slot problem (2026-10-21; trace/0695/client-commands-for-slots.md)
+- **Known [P]:** no reachable client call resizes the Decompression / TaskManagerJob pools; DirectThreadCount is read
+  once at start-up; ~632 of ~694 console variables are developer-only and hidden in retail (FUN_142bfbdc0(1) in
+  FUN_142ce9580); no server packet pushes graphics settings. GameSettings.SetMTR(0) stops the render worker thread
+  (frees ~1 slot [I], costs FPS, never re-enable with SetMTR(1)).
+- **Try next:** slotmap.py before / after SetMTR(0) on a full table; who reads the claim-wide LOD flag; whether render
+  distance limits terrain cell loading; whether cached meshes skip contouring; whether CEF / voice threads use the game
+  allocator.
 
 ## Found
 

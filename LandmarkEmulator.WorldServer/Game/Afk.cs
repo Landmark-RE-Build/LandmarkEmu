@@ -33,6 +33,13 @@ namespace LandmarkEmulator.WorldServer.Game
             log.Info($"{session.CharacterName} is {(now ? "away" : "back")}.");
         }
 
+        /// <summary>Is the player away (/afk)? Also carried in their LightweightToFullPc.</summary>
+        public static bool IsAway(WorldSession session)
+        {
+            lock (away)
+                return away.Contains(session);
+        }
+
         /// <summary>A player who is away gets a fresh viewer up to date (PlayerManager introductions).</summary>
         public static void Introduce(WorldSession viewer, WorldSession subject)
         {

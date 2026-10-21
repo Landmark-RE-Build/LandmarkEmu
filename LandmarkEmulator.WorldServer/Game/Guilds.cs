@@ -395,8 +395,10 @@ namespace LandmarkEmulator.WorldServer.Game
                         Remove(session.PlayerGuid, session.CharacterName);
                         break;
                     case KickSub:
-                        reader.ReadULong();
-                        Kick(session, reader.ReadULong());
+                        if (GuildKicks.TryRead(body, out GuildKicks.Request kick))
+                            Kick(session, kick);
+                        else
+                            log.Debug($"Unreadable guild kick from {session.CharacterName}: {BitConverter.ToString(body)}");
                         break;
                     case ChangeMemberRankSub:
                         ChangeRank(session, body);
@@ -963,18 +965,22 @@ namespace LandmarkEmulator.WorldServer.Game
             => guildOf.TryGetValue(characterId, out ulong id) && guilds.TryGetValue(id, out Guild guild) ? guild : null;
 
         /// <summary>
-        /// GuildKick (0x0C; Lua Guild.Kick from the roster's right-click menu, FUN_143508640; writer FUN_142e44120):
-        /// u64 guild, u64 member, string. Needs KickFromGuild and a target of a lower rank; the target leaves as with
-        /// /guildquit (RemoveMember to the guild, Disband to the target).
+        /// GuildKick (0x0C): u64 guild, u64 member, string name — by guid from the roster's right-click menu (Lua Guild.Kick,
+        /// 0.695 FUN_1435b7ce0), by name from /guildkick and /guildremove (FUN_1433abf90); <see cref="GuildKicks"/>. Needs
+        /// KickFromGuild and a target of a lower rank; the target leaves as with /guildquit (RemoveMember to the guild,
+        /// Disband to the target).
         /// </summary>
-        private static void Kick(WorldSession session, ulong target)
+        private static void Kick(WorldSession session, GuildKicks.Request request)
         {
             Guild guild;
             string name;
+            ulong target;
             lock (sync)
             {
                 guild = GuildOf(session.PlayerGuid);
-                if (guild == null || target == session.PlayerGuid || !Has(guild, session.PlayerGuid, "KickFromGuild")
+                target = guild == null ? 0 : GuildKicks.Resolve(request, guild.Members.Select(m => KeyValuePair.Create(m.Key, m.Value.Name)));
+                log.Debug($"{session.CharacterName}: guild kick of {request.Describe()} → 0x{target:X}.");
+                if (guild == null || target == 0 || target == session.PlayerGuid || !Has(guild, session.PlayerGuid, "KickFromGuild")
                     || !guild.Members.TryGetValue(target, out var member)
                     || Level(guild, member.Rank) <= Level(guild, guild.Members[session.PlayerGuid].Rank))
                 {
@@ -1008,6 +1014,7 @@ namespace LandmarkEmulator.WorldServer.Game
             Guild guild;
             uint newRank, oldRank = 0;
             string name;
+            bool transfer = false;
             lock (sync)
             {
                 guild = GuildOf(session.PlayerGuid);
@@ -1021,16 +1028,25 @@ namespace LandmarkEmulator.WorldServer.Game
                 uint? named = new[] { a, b }.Select(n => guild.Ranks.FirstOrDefault(r => string.Equals(r.Name, n?.Trim(), StringComparison.OrdinalIgnoreCase))?.Id ?? RankByName(n))
                     .FirstOrDefault(x => x != null && x != member.Rank);
                 newRank = named ?? (member.Rank == MemberRank ? OfficerRank : MemberRank);
-                // Nobody becomes leader this way, nor reaches the changer's own rank unless they lead.
-                if (newRank == LeaderRank || (Level(guild, newRank) <= Level(guild, guild.Members[session.PlayerGuid].Rank)
-                    && guild.Members[session.PlayerGuid].Rank != LeaderRank))
+                // The leader's confirmed "Transfer Guild Leadership" (GuildRankChanges): handled below, outside the lock.
+                transfer = GuildRankChanges.IsLeadershipTransfer(newRank, guild.Members[session.PlayerGuid].Rank,
+                    guild.Model.LeaderId == session.PlayerGuid, LeaderRank);
+                // Nobody else becomes leader this way, nor reaches the changer's own rank unless they lead.
+                if (!transfer && (newRank == LeaderRank || (Level(guild, newRank) <= Level(guild, guild.Members[session.PlayerGuid].Rank)
+                    && guild.Members[session.PlayerGuid].Rank != LeaderRank)))
                 {
                     Notify(session, NotifyChangeRankFailed, guild.Model.Name);
                     return;
                 }
                 name = member.Name;
                 oldRank = member.Rank;
-                guild.Members[target] = (member.Name, newRank);
+                if (!transfer)
+                    guild.Members[target] = (member.Name, newRank);
+            }
+            if (transfer)
+            {
+                TransferLeadership(session, guild, target);
+                return;
             }
             uint rank = newRank;
             DatabaseManager.Instance.CharacterDatabase.Save(c =>
@@ -1055,6 +1071,55 @@ namespace LandmarkEmulator.WorldServer.Game
                 promoted = Level(guild, rank) < Level(guild, oldRank);
             AddLog(guild, promoted ? LogPromoted : LogDemoted, session.CharacterName, name, 0, rank);
             log.Info($"{session.CharacterName} set {name}'s guild rank to {guild.Ranks.FirstOrDefault(r => r.Id == rank)?.Name ?? rank.ToString()}.");
+        }
+
+        /// <summary>
+        /// The leader hands the guild on (<see cref="GuildRankChanges"/>): the member becomes leader, the old leader takes
+        /// the member's former rank [I], both rank changes go to the guild, the log gets Guild.NewLeader, and everyone gets
+        /// the guild again (its leader field).
+        /// </summary>
+        private static void TransferLeadership(WorldSession session, Guild guild, ulong target)
+        {
+            string name, leaderName;
+            uint formerRank;
+            lock (sync)
+            {
+                var member = guild.Members[target];
+                name = member.Name;
+                formerRank = GuildRankChanges.FormerLeaderRank(member.Rank, LeaderRank, MemberRank);
+                leaderName = guild.Members[session.PlayerGuid].Name;
+                guild.Members[target] = (member.Name, LeaderRank);
+                guild.Members[session.PlayerGuid] = (leaderName, formerRank);
+                guild.Model.LeaderId = target;
+            }
+            ulong guildId = guild.Model.Id, leader = session.PlayerGuid;
+            DatabaseManager.Instance.CharacterDatabase.Save(c =>
+            {
+                var model = new GuildModel { Id = guildId };
+                c.Guild.Attach(model);
+                model.LeaderId = target;
+                c.MarkModified(model, nameof(model.LeaderId));
+                foreach ((ulong who, uint rank) in new[] { (target, LeaderRank), (leader, formerRank) })
+                {
+                    var row = new GuildMemberModel { CharacterId = who };
+                    c.GuildMember.Attach(row);
+                    row.RankId = rank;
+                    c.MarkModified(row, nameof(row.RankId));
+                }
+            });
+            foreach ((ulong who, string whoName, uint rank) in new[] { (target, name, LeaderRank), (leader, leaderName, formerRank) })
+                SendToMembers(guild, Build(ChangeMemberRankSub, w =>
+                {
+                    w.Write(guildId);
+                    w.Write(who);
+                    w.Write(whoName);
+                    w.Write(leader);
+                    w.Write(session.CharacterName ?? "");
+                    w.Write(rank);
+                }));
+            AddLog(guild, LogNewLeader, "", name);
+            ResendGuild(guild);
+            log.Info($"{session.CharacterName} handed the leadership of guild {guildId} to {name}.");
         }
 
         private static uint? RankByName(string name) => name?.Trim().ToLowerInvariant() switch

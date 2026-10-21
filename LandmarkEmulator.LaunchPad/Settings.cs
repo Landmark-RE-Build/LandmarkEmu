@@ -52,6 +52,31 @@ namespace LandmarkEmulator.LaunchPad
         /// carries their SHA-256 it has no effect.
         /// </summary>
         public bool AllowFebruaryWeak { get; set; }
+        /// <summary>
+        /// Advanced mode (Settings > Options) and the Client settings choices, per game folder (its full path). A folder
+        /// gets an entry only once the player changes something there; without one (or with advanced mode off) PLAY
+        /// writes LaunchPad's recommended ClientConfig.ini values, as it always did (ClientConfigFile.Apply).
+        /// </summary>
+        public Dictionary<string, ClientConfigOptions> ClientConfig { get; set; } = new();
+
+        /// <summary>The folder's advanced-mode settings, or null when the player never changed any.</summary>
+        public ClientConfigOptions? ConfigFor(string folder)
+        {
+            string key = FolderKey(folder);
+            return ClientConfig.FirstOrDefault(p => FolderKey(p.Key) == key).Value;
+        }
+
+        /// <summary>The folder's advanced-mode settings, made when missing (for a change).</summary>
+        public ClientConfigOptions ConfigToChange(string folder)
+        {
+            if (ConfigFor(folder) is ClientConfigOptions known)
+                return known;
+            var made = new ClientConfigOptions();
+            ClientConfig[Path.GetFullPath(folder).TrimEnd('\\')] = made;
+            return made;
+        }
+
+        private static string FolderKey(string folder) => Path.GetFullPath(folder).TrimEnd('\\').ToUpperInvariant();
 
         private static readonly JsonSerializerOptions json = new() { WriteIndented = true, DefaultIgnoreCondition = JsonIgnoreCondition.Never };
 

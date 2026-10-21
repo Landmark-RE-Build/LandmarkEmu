@@ -53,6 +53,7 @@
           <button data-tab="validate">Validate files</button>
           <button data-tab="folder">Game folder</button>
           <button data-tab="options">Options</button>
+          <button data-tab="client" class="advanced-only hidden">Client settings</button>
           <button data-tab="about">About</button>
         </nav>
         <div id="settingsContent">
@@ -148,7 +149,20 @@
                 <option value="fr_FR">Fran&ccedil;ais</option><option value="es_ES">Espa&ntilde;ol</option>
               </select>
             </label>
+            <label class="check"><input type="checkbox" id="optAdvanced"> Advanced mode: choose the game settings LaunchPad
+              writes</label>
+            <p class="muted small">Off (the default), LaunchPad writes its recommended values into the game's ClientConfig.ini
+              each time you press PLAY, as always. On, Settings gets a Client settings tab for this game folder: each value
+              LaunchPad changes, what it does, and where you may choose, your own value or none.</p>
           </section>
+
+          <section class="tab hidden" id="tab-client">
+            <h2>Client settings</h2>
+            <p class="muted">What LaunchPad writes into the game's ClientConfig.ini each time you press PLAY. The game reads
+              the file when it starts.</p>
+            <div id="ccList"></div>
+          </section>
+
 
           <section class="tab hidden" id="tab-about">
             <h2>About</h2>

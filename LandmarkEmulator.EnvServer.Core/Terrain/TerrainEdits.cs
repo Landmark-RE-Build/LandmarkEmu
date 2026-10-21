@@ -199,9 +199,63 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
             foreach ((uint zone, string zoneFolder) in zones)
                 LoadZone(zone, zoneFolder);
             VoxelOwnership.Load(folder);
+            RepairInteriorAir();
             log.Info($"Loaded {Count} edited terrain cells on {stores.Count} landscape(s).");
             HealQueue.Load(folder);
             AdoptOldDestruction();
+        }
+
+        /// <summary>
+        /// Placed designs and pastes stored before 2026-10-21 hold the copy's interior empty space as a raw material 0xFFFC
+        /// (<see cref="VoxelTemplate.InteriorAir"/>) in the build layer. The client draws it as air but builds occlusion quads
+        /// from it (Building.PastedMaterial has the trace), so standing inside such a design hid every terrain cell around
+        /// it. At every start the build layer's cells are checked (flags and materials only, no full expansion) and each
+        /// such voxel becomes air (material 0, what it looked like), at a new cell version so clients fetch the cell again
+        /// and the coarse copies (TerrainLod, built after the load) follow; the voxels lose their owner (air has none).
+        /// Only the build layer: stamps (layer 0) always wrote it as air and digs (layer 2) never hold it. Returns the cells
+        /// repaired (<paramref name="onlyZone"/>: one landscape, for tests).
+        /// </summary>
+        internal static int RepairInteriorAir(uint? onlyZone = null)
+        {
+            var flags = new byte[BlockData.Count];
+            var materials = new ushort[BlockData.Count];
+            var repaired = new List<(uint Zone, ulong Cell, List<int> Indices)>();
+            lock (sync)
+                foreach ((uint zone, var overlays) in stores)
+                    foreach ((ulong key, Overlay overlay) in overlays)
+                    {
+                        if (LayerOf(key) != BuildLayer || (onlyZone is uint only && zone != only))
+                            continue;
+                        byte[] saved = overlay.SavedBytes();
+                        if (saved == null ? !HasInteriorAir(overlay.Blocks.Flags, overlay.Blocks.Materials)
+                            : !BlockData.LoadSolidity(saved, flags, materials) || !HasInteriorAir(flags, materials))
+                            continue;
+                        BlockData blocks = overlay.Blocks;
+                        var indices = new List<int>();
+                        for (int i = 0; i < BlockData.Count; i++)
+                            if ((blocks.Flags[i] & 1) != 0 && blocks.Materials[i] == VoxelTemplate.InteriorAir)
+                            {
+                                blocks.Materials[i] = 0;
+                                indices.Add(i);
+                            }
+                        overlay.Version++;
+                        overlay.Dirty = true;
+                        repaired.Add((zone, CellOf(key), indices));
+                    }
+            foreach ((uint zone, ulong cell, List<int> indices) in repaired)
+                VoxelOwnership.Set(zone, cell, indices, _ => false, 0);
+            if (repaired.Count > 0)
+                log.Info($"Terrain store: interior empty space (material 0xFFFC) of placed designs written as air in {repaired.Count} cell(s) "
+                    + $"({repaired.Sum(r => r.Indices.Count)} voxels).");
+            return repaired.Count;
+        }
+
+        private static bool HasInteriorAir(byte[] flags, ushort[] materials)
+        {
+            for (int i = 0; i < BlockData.Count; i++)
+                if ((flags[i] & 1) != 0 && materials[i] == VoxelTemplate.InteriorAir)
+                    return true;
+            return false;
         }
 
         /// <summary>
@@ -1835,10 +1889,14 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
 
         /// <summary>
         /// Writes stored voxel values back into a cell's overlay (undo / redo, paste). Solid voxels written become
-        /// <paramref name="owner"/>'s and the others nobody's (Voxel Vision); owner 0 leaves ownership alone.
+        /// <paramref name="owner"/>'s and the others nobody's (Voxel Vision); owner 0 leaves ownership alone. Interior
+        /// empty space (0xFFFC) is never stored as a material: a value carrying it is written as air (the paste paths
+        /// already resolve it, Building.PastedMaterial; this keeps any other writer from storing it: <see cref="RepairInteriorAir"/>).
         /// </summary>
         public static void Write(ulong id, List<VoxelValue> values, uint zone = 0, ulong owner = 0, uint layer = BuildLayer)
         {
+            if (values.Exists(v => (v.Flags & 1) != 0 && v.Material == VoxelTemplate.InteriorAir))
+                values = values.Select(v => (v.Flags & 1) != 0 && v.Material == VoxelTemplate.InteriorAir ? v with { Material = 0 } : v).ToList();
             if (owner != 0)
             {
                 var solid = values.Where(v => (v.Flags & 1) != 0 && v.Material != 0).Select(v => v.Index).ToHashSet();

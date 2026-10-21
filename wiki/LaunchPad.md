@@ -51,7 +51,8 @@ a download.
 | **Patch packs** | Install a pack, undo the last one, go back to the Steam game, the list of installed packs, the February-build option, and **Create update pack** |
 | **Validate files** | Check every game file against what it should be |
 | **Game folder** | The folder LaunchPad works on, its build, and **Verify the Steam copy** |
-| **Options** | Auto-play, **Allow installing the update from servers**, the game language |
+| **Options** | Auto-play, **Allow installing the update from servers**, the game language, **Advanced mode** |
+| **Client settings** | Only in [advanced mode](#advanced-mode) |
 | **About** | What LaunchPad is, and a note on passwords |
 
 Settings are kept in `%AppData%\LandmarkEmu\launchpad.json`. What LaunchPad has installed into a game folder is
@@ -154,11 +155,38 @@ the folder and LaunchPad's own files are left out of every check. No program or 
 1. Checks `Landmark64.exe` is a genuine exe (Steam's 0.589 one or a known 0.695 build's) and refuses to start
    anything else.
 2. Logs in again for a fresh session key.
-3. Writes `ClientConfig.ini` so the game connects to the server's login port and opens the server's in-game web pages.
+3. Writes `ClientConfig.ini` so the game connects to the server's login port, opens the server's in-game web pages, and
+   loads with 2 asset threads (or what you chose in advanced mode).
 4. Starts `Landmark64.exe` with the session key.
 
 While the game runs, LaunchPad is minimised; closing its window only hides it. When the game closes it comes back to
 the front, and tells a crash (the game's crash handler's exit codes) from a normal exit.
+
+## Advanced mode
+
+Settings > Options > **Advanced mode**. It is off by default, and while it is off LaunchPad behaves exactly as without
+it. It is remembered per game folder. On, Settings gets a **Client settings** tab.
+
+### Client settings
+
+Every value LaunchPad writes into `ClientConfig.ini` when you press PLAY, with what it does, the game's original
+value, LaunchPad's value, what the file says now, and what the next PLAY writes.
+
+- **Asset loading threads** (`[AssetDelivery] DirectThreadCount`): how many threads the game uses to read its asset
+  files. Choose:
+  - **LaunchPad sets it** (2, recommended);
+  - **Use my value**: a whole number from 1 to 10;
+  - **Leave the file as it is**: LaunchPad doesn't touch the line.
+
+  Steam's file has 10. With that many, the terrain threads that start when you enter a world can find none of the
+  game's 64 memory-allocator thread slots left, and the loading screen stalls at 50 % for minutes (the "number of
+  cores" bug of 2016). 0 or less loads nothing at all.
+- **Login server** (`Server=`) and **In-game web pages** (`MarketplaceUrl=`) are shown but can't be changed: they are
+  how the game reaches the server you chose. The Showcase (store, gallery) only knows you on the server's own pages,
+  and an address that doesn't answer stalls the game.
+- LaunchPad changes nothing else in the file and adds no other lines. Players' files may still have
+  `[Terrain] UseCachedMeshes=off` / `CacheMeshes=off` from an old LandmarkEmu script: they do nothing (the game's
+  Options window decides the mesh cache) and can be deleted by hand.
 
 ## For developers
 

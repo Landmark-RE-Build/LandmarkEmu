@@ -72,6 +72,23 @@ namespace LandmarkEmulator.WorldServer.Game
         private static readonly HashSet<WorldSession> dead = new();
 
         /// <summary>
+        /// The Life each viewer's client holds for each player (subject → viewer → {hp, max}), under <see cref="sync"/>.
+        /// A viewer not listed holds what it was introduced with (<see cref="IntroduceDead"/>) — the table's full 900 when
+        /// nothing was sent. Life changes go only to viewers within <see cref="LifeBroadcastRange"/>, so a viewer farther
+        /// away kept the old bar when it came near (a full player showing hurt, a hurt one full, a respawned one dead);
+        /// <see cref="CatchUpLife"/> sends the current Life to viewers within range whose copy differs (audit 2026-10-21).
+        /// </summary>
+        private static readonly Dictionary<WorldSession, Dictionary<WorldSession, (uint Hp, uint Max)>> knownLife = new();
+
+        /// <summary>
+        /// Players whose RevivePoints went to the landscape when they died (<see cref="Damage"/>, and newcomers in
+        /// <see cref="IntroduceDead"/>): the client offers "Revive Player" while its copy of the character holds them above 0
+        /// (FUN_1433abc00 → FUN_143ad04e0), so they are set back to 0 when the player is alive again
+        /// (<see cref="ClearRevivePoints"/>).
+        /// </summary>
+        private static readonly HashSet<WorldSession> revivable = new();
+
+        /// <summary>
         /// After a revive creatures ignore the player for a few seconds (hotfix 26 Apr 2016, P4717: a few seconds to
         /// recover after a revive before creatures attack again), and that short invisibility to creatures ends when
         /// the player enters combat (16 Jun 2016, P5832). Live's length is unknown (L89): ours.
@@ -150,6 +167,10 @@ namespace LandmarkEmulator.WorldServer.Game
                 WeaponAttacks.Forget(session);
                 lastHurt.Remove(session);
                 lastEvacuation.Remove(session);
+                revivable.Remove(session);
+                knownLife.Remove(session);
+                foreach (Dictionary<WorldSession, (uint, uint)> viewers in knownLife.Values)
+                    viewers.Remove(session);
             }
             Combat.GearStats.Forget(session);
         }
@@ -209,6 +230,8 @@ namespace LandmarkEmulator.WorldServer.Game
                 SendRespawnLocations(session);
                 Encounters.SendDeathWindow(session, true);
                 byte[] knockedOut = BuildKnockedOut(session, attacker);
+                lock (sync)
+                    revivable.Add(session);
                 foreach (WorldSession viewer in PlayerManager.InZone(session.ZoneId))
                 {
                     CharacterResources.SendFor(viewer, session.PlayerGuid, RevivePointsId, RevivePointsType, RevivePoints);
@@ -266,6 +289,7 @@ namespace LandmarkEmulator.WorldServer.Game
             if (now < nextRegen)
                 return;
             nextRegen = now.AddSeconds(1);
+            CatchUpLife(PlayerManager.Snapshot());
             List<(WorldSession Session, uint Hp)> tracked;
             lock (sync)
                 tracked = current.Where(p => !dead.Contains(p.Key)
@@ -305,7 +329,65 @@ namespace LandmarkEmulator.WorldServer.Game
                 current[session] = max;
                 graceUntil[session] = DateTime.UtcNow + ReviveGrace;
             }
+            ClearRevivePoints(session);
             SendHitpoints(session, max);
+        }
+
+        /// <summary>
+        /// The player is alive again: the RevivePoints their death gave every client on the landscape go back to 0, or the
+        /// others kept a "Revive Player" entry for a living player (it then answered "There is no one here to revive.")
+        /// until they met the player again; only a revive by another player re-introduced them (audit 2026-10-21).
+        /// </summary>
+        private static void ClearRevivePoints(WorldSession session)
+        {
+            lock (sync)
+                if (!revivable.Remove(session))
+                    return;
+            foreach (WorldSession viewer in PlayerManager.InZone(session.ZoneId))
+                CharacterResources.SendFor(viewer, session.PlayerGuid, RevivePointsId, RevivePointsType, 0);
+        }
+
+        /// <summary>
+        /// Once a second (<see cref="Update"/>): each player's current Life to the viewers on the landscape within
+        /// <see cref="LifeBroadcastRange"/> whose client holds another value (<see cref="knownLife"/>). Nothing is sent
+        /// while every copy in range is current.
+        /// </summary>
+        internal static void CatchUpLife(IReadOnlyCollection<WorldSession> players)
+        {
+            var sends = new List<(WorldSession Viewer, WorldSession Subject, uint Hp, uint Max)>();
+            foreach (WorldSession subject in players)
+            {
+                if (subject.Disconnected || AdminCommands.IsHidden(subject))
+                    continue;
+                uint max = Max(subject), hp = IsDead(subject) ? 0 : Current(subject);
+                foreach (WorldSession viewer in players)
+                {
+                    if (viewer == subject || viewer.Disconnected || viewer.ZoneId != subject.ZoneId || viewer.RezoneTarget != null
+                            || Vector3.Distance(viewer.Position, subject.Position) > LifeBroadcastRange)
+                        continue;
+                    lock (sync)
+                    {
+                        if (KnownLife(subject, viewer) == (hp, max))
+                            continue;
+                        Remember(subject, viewer, hp, max);
+                    }
+                    sends.Add((viewer, subject, hp, max));
+                }
+            }
+            foreach (var (viewer, subject, hp, max) in sends)
+                SendLife(viewer, subject, hp, max);
+        }
+
+        /// <summary>What <paramref name="viewer"/>'s client holds as <paramref name="subject"/>'s Life. Under <see cref="sync"/>.</summary>
+        private static (uint Hp, uint Max) KnownLife(WorldSession subject, WorldSession viewer)
+            => knownLife.TryGetValue(subject, out var viewers) && viewers.TryGetValue(viewer, out var known) ? known : (MaxHealth, MaxHealth);
+
+        /// <summary>Records what <paramref name="viewer"/> was sent (or assumes). Under <see cref="sync"/>.</summary>
+        private static void Remember(WorldSession subject, WorldSession viewer, uint hp, uint max)
+        {
+            if (!knownLife.TryGetValue(subject, out var viewers))
+                knownLife[subject] = viewers = new Dictionary<WorldSession, (uint, uint)>();
+            viewers[viewer] = (hp, max);
         }
 
         /// <summary>
@@ -342,7 +424,12 @@ namespace LandmarkEmulator.WorldServer.Game
             if (IsDead(subject))
                 CharacterResources.SendFor(viewer, subject.PlayerGuid, RevivePointsId, RevivePointsType, RevivePoints);
             uint max = Max(subject), hp = IsDead(subject) ? 0 : Current(subject);
-            if (viewer != subject && (hp != max || max != MaxHealth))
+            if (viewer == subject)
+                return;
+            // The viewer's client made a fresh character: it holds this Life now (sent, or the table's 900 assumed).
+            lock (sync)
+                Remember(subject, viewer, hp, max);
+            if (hp != max || max != MaxHealth)
                 SendLife(viewer, subject, hp, max);
         }
 
@@ -603,6 +690,9 @@ namespace LandmarkEmulator.WorldServer.Game
                 current[session] = max;
                 graceUntil[session] = DateTime.UtcNow + ReviveGrace;
             }
+            // Before any move: the players on the landscape where the player died (a move to another landscape removes the
+            // character from them, and the new landscape's players meet it alive).
+            ClearRevivePoints(session);
             // The graveyard choice: the respawn site nearest to where the player fell.
             Graveyards.Site site = type != RespawnHere ? StoryTools.RespawnSite(session, session.Position, respawning: true) : null;
             if (site != null)
@@ -667,7 +757,11 @@ namespace LandmarkEmulator.WorldServer.Game
                 return;
             foreach (WorldSession viewer in PlayerManager.InZone(session.ZoneId))
                 if (viewer != session && Vector3.Distance(viewer.Position, session.Position) <= LifeBroadcastRange)
+                {
+                    lock (sync)
+                        Remember(session, viewer, hp, max);
                     SendLife(viewer, session, hp, max);
+                }
         }
 
         /// <summary>

@@ -231,9 +231,37 @@ namespace LandmarkEmulator.WorldServer.Network
         /// sent again by PlayerManager.Reintroduce at ClientIsReady, and the client refused every repeat
         /// (LightweightProxy.log "Failed to spawn ProxiedCharacter": an entity with that guid already exists,
         /// FUN_142eeb3c0), 107 in one session of cave trips (2026-10-14).
+        /// Since 2026-10-21 also while the login's or re-zone's loading screen is still up (<see cref="LoadingHoldsStreams"/>,
+        /// setting StreamHoldUntilLoaded): the asset burst then waits until the client's terrain has meshed (the 64
+        /// allocator-slot race on 16+ thread CPUs, docs/terrain.md "Allocator slots").
         /// </summary>
         public bool StreamsOnHold => IsArriving
-            || (RezoneTarget != null && DateTime.UtcNow - RezoneStarted < Game.Teleport.PendingRezoneLimit);
+            || (RezoneTarget != null && DateTime.UtcNow - RezoneStarted < Game.Teleport.PendingRezoneLimit)
+            || LoadingHoldsStreams;
+
+        /// <summary>
+        /// The loading-screen stream hold (setting StreamHoldUntilLoaded, Game.PlayerManager "Stream hold"): until the
+        /// client's ClientLoading {0} for this login or re-zone, at most until this time (UTC ticks; 0 = no hold). Kept
+        /// here, outside PlayerManager's lock, as every stream tick asks <see cref="StreamsOnHold"/>; PlayerManager sets
+        /// and clears it under its lock and runs the held sends when it ends.
+        /// </summary>
+        private long streamHoldUntilTicks;
+
+        /// <summary>The loading-screen stream hold is on (<see cref="streamHoldUntilTicks"/>).</summary>
+        public bool LoadingHoldsStreams
+        {
+            get
+            {
+                long until = System.Threading.Interlocked.Read(ref streamHoldUntilTicks);
+                return until != 0 && DateTime.UtcNow.Ticks < until;
+            }
+        }
+
+        /// <summary>Starts or moves the loading-screen stream hold's end (PlayerManager only).</summary>
+        internal void HoldStreamsUntil(DateTime until) => System.Threading.Interlocked.Exchange(ref streamHoldUntilTicks, until.Ticks);
+
+        /// <summary>Ends the loading-screen stream hold (PlayerManager only).</summary>
+        internal void ReleaseStreamHold() => System.Threading.Interlocked.Exchange(ref streamHoldUntilTicks, 0);
 
         /// <summary>
         /// The client confirmed a re-zone (its repeat ClientIsReady, sent while the loading screen still waits for the
@@ -327,6 +355,10 @@ namespace LandmarkEmulator.WorldServer.Network
         public bool TakeItem(uint definitionId, uint count)
         {
             var changed = new List<(CharacterItemModel Item, bool Deleted)>();
+            // TryRemove takes worn stacks last, but takes them when nothing else is left (a recipe or a use that needs the
+            // tool in hand, the last stack of a held item): what the character visibly holds is compared after.
+            bool worn = Inventory.Items.Any(i => i.ItemDefinitionId == definitionId && i.Container == Game.Inventory.Inventory.EquippedContainer);
+            Dictionary<uint, CharacterItemModel> before = worn ? VisibleEquipment() : null;
             if (!Inventory.TryRemove(definitionId, count, changed))
                 return false;
             foreach ((CharacterItemModel item, bool deleted) in changed)
@@ -336,6 +368,11 @@ namespace LandmarkEmulator.WorldServer.Network
                 else
                     SendItem(item, replace: true);
             }
+            // A worn item used up: the slot is unset for the player and everyone on the landscape (SendEquipmentChanges),
+            // or every client kept drawing the attachment its SetCharacterEquipmentSlot put on the character (the
+            // ItemDelete only removes the inventory row) — the others until they met the player again (audit 2026-10-21).
+            if (before != null && changed.Any(c => c.Deleted && c.Item.Container == Game.Inventory.Inventory.EquippedContainer))
+                SendEquipmentChanges(before);
             return true;
         }
 
@@ -545,7 +582,11 @@ namespace LandmarkEmulator.WorldServer.Network
                 ModelId = modelId,
                 Model = modelInfo,
                 Movement = lastFullMovement ?? PlayerUpdateLightweightToFullPc.EmptyMovement,
-                ChatBubble = ChatBubble
+                ChatBubble = ChatBubble,
+                // The client applies both unconditionally when the character turns full, over the PlayerTitle / AFK
+                // packets the introduction sent (PlayerManager.Introduce), so they must be the player's current ones.
+                Title = Game.Titles.ShownTitle(this),
+                Afk = Game.Afk.IsAway(this)
             };
             message.Stats.AddRange(Game.Abilities.CalculatedStats(this));
             // The movement acceleration times live copied to other players (once, with the character; L162).

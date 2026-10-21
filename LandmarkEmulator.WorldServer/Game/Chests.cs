@@ -577,6 +577,17 @@ namespace LandmarkEmulator.WorldServer.Game
                 watching.Remove(session);
         }
 
+        /// <summary>
+        /// The kind of an item in a chest, for its tooltip (InventoryHandler: ItemInstanceTooltipRequest with owner type 3,
+        /// Lua ClientInventory.RequestDetailsForItemInChest): only for the chest the player has open; null otherwise.
+        /// </summary>
+        public static uint? ItemKindFor(WorldSession session, ulong chest, ulong item)
+        {
+            lock (sync)
+                return watching.TryGetValue(session, out ulong open) && open == chest && contents.TryGetValue(chest, out var list)
+                    && list.FirstOrDefault(i => i.Id == item) is { } stored ? stored.ItemDefinitionId : null;
+        }
+
         private static byte[] Build(uint sub, Action<GamePacketWriter> body)
         {
             var output = new List<byte>();

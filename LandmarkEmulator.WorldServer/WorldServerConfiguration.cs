@@ -97,6 +97,26 @@ namespace LandmarkEmulator.WorldServer
         public float PropStreamRange { get; set; } = 400f;
 
         /// <summary>
+        /// While a player's loading screen is up (after a login or a re-zone, until the client's ClientLoading {0}), the
+        /// asset-heavy world streams wait: creatures, trees and gathering nodes, chests, outposts, warp crystals, the Spire's
+        /// props other than its deck, and the placed props beyond the ones under the arrival point (Game/PlayerManager.cs
+        /// "Stream hold"). It works around the 0.695 client's 64 allocator slots: on PCs with 16+ CPU threads the client's
+        /// decompression / job workers that the asset burst wakes can take the last slots before its three terrain contour
+        /// threads do, and the terrain then meshes at a crawl ("Avg contour" in the client log) for up to an hour
+        /// (trace/0695/allocator-slots-options.md). Only the order changes: the same packets go out once the screen drops
+        /// (or after <see cref="StreamHoldLimitSeconds"/>). false = everything at zone-in, as before 2026-10-21.
+        /// Docker: STREAM_HOLD_UNTIL_LOADED.
+        /// </summary>
+        public bool StreamHoldUntilLoaded { get; set; } = true;
+
+        /// <summary>
+        /// The longest a <see cref="StreamHoldUntilLoaded"/> hold lasts (seconds; from the login's world entry, or from a
+        /// re-zone's zone-in): a client that never reports its loading screen down gets the streams anyway. 10-600.
+        /// Docker: STREAM_HOLD_LIMIT_SECONDS.
+        /// </summary>
+        public int StreamHoldLimitSeconds { get; set; } = 90;
+
+        /// <summary>
         /// Keep the vertex-only voxels (surface position, no material) that clients send with build edits: they keep
         /// edited surfaces smooth (line slopes, spheres) when the server sends the cell back; dropping them gave
         /// saw-toothed lines and stair-stepped fills after a relog (2026-10-14). The client stores and meshes them
@@ -503,6 +523,14 @@ namespace LandmarkEmulator.WorldServer
         public string RestartSchedule { get; set; } = "";
         /// <summary>The schedule's time zone (IANA or Windows id); live's was Pacific time, "America/Los_Angeles". Docker: RESTART_TIME_ZONE.</summary>
         public string RestartTimeZone { get; set; } = "America/Los_Angeles";
+
+        /// <summary>
+        /// The time zone whose calendar days count as build site upkeep login days (Game/SiteUpkeep.cs DayZone; IANA or
+        /// Windows id; unknown or empty = UTC). Default America/Los_Angeles = live: "each day (determined as 12:00:00AM to
+        /// 11:59:59 PM Pacific Time) you log in will be tracked" (developer, Upcoming Claim Upkeep Changes, 17 Mar 2015).
+        /// Docker: UPKEEP_TIME_ZONE.
+        /// </summary>
+        public string UpkeepTimeZone { get; set; } = "America/Los_Angeles";
         /// <summary>
         /// How long before a scheduled restart the warnings start (the countdown's first step is 1 hour; live's lead time
         /// is not in the archive). Docker: RESTART_WARNING_SECONDS.
@@ -749,6 +777,35 @@ namespace LandmarkEmulator.WorldServer
         /// 5 "attachment is invalid". 0 = no cap. Coins are not capped. Docker: MAIL_MAX_STACK.
         /// </summary>
         public uint MailMaxStack { get; set; } = 9000;
+
+        /// <summary>
+        /// May players hand each other Lumens (docs/live-rules.md)? The client's coin panes are Lumens (item 1579): the trade
+        /// window's coin offer (Trade CoinCount, sub 9) and the mail compose window's
+        /// send money / cash on delivery (attachment types 1 with guid 0 / 5). Off (default) = live: Lumens "cannot be
+        /// traded" (developer, Landmark Wipe Q&amp;A, 14 Mar 2016, thread 56195; players still asked for Lumen trading on
+        /// 29 Aug 2016, thread 57902). A coin offer is answered "your offer is invalid" and stays 0; a mail carrying coins
+        /// or asking for them on delivery is refused with mail result 0xA (no-trade item). On = Lumens move by trade and
+        /// mail. Docker: LUMEN_TRADING.
+        /// </summary>
+        public bool LumenTrading { get; set; }
+
+        /// <summary>
+        /// Player Studio designs take no design storage (Game/Templates.cs StudioDesignsFree; docs/live-rules.md). On
+        /// (default) = live: designs bought from the Marketplace (Player Studio) don't count toward the limit (wiki Designs
+        /// and Build Mode) and a design submitted to Player Studio no longer counts against Voxel Storage (developer, Hotfix
+        /// Notes 17 Oct 2014); the Designs window's "free" column shows it, and a full storage doesn't stop a purchase.
+        /// Off = they count like any other design, and a purchase needs room. Docker: PLAYER_STUDIO_DESIGNS_FREE_STORAGE.
+        /// </summary>
+        public bool PlayerStudioDesignsFreeStorage { get; set; } = true;
+
+        /// <summary>
+        /// Designs follow the account (Game/Templates.cs DesignsFollowAccount; docs/live-rules.md). On (default) = live:
+        /// the Designs window's designs were "tied to your account, not your character" (developer, Landmark Wipe Q&amp;A,
+        /// 14 Mar 2016): at world entry the designs held by deleted characters of the same account (their own and the
+        /// designs made of their build sites) move to the character, keeping it as their author. Off = a deleted
+        /// character's designs stay with it (unreachable). Docker: DESIGNS_FOLLOW_ACCOUNT.
+        /// </summary>
+        public bool DesignsFollowAccount { get; set; } = true;
 
         /// <summary>
         /// Keep each item's auto-resupply switch (Inventory 0x2D sub 0x0D InventoryPacketToggleAutoResupply, the item

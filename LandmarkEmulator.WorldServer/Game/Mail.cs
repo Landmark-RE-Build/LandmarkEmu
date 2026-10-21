@@ -58,6 +58,8 @@ namespace LandmarkEmulator.WorldServer.Game
         private const int MaxInbox = 100;
         /// <summary>Most recipients one message may have.</summary>
         private const int MaxRecipients = 5;
+        /// <summary>Name blocks read from a compose's "To" list at most (the client writes one per typed name).</summary>
+        private const uint MaxNameBlocks = 64;
         /// <summary>Sending limit: at most this many messages per sender in <see cref="SendWindow"/>.</summary>
         private const int MaxSends = 20;
         private static readonly TimeSpan SendWindow = TimeSpan.FromMinutes(10);
@@ -186,6 +188,12 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <summary>A compose read from the client (PacketMailComposeRequest, sub 1).</summary>
         internal sealed class ComposeDraft
         {
+            /// <summary>
+            /// The compose's leading u64, the data source's "ToGuid" (FUN_14363b170 → packet +0x18): 0 for the mail window;
+            /// the site owner's guid for the Feedback button's mail (ClaimFeedback.as sets ToGuid and no "To" names). See
+            /// <see cref="ResolveRecipients"/>.
+            /// </summary>
+            public ulong ToGuid;
             public readonly List<string> Names = new();
             public string Subject = "", Body = "";
             /// <summary>Bag items by item guid.</summary>
@@ -209,10 +217,16 @@ namespace LandmarkEmulator.WorldServer.Game
         internal static uint ReadCompose(GamePacketReader reader, out ComposeDraft draft)
         {
             draft = new ComposeDraft();
-            reader.ReadULong();
+            draft.ToGuid = reader.ReadULong();
             uint to = reader.ReadUInt();
-            for (uint i = 0; i < to && i < MaxRecipients; i++)
-                draft.Names.Add(ReadName(reader));
+            for (uint i = 0; i < to && i < MaxNameBlocks; i++)
+            {
+                // The client splits the "To" text on ' ', ';' and ',' (FUN_143638a10) and writes one name block per piece,
+                // an empty "To" as one empty block: blank names are no recipients.
+                string name = (ReadName(reader) ?? "").Trim();
+                if (name.Length > 0 && draft.Names.Count < MaxRecipients)
+                    draft.Names.Add(name);
+            }
             uint cc = reader.ReadUInt();
             for (uint i = 0; i < cc && i < MaxRecipients; i++)
                 ReadName(reader);
@@ -244,8 +258,35 @@ namespace LandmarkEmulator.WorldServer.Game
             // Cash on delivery only makes sense for items, and a mail either sends coins or asks for them.
             if (draft.Cod > 0 && (draft.Attached.Count == 0 || draft.Coins > 0))
                 return AttachmentInvalid;
+            // The coins are Lumens (item 1579): on live they could not change hands (setting LumenTrading off,
+            // Landmark Wipe Q&A 14 Mar 2016), neither sent nor asked for on delivery: "can't send NO_TRADE item".
+            if ((draft.Coins > 0 || draft.Cod > 0) && !Trades.LumenTradingAllowed)
+                return NoTradeItem;
             return Success;
         }
+
+        /// <summary>
+        /// PacketMailComposeRequest has two senders that name the recipient differently (docs/request-variants.md):
+        /// Mail.SendMessage (FUN_1435b9f00, the mail window: data source GameData.EmailMessageData.Compose) sends the typed
+        /// "To" names and ToGuid 0; Mail.SendMessageForClaimFeedback (FUN_1435b9f30, the site walk-on window's Feedback
+        /// button → ClaimFeedback.swf, data source ComposeClaimFeedback) sends ToGuid = the site owner (walk-on OwnerGuid,
+        /// or WinnerFeedbackReceipientGuid for an admin contest site) and no name. Both go through FUN_14363f210 →
+        /// FUN_14363b170. With no names, the recipient is the character ToGuid names (<paramref name="nameOf"/>: its name,
+        /// null when there is none), so the feedback mail arrives instead of "user not found".
+        /// </summary>
+        internal static void ResolveRecipients(ComposeDraft draft, Func<ulong, string> nameOf)
+        {
+            if (draft.Names.Count > 0 || draft.ToGuid == 0)
+                return;
+            string name = nameOf(draft.ToGuid);
+            if (!string.IsNullOrWhiteSpace(name))
+                draft.Names.Add(name.Trim());
+        }
+
+        /// <summary>A character's name by guid from this world's character database (deleted characters: null).</summary>
+        internal static string CharacterNameOf(ulong guid)
+            => DatabaseManager.Instance.CharacterDatabase.GetCharacterById(guid).GetAwaiter().GetResult() is { DeleteTime: null } c
+                ? c.Name : null;
 
         /// <summary>
         /// The attached items must still be in the sender's bag (not equipped), enough of them, tradeable, and not chests
@@ -332,6 +373,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 Reply(session, check);
                 return;
             }
+            ResolveRecipients(draft, CharacterNameOf);
             List<string> names = draft.Names;
             uint coins = draft.Coins, cod = draft.Cod;
             if (coins > session.Coins)

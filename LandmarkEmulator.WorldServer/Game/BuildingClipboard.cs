@@ -36,7 +36,7 @@ namespace LandmarkEmulator.WorldServer.Game
         /// What a paste places: blocks by cell relative to the box's corner (a copy or a saved design is one block, a
         /// prefab design many), and the box size in voxels.
         /// </summary>
-        private sealed record Clipboard(Dictionary<(int X, int Y, int Z), BlockData> Cells, uint SizeX, uint SizeY, uint SizeZ)
+        internal sealed record Clipboard(Dictionary<(int X, int Y, int Z), BlockData> Cells, uint SizeX, uint SizeY, uint SizeZ)
         {
             public Clipboard(BlockData voxels, uint sizeX, uint sizeY, uint sizeZ)
                 : this(new Dictionary<(int, int, int), BlockData> { [(0, 0, 0)] = voxels }, sizeX, sizeY, sizeZ) { }
@@ -79,7 +79,9 @@ namespace LandmarkEmulator.WorldServer.Game
             /// <summary>
             /// Paste mode (request +0x148, constructor default 1; the paste writer FUN_1430b96a0 copies the paste cursor's
             /// +0x2c8: 2 Paste Air, 3 Paste Interior Air, 1 when Remove voxels is set) and the Remove voxels ("Paste as
-            /// Delete") flag (+0x14c, cursor +0x2c4). Read for the tutorial goals only; the paste itself does not apply them.
+            /// Delete") flag (+0x14c, cursor +0x2c4). The paste applies the mode to interior empty space (0xFFFC: air in modes
+            /// 2 and 3, else not written; <see cref="PastedMaterial"/>); surrounding air and Remove voxels are read for the
+            /// tutorial goals only.
             /// </summary>
             public uint PasteMode;
             public bool AsDelete;
@@ -321,7 +323,8 @@ namespace LandmarkEmulator.WorldServer.Game
                 Action = PasteAction,
                 Cell = TerrainStore.CellId(TerrainEdits.Level, (uint)(vx / BlockData.Size), (uint)(vy / BlockData.Size), (uint)(vz / BlockData.Size)),
                 X = (uint)(vx % BlockData.Size), Y = (uint)(vy % BlockData.Size), Z = (uint)(vz % BlockData.Size),
-                TemplateGuid = guid
+                TemplateGuid = guid,
+                PasteMode = PasteSolidsMode
             };
             request.Rotation[0] = request.Rotation[5] = request.Rotation[10] = request.Rotation[15] = 1;
             List<ulong> changed = Paste(session, request);
@@ -485,27 +488,7 @@ namespace LandmarkEmulator.WorldServer.Game
             long baseY = (long)cellY * BlockData.Size + request.Y + shift[1];
             long baseZ = (long)cellZ * BlockData.Size + request.Z + shift[2];
 
-            var byCell = new Dictionary<ulong, List<TerrainEdits.VoxelValue>>();
-            for (int sz = 0; sz <= size[2]; sz++)
-                for (int sx = 0; sx <= size[0]; sx++)
-                    for (int sy = 0; sy <= size[1]; sy++)
-                    {
-                        if (clipboard.At(sx, sy, sz) is not (BlockData source, int from)
-                            || (source.Flags[from] & 1) == 0 || source.Materials[from] == 0)
-                            continue;
-                        int[] s = { sx, sy, sz };
-                        long gx = baseX + Dot(m, 0, s), gy = baseY + Dot(m, 1, s), gz = baseZ + Dot(m, 2, s);
-                        if (gx < 0 || gy < 0 || gz < 0)
-                            continue;
-                        ulong cell = TerrainStore.CellId(TerrainEdits.Level, (uint)(gx / BlockData.Size), (uint)(gy / BlockData.Size), (uint)(gz / BlockData.Size));
-                        int to = TerrainEdits.VoxelIndex((int)(gx % BlockData.Size), (int)(gy % BlockData.Size), (int)(gz % BlockData.Size));
-                        int[] o = { source.Offsets[from * 3] - BlockData.CentreOffset, source.Offsets[from * 3 + 1] - BlockData.CentreOffset,
-                            source.Offsets[from * 3 + 2] - BlockData.CentreOffset };
-                        if (!byCell.TryGetValue(cell, out var values))
-                            byCell[cell] = values = new List<TerrainEdits.VoxelValue>();
-                        values.Add(new TerrainEdits.VoxelValue(to, source.Flags[from], source.Materials[from],
-                            Offset(m, 0, o), Offset(m, 1, o), Offset(m, 2, o)));
-                    }
+            Dictionary<ulong, List<TerrainEdits.VoxelValue>> byCell = TurnedVoxels(clipboard, m, baseX, baseY, baseZ, request.PasteMode);
             if ((byCell.Count == 0 && clipboard.Props.Count == 0) || byCell.Count > (request.TemplateGuid != 0 ? MaxCellsPerDesign : MaxCellsPerEdit))
             {
                 SendResponse(session, AddTemporaryBlockSub, Failed);
@@ -513,6 +496,7 @@ namespace LandmarkEmulator.WorldServer.Game
             }
 
             uint zone = session.ZoneId;
+            MergeVertexOnly(byCell, zone, session.PlayerGuid);
             // The box of a placed Player Studio copy (world units), recorded once it is placed (TemplateInstances).
             (double X, double Y, double Z)? studioMin = null, studioMax = null;
             // TASKS 6.45: a design bought in Player Studio goes only on the player's own site — placing one on someone
@@ -588,8 +572,181 @@ namespace LandmarkEmulator.WorldServer.Game
             SendResponse(session, AddTemporaryBlockSub, 0);
             // Every listed cell the server holds goes out (the paster's client dropped its preview of them).
             List<ulong> changed = byCell.Keys.Concat(request.Cells.Where(c => Env.Has(c, zone))).Distinct().ToList();
-            log.Debug($"{session.CharacterName} pasted {voxels} voxels into {byCell.Count} cell(s) at {request.X},{request.Y},{request.Z} turned [{m[0]} {m[1]} {m[2]}; {m[4]} {m[5]} {m[6]}; {m[8]} {m[9]} {m[10]}].");
+            log.Debug($"{session.CharacterName} pasted {voxels} voxels into {byCell.Count} cell(s) at {request.X},{request.Y},{request.Z} (client area {request.SizeX}×{request.SizeY}×{request.SizeZ}, copy {clipboard.SizeX}×{clipboard.SizeY}×{clipboard.SizeZ}, first voxel at {baseX},{baseY},{baseZ}) "
+                + $"turned [{m[0]} {m[1]} {m[2]}; {m[4]} {m[5]} {m[6]}; {m[8]} {m[9]} {m[10]}].");
             return changed;
+        }
+
+        /// <summary>
+        /// The voxels a paste writes: grid point s of the clipboard goes to base + M·s (M = the request's 3 × 3 turn, rows
+        /// first; base already holds the shift that puts the turned box's minimum corner on the request's origin). The
+        /// clipboard's solid voxels are written; empty ones leave the target as it is.
+        /// <para>
+        /// A voxel carries two things that live in different places (docs/terrain.md "How the client draws a dig"): its
+        /// material belongs to the grid point (the client samples at voxel corners), its vertex to the cube [s, s+1]³
+        /// stored at s (ContourEx FUN_142ac4590 joins the vertices of the cubes around each edge whose two voxels differ;
+        /// a cube without one is drawn at its centre). A turn that flips an axis maps that cube onto the cube one voxel
+        /// lower on that axis (cube [s, s+1] → [M·s − 1, M·s]), so the vertex goes to base + M·s − n (n = 1 on each
+        /// flipped axis) at M·(u − ½) + ½. The cubes of the copy's surface whose corner voxel is not solid (every face
+        /// towards −x, −y or −z, and after a flip the faces the flip turns that way) keep their vertex too: as a
+        /// vertex-only voxel (flag 2, the target's own material kept, <see cref="MergeVertexOnly"/>), the way the client's
+        /// own smooth brushes send them, wherever a corner of that cube is one of the paste's solid voxels.
+        /// </para>
+        /// <para>
+        /// Until 2026-10-21 the vertex stayed with the material at base + M·s and vertices of cubes with a non-solid
+        /// corner were dropped: every surface vertex of a turned paste or design sat one voxel (0.4 m) off along each
+        /// flipped axis, and the faces whose cube corner is air were drawn at cube centres (0.4 m steps on smooth shapes)
+        /// (Tests/Rules/BuildPlacementTests).
+        /// </para>
+        /// <para>
+        /// Which material each clipboard voxel writes is <see cref="PastedMaterial"/> (the client's paste rule): interior
+        /// empty space (0xFFFC) is never written as a material — air in the Paste Air / Paste Interior Air modes, nothing
+        /// otherwise. Air written that way takes the vertex of its cube like a solid voxel does.
+        /// </para>
+        /// </summary>
+        internal static Dictionary<ulong, List<TerrainEdits.VoxelValue>> TurnedVoxels(Clipboard clipboard, int[] m, long baseX, long baseY, long baseZ,
+            uint pasteMode = PasteSolidsMode)
+        {
+            int[] size = { (int)clipboard.SizeX, (int)clipboard.SizeY, (int)clipboard.SizeZ };
+            long[] b = { baseX, baseY, baseZ };
+            // n: one voxel on each axis the turn flips (the row's ±1 is negative).
+            var flip = new int[3];
+            for (int i = 0; i < 3; i++)
+                for (int j = 0; j < 3; j++)
+                    if (m[i * 4 + j] < 0)
+                        flip[i] = 1;
+            // The target voxels the paste makes solid (global voxel → material), the ones it makes air (interior empty
+            // space in the air modes), and the vertices of the target cubes.
+            var solid = new Dictionary<(long X, long Y, long Z), ushort>();
+            var air = new HashSet<(long X, long Y, long Z)>();
+            var vertex = new Dictionary<(long X, long Y, long Z), (byte, byte, byte)>();
+            for (int sz = 0; sz <= size[2]; sz++)
+                for (int sx = 0; sx <= size[0]; sx++)
+                    for (int sy = 0; sy <= size[1]; sy++)
+                    {
+                        if (clipboard.At(sx, sy, sz) is not (BlockData source, int from))
+                            continue;
+                        byte flags = source.Flags[from];
+                        int[] s = { sx, sy, sz };
+                        long gx = b[0] + Dot(m, 0, s), gy = b[1] + Dot(m, 1, s), gz = b[2] + Dot(m, 2, s);
+                        if (PastedMaterial(flags, source.Materials[from], pasteMode, sx == 0 || sy == 0 || sz == 0) is ushort written)
+                        {
+                            if (written != 0)
+                                solid[(gx, gy, gz)] = written;
+                            else
+                                air.Add((gx, gy, gz));
+                        }
+                        if ((flags & 2) != 0)
+                        {
+                            int[] o = { source.Offsets[from * 3] - BlockData.CentreOffset, source.Offsets[from * 3 + 1] - BlockData.CentreOffset,
+                                source.Offsets[from * 3 + 2] - BlockData.CentreOffset };
+                            vertex[(gx - flip[0], gy - flip[1], gz - flip[2])] = (Offset(m, 0, o), Offset(m, 1, o), Offset(m, 2, o));
+                        }
+                    }
+            var byCell = new Dictionary<ulong, List<TerrainEdits.VoxelValue>>();
+            void Add(long gx, long gy, long gz, TerrainEdits.VoxelValue value)
+            {
+                ulong cell = TerrainStore.CellId(TerrainEdits.Level, (uint)(gx / BlockData.Size), (uint)(gy / BlockData.Size), (uint)(gz / BlockData.Size));
+                if (!byCell.TryGetValue(cell, out var values))
+                    byCell[cell] = values = new List<TerrainEdits.VoxelValue>();
+                values.Add(value with { Index = TerrainEdits.VoxelIndex((int)(gx % BlockData.Size), (int)(gy % BlockData.Size), (int)(gz % BlockData.Size)) });
+            }
+            foreach (((long gx, long gy, long gz), ushort material) in solid)
+            {
+                if (gx < 0 || gy < 0 || gz < 0)
+                    continue;
+                Add(gx, gy, gz, vertex.TryGetValue((gx, gy, gz), out var v)
+                    ? new TerrainEdits.VoxelValue(0, 3, material, v.Item1, v.Item2, v.Item3)
+                    : new TerrainEdits.VoxelValue(0, 1, material, BlockData.CentreOffset, BlockData.CentreOffset, BlockData.CentreOffset));
+            }
+            foreach ((long gx, long gy, long gz) in air)
+            {
+                if (gx < 0 || gy < 0 || gz < 0)
+                    continue;
+                Add(gx, gy, gz, vertex.TryGetValue((gx, gy, gz), out var v)
+                    ? new TerrainEdits.VoxelValue(0, 3, 0, v.Item1, v.Item2, v.Item3)
+                    : new TerrainEdits.VoxelValue(0, 1, 0, BlockData.CentreOffset, BlockData.CentreOffset, BlockData.CentreOffset));
+            }
+            foreach (((long gx, long gy, long gz), (byte o0, byte o1, byte o2)) in vertex)
+            {
+                if (gx < 0 || gy < 0 || gz < 0 || solid.ContainsKey((gx, gy, gz)) || air.Contains((gx, gy, gz)))
+                    continue;
+                // Only on the pasted shape's own surface: a corner of the cube is one of its solid voxels.
+                bool touches = false;
+                for (int d = 0; d < 8 && !touches; d++)
+                    touches = solid.ContainsKey((gx + (d & 1), gy + (d >> 1 & 1), gz + (d >> 2)));
+                if (touches)
+                    Add(gx, gy, gz, new TerrainEdits.VoxelValue(0, 2, 0, o0, o1, o2));
+            }
+            return byCell;
+        }
+
+        /// <summary>
+        /// Paste modes (ClientSelectionAreaRequest +0x148, OffGridPasteClientRequest +0x80; the Fine Tuning menu
+        /// FUN_1436b14b0): 1 the default (constructor value; also sent with Remove voxels), 2 "Paste with Surrounding Empty
+        /// Space" (562542 "Paste air with blocks?"), 3 "Paste with Interior Empty Space" (571841 "Paste air with interior
+        /// blocks?").
+        /// </summary>
+        public const uint PasteSolidsMode = 1, PasteAirMode = 2, PasteInteriorAirMode = 3;
+
+        /// <summary>
+        /// The material a paste writes for one clipboard voxel, or null when it writes none there (the target keeps what
+        /// it has): the client's own paste rule, VoxelFarm CClipboardData paste FUN_142a7eeb0 (trace/0695/ruin-stamping.md
+        /// §1.2), for the materials the server applies:
+        /// <list type="bullet">
+        /// <item>a solid material is written as it is;</item>
+        /// <item><b>interior empty space</b> (0xFFFC, <see cref="VoxelTemplate.InteriorAir"/>: the air a copy finds enclosed
+        /// by the build, FUN_143f9a150 → FUN_143f9c330; every castle design is mostly that — Castle Long Room 480,372 of
+        /// its 782,232 set voxels) is written as <b>air</b> (material 0) in the Paste Air (2) and Paste Interior Air (3)
+        /// modes, except on the box's first slice (index 0 on any axis), and not at all in the others;</item>
+        /// <item>surrounding air (material 0) is not written (the client writes it in modes 2 and 4: not applied yet, like
+        /// Remove voxels; TASKS 6.57).</item>
+        /// </list>
+        /// Until 2026-10-21 interior empty space was written raw, as material 0xFFFC. The client's mesher draws 0xFFFC as
+        /// air (ContourEx FUN_142ac4590), so the design looked right, but its occluder builder counts every voxel with the
+        /// material bit and a material ≠ 0 whose VoxelMaterialLibrary entry is opaque (FUN_142ae77d0, FUN_142ae8610's
+        /// 100-point check), and entry 0xFFFC is the copy of entry 0 (FUN_143ff41f0 writes it at +0x37ff20 = 0xFFFC × 0x38;
+        /// TRANSPARENT_TYPE_ID 0 → +8 = 0, FUN_143ffa310). So every cell of a placed design got occluder quads across its
+        /// rooms and doorways (VoxelVisibility FUN_1437879d0 → Deep software occlusion), and from inside a design all the
+        /// terrain around it was culled while its flora still drew (user report 2026-10-21).
+        /// </summary>
+        internal static ushort? PastedMaterial(byte flags, ushort material, uint pasteMode, bool firstSlice)
+        {
+            if ((flags & 1) == 0 || material == 0)
+                return null;
+            if (material == VoxelTemplate.InteriorAir)
+                return pasteMode is PasteAirMode or PasteInteriorAirMode && !firstSlice ? (ushort)0 : null;
+            return material;
+        }
+
+        /// <summary>
+        /// The vertex-only values of a paste (flag 2, no material: <see cref="TurnedVoxels"/>, OffGridVoxels) keep what the
+        /// target layer already holds there: a voxel with a material keeps it and only takes the vertex.
+        /// </summary>
+        internal static void MergeVertexOnly(Dictionary<ulong, List<TerrainEdits.VoxelValue>> byCell, uint zone, ulong playerGuid)
+        {
+            foreach (ulong empty in byCell.Keys.ToList())
+            {
+                // Vertex-only voxels where the player may not build (just outside the site) are left out, not refused.
+                List<TerrainEdits.VoxelValue> values = byCell[empty];
+                if (values.Exists(v => v.Flags == 2))
+                {
+                    Func<int, bool> may = ZoneTerrain.VoxelPermission(empty, playerGuid, zone);
+                    values.RemoveAll(v => v.Flags == 2 && !may(v.Index));
+                }
+                if (values.Count == 0)
+                    byCell.Remove(empty);
+            }
+            foreach ((ulong cell, List<TerrainEdits.VoxelValue> values) in byCell)
+            {
+                var only = values.Where(v => v.Flags == 2).ToList();
+                if (only.Count == 0)
+                    continue;
+                var held = Env.Read(cell, EnvironmentMasks.MaskOf(only), zone).ToDictionary(v => v.Index);
+                for (int i = 0; i < values.Count; i++)
+                    if (values[i].Flags == 2 && held.TryGetValue(values[i].Index, out var old) && (old.Flags & 1) != 0)
+                        values[i] = values[i] with { Flags = (byte)(old.Flags | 2), Material = old.Material };
+            }
         }
 
         /// <summary>

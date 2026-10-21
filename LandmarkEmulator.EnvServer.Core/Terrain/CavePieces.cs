@@ -158,6 +158,15 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
             }
         }
 
+        /// <summary>
+        /// A landscape's placement file (kind "Underground" or "Surface"), named by the landscape's continent as the
+        /// client's loader FUN_143ff1310 names it (the core's continent definition, <see cref="LandscapeContinents"/>):
+        /// the classic islands their own id, the Pioneer lands 464-468 continents 440-444.
+        /// </summary>
+        public static string PlacementPath(uint zone, string kind)
+            => Path.Combine(gameDirectory ?? "", "CommonData", "Voxel", "caves",
+                $"ContinentCavePlacements[{LandscapeContinents.Of(zone == 0 ? TerrainStore.HomeContinent : zone, gameDirectory)}]_{kind}.cpa");
+
         private static Dictionary<(int, int), List<Placed>> Build(uint zone)
         {
             string folder = Path.Combine(gameDirectory ?? "", "CommonData", "Voxel", "caves");
@@ -166,7 +175,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
             int count = 0;
             foreach (string kind in new[] { "Underground", "Surface" })
             {
-                string path = Path.Combine(folder, $"ContinentCavePlacements[{zone}]_{kind}.cpa");
+                string path = PlacementPath(zone, kind);
                 if (!File.Exists(path))
                     continue;
                 using var reader = new BinaryReader(File.OpenRead(path));

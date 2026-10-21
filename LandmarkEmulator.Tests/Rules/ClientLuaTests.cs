@@ -29,5 +29,15 @@ namespace LandmarkEmulator.Tests.Rules
             Assert.Equal("load(\"f(1\\0442\\0443)\\nprint(\\\"a\\\\b\\\")\")()", safe);
             Assert.False(safe.Contains(","));
         }
+
+        [Fact]
+        public void DevCode_NativeAndFileLoaders_AreRefused()
+        {
+            Assert.Equal("loadlib", ClientLua.ExternalBrowserCall("package.loadlib('x.dll', 'f')()"));
+            Assert.Equal("require(", ClientLua.ExternalBrowserCall("local m = require('socket')"));
+            Assert.Equal("dofile", ClientLua.ExternalBrowserCall("dofile('C:/x.lua')"));
+            Assert.Equal("loadfile", ClientLua.ExternalBrowserCall("loadfile('x.lua')()"));
+            Assert.Null(ClientLua.ExternalBrowserCall("print('this is required')"));
+        }
     }
 }

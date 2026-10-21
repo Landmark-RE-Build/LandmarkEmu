@@ -415,7 +415,7 @@ namespace LandmarkEmulator.WorldServer.Game
             Health.Arrived(session);
             StoryTools.PlayerArrived(session);
             if (rezoned)
-                Spire.ReassertCollision(session);
+                Spire.ReassertCollision(session, PlayerManager.SpirePartSent(session));   // the deck alone while a stream hold owes the rest
             lock (deferred)
             {
                 if (retarget is Vector3 moveTo)

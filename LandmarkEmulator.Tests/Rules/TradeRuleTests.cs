@@ -27,6 +27,7 @@ namespace LandmarkEmulator.Tests.Rules
         {
             world.Define(new ItemDefinitionManager.ItemDefinition { Id = Sword, MaxStack = 1 });
             world.Define(new ItemDefinitionManager.ItemDefinition { Id = Plank, MaxStack = 100 });
+            world.Define(new ItemDefinitionManager.ItemDefinition { Id = Inventory.CurrencyItem, MaxStack = 1_000_000 });
         }
 
         public void Dispose() => world.Dispose();
@@ -80,6 +81,26 @@ namespace LandmarkEmulator.Tests.Rules
             Complete(offer, Side(taker));
             Assert.Equal(15u, giver.Inventory.Get(planks.Id)?.Count);
             Assert.DoesNotContain(Plank, taker.Inventory.Items.Select(i => i.ItemDefinitionId));
+        }
+
+        /// <summary>
+        /// A Lumen (coin) offer changes hands only with LumenTrading on; off (live: "they cannot be traded", Wipe Q&amp;A
+        /// 14 Mar 2016) a trade still holding one fails at completion and nobody's Lumens move.
+        /// </summary>
+        [Theory]
+        [InlineData(false, 0u)]
+        [InlineData(true, 40u)]
+        public void LumenOffer_ChangesHandsOnlyWithLumenTrading(bool allowed, uint received)
+        {
+            world.Config.LumenTrading = allowed;
+            WorldSession giver = world.Session(++nextGuid, "Giver", FakeWorld.Item(3253),
+                FakeWorld.Item(Inventory.CurrencyItem, 100, container: Inventory.CurrencyContainer));
+            WorldSession taker = world.Session(++nextGuid, "Taker", FakeWorld.Item(3253));
+            object offer = Side(giver);
+            SideType.GetField("Coins")!.SetValue(offer, 40u);
+            Complete(offer, Side(taker));
+            Assert.Equal(received, taker.Coins);
+            Assert.Equal(100u - received, giver.Coins);
         }
 
         [Fact]

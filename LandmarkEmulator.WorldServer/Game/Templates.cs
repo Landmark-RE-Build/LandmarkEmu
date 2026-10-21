@@ -148,9 +148,67 @@ namespace LandmarkEmulator.WorldServer.Game
 
         /// <summary>
         /// Voxels the player's designs take up (CurrentVoxels, summed in the client's list builder): the material counts
-        /// of every design that CountsAgainstStorageLimit — not the game's own (designer) designs.
+        /// of every design that CountsAgainstStorageLimit — not the game's own (designer) designs, nor those
+        /// <see cref="FreeOfStorage"/> names.
         /// </summary>
-        public static long UsedVoxels(ulong owner) => Owned(owner).Where(t => !IsDesigner(t)).Sum(t => Materials(t).Sum(m => (long)m.Count));
+        public static long UsedVoxels(ulong owner)
+        {
+            List<TemplateModel> owned = Owned(owner);
+            HashSet<ulong> free = FreeOfStorage(owner, owned);
+            return owned.Where(t => !IsDesigner(t) && !free.Contains(t.Id)).Sum(t => Materials(t).Sum(m => (long)m.Count));
+        }
+
+        /// <summary>
+        /// Do Player Studio designs take no design storage (setting PlayerStudioDesignsFreeStorage, on = live)? Live: the
+        /// designs bought on the Marketplace tab of the Showcase don't count toward the limit (wiki Designs, and Build Mode:
+        /// "any designs you buy from the Marketplace tab ... do not count toward the limit"), and a design successfully
+        /// submitted to Player Studio no longer counts against Voxel Storage (developer, Hotfix Notes 17 Oct 2014, thread
+        /// 49423). The Designs window shows the per-design "free" column from the TemplateBasicData storage bool (notes 21
+        /// Mar 2016, developer 6 May 2016 thread 57063).
+        /// </summary>
+        public static bool StudioDesignsFree
+            => Shared.Configuration.ConfigurationManager<WorldServerConfiguration>.Instance.Config?.PlayerStudioDesignsFreeStorage ?? true;
+
+        /// <summary>
+        /// Which of <paramref name="designs"/> (all the owner's) take no design storage beyond the designer designs, while
+        /// <see cref="StudioDesignsFree"/> is on: those on Player Studio (waiting for review or listed,
+        /// <see cref="ICommerceService.IsOnMarketplace"/>) and the copies the owner took from Player Studio (matched as
+        /// <see cref="IsPlayerStudioCopy"/> does, with one query for all of them). Empty while the setting is off.
+        /// </summary>
+        public static HashSet<ulong> FreeOfStorage(ulong owner, IReadOnlyCollection<TemplateModel> designs)
+        {
+            var free = new HashSet<ulong>();
+            if (!StudioDesignsFree || designs.Count == 0)
+                return free;
+            foreach (TemplateModel design in designs)
+                if (design.Id != 0 && !IsDesigner(design) && WorldChannelServices.Commerce.IsOnMarketplace(design.Id))
+                    free.Add(design.Id);
+            var products = Unlocks.ValuesOfAnyone(owner, Unlocks.StudioDesign).Select(p => (ulong)p).ToList();
+            if (products.Count == 0)
+                return free;
+            var others = designs.Where(d => d.Id != 0 && !IsStarter(d.Id) && !IsDesigner(d) && !free.Contains(d.Id) && !IsOwnWork(d)).ToList();
+            if (others.Count == 0)
+                return free;
+            using var context = DatabaseManager.Instance.CharacterDatabase.NewContext();
+            var sourceIds = context.PlayerStudioProduct.Where(p => products.Contains(p.Id)).Select(p => p.TemplateId).ToList();
+            var sources = context.Template.Where(t => sourceIds.Contains(t.Id))
+                .Select(t => new TemplateModel { Name = t.Name, SizeX = t.SizeX, SizeY = t.SizeY, SizeZ = t.SizeZ, Materials = t.Materials })
+                .ToList();
+            foreach (TemplateModel d in others)
+                if (sources.Any(t => IsSameDesign(t, d)))
+                    free.Add(d.Id);
+            return free;
+        }
+
+        /// <summary>A Player Studio copy matches its product's source design by name, size and materials (the stored copy
+        /// keeps no product id; <see cref="IsPlayerStudioCopy"/>).</summary>
+        internal static bool IsSameDesign(TemplateModel source, TemplateModel copy)
+            => source.Name == copy.Name && source.SizeX == copy.SizeX && source.SizeY == copy.SizeY && source.SizeZ == copy.SizeZ
+               && source.Materials == copy.Materials;
+
+        /// <summary>Does this one design count against its owner's design storage (TemplateBasicData's storage bool)?</summary>
+        private static bool CountsAgainstStorage(TemplateModel design)
+            => !IsDesigner(design) && (design.Id == 0 || !FreeOfStorage(design.OwnerGuid, new[] { design }).Contains(design.Id));
 
         // ---- Starter Castle ------------------------------------------------------------------------------------------
 
@@ -409,7 +467,9 @@ namespace LandmarkEmulator.WorldServer.Game
         /// </summary>
         public static void SendList(WorldSession session)
         {
+            AdoptAccountDesigns(session);
             List<TemplateModel> designs = Owned(session.PlayerGuid);
+            HashSet<ulong> free = FreeOfStorage(session.PlayerGuid, designs);
             GrantOldStarterPieces(session.PlayerGuid);
             for (int i = 0; i < StarterCastle.Length; i++)
                 if (HasStarterPiece(session.PlayerGuid, i) && Starter(i, session.PlayerGuid) is TemplateModel starter)
@@ -419,10 +479,67 @@ namespace LandmarkEmulator.WorldServer.Game
             writer.Write(ListResponseSub);
             writer.Write((uint)designs.Count);
             foreach (TemplateModel design in designs)
-                WriteBasicData(writer, design);
+                WriteBasicData(writer, design, !IsDesigner(design) && !free.Contains(design.Id));
             writer.Write(0ul);
             session.EnqueueMessage(ZoneMessageOpcode.TemplateBase, output.ToArray());
         }
+
+        /// <summary>
+        /// Do designs follow the account (setting DesignsFollowAccount, on = live)? Live kept the designs of the Designs
+        /// window with the account, not the character: "they are tied to your account, not your character. When you create
+        /// a new character, the templates for that account will appear on the new character" (developer, Landmark Wipe
+        /// Q&amp;A 14 Mar 2016, thread 56195; the same in the Upcoming Wipe Answers of 13 Mar 2015, thread 53904), and the
+        /// designs made of a deleted character's sites waited for the player too. Designs given away as items are not the
+        /// account's any more and are not kept (the same answer).
+        /// </summary>
+        public static bool DesignsFollowAccount
+            => Shared.Configuration.ConfigurationManager<WorldServerConfiguration>.Instance.Config?.DesignsFollowAccount ?? true;
+
+        /// <summary>
+        /// While <see cref="DesignsFollowAccount"/> is on, at world entry: the designs still held by deleted characters of
+        /// the player's account (their saved designs and the designs made of their sites, CharacterDeletion) move to this
+        /// character (one indexed query per login when there are none). A design whose author was the deleted character takes this character's
+        /// name, so it stays the player's own work (Personal; sellable on Player Studio). Returns how many moved.
+        /// </summary>
+        public static int AdoptAccountDesigns(WorldSession session)
+        {
+            if (!DesignsFollowAccount || session.Account == null)
+                return 0;
+            try
+            {
+                using var context = DatabaseManager.Instance.CharacterDatabase.NewContext();
+                ulong account = session.Account.Id, me = session.PlayerGuid;
+                var deleted = context.Character.Where(c => c.AccountId == account && c.DeleteTime != null && c.Id != me)
+                    .Select(c => new { c.Id, Name = c.OriginalName ?? c.Name ?? "" }).ToList();
+                if (deleted.Count == 0)
+                    return 0;
+                var ids = deleted.Select(c => c.Id).ToList();
+                var names = deleted.Select(c => c.Name).Where(n => n.Length > 0).ToList();
+                List<TemplateModel> rows = context.Template.Where(t => ids.Contains(t.OwnerGuid)).ToList();
+                foreach (TemplateModel row in rows)
+                {
+                    row.OwnerGuid = me;
+                    row.AuthorName = AdoptedAuthor(row.AuthorName, names, session.CharacterName);
+                }
+                if (rows.Count > 0)
+                {
+                    context.SaveChanges();
+                    ownerNames.TryRemove(me, out _);
+                    log.Info($"{session.CharacterName}: {rows.Count} design(s) of deleted character(s) of the account moved here.");
+                }
+                return rows.Count;
+            }
+            catch (Exception e)
+            {
+                log.Warn(e, $"Could not move the account's designs to {session.CharacterName}; trying again at the next login.");
+                return 0;
+            }
+        }
+
+        /// <summary>The author of an adopted design: this character's name when the deleted character made it, else as it was.</summary>
+        internal static string AdoptedAuthor(string author, IEnumerable<string> deletedNames, string newName)
+            => !string.IsNullOrEmpty(author) && !string.IsNullOrEmpty(newName)
+               && deletedNames.Any(n => string.Equals(n, author, StringComparison.OrdinalIgnoreCase)) ? newName : author;
 
         /// <summary>Solid voxels in a stored material list ("material:count;...").</summary>
         public static long MaterialCount(string materials)
@@ -492,7 +609,7 @@ namespace LandmarkEmulator.WorldServer.Game
         /// sent 0 at +0xec, so every designer design fell back to Collected and "Starter Castle" never showed
         /// (trace/0695/spec-design-categories.md).</para>
         /// </summary>
-        private static void WriteBasicData(GamePacketWriter writer, TemplateModel design)
+        private static void WriteBasicData(GamePacketWriter writer, TemplateModel design, bool? countsAgainstStorage = null)
         {
             ulong created = (ulong)new DateTimeOffset(DateTime.SpecifyKind(design.CreatedAt, DateTimeKind.Utc)).ToUnixTimeSeconds();
             writer.Write(design.Id);
@@ -517,7 +634,7 @@ namespace LandmarkEmulator.WorldServer.Game
             writer.Write(0u);
             writer.Write(false);                    // IsDefault
             writer.Write(design.Tags);
-            writer.Write(!IsDesigner(design));      // counts against the storage limit
+            writer.Write(countsAgainstStorage ?? CountsAgainstStorage(design));   // counts against the storage limit ("free" column)
             // A designer template's shown name is this text id (0.695 +0xe4, 0.589 +0xfc; 0 shows "Daybreak Template
             // (Invalid Name)", tooltip part_0086.c:12124): the piece's or the design item's own name.
             writer.Write(!IsDesigner(design) ? 0u : StarterNameId(design.Name) is uint starterName and not 0 ? starterName : ItemUses.DesignNameId(design.Name));

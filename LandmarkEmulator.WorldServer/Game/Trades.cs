@@ -217,7 +217,15 @@ namespace LandmarkEmulator.WorldServer.Game
             }
         }
 
-        /// <summary>CoinCount: the coins a side offers (at most its balance); shown on both screens.</summary>
+        /// <summary>
+        /// May Lumens change hands (setting LumenTrading, off = live: "Lumens ... cannot be traded", Landmark Wipe Q&amp;A,
+        /// 14 Mar 2016)? The coins of the trade window are Lumens (<see cref="WorldSession.Coins"/>, item 1579).
+        /// </summary>
+        internal static bool LumenTradingAllowed
+            => Shared.Configuration.ConfigurationManager<WorldServerConfiguration>.Instance.Config?.LumenTrading ?? false;
+
+        /// <summary>CoinCount: the coins a side offers (at most its balance, none while Lumens may not be traded); shown on
+        /// both screens.</summary>
         private static void Coins(WorldSession session, int id, uint coins)
         {
             Trade trade; Side me; int seq;
@@ -225,7 +233,8 @@ namespace LandmarkEmulator.WorldServer.Game
             {
                 if (!Active(session, id, out trade, out me))
                     return;
-                if (coins > session.Coins)
+                // Lumens are no-trade on live (LumenTrading off): an offer of them is invalid and stays at nothing.
+                if (coins > session.Coins || (coins > 0 && !LumenTradingAllowed))
                 {
                     Send(session, MessageSub, w => w.Write(YourOfferInvalid));
                     coins = me.Coins;   // keep (and re-show) the previous offer
@@ -270,7 +279,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 // Offer's rules again, not only "still there": an offered stack can change after it was offered without
                 // the trade hearing of it — a store purchase in its waiting period merged into it (Inventory.MoveCount locks
                 // the joined stack) would otherwise be handed over all the same.
-                bool valid = side.Coins <= side.Session.Coins && side.Items.All(o => side.Session.Inventory.Get(o.Key) is { } i
+                bool valid = side.Coins <= side.Session.Coins && (side.Coins == 0 || LumenTradingAllowed) && side.Items.All(o => side.Session.Inventory.Get(o.Key) is { } i
                     && i.Container == Inventory.Inventory.BagContainer && i.Count >= o.Value
                     && !Inventory.Inventory.IsTradeLocked(i) && !Chests.HasItems(i.Id));
                 if (!valid)

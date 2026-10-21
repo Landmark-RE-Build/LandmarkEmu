@@ -218,9 +218,10 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
         }
 
         /// <summary>
-        /// Tooltip requests: 0x11 by item definition (u32 id, then a flag byte); 0x0F / 0x10 by item: an item location
-        /// (owner type 1 = no owner guid), then the item guid — the requester's own item, or another player's equipped
-        /// item when the location names them (the Inspect window).
+        /// Tooltip requests (<see cref="TooltipRequest"/>, docs/request-variants.md): 0x11 by item definition (u32 id, then
+        /// a flag byte); 0x0F by item instance {u32 owner type, u64 owner, u64 item, ...} — the requester's own item, an
+        /// inspected player's equipped item (owner type 1 naming them, the Inspect window), or an item in the chest the
+        /// requester has open (owner type 3); 0x10 by a mail attachment's item record (its definition and guid).
         /// </summary>
         private static void HandleTooltip(WorldSession session, InventoryRequest request)
         {
@@ -236,28 +237,46 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                 definitionId = BitConverter.ToUInt32(request.Body, 0);
                 full = request.Body.Length > 4 && request.Body[4] != 0;
             }
-            else
+            else if (full)
             {
-                var reader = new LandmarkEmulator.Shared.Network.GamePacketReader(request.Body);
-                ItemLocation location = ItemLocation.Read(reader);
-                if (reader.BytesRemaining < 8)
-                    return;
-                guid = reader.ReadULong();
-                CharacterItemModel item = session.Inventory.Get(guid);
-                // The Inspect window's gear (0.695, EquipmentItemRenderer → FUN_1435de7d0): the location names the
-                // inspected player; only their equipped items, which StartInspect showed (TASKS 3.22).
-                if (item == null && location.OwnerGuid != 0 && location.OwnerGuid != session.PlayerGuid
-                    && Game.PlayerManager.FindByGuid(location.OwnerGuid) is WorldSession owner && owner.Inventory?.Get(guid) is { } theirs
-                    && theirs.Container == Game.Inventory.Inventory.EquippedContainer)
-                    item = theirs;
-                if (item == null)
+                // A mail attachment (ClientInventory.RequestDetailsForItemInMail): the record the mail window got, keyed
+                // by its guid (Mail.AttachmentItemGuid).
+                if (!TooltipRequest.TryReadFull(request.Body, out TooltipRequest attachment))
                 {
-                    log.Debug($"Tooltip 0x{request.SubOpcode:X2} for unknown item {guid:X} ({Convert.ToHexString(request.Body)}).");
+                    log.Debug($"Unreadable mail tooltip request ({Convert.ToHexString(request.Body)}).");
                     return;
                 }
-                definitionId = item.ItemDefinitionId;
-                // A store purchase still waiting out StoreTradeWaitHours: the tooltip's "Tradable in %TIME" (L184).
-                fraudTimer = InventoryTooltipReply.FraudTimerOf(item.TradeableAfter, DateTime.UtcNow);
+                definitionId = attachment.DefinitionId;
+                guid = attachment.ItemGuid;
+            }
+            else
+            {
+                if (!TooltipRequest.TryReadInstance(request.Body, out TooltipRequest wanted))
+                    return;
+                guid = wanted.ItemGuid;
+                uint? kind = null;
+                if (wanted.OwnerType == TooltipRequest.ChestOwner)
+                    // An item in a chest (ToolTipWidget "item|chest" → RequestDetailsForItemInChest): only the chest the
+                    // requester has open.
+                    kind = Game.Chests.ItemKindFor(session, wanted.OwnerGuid, guid);
+                else if (session.Inventory.Get(guid) is CharacterItemModel item)
+                {
+                    kind = item.ItemDefinitionId;
+                    // A store purchase still waiting out StoreTradeWaitHours: the tooltip's "Tradable in %TIME" (L184).
+                    fraudTimer = InventoryTooltipReply.FraudTimerOf(item.TradeableAfter, DateTime.UtcNow);
+                }
+                // The Inspect window's gear (0.695, EquipmentItemRenderer → FUN_1435de7d0): the owner is the inspected
+                // player; only their equipped items, which StartInspect showed (TASKS 3.22).
+                else if (wanted.OwnerGuid != 0 && wanted.OwnerGuid != session.PlayerGuid
+                    && Game.PlayerManager.FindByGuid(wanted.OwnerGuid) is WorldSession owner && owner.Inventory?.Get(guid) is { } theirs
+                    && theirs.Container == Game.Inventory.Inventory.EquippedContainer)
+                    kind = theirs.ItemDefinitionId;
+                if (kind is not uint found)
+                {
+                    log.Debug($"Tooltip 0x{request.SubOpcode:X2} for unknown item {guid:X} (owner type {wanted.OwnerType}, owner {wanted.OwnerGuid:X}).");
+                    return;
+                }
+                definitionId = found;
             }
 
             var definition = Game.Inventory.ItemDefinitionManager.Get(definitionId);

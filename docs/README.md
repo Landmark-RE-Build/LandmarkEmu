@@ -12,6 +12,7 @@ Steam build 0.589.1.128895, on which most layouts were first traced; LaunchPad u
 | [launchpad.md](launchpad.md) | LaunchPad: installing it, the Steam check, the verified 0.695 update and its SHA-256 list, `.lmpatch` packs, the server's patch folder, what PLAY does. |
 | [protocol.md](protocol.md) | Transport (SOE UDP, gateway tunnel, zone opcodes), the 0.695 wire numbering, packet layouts for every system the server handles, and the rules the client enforces when reading them. |
 | [gameplay.md](gameplay.md) | How each server system works: sessions, inventory, abilities and movement, gathering, building, build sites, props and crafting, account items, chests, social, goals, creatures, combat, grief, landscapes, teleports, caverns and outposts, graveyards, death, developer commands. |
+| [live-rules.md](live-rules.md) | The live game's rules from the wiki, the update notes and the developers' posts, each with its source and what the server does (matches, fixed with a live-default setting, missing), and the conflicts between sources. |
 | [terrain.md](terrain.md) | The VoxelFarm terrain: the Environment Server split, cell ids, the block and mesh formats, edits, heals, ore veins, grass, the event islands, caves, long teleports, voxel templates and stamps, the client's mesh cache, slow loading screens. |
 | [sendself.md](sendself.md) | The SendSelfToClient record block by block and field by field, with the client code behind each name. |
 | [client-reference.md](client-reference.md) | Where things live in the client: function addresses, loading-bar stages, the client data tables the server reads, the UI / Lua entry points, the client's log files. |
@@ -24,6 +25,9 @@ Steam build 0.589.1.128895, on which most layouts were first traced; LaunchPad u
 | [story-tools.md](story-tools.md) | Story tools: the ObjectScripting (Links) protocol, Play Mode, every story prop's events and actions, the prop settings window, story creatures. |
 | [npc-scripting.md](npc-scripting.md) | World NPCs: JSON definitions, per-player flags, dialogue bubbles, achievement quests, admin commands, playtests. |
 | [encounters.md](encounters.md) | Encounters (EncounterBase 0x2C): the packets in both directions, duels, the death window, the world-channel split. |
+| [observer-sync.md](observer-sync.md) | What other players see of a player: every action and state checked so the actor's screen and the observers' agree (now, arriving later, after a re-zone, walking into range), the range of each, the fixes and the open leads. |
+| [client-to-server-shifts.md](client-to-server-shifts.md) | What the 0.589 client did by itself that the 0.695 client leaves to the server (the hotbar right-click, game HUD, Game Table settings, Parlor, Underground Adventure...), how both clients were scanned for it, and what the server does about each. |
+| [request-variants.md](request-variants.md) | Client messages with more than one sender (window, slash command, right-click menu, popup, Lua): what each sender fills (name vs guid, defaults, optional fields), how the server reads every variant, and every right-click menu row with the arguments its Lua function gets. |
 | [unknowns.md](unknowns.md) | The record of how every field once called `Unknown*` was named, and the few slots whose reader is still not found. |
 | [bugs.md](bugs.md) | Known bugs found while running or developing the emulator (open and fixed). |
 

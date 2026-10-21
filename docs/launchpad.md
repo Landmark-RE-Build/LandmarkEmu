@@ -14,7 +14,9 @@ What it does:
   first, every time). Patches only go on top of a verified Steam copy of the game, every file is held to the SHA-256 of
   Daybreak's genuine file before it replaces anything, and every change is backed up so it can be undone.
 - A player who has a 0.695 copy can make the update pack from it (Settings > Patch packs > Create update pack).
-- It points `ClientConfig.ini` at the server and starts `Landmark64.exe` with a fresh session key.
+- It points `ClientConfig.ini` at the server and starts `Landmark64.exe` with a fresh session key. Advanced mode shows
+  every value it writes there and lets the player choose the asset thread count
+  ("Advanced mode" below).
 
 It never downloads the game itself. LaunchPad only patches a complete, unchanged Steam install of Landmark
 0.589.1.128895.
@@ -322,11 +324,69 @@ The `SERVER_NAME`, `WEBSITE_URL` and `REQUIRED_CLIENT_BUILD` settings go in the 
 1. Checks `Landmark64.exe` is a genuine exe (Steam's 0.589 one, or a known 0.695 build's; from the hash cache, so
    about a second) and refuses to start anything else.
 2. Logs in again for a fresh session key.
-3. Writes `ClientConfig.ini`:
-   - `Server=<address>:<loginPort>`;
-   - `MarketplaceUrl` = the first world's web pages URL. A loopback host is replaced by the server's address.
-   - `DirectThreadCount=2`;
+3. Writes `ClientConfig.ini` (`ClientConfigFile.PointAt` in `LandmarkEmulator.PatchPacks/ClientConfig.cs`):
+   - `Server=<address>:<loginPort>` (before the first section);
+   - `[Marketplace] MarketplaceUrl` = the first world's web pages URL. A loopback host is replaced by the server's address.
+   - `[AssetDelivery] DirectThreadCount=2`, or in advanced mode the player's choice (below).
+
+   A missing line is added in its own section. The first change keeps the original as `ClientConfig.ini.orig`. The file
+   is written beside itself and renamed over the old one, so a hard link to Steam's copy is replaced, never written
+   through; bytes outside ASCII are kept as they are.
 4. Starts `Landmark64.exe SessionId=<key> CasSessionId=0 STEAM_ENABLED=0`.
+
+### Advanced mode
+
+Settings > Options > **Advanced mode** (off by default). It is kept per game folder in `launchpad.json`:
+
+```json
+"ClientConfig": {
+  "D:\\Steam\\steamapps\\common\\Landmark": {
+    "Advanced": true,
+    "Choices": { "DirectThreadCount": { "Mode": "Custom", "Value": "4" } }
+  }
+}
+```
+
+A folder gets an entry only once the player changes something there. Without an entry, or with `Advanced` false, PLAY
+writes the values above exactly as before advanced mode existed; the choices are kept while it is off and count again
+when it is switched back on. Advanced mode adds one tab.
+
+**Client settings** lists every value PLAY writes, each with what it does, the game's original (from
+`ClientConfig.ini.orig`, else Steam's file), LaunchPad's value, the file's current value and what the next PLAY writes:
+
+| Value | Choice | Why |
+|---|---|---|
+| `Server=` | always set | The chosen server's login address. Without it the game can't reach that server; Steam's value is Daybreak's login server, which is gone. |
+| `[Marketplace] MarketplaceUrl=` | always set | The server's in-game web pages (Showcase: store, gallery, following). The world signs the player's Showcase in on its own pages only (`Store.SendSignIn` opens `<WebPagesUrl>/?t=<token>`, and the token works on that world only), so another address shows pages that don't know the player; one that doesn't answer makes the client's browser reload forever, which has frozen the client (`WebPages.cs`). The server owner sets it (`WebPagesUrl`), not the player. |
+| `[AssetDelivery] DirectThreadCount=` | **LaunchPad sets it** (2, recommended), **Use my value** (a whole number from 1 to 10), or **Leave the file as it is** (PLAY doesn't touch the line, and adds none) | See below. |
+
+`DirectThreadCount` in the 0.695 client: `CreateAssetSystem` (FUN_142caff80) reads it with the integer reader
+FUN_142b21540 (an atoi, FUN_142b213d0; **4** when the line is missing; no clamp) and passes it to
+`AssetDeliveryDirect` (FUN_143b30030; with `IndirectEnabled=1`, as shipped, through `AssetDeliveryWrapper`
+FUN_143b32550 / FUN_143b32cb0). Its Init (FUN_143b310f0, vtable 0x14491cbc0 slot 1) starts exactly that many
+"FileLoader" threads, `for (i = 0; i < count; i++)`. So 0, a negative number or text starts none and nothing loads: 1
+is the least that works. The code has no upper limit; each thread takes one of the allocator's 64 per-thread slots
+(docs/terrain.md "Slow loading screen: allocator slots"), which is why Steam's 10 stalls the loading screen. LaunchPad
+allows 1 to Steam's 10. A custom value that fails the check (launchpad.json edited by hand) is written as 2.
+
+The same slots decide how fast a design's placement preview ("Generating preview... XX.XX%", one thread started at
+the click) runs (docs/gameplay.md "Placing a design"). `DirectThreadCount` is the only thread count the game reads from
+its files; other pools start one thread per logical processor with no limit (`Resource::Manager Decompression`,
+`TaskManagerJob`), so on CPUs with 16 or more logical processors the table can be full even at 2 [I]. LaunchPad cannot
+change those without modifying the game; the player-side fixes are in the gameplay doc.
+
+**What PLAY writes, and nothing else.** Only the three lines above change (and, in a file that has no such
+section, a `[Marketplace]` or `[AssetDelivery]` header after a blank line). Every other line stays exactly as it was,
+including lines LaunchPad doesn't manage. It never writes any other key; in particular never the `[Terrain]
+UseCachedMeshes=off` / `CacheMeshes=off` lines an old workspace script added to some players' files (they do nothing:
+UserOptions.ini has the same keys, the game's Options window, and those win; docs/terrain.md; a player may delete them
+by hand). The only files it writes are `ClientConfig.ini` and, once, `ClientConfig.ini.orig`; its temporary
+`ClientConfig.ini.lpnew` is renamed over the file or deleted if the write fails.
+
+The bridge refuses a choice while advanced mode is off (`Bridge.Advanced`); the panel only reads the file. Tests:
+`LandmarkEmulator.Tests/PatchPacks/ClientConfigTests.cs` (each choice, advanced mode off, the range, missing lines,
+that only the listed lines change and no other file is written, the original, hard links, bytes outside ASCII,
+the choices' JSON).
 
 ### While the game runs
 

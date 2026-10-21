@@ -188,6 +188,9 @@ namespace LandmarkEmulator.WorldServer.Game.Social
                 return;
             }
             uint check = Mail.ReadCompose(reader, out Mail.ComposeDraft draft);
+            // The Feedback button's mail names its recipient by guid only (Mail.ResolveRecipients); the service takes names.
+            if (check == Mail.Success)
+                Mail.ResolveRecipients(draft, Mail.CharacterNameOf);
             if (check == Mail.Success && draft.Coins > session.Coins)
                 check = Mail.InsufficientFunds;
             List<(uint Definition, uint Count)> items = null;

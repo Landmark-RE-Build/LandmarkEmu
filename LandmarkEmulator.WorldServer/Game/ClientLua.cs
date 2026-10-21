@@ -106,11 +106,16 @@ namespace LandmarkEmulator.WorldServer.Game
         /// InGameMarketplaceBrowser.lua, which call Ui.OpenSupportUrl). The names asked about in the 2026-10-18 review
         /// (OpenUrl, OpenBrowser, LaunchUrl) are not in the 0.695 binding table. The server's own in-game browser calls
         /// (OpenMarketplaceTo, InGameMarketplaceBrowser.ShowURL) stay allowed: they open the game's built-in browser.
+        /// The list also refuses the Lua native-code and file loaders (package.loadlib, require, dofile, loadfile).
         /// </summary>
         public static readonly string[] ExternalBrowserNatives =
         {
             "OpenSupportUrl", "LaunchBrowser", "OpenRegistrationExternally", "GoToLiveGamerSite", "BrowseTo", "NavigateUrl",
             "FundWalletExternal", "PurchaseMembershipExternal", "ShowOverlay", "ShowHelpPage",
+            // Native-code loaders (2026-10-21, client-commands-for-slots.md): the client's Lua keeps package.loadlib and
+            // require, which load a DLL from the player's PC, plus dofile / loadfile, which run a Lua file from disk —
+            // dev-command code must never reach native code or the player's files.
+            "loadlib", "package.", "require(", "require ", "require\"", "require'", "dofile", "loadfile",
         };
 
         /// <summary>

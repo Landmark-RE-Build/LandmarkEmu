@@ -264,7 +264,11 @@ player a copy of the design:
 
 - the copy belongs to the taker and keeps the maker's name as its author, so the Designs window files it under
   **Collected** (TemplateBasicData's "own design" flag is false when the author isn't the holder);
-- one copy per product per character (unlock kind 16), not your own products, design storage limit applies;
+- one copy per product per character (unlock kind 16), not your own products;
+- **the copy takes no design storage**, nor does a creator's own design while it is on Player Studio (waiting for
+  review or listed): the Designs window's "free" column shows it and a full storage doesn't stop the purchase (live:
+  wiki Designs, bought designs "do not count toward the limit"; developers' hotfix notes 17 Oct 2014, designs submitted
+  to Player Studio no longer count against Voxel Storage). `PLAYER_STUDIO_DESIGNS_FREE_STORAGE=false` counts them;
 - the client prints its own "Learned.Template" notice (EnvironmentAddOwnershipResponse), and the maker, if online,
   gets a line saying who took it.
 

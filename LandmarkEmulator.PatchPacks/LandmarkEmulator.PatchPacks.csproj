@@ -10,6 +10,9 @@
     final build, Steam's list of the 0.589 install, and the SHA-256 of every genuine 0.695 file
     (Data/landmark-0695-files-sha256.csv, tools/strong_hash_list.py). Names, sizes and checksums only: no game code or
     game bytes. docs/launchpad.md.
+
+    Also LaunchPad's rules for the game's ClientConfig.ini (ClientConfig.cs: what PLAY writes, by advanced mode's
+    choices), here so the tests run them; docs/launchpad.md "Advanced mode".
   -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>

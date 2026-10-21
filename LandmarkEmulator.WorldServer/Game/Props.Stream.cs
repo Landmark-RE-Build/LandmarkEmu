@@ -375,10 +375,11 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>
-        /// The arrival hold (MiscHandler.ClientIsReady, an arrival in the air over props): these props now, ahead of the
-        /// zone-done flags; <see cref="StreamIn"/> later skips them.
+        /// The arrival hold (MiscHandler.ClientIsReady, an arrival in the air over props) and the loading-screen stream hold
+        /// (<see cref="SendArrival"/>): these props now, ahead of the rest; <see cref="StreamIn"/> later skips them. Returns
+        /// how many went out.
         /// </summary>
-        public static void SendEarly(WorldSession session, IEnumerable<PlacedProp> near)
+        public static int SendEarly(WorldSession session, IEnumerable<PlacedProp> near)
         {
             var spawns = new List<PlacedProp>();
             lock (sync)
@@ -389,6 +390,35 @@ namespace LandmarkEmulator.WorldServer.Game
                         spawns.Add(p);
             }
             SendSpawns(session, spawns);
+            return spawns.Count;
+        }
+
+        /// <summary>
+        /// Whether the player's prop stream is running (<see cref="StreamIn"/> ran for this zone-in), else only the early
+        /// props are held (<see cref="SendEarly"/>) or there is no stream.
+        /// </summary>
+        public static bool StreamStarted(WorldSession session)
+        {
+            lock (sync)
+                return streams.TryGetValue(session, out PropStream st) && st.Started && st.Zone == session.ZoneId;
+        }
+
+        /// <summary>Sideways reach (m) of the props sent ahead of the rest around an arrival (64 m down, 16 m up)
+        /// [I ours: the structure the player lands on, with margin].</summary>
+        public const float ArrivalReach = 48f;
+
+        /// <summary>
+        /// The placed props under and around where the player stands (<see cref="ArrivalReach"/> sideways, 64 m down, 16 m
+        /// up), ahead of the rest: an arrival over props (MiscHandler.ClientIsReady) and the loading-screen stream hold
+        /// (PlayerManager "Stream hold"), so the player has collision under them. <see cref="StreamIn"/> later skips them.
+        /// Returns how many went out.
+        /// </summary>
+        public static int SendArrival(WorldSession session)
+        {
+            Vector3 at = session.Position;
+            List<PlacedProp> near = PlacedInBox(session.ZoneId, at - new Vector3(ArrivalReach, 64f, ArrivalReach),
+                at + new Vector3(ArrivalReach, 16f, ArrivalReach));
+            return SendEarly(session, near);
         }
 
         /// <summary>

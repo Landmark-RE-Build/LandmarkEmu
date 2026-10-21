@@ -11,7 +11,8 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
     /// Ore veins, as the live servers made them: the client never spawns veins (its VeinProvider code is server-side
     /// code compiled in; spawning draws from a global random generator), it draws the ore materials the server writes
     /// into the cells it sends. So veins are server state:
-    /// - Spawn data: CommonData/Voxel/veinData/ContinentVeinData{zone}.vdt (loader FUN_143faaf90, <see cref="ReadVdt"/>):
+    /// - Spawn data: CommonData/Voxel/veinData/ContinentVeinData{continent}.vdt (loader FUN_143ff34d0, by the landscape's
+    ///   continent id: <see cref="VdtPath"/>; read by <see cref="ReadVdt"/>):
     ///   the surface spawn pool (cells by (layer, biome, tier), 447,111 on 406) and the cave pool (590,282), and per
     ///   vein mapping (ResourceVeinGroupVeins id) its vein count and spawn attempts on the surface / in caves (counts are
     ///   about 1063 × DENSITY_ON_SURFACE and 53 × DENSITY_IN_CAVES).
@@ -138,6 +139,24 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 return itemByMaterial.Select(p => (p.Key, p.Value)).ToList();
         }
 
+        /// <summary>
+        /// The vein file the client loads for a landscape: <c>Voxel\veinData\ContinentVeinData%d.vdt</c> with the
+        /// continent id (FUN_143ff34d0 formats the VoxelFarm core's +0x5208, the zone's continent; <see cref="LandscapeContinents"/>).
+        /// Same as the zone id on the classic islands; the Pioneer lands 464-468 read 440-444.
+        /// </summary>
+        public static string VdtPath(string gameDirectory, uint zone)
+            => Path.Combine(gameDirectory ?? "", "CommonData", "Voxel", "veinData",
+                $"ContinentVeinData{LandscapeContinents.Of(zone, gameDirectory)}.vdt");
+
+        /// <summary>
+        /// A landscape's spawn pools as loaded (offline checks and the dev tools): surface / cave pool cells, vein kinds
+        /// and veins the vdt gives the landscape; null when it has no vein data.
+        /// </summary>
+        public static (long SurfaceCells, long CaveCells, int Kinds, int Veins)? PoolsOf(uint zone)
+            => ZoneOf(zone == 0 ? TerrainStore.HomeContinent : zone) is Zone z
+                ? (z.SurfaceTotal, z.CaveTotal, z.Infos.Count, z.Infos.Sum(i => i.Counts[0] + i.Counts[1]))
+                : null;
+
         private static Zone ZoneOf(uint zone)
         {
             lock (sync)
@@ -145,7 +164,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 if (zones.TryGetValue(zone, out Zone z))
                     return z;
                 z = null;
-                string path = Path.Combine(gameDirectory ?? "", "CommonData", "Voxel", "veinData", $"ContinentVeinData{zone}.vdt");
+                string path = VdtPath(gameDirectory, zone);
                 if (definitions != null && File.Exists(path))
                 {
                     try
@@ -154,7 +173,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                     }
                     catch (Exception e)
                     {
-                        log.Warn($"Vein data for landscape {zone} unreadable ({e.Message}).");
+                        log.Warn($"Vein data for landscape {zone} ({Path.GetFileName(path)}) unreadable ({e.Message}).");
                     }
                 }
                 zones[zone] = z;

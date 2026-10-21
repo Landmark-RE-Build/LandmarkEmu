@@ -1,4 +1,4 @@
-using LandmarkEmulator.Database.Character.Model;
+﻿using LandmarkEmulator.Database.Character.Model;
 using LandmarkEmulator.Internal.Commerce;
 using LandmarkEmulator.Shared.Database;
 using LandmarkEmulator.Shared.Network;
@@ -1019,7 +1019,9 @@ namespace LandmarkEmulator.WorldServer.Game
                 TemplateModel design = context.Template.FirstOrDefault(t => t.Id == product.TemplateId);
                 if (design == null)
                     return (false, "That design is no longer available.");
-                if (!Templates.HasRoom(session, design))
+                // A bought design takes no design storage on live (Templates.StudioDesignsFree), so a full storage
+                // doesn't stop the purchase then.
+                if (!Templates.StudioDesignsFree && !Templates.HasRoom(session, design))
                     return (false, "Your design storage is full.");
                 cost = StudioPrice(product.Price);
                 listing = string.IsNullOrEmpty(product.Name) ? design.Name ?? "" : product.Name;

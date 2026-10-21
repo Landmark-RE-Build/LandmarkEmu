@@ -17,6 +17,19 @@ What each part of `LandmarkEmulator.WorldServer` does, which packets it uses (la
   - the claim list, health, the placed props within `PropStreamRange` (see "Props and crafting"), the (empty) design
     list, the Spire;
   - friends and guild data.
+- **Stream hold** (`PlayerManager` "Stream hold", setting `StreamHoldUntilLoaded` / Docker `STREAM_HOLD_UNTIL_LOADED`,
+  default true; limit `StreamHoldLimitSeconds`, 90 s). While a login's or a re-zone's loading screen is up, only what
+  the arrival stands on goes out: the placed props within 48 m sideways / 64 m down / 16 m up of the player
+  (`Props.SendArrival`), the Spire's deck (all its props when arriving on the platform), and the data the screen
+  needs (SendSelf, preload characters, ZoneDoneSendingInitialData, area definitions, the cell manifest, PropBase,
+  tints, achievements, templates, claims, the store). Creatures, trees and gathering nodes, loot chests, outposts,
+  graveyards, landmarks and pets (`WorldSession.StreamsOnHold`), the rest of the placed props, the Spire's stations and
+  chests and the underground warp crystals wait for the screen's ClientLoading `{0}` (a re-zone's own, after its
+  zone-in), or the limit (from the login's world entry, or from the re-zone's zone-in; 3 min for a re-zone that never
+  zones in). Then they go at once, nearest props first: the same packets as before, later. The log says
+  `<name>: streams released after N s (loading screen down|limit)`. Why: the 0.695 client's 64 allocator slots on CPUs
+  with 16+ threads (docs/terrain.md "Slow loading screen: allocator slots"). A logout or timeout ends the hold; a
+  re-zone during it starts the re-zone's own; nothing is sent while a re-zone is in flight.
 - Players whose heartbeat timed out are pruned every second, so friends/guilds see them go offline.
 - **Logout to character select** (`Network/Handlers/CharacterSelectHandler.cs`):
   1. The client asks for a character-select session; the server stores a fresh login session key.
@@ -153,7 +166,9 @@ What each part of `LandmarkEmulator.WorldServer` does, which packets it uses (la
     arrival; a second fall goes to the landscape's shallowest open graveyard; a third is only logged. Positions from
     behind the loading screen never count.
 - **Right-click menus** (`Game/RightClickMenus.cs`): the server chooses the buttons for players, friends, party and
-  guild members, props and chat tabs, from the client's RadialMenuButtons.txt.
+  guild members, props and chat tabs, from the client's RadialMenuButtons.txt, per target (Inspect, Revive on a dead
+  player, party Kick / Make Leader while leading, Ignore or Stop Ignoring); every row and its Lua call in
+  request-variants.md.
   - **Prop name while the menu is open** (`Game/Props.MenuName.cs`; setting `BuildMenuPropName`, Docker
     `BUILD_MENU_PROP_NAME`, default on): right-clicking a prop in build mode puts its name over it (the owner's own
     name for it, else the prop's name) for that player only, with PlayerUpdate 0x7C UpdatePropName; no respawn, so
@@ -250,6 +265,57 @@ What each part of `LandmarkEmulator.WorldServer` does, which packets it uses (la
   lasts while its site exists ([I]: undo / recycle don't clear it; dev `psinstances clear` does). A bought design
   can't be exported to an item either.
 
+### Placing a design: "Generating preview... XX.XX%" (client work, traced 2026-10-21)
+
+Clicking a design to place it (Designs tab, or the Modular Castle pieces Modular Thinking asks for) can show
+**"Generating preview..." with a percentage (two decimals) in the middle of the screen** for a while, and the game can
+feel frozen until the design shows as placeable. This is the client's own work, the same as on live; the server has no
+part in it after one reply per design.
+
+- **What the server sends, once per design per session.** Paste (Lua `Templates.Paste`, FUN_1435db0d0) asks for the
+  voxels with VoxelDataRequest (0xF0 / 4) only while the client's record of that design has no blocks (FUN_1431136c0
+  tests the block count at +0x158) [P]. The reply (0xF0 / 5, `Templates.SendVoxelData`) is the design's cell list: for a
+  Starter Castle piece the cell section of the client's own .otd, not its screenshots (the castle files are mostly
+  JPEGs: Modular Castle Window 218,929 bytes, cells 3,283; Long Room 193,845 bytes, cells 124,086). Later list updates
+  keep the cached blocks (FUN_143108b60 copies +0x130 into the new record) [P]. Test: `Tests/Rules/DesignVoxelDataTests`.
+- **What the client does on every click** (also with the voxels cached) [P]:
+  1. `FUN_143111480` builds a new `VoxelFarm::CClipboardData` from the cached cells on the main thread
+     (FUN_143b92dc0: every changed voxel of every cell, the full design box including its air; Long Room 36 cells /
+     1,166,352 voxels, Tower 36 / 1,116,250, Window 4 / 15,498) and starts the `PasteVoxel` tool.
+  2. The paste cursor sees a new clipboard and calls `VoxelPasteCursor::GetVoxelPreviewMesh` (FUN_1436cdf00, from
+     FUN_1436cc520), which sets the "generating" flag (+0x2e1) and starts **one** `VoxelFarm::Internal::
+     PreviewGenerationThread` (FUN_143f93a50 creates it when the scene holds none; constructor FUN_143f8a6a0).
+  3. That thread (FUN_143f99120) contours the preview cell by cell (FUN_142aba6d0 cell build, FUN_142ac5010 contour,
+     five material layers into `VoxelPreviewCellToMeshData`) and sets its progress at +0x118 = done / total cells.
+  4. While +0x2e1 is set, the cursor's update (FUN_1436ce040) draws "Generating preview..." + `%0.2f` of
+     FUN_143f924d0 (progress × 100) + "%" at the screen centre. (Players remember it as "Rendering XX.XX%"; the string
+     "Rendering" with a percentage is not in the client.)
+- **Why it is slow, and why it can freeze the game.** The preview is one thread doing all cells in a row, so the
+  36-cell castle pieces take longest. Every array that thread grows and every block it frees goes through the
+  client's allocator. A thread started this late in a session often gets none of the allocator's **64 per-thread
+  slots** (FUN_142c05050: table 0x145427450, stride 0x258, used count 0x145426dd8; docs/terrain.md "Slow loading
+  screen: allocator slots"); then each allocation and free takes the allocator's one global lock (0x145426420) and
+  checks all 64 slot owners with OpenThread / GetExitCodeThread / GetProcessIdOfThread / CloseHandle [P]. The main
+  thread takes the same lock for its large blocks and on a slot miss, so it waits too and the frame rate collapses
+  while the percentage still creeps up [I].
+- **Many-core PCs are hit hardest.** Several of the game's thread pools start one thread per logical processor with
+  no upper limit: `Resource::Manager Decompression` (FUN_143a8d560) and `TaskManagerJob` (FUN_143a98090), both
+  `GetSystemInfo().dwNumberOfProcessors` (FUN_142b4e800); another pool takes processors − 1 up to 16 (FUN_143a74f10
+  / FUN_143a6fcd0) [P]. Others are capped: the VoxelFarm contour threads are always 3 (FUN_143f94580: physical cores
+  from GetLogicalProcessorInformation, min 3), Morpheme network threads up to 4 (FUN_1440b4440), the contour job queue
+  up to 3 (FUN_143133360) [P]. On a 12-thread PC the slots were 58 of 64 at world entry with LaunchPad's
+  `DirectThreadCount=2` (2026-10-14) and ~61 later in the session [P, measured]; every 2 more logical processors add
+  2-3 such threads, so a 16-thread or bigger CPU is likely full before the preview thread starts [I].
+- **What helps.** LaunchPad's `DirectThreadCount=2` (docs/launchpad.md) frees 8 of Steam's 10 file-loader slots, which
+  is enough on PCs up to about 12 logical processors; advanced mode can go to 1 for one more. On bigger CPUs the
+  uncapped pools fill the table anyway; live players fixed the same slot race (the loading-screen hang "related to
+  number of cores", June 2016) by starting Windows with fewer processors (msconfig → Boot → Advanced options → Number
+  of processors, e.g. 8; untick it to undo) or turning off Hyper-Threading / SMT. Small designs preview much faster
+  than the 36-cell Long Room and Tower.
+- **Not found yet** (OPEN-LEADS): where the scene drops the finished PreviewGenerationThread (only its creation and
+  the unwind release were found); `MaxVoxelsForPreview` (console int, default 41,500, FUN_14219be10) has no reader
+  in the 0.695 code found so far.
+
 ## Claims / build sites (`Game/Claims.cs`)
 
 - **Placing a site:**
@@ -279,7 +345,8 @@ What each part of `LandmarkEmulator.WorldServer` does, which packets it uses (la
     then an "Unlock More Build Sites" row; Place (`ClaimsPacketStartClaimPlacement`) starts placement without a flag,
     and the rows are re-sent (management data + upkeep data) whenever the player's site count changes.
 - **Upkeep (Active Days):** a site stays while its owner logs in at least once every N days: N starts at 7 and grows
-  by one for every two unique login days, up to 90 (the launch rule). The day it grows the owner gets the client's
+  by one for every two unique login days, up to 90 (the launch rule). A login day runs midnight to midnight Pacific
+  time, as live (developers, 17 Mar 2015; `UPKEEP_TIME_ZONE`, default America/Los_Angeles). The day it grows the owner gets the client's
   "timer extended" letter; an owner away until 3 days are left gets a reminder letter; when the time runs out the
   site is packed into Build Site Contents and the owner is mailed (checked hourly).
 - **Event islands closing:** with `EventIslandExpireOnClose` (Docker `EVENT_ISLAND_EXPIRE_ON_CLOSE`, default true = live),
@@ -511,6 +578,9 @@ world tick, and a second click within 5 s is ignored. Dev `founderchest`.
   Mail.ExpireTimeMinutes) and are deleted then unless they still hold items or coins. One attachment carries at most
   `MAIL_MAX_STACK` (9,000, wiki Trading) of an item; more is "attachment is invalid" (5). Store purchases in their
   waiting period can't be attached (0xA).
+- **Lumens can't change hands** (live: the developers' Landmark Wipe Q&A, 14 Mar 2016, "they cannot be traded"). The
+  client's coin panes are Lumens: a coin offer in the trade window is "your offer is invalid" and stays 0, and a mail that
+  sends coins or asks for cash on delivery is refused with 0xA (no-trade item). `LUMEN_TRADING=true` allows both.
 - Trades end when a trader changes landscape (TradeCanceled) or enters a running site game (codes 8 / 9). The bag
   check counts stacking onto the receiver's own stacks.
 - Emotes and stances (`Game/Emotes.cs`; wire in docs/protocol.md "Sitting"): /sit is the client's own, the stances
@@ -894,7 +964,8 @@ no Landmark source names an amount, so all numbers are ours.
   are sent the player then; players who kept seeing it through a re-zone on the same landscape are not sent it again
   (they get its arrival position at the zone-in). No movement goes to or from it meanwhile. A `{0}` before the
   re-zone's zone-done flags belongs to the screen before and is ignored. Fallbacks: 90 s after the zone-in, 3 min if
-  the zone-in never comes. Short moves (TeleportToLocation) are not held.
+  the zone-in never comes. Short moves (TeleportToLocation) are not held. The world streams wait for the same `{0}`
+  (see "Stream hold" under "Sessions, zone-in and logout").
 - **Evac to Safety and the admin teleports** (OPEN-LEADS L140): the Escape menu's Evac to Safety, `/location`,
   teleport-to-camera and the admin map teleport send Command 0x1E teleport requests and freeze the player until a
   TeleportToLocation answers (protocol.md §14). Admins go to the exact point. Players get an evac near their own spot
@@ -1062,6 +1133,11 @@ Rates are ours; the patch notes only say "rare" or "a chance".
   their design items (goal 471 reward bundle 1051), which unlock the piece (unlock kind 20) instead of storing a copy.
   Characters made before 2026-10-16 were given all 27 once, at their next zone-in. Designer designs carry their
   exported template id, so the 0.695 client files the castle pieces under "Starter Castle".
+  **Designs belong to the account** (live: Wipe Q&A 14 Mar 2016, "tied to your account, not your character"): at world
+  entry the designs held by the account's deleted characters (their own, and those made of their build sites) move to
+  the character, which becomes their author where the deleted character was (`DESIGNS_FOLLOW_ACCOUNT`, default true).
+  **Player Studio designs take no storage** (bought copies, and a creator's designs while on Player Studio; live: wiki
+  Designs, hotfix notes 17 Oct 2014; `PLAYER_STUDIO_DESIGNS_FREE_STORAGE`, default true): the "free" column shows it.
 - `Game/WebPages.cs`: a small web server for the client's embedded browser (Showcase / Gallery) on `WebPagesPort`
   (19001); LaunchPad writes its address as `MarketplaceUrl` in `ClientConfig.ini` on PLAY. Without it the browser
   retries a dead URL and stalls the client.

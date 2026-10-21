@@ -43,6 +43,30 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
             return check == null || TerrainEdits.MayApply(id, changed, check);
         }
 
+        /// <summary>
+        /// Per voxel of a cell (index y fastest): may the player build it? The same rules as <see cref="MayApply"/>, for
+        /// optional voxels of an edit that are left out rather than refusing it (a paste's vertex-only surface voxels just
+        /// outside the site).
+        /// </summary>
+        public static Func<int, bool> VoxelPermission(ulong id, ulong playerGuid, uint zone)
+        {
+            (uint level, uint cx, uint cy, uint cz) = TerrainStore.Decode(id);
+            if (level != TerrainEdits.Level)
+                return _ => false;
+            double size = TerrainEdits.CellSize, v = TerrainEdits.VoxelSize;
+            double ox = cx * size, oy = cy * size, oz = cz * size;
+            if (!Spire.MayEdit(playerGuid, zone, (ox, oy, oz), (ox + size, oy + size, oz + size)))
+                return _ => false;
+            var check = Claims.BuildCheckIn(playerGuid, zone, (ox, oy, oz), (ox + size, oy + size, oz + size));
+            if (check == null)
+                return _ => true;
+            return i =>
+            {
+                int y = i % BlockData.Size, x = i / BlockData.Size % BlockData.Size, z = i / (BlockData.Size * BlockData.Size);
+                return check(ox + (x + 0.5) * v, oy + (y + 0.5) * v, oz + (z + 0.5) * v);
+            };
+        }
+
         // ---- sending cells -----------------------------------------------------------------------------------------------
 
         /// <summary>Sends one player the server's version of a cell (undoes a refused local edit).</summary>
