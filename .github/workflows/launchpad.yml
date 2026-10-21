@@ -1,0 +1,88 @@
+# Builds LaunchPad.exe (self-contained single file: no .NET install needed; WebView2 ships with Windows 10/11).
+#
+# - Pull requests that touch LaunchPad or what it uses, and pushes to main: the test suite runs and LaunchPad.exe (with a
+#   SHA-256 file) is kept as a build artifact. Download it from the run's page (Actions > LaunchPad > the run >
+#   Artifacts), so a change can be tried without building it yourself.
+# - By hand: Actions > LaunchPad > Run workflow, on any branch.
+# - A published release (Releases > Draft a new release > Publish) builds its tag and attaches LaunchPad.exe and the
+#   .sha256 to the release; re-running replaces them.
+#
+# The terrain heights zip is not built here: it is made from the game's own files, which never go into this repository.
+name: LaunchPad
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "LandmarkEmulator.LaunchPad/**"
+      - "LandmarkEmulator.PatchPacks/**"
+      - "LandmarkEmulator.ClientLaunch/**"
+      - "LandmarkEmulator.Shared/**"
+      - ".github/workflows/launchpad.yml"
+  pull_request:
+    paths:
+      - "LandmarkEmulator.LaunchPad/**"
+      - "LandmarkEmulator.PatchPacks/**"
+      - "LandmarkEmulator.ClientLaunch/**"
+      - "LandmarkEmulator.Shared/**"
+      - ".github/workflows/launchpad.yml"
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: launchpad-${{ github.event.release.tag_name || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write   # release assets (release runs only)
+    env:
+      DOTNET_NOLOGO: "1"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Test
+        shell: pwsh
+        run: dotnet test LandmarkEmulator.sln -c Release
+
+      - name: Build LaunchPad.exe
+        shell: pwsh
+        run: dotnet publish LandmarkEmulator.LaunchPad -c Release -o out/LaunchPad
+
+      - name: Checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash out/LaunchPad/LaunchPad.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  LaunchPad.exe" | Out-File -Encoding ascii out/LaunchPad/LaunchPad.exe.sha256
+          "LaunchPad.exe SHA-256: $hash" | Tee-Object -Append -FilePath $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LaunchPad-${{ github.sha }}
+          path: |
+            out/LaunchPad/LaunchPad.exe
+            out/LaunchPad/LaunchPad.exe.sha256
+          if-no-files-found: error
+
+      - name: Attach to the release
+        if: github.event_name == 'release'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" out/LaunchPad/LaunchPad.exe out/LaunchPad/LaunchPad.exe.sha256 --clobber --repo "${{ github.repository }}"
