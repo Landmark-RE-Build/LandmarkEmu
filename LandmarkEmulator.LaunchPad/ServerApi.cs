@@ -1,5 +1,6 @@
 using System.IO;
 using System.Net.Http;
+using System.Net.Sockets;
 using System.Text.Json;
 
 namespace LandmarkEmulator.LaunchPad
@@ -23,9 +24,14 @@ namespace LandmarkEmulator.LaunchPad
             ServerCertificateCustomValidationCallback = (_, _, _, _) => true
         }) { Timeout = Timeout.InfiniteTimeSpan };
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> schemes = new();
+        private readonly string host;
         private readonly string hostPort;
 
-        public ServerApi(ServerEntry server) => hostPort = $"{server.Address}:{server.ApiPort}";
+        public ServerApi(ServerEntry server)
+        {
+            host = server.Address;
+            hostPort = $"{server.Address}:{server.ApiPort}";
+        }
 
         public string Display => hostPort;
 
@@ -40,8 +46,9 @@ namespace LandmarkEmulator.LaunchPad
             {
                 return await client.SendAsync(request($"{first}://{hostPort}"), completion, cancel);
             }
-            catch (HttpRequestException)
+            catch (HttpRequestException e) when (!IsUnknownHost(e))
             {
+                // Wrong scheme or refused: try the other. A bad host name fails the same on both, so don't retry.
                 string other = first == "http" ? "https" : "http";
                 HttpResponseMessage response = await client.SendAsync(request($"{other}://{hostPort}"), completion, cancel);
                 schemes[hostPort] = other;
@@ -55,6 +62,25 @@ namespace LandmarkEmulator.LaunchPad
             public Failure(string message, int status = 0) : base(message) => Status = status;
         }
 
+        /// <summary>DNS failed (typo / unknown name) vs connect/timeout ("No answer").</summary>
+        private Failure Unreachable(Exception cause, string noAnswerMessage)
+            => IsUnknownHost(cause)
+                ? new Failure($"Can't find a host named \"{host}\". Check the spelling of the address.")
+                : new Failure(noAnswerMessage);
+
+        private static bool IsUnknownHost(Exception e)
+        {
+            for (Exception? x = e; x != null; x = x.InnerException)
+            {
+                if (x is HttpRequestException http && http.HttpRequestError == HttpRequestError.NameResolutionError)
+                    return true;
+                if (x is SocketException socket &&
+                    socket.SocketErrorCode is SocketError.HostNotFound or SocketError.NoData or SocketError.NoRecovery)
+                    return true;
+            }
+            return false;
+        }
+
         private async Task<(int Status, JsonElement Body)> Post(string path, IDictionary<string, string> query)
         {
             string q = string.Join("&", query.Select(p => $"{p.Key}={Uri.EscapeDataString(p.Value)}"));
@@ -65,7 +91,7 @@ namespace LandmarkEmulator.LaunchPad
             }
             catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
             {
-                throw new Failure($"No answer from {hostPort}. Is the server running, and is that port open?");
+                throw Unreachable(e, $"No answer from {hostPort}. Is the server running, and is that port open?");
             }
             string text = await response.Content.ReadAsStringAsync();
             JsonElement body = default;
@@ -88,7 +114,7 @@ namespace LandmarkEmulator.LaunchPad
             }
             catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException)
             {
-                throw new Failure($"No answer from {hostPort} (is it a LandmarkEmu server, and up to date?).");
+                throw Unreachable(e, $"No answer from {hostPort} (is it a LandmarkEmu server, and up to date?).");
             }
         }
 
@@ -179,7 +205,7 @@ namespace LandmarkEmulator.LaunchPad
             }
             catch (Exception e) when (e is HttpRequestException or OperationCanceledException or IOException && !cancel.IsCancellationRequested)
             {
-                throw new Failure($"No answer from {hostPort}.");
+                throw Unreachable(e, $"No answer from {hostPort}.");
             }
         }
 
