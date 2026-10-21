@@ -18,7 +18,7 @@ Add your user to the `docker` group (or use `sudo` for the commands below). You 
 ## 2. Get the project and the game data
 
 ```
-git clone https://github.com/XDigitalPixelX/LandMarkEmu.git LandmarkEmu
+git clone https://github.com/Landmark-RE-Build/LandmarkEmu.git LandmarkEmu
 cd LandmarkEmu
 ```
 

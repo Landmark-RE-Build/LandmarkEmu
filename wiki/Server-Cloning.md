@@ -13,7 +13,7 @@ button on the repository's main page.
 ## With git
 
 ```
-git clone https://github.com/XDigitalPixelX/LandMarkEmu.git LandmarkEmu
+git clone https://github.com/Landmark-RE-Build/LandmarkEmu.git LandmarkEmu
 cd LandmarkEmu
 ```
 
