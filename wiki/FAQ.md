@@ -64,6 +64,25 @@ LaunchPad comes back to the front when the game closes, and tells a crash from a
 files are in the `Logs` folder of your Landmark folder. See [Bug Submission](Bug-Submission) for what to include in a
 report.
 
+### Placing a design shows "Generating preview... %" and the game nearly freezes
+
+When you pick a design to place, the game builds its preview on your PC and shows "Generating preview..." with a
+percentage in the middle of the screen. Live Landmark did the same, and the server isn't involved: it sends each
+design's blocks once, and your game keeps them. Big designs such as the Modular Castle Long Room and Tower take the
+longest. Let the percentage finish; the design then shows as placeable.
+
+If the whole game crawls while it counts, your PC probably has a lot of processor threads (16 or more). The game
+starts some of its worker threads per processor thread, and past a fixed limit (64) the extra threads run very slowly
+and hold up the rest of the game. This is the same game bug that stalled live's loading screen at 50 % on 6- and
+8-core PCs in 2016. What helps:
+
+- Start the game with LaunchPad. It sets `DirectThreadCount=2`, which saves 8 of these threads. In advanced mode you
+  can set it to 1 to save one more.
+- If it's still slow, do what live players did: turn off Hyper-Threading / SMT in your BIOS, or limit the number of
+  processors Windows starts with (run `msconfig` → **Boot** → **Advanced options** → **Number of processors**, e.g. 8,
+  then restart). Untick that box to undo it. This changes it for all of Windows, so only do it if the game is
+  unplayable without it.
+
 ## Hosting
 
 ### Where are the settings?

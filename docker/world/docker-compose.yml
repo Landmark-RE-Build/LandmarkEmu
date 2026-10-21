@@ -69,6 +69,10 @@ services:
       # Placed props are sent to a player within this many metres (by 64 m region, nearest first) and dropped 80 m further
       # out. 400 = the client's Render Distance slider at its last bounded step; 0 = the whole landscape at every zone-in.
       PropStreamRange: ${PROP_STREAM_RANGE:-400}
+      # Creatures, trees, chests, outposts, warp crystals and the props away from the arrival wait for the player's loading
+      # screen to drop (at most StreamHoldLimitSeconds): the 0.695 client's 64 allocator slots on 16+ thread CPUs.
+      StreamHoldUntilLoaded: ${STREAM_HOLD_UNTIL_LOADED:-true}
+      StreamHoldLimitSeconds: ${STREAM_HOLD_LIMIT_SECONDS:-90}
       # The Escape menu's "Evac to Safety" moves players (onto the ground where they stand, or just off the build site
       # they stand on); true = live. false: players' requests are answered in place (admins' /location etc. still work).
       PlayerTeleportRequests: ${PLAYER_TELEPORT_REQUESTS:-true}
@@ -230,6 +234,10 @@ services:
       PlayerStudioReviewerMinSpend: ${PLAYER_STUDIO_REVIEWER_MIN_SPEND:-1000}
       PlayerStudioReviewsPerDay: ${PLAYER_STUDIO_REVIEWS_PER_DAY:-2}
       PlayerStudioStaffReview: ${PLAYER_STUDIO_STAFF_REVIEW:-true}
+      # Bought Player Studio designs and designs on Player Studio take no design storage (true = live).
+      PlayerStudioDesignsFreeStorage: ${PLAYER_STUDIO_DESIGNS_FREE_STORAGE:-true}
+      # A new character gets the designs of the account's deleted characters at its world entry (true = live).
+      DesignsFollowAccount: ${DESIGNS_FOLLOW_ACCOUNT:-true}
       # Founder's Pack / Year Zero / promotional items for every character, once (false = nobody gets them and their
       # props leave the palette; live gave them only to buyers / survivors / winners); which packages; and how they arrive:
       # auto = as live (Founder's Pack into the bag, Year Zero and promo by mail), mail, bag, or "founder=bag,promo=mail".
@@ -249,6 +257,8 @@ services:
       # Storage chests one account may have placed over all its build sites (0 = no account cap, live: only the
       # 50-per-build-site cap of the 21 Mar 2016 notes; 50 = the wiki's "50 per account" reading).
       ChestAccountCap: ${CHEST_ACCOUNT_CAP:-0}
+      # The time zone of an upkeep login day (live: Pacific time; UTC = days by UTC).
+      UpkeepTimeZone: ${UPKEEP_TIME_ZONE:-America/Los_Angeles}
       # Seconds between two Teleport to Friend trips per character (0 = none, live since 5 May 2015; 1800 = 2014's 30 min).
       FriendTeleportCooldownSeconds: ${FRIEND_TELEPORT_COOLDOWN_SECONDS:-0}
       # An accepted friend request fills both friends lists (true = live); false = one-way lists (only the asker's).
@@ -294,6 +304,8 @@ services:
       OverflowExpiryHours: ${OVERFLOW_EXPIRY_HOURS:-24}
       # Most of one item a mail attachment may carry (9000 = live, wiki Trading); 0 = no cap.
       MailMaxStack: ${MAIL_MAX_STACK:-9000}
+      # Lumens may be offered in trades and sent / asked for (cash on delivery) by mail (false = live: Lumens could not be traded).
+      LumenTrading: ${LUMEN_TRADING:-false}
       # Keep each item's auto-resupply switch (Inventory 0x2D sub 0x0D; true = live, whose item table had an
       # auto_resupply column); false = ignore the toggle and send every item with it off.
       ItemAutoResupply: ${ITEM_AUTO_RESUPPLY:-true}

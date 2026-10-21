@@ -43,6 +43,22 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
         /// </summary>
         public (uint Foreground, uint Background, uint Size) ChatBubble { get; set; } = (0xFFFFFF, 0xD4E2F0, 1);
 
+        /// <summary>
+        /// The title shown with the name, blob +0x118 {u32 id, u32 type, u32 name text} (read by FUN_142c25e20, the same
+        /// reader as PlayerUpdate PlayerTitle). The 0.695 case-0x5B handler (PlayerUpdate dispatcher FUN_142cdfa60 case
+        /// 0x5a) hands it to FUN_142ec5330 — the PlayerTitle setter, which overwrites entity +0x1434 / +0x143c and rebuilds
+        /// the nameplate — unconditionally, so a zero here wiped the title the introduction had just sent (the observer saw
+        /// no title while the player's own screen showed it; audit 2026-10-21) [P].
+        /// </summary>
+        public (uint Id, uint Type, uint NameId) Title { get; set; }
+
+        /// <summary>
+        /// Blob +0x174, the first of the three bools: the AFK flag. The same handler passes it to FUN_142ec2c10, which
+        /// writes entity +0x2290 (the byte PlayerUpdate AFK sets, case 0x56 → the same setter) unconditionally, so false
+        /// here cleared the AFK the introduction had sent (audit 2026-10-21) [P].
+        /// </summary>
+        public bool Afk { get; set; }
+
         public void Write(GamePacketWriter writer)
         {
             var blob = new List<byte>();
@@ -89,14 +105,16 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
             // Temporary appearance model (ProxiedCharacter::SwitchToTemporaryAppearance). Non-zero swaps the character
             // to that bare model and hides its own body, so it stays 0 unless a transformation is wanted.
             writer.Write(0u);
-            for (int i = 0; i < 3; i++)
-                writer.Write(0u);
+            writer.Write(Title.Id);             // +0x118 title (FUN_142c25e20), applied by FUN_142ec5330
+            writer.Write(Title.Type);
+            writer.Write(Title.NameId);
             for (int i = 0; i < 4; i++)
                 writer.Write(0u);
             writer.Write(0u);                   // empty list
             writer.Write(0u);
             writer.Write(0u);
-            writer.WriteBytes(new byte[3]);     // 3 bools
+            writer.Write(Afk);                  // +0x174 AFK (FUN_142ec2c10 → entity +0x2290)
+            writer.WriteBytes(new byte[2]);     // +0x175 (→ entity +0xcb7), +0x176
             writer.Write(0u);                   // byte array
             writer.Write(0u);                   // empty list
             writer.Write(0u);                   // byte array

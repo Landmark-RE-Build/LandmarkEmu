@@ -50,6 +50,154 @@ namespace LandmarkEmulator.WorldServer.Game
             /// are shown to it, not it to them again. Empty after a login or a change of landscape.
             /// </summary>
             public readonly HashSet<WorldSession> SeenBy = new();
+            /// <summary>
+            /// The world streams wait for this screen too (<see cref="StreamHoldEnabled"/> when the hold began; "Stream
+            /// hold" below), until <see cref="StreamDeadline"/> at the latest.
+            /// </summary>
+            public bool StreamsHeld;
+            public DateTime StreamDeadline;
+            /// <summary>What zone-in / Reintroduce left for the end of the stream hold (<see cref="HeldSends"/>).</summary>
+            public bool PropsPending, SpireRestPending, CrystalsPending;
+        }
+
+        // ---- Stream hold ---------------------------------------------------------------------------------------------
+        //
+        // The 0.695 client's allocator has 64 per-thread slots; a thread claims one at its first small allocation and a
+        // thread without one crawls (every allocation scans all 64 owners under one global lock) [P,
+        // trace/0695/allocator-slots-options.md]. Its Decompression and TaskManagerJob pools start one worker per logical
+        // processor (FUN_143a95170) and those claim a slot at their first job; the three terrain contour threads
+        // (ContourThread::contourLoop FUN_143f98880) only at their first meshing job, after the cell manifest. On a
+        // 16+ thread CPU the pools and the fixed threads together want more than 64, and who wins the last slots depends
+        // on how big the asset burst is before the contour threads start [I]: when they lose, the terrain meshes at a
+        // crawl ("Avg contour" every 5 s of meshing in the client log) and the loading screen stays up for up to an hour.
+        //
+        // The server decides when the asset-heavy work reaches the client, so while the loading screen is up (a login
+        // from Enter, a re-zone from RezoneStarted) these wait: creatures, trees and gathering nodes, loot chests,
+        // outposts, graveyards, landmarks, pets (all through WorldSession.StreamsOnHold), the placed props beyond those
+        // under the arrival point (Props.SendArrival), the Spire's props other than its deck and the underground warp
+        // crystals. They go when the screen drops - ClientLoading 0x6C {0}, which the client only sends once its scene
+        // has no meshing pending (ShouldDrop FUN_142d54a00 -> FUN_14314fa00 -> FUN_142ae6b20) [P] - or after
+        // StreamHoldLimitSeconds (a re-zone counts from its zone-in; before that, RezoneHoldLimit). What the loading
+        // screen itself needs stays early: SendSelf and the preload characters, ZoneDoneSendingInitialData, the area
+        // definitions (WaitForWorldReady), the cell manifest, the Spire's deck and the props under the arrival
+        // (collision), and the data-only packets (PropBase, tints, achievements, templates, claims, the store). The
+        // released burst is the same data as before, only later. Setting StreamHoldUntilLoaded (false = all at zone-in).
+
+        private static WorldServerConfiguration Config => Shared.Configuration.ConfigurationManager<WorldServerConfiguration>.Instance.Config;
+
+        /// <summary>Setting StreamHoldUntilLoaded (default true): read when a hold begins.</summary>
+        public static bool StreamHoldEnabled => Config?.StreamHoldUntilLoaded ?? true;
+
+        /// <summary>Setting StreamHoldLimitSeconds (default 90, 10-600): the longest stream hold after the zone-in.</summary>
+        public static TimeSpan StreamHoldLimit => TimeSpan.FromSeconds(Math.Clamp(Config?.StreamHoldLimitSeconds ?? 90, 10, 600));
+
+        /// <summary>The sends a stream hold left for its end (<see cref="RunHeldSends"/>).</summary>
+        private sealed record HeldSends(bool Props, bool SpireRest, bool Crystals);
+
+        /// <summary>The world streams of this hold wait until <paramref name="deadline"/> at the latest. Under the lock.</summary>
+        private static void HoldStreams(WorldSession session, Hold hold, DateTime deadline)
+        {
+            hold.StreamsHeld = true;
+            hold.StreamDeadline = deadline;
+            session.HoldStreamsUntil(deadline);
+        }
+
+        /// <summary>
+        /// Ends a hold's stream hold (null when it held none): one log line, and what the sends left for it. Under the
+        /// lock; the caller runs the result outside it (<see cref="RunHeldSends"/>).
+        /// </summary>
+        private static HeldSends EndStreamHold(WorldSession session, Hold hold, string why, DateTime now)
+        {
+            if (!hold.StreamsHeld)
+                return null;
+            hold.StreamsHeld = false;
+            session.ReleaseStreamHold();
+            var sends = new HeldSends(hold.PropsPending, hold.SpireRestPending, hold.CrystalsPending);
+            hold.PropsPending = hold.SpireRestPending = hold.CrystalsPending = false;
+            log.Info($"{session.CharacterName}: streams released after {Math.Max(0, (now - hold.Since).TotalSeconds):0} s ({why}).");
+            return sends;
+        }
+
+        /// <summary>
+        /// The sends a stream hold left (outside the lock): the placed props within range, the Spire's other props and the
+        /// warp crystals; the creature / tree / chest / outpost streams resume by themselves on their next tick. Nothing
+        /// while a re-zone is in flight: its client is loading again and its Reintroduce sends them.
+        /// </summary>
+        private static void RunHeldSends(WorldSession session, HeldSends sends)
+        {
+            if (sends == null || session.Disconnected || session.RezoneInFlight)
+                return;
+            if (sends.Props)
+                Props.StreamIn(session);
+            if (sends.SpireRest)
+            {
+                Spire.Enter(session, Spire.SpirePart.Rest);
+                Spire.ReassertCollision(session, Spire.SpirePart.Rest);
+            }
+            if (sends.Crystals)
+                WarpNetwork.Enter(session);
+        }
+
+        /// <summary>
+        /// The placed props, the Spire and the warp crystals at a zone-in (<see cref="Enter"/>) or after a re-zone
+        /// (<see cref="Reintroduce"/>): all of them, or while <paramref name="hold"/> holds the streams only what the arrival
+        /// stands on (the props under it, the Spire's deck; all the Spire's props when it arrives on the platform), the
+        /// rest marked for the hold's end. Under the lock, as Enter always sent these.
+        /// </summary>
+        private static void SendWorldObjects(WorldSession session, Hold hold, bool spire, bool reassertSpire)
+        {
+            bool held = hold is { StreamsHeld: true };
+            if (held)
+            {
+                hold.PropsPending = true;
+                Props.SendArrival(session);
+            }
+            else
+                Props.StreamIn(session);   // the placed props within PropStreamRange (Props.Stream.cs)
+            Claims.EnsureStartingLocation(session);
+            if (spire)
+            {
+                Spire.SpirePart part = held && !Spire.Covers(session.ZoneId, session.Position.X, session.Position.Z)
+                    ? Spire.SpirePart.Deck : Spire.SpirePart.All;
+                if (part == Spire.SpirePart.Deck)
+                    hold.SpireRestPending = true;
+                Spire.Enter(session, part);   // every landscape has its Spire (TASKS 6.49)
+                if (reassertSpire)
+                    Spire.ReassertCollision(session, part);   // its deck's collision once the models have loaded
+            }
+            // The landscape's underground portal crystals (every landscape with caverns, L130); read now, sent at the end.
+            if (held)
+                hold.CrystalsPending = true;
+            WarpNetwork.Enter(session, send: !held);
+        }
+
+        /// <summary>
+        /// The hold of a player entering the world (<see cref="Enter"/>): behind its login screen (ClientLoading {0} not in
+        /// yet) or, a re-attached / arriving session, its re-zone in flight; null when neither. The world streams wait for
+        /// the same drop: a login's limit runs from now, a re-zone's from its zone-in (<see cref="ZoneInDone"/>), the longer
+        /// <see cref="RezoneHoldLimit"/> until then. Under the lock.
+        /// </summary>
+        private static Hold BeginEntryHold(WorldSession session, DateTime now)
+        {
+            Hold hold = null;
+            if (!session.LoadingScreenDown)
+                holds[session] = hold = new Hold { Since = now, ArmedAt = now };
+            else if (session.RezoneInFlight)
+                holds[session] = hold = new Hold { Since = now, Rezone = true };
+            if (hold != null && StreamHoldEnabled)
+                HoldStreams(session, hold, now + (hold.Rezone ? RezoneHoldLimit : StreamHoldLimit));
+            return hold;
+        }
+
+        /// <summary>
+        /// Which Spire props this client has now (Teleport.FinishRezone re-asserts only their collision): the deck while a
+        /// stream hold still owes it the rest.
+        /// </summary>
+        internal static Spire.SpirePart SpirePartSent(WorldSession session)
+        {
+            lock (sync)
+                return holds.TryGetValue(session, out Hold hold) && hold.StreamsHeld && hold.SpireRestPending
+                    ? Spire.SpirePart.Deck : Spire.SpirePart.All;
         }
 
         /// <summary>Players behind a loading screen (<see cref="Hold"/>), under <see cref="sync"/>.</summary>
@@ -120,11 +268,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 // until it drops (Introduce skips the pair). A login's first drop report is its own; a re-attached or
                 // arriving session entering during its re-zone (MiscHandler.FinishZoneIn) waits for that re-zone's
                 // drop, from its zone-in on (Reintroduce → ZoneInDone).
-                DateTime now = DateTime.UtcNow;
-                if (!session.LoadingScreenDown)
-                    holds[session] = new Hold { Since = now, ArmedAt = now };
-                else if (session.RezoneInFlight)
-                    holds[session] = new Hold { Since = now, Rezone = true };
+                Hold hold = BeginEntryHold(session, DateTime.UtcNow);
                 foreach (WorldSession other in players.Where(p => p.ZoneId == session.ZoneId))
                 {
                     Introduce(session, other);
@@ -140,11 +284,8 @@ namespace LandmarkEmulator.WorldServer.Game
                 SiteContents.Deliver(session);
                 Templates.SendList(session);
                 Claims.SendAll(session);
-                Props.StreamIn(session);   // the placed props within PropStreamRange (Props.Stream.cs)
-                Claims.EnsureStartingLocation(session);
-                Spire.Enter(session);   // every landscape has its Spire (TASKS 6.49)
-                Spire.ReassertCollision(session);   // its deck's collision once the models have loaded
-                WarpNetwork.Enter(session);   // the landscape's underground portal crystals (every landscape with caverns, L130)
+                // Placed props, the Spire, the warp crystals: while the stream hold runs only what the arrival stands on.
+                SendWorldObjects(session, hold, spire: true, reassertSpire: true);
                 log.Info($"{session.CharacterName} entered the world ({players.Count} online).");
             }
             // Friends list, ignore list and guild (the social service's character-entered event).
@@ -263,6 +404,7 @@ namespace LandmarkEmulator.WorldServer.Game
         /// </summary>
         public static void LoadingScreenLeft(WorldSession session)
         {
+            HeldSends sends;
             lock (sync)
             {
                 if (!holds.TryGetValue(session, out Hold hold) || !players.Contains(session))
@@ -272,18 +414,21 @@ namespace LandmarkEmulator.WorldServer.Game
                     log.Debug($"{session.CharacterName}: loading-screen drop before its re-zone's zone-in (the screen before it): still held.");
                     return;
                 }
-                Release(session, hold);
+                sends = Release(session, hold, "loading screen down", DateTime.UtcNow);
                 log.Info($"{session.CharacterName}: loading screen down{(hold.Rezone ? " after a re-zone" : "")}, shown to the landscape's players.");
             }
+            RunHeldSends(session, sends);
         }
 
         /// <summary>
         /// The player's hold ends: it and everyone else on the landscape meet, once each way — except those who saw it
         /// all along (<see cref="Hold.SeenBy"/>), who are only shown to it. A pair with another held player waits for
-        /// that one's drop (Introduce). Under the lock.
+        /// that one's drop (Introduce). The world streams go with it (<see cref="EndStreamHold"/>; the caller runs the
+        /// returned sends outside the lock). Under the lock.
         /// </summary>
-        private static void Release(WorldSession session, Hold hold)
+        private static HeldSends Release(WorldSession session, Hold hold, string why, DateTime now)
         {
+            HeldSends sends = EndStreamHold(session, hold, why, now);
             holds.Remove(session);
             foreach (WorldSession other in players.Where(p => p != session && p.ZoneId == session.ZoneId))
             {
@@ -291,6 +436,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 if (!hold.SeenBy.Contains(other))
                     Introduce(other, session);
             }
+            return sends;
         }
 
         /// <summary>
@@ -323,6 +469,11 @@ namespace LandmarkEmulator.WorldServer.Game
                 hold.Since = DateTime.UtcNow;
                 hold.ArmedAt = null;
                 hold.Rezone = true;
+                // The new load deletes every entity on the client: what the last zone-in left for later is decided again
+                // by this re-zone's Reintroduce. Its streams wait for its own drop (ZoneInDone starts the limit).
+                hold.PropsPending = hold.SpireRestPending = hold.CrystalsPending = false;
+                if (hold.StreamsHeld || StreamHoldEnabled)
+                    HoldStreams(session, hold, hold.Since + RezoneHoldLimit);
             }
         }
 
@@ -336,7 +487,13 @@ namespace LandmarkEmulator.WorldServer.Game
             {
                 if (!holds.TryGetValue(session, out Hold hold))
                     return false;
-                hold.ArmedAt ??= DateTime.UtcNow;
+                if (hold.ArmedAt == null)
+                {
+                    hold.ArmedAt = DateTime.UtcNow;
+                    // The stream hold's limit runs from the zone-in (the screen can only drop after it).
+                    if (hold.StreamsHeld)
+                        HoldStreams(session, hold, hold.ArmedAt.Value + StreamHoldLimit);
+                }
                 return true;
             }
         }
@@ -348,21 +505,31 @@ namespace LandmarkEmulator.WorldServer.Game
         /// </summary>
         private static void ShowOverdue(DateTime now)
         {
+            var sends = new List<(WorldSession Session, HeldSends Sends)>();
             lock (sync)
             {
                 foreach ((WorldSession session, Hold hold) in holds.ToList())
                 {
                     if (!players.Contains(session))
-                        holds.Remove(session);
-                    else if (hold.ArmedAt is DateTime armed ? now - armed > LoadingShowLimit : now - hold.Since > RezoneHoldLimit)
                     {
-                        Release(session, hold);
+                        holds.Remove(session);
+                        session.ReleaseStreamHold();
+                        continue;
+                    }
+                    // The stream hold's own limit (StreamHoldLimitSeconds), which may end before the introductions'.
+                    if (hold.StreamsHeld && now >= hold.StreamDeadline)
+                        sends.Add((session, EndStreamHold(session, hold, "limit", now)));
+                    if (hold.ArmedAt is DateTime armed ? now - armed > LoadingShowLimit : now - hold.Since > RezoneHoldLimit)
+                    {
+                        sends.Add((session, Release(session, hold, "limit", now)));
                         log.Warn(hold.ArmedAt != null
                             ? $"{session.CharacterName}: no loading-screen drop after {LoadingShowLimit.TotalSeconds:0} s, shown anyway."
                             : $"{session.CharacterName}: re-zone not loaded after {RezoneHoldLimit.TotalSeconds:0} s, shown anyway.");
                     }
                 }
             }
+            foreach ((WorldSession session, HeldSends held) in sends)
+                RunHeldSends(session, held);
         }
 
         /// <summary>
@@ -407,15 +574,14 @@ namespace LandmarkEmulator.WorldServer.Game
             Claims.SendAll(session);
             // The placed props within PropStreamRange (Props.Stream.cs); an arrival over props already sent the ones near
             // it at ClientIsReady (MiscHandler, Props.SendEarly): the rest now, then the stream tick follows the player.
-            Props.StreamIn(session);
-            Claims.EnsureStartingLocation(session);
             // The Spire's props after every re-zone: ClientBeginZoning deletes every entity but the local player, in
             // place or not (zone dispatcher FUN_142d1ccf0 case 8 → FUN_142d60340; trace/0695/agent-prop-collision.md)
-            // [P]. Their collision is then re-run by Spire.ReassertCollision (Teleport.FinishRezone).
-            if (!session.SpireSentEarly)
-                Spire.Enter(session);
+            // [P]. Their collision is then re-run by Spire.ReassertCollision (Teleport.FinishRezone). While this re-zone's
+            // loading screen holds the streams ("Stream hold") only what the arrival stands on goes now, the rest at the
+            // drop.
+            lock (sync)
+                SendWorldObjects(session, holds.GetValueOrDefault(session), spire: !session.SpireSentEarly, reassertSpire: false);
             session.SpireSentEarly = false;
-            WarpNetwork.Enter(session);
             // The client never re-asks for the warp network after its first load: push the new landscape's.
             WarpNetwork.EnterLandscape(session);
         }
@@ -477,6 +643,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 if (!players.Remove(session))
                     return;
                 holds.Remove(session);
+                session.ReleaseStreamHold();
                 foreach (Hold hold in holds.Values)
                     hold.SeenBy.Remove(session);
                 AdminCommands.Leave(session);

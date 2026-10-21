@@ -149,6 +149,14 @@ namespace LandmarkEmulator.WorldServer.Game
             Broadcast(session);
         }
 
+        /// <summary>The title the player shows as {id, type, name text} (all 0 for none), for LightweightToFullPc.</summary>
+        public static (uint Id, uint Type, uint NameId) ShownTitle(WorldSession session)
+        {
+            uint shown = Shown(session.PlayerGuid);
+            Title title = shown != 0 ? Get(shown) : null;
+            return title == null ? (0u, 0u, 0u) : (title.Id, title.Type, title.NameId);
+        }
+
         /// <summary>Does the player show a title (others are told about it when they first see them)?</summary>
         public static bool Shows(WorldSession session) => Shown(session.PlayerGuid) != 0;
 

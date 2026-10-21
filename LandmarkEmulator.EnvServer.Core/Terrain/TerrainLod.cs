@@ -307,7 +307,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         /// </list>
         /// The earlier majority vote with centred vertices drew cubes and punched holes (2026-10-13).
         /// </summary>
-        private static void Downsample(ulong childId, BlockData child, BlockData parent)
+        internal static void Downsample(ulong childId, BlockData child, BlockData parent)
         {
             (_, uint cx, uint cy, uint cz) = TerrainStore.Decode(childId);
             int ox = (int)(cx & 1) * 20, oy = (int)(cy & 1) * 20, oz = (int)(cz & 1) * 20;
@@ -333,7 +333,9 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                             n++;
                         }
                         int index = TerrainEdits.VoxelIndex(ox + px, oy + py, oz + pz);
-                        parent.SetSolid(index, child.Materials[corner]);
+                        // Interior empty space is air to the client's mesher but solid to its occluder builder: never copied
+                        // as a material (TerrainEdits.RepairInteriorAir).
+                        parent.SetSolid(index, child.Materials[corner] == VoxelTemplate.InteriorAir ? (ushort)0 : child.Materials[corner]);
                         if (n > 0)
                         {
                             parent.Offsets[index * 3] = TerrainEdits.OffsetByte(sx / n);

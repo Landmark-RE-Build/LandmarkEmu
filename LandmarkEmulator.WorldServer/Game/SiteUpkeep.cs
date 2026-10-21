@@ -20,7 +20,8 @@ namespace LandmarkEmulator.WorldServer.Game
     /// (<see cref="SiteContents.Pack"/>) and the owner is mailed the "Your upkeep has expired!" letter with the Build
     /// Site Contents attached (Claim.UpkeepMail.*).
     /// Per character (<see cref="Unlocks"/>): 13 the timer in days, 14 the last login day, 17 the unique login days
-    /// counted, 18 the absence (last login day) already warned about.
+    /// counted, 18 the absence (last login day) already warned about. A login day runs midnight to midnight Pacific time,
+    /// as live (thread 53943; setting UpkeepTimeZone, <see cref="DayZone"/>).
     /// </summary>
     public static class SiteUpkeep
     {
@@ -35,6 +36,40 @@ namespace LandmarkEmulator.WorldServer.Game
 
         private static readonly DateTime Epoch = new(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
+        /// <summary>
+        /// The upkeep day of a moment: days since 2000-01-01 by the calendar of <paramref name="zone"/>. Live counted the
+        /// login days by Pacific time: "each day (determined as 12:00:00AM to 11:59:59 PM Pacific Time) you log in will be
+        /// tracked" (developer, Upcoming Claim Upkeep Changes, 17 Mar 2015, thread 53943); setting UpkeepTimeZone.
+        /// </summary>
+        internal static uint DayNumber(DateTime utc, TimeZoneInfo zone)
+            => (uint)(TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), zone).Date - Epoch.Date).TotalDays;
+
+        private static string zoneName;
+        private static TimeZoneInfo zone = TimeZoneInfo.Utc;
+
+        /// <summary>The time zone of the upkeep day (setting UpkeepTimeZone, live America/Los_Angeles; unknown or empty = UTC).</summary>
+        internal static TimeZoneInfo DayZone
+        {
+            get
+            {
+                string name = Shared.Configuration.ConfigurationManager<WorldServerConfiguration>.Instance.Config?.UpkeepTimeZone ?? "";
+                if (name == zoneName)
+                    return zone;
+                TimeZoneInfo found = TimeZoneInfo.Utc;
+                if (name.Trim().Length > 0)
+                    try
+                    {
+                        found = TimeZoneInfo.FindSystemTimeZoneById(name.Trim());
+                    }
+                    catch (Exception e) when (e is TimeZoneNotFoundException or InvalidTimeZoneException)
+                    {
+                        log.Warn($"Upkeep: time zone \"{name}\" not found; counting login days by UTC.");
+                    }
+                (zoneName, zone) = (name, found);
+                return found;
+            }
+        }
+
         /// <summary>The days a character's sites last without a login (offline characters too).</summary>
         public static uint DaysOf(ulong characterId)
         {
@@ -48,9 +83,10 @@ namespace LandmarkEmulator.WorldServer.Game
         /// </summary>
         public static void Enter(WorldSession session)
         {
-            uint today = (uint)(DateTime.UtcNow - Epoch).TotalDays;
+            uint today = DayNumber(DateTime.UtcNow, DayZone);
             uint last = Unlocks.Values(session.PlayerGuid, Unlocks.UpkeepLastLoginDay).FirstOrDefault();
-            if (today == last)
+            // Not a new day (or a day already counted: a day numbered by another time zone before a settings change).
+            if (today <= last)
                 return;
             Unlocks.Set(session, Unlocks.UpkeepLastLoginDay, today);
             if (Unlocks.Values(session.PlayerGuid, Unlocks.UpkeepWarned).Count > 0)

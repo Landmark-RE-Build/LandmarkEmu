@@ -26,6 +26,8 @@ namespace LandmarkEmulator.LaunchPad
         private CancellationTokenSource? busy;
         /// <summary>The game LaunchPad started, while it runs.</summary>
         private Process? game;
+        /// <summary>Each server's last /info this session (the Client settings panel shows what PLAY will write for it).</summary>
+        private readonly Dictionary<string, JsonElement> lastInfo = new();
 
         public bool GameRunning => game is { HasExited: false };
 
@@ -146,6 +148,7 @@ namespace LandmarkEmulator.LaunchPad
                 {
                     ServerEntry server = Server(args);
                     JsonElement info = await new ServerApi(server).Info();
+                    lastInfo[server.Id] = info;
                     return new { info, patch = PatchSummary(server, info) };
                 }
 
@@ -221,6 +224,7 @@ namespace LandmarkEmulator.LaunchPad
                         throw new InvalidOperationException("Landmark is already running.");
                     var api = new ServerApi(server);
                     JsonElement info = await api.Info();
+                    lastInfo[server.Id] = info;
                     // Only a genuine Daybreak exe is started (Steam's 0.589 one or a known 0.695 build's: GameStore.CheckExe).
                     if (await Task.Run(() => s.CheckExe(settings.AllowFebruaryWeak)) is string notGenuine)
                         throw new InvalidOperationException(notGenuine);
@@ -233,8 +237,8 @@ namespace LandmarkEmulator.LaunchPad
                         : throw new InvalidOperationException("Log in first.");
                     // A fresh login for the game's session key (the saved key logs in without the password).
                     var (sessionKey, _, _) = await api.Login(account, null, key, salt);
-                    int loginPort = info.TryGetProperty("loginPort", out JsonElement lp) && lp.TryGetInt32(out int p) && p > 0 ? p : 20042;
-                    Game.PointAt(Game.Folder, $"{server.Address}:{loginPort}", MarketplaceUrl(server, info));
+                    // ClientConfig.ini: this server, and the asset threads by the player's choice (advanced mode; else 2).
+                    Game.PointAt(Game.Folder, LoginAddress(server, info), MarketplaceUrl(server, info), settings.ConfigFor(Game.Folder));
                     Process started = Game.Start(Game.Folder, sessionKey, settings.Locale);
                     started.EnableRaisingEvents = true;
                     // BeginInvoke, not Invoke: Process raises Exited holding a lock on itself, and waiting here for the
@@ -348,6 +352,37 @@ namespace LandmarkEmulator.LaunchPad
                 case "cancel":
                     busy?.Cancel();
                     return null;
+
+                // ---- advanced mode (Settings > Options): the ClientConfig.ini values PLAY writes, and the player's choice
+                //      for each one that may be chosen (ClientConfigFile in LandmarkEmulator.PatchPacks)
+                case "setAdvanced":
+                    Store();
+                    settings.ConfigToChange(Game.Folder).Advanced = Bool(args, "on");
+                    settings.Save();
+                    return State();
+                case "clientConfig":
+                    return ClientConfigState();
+                case "setConfigChoice":
+                {
+                    ClientConfigOptions options = Advanced();
+                    string key = Str(args, "key");
+                    ManagedSetting setting = ClientConfigFile.Managed.FirstOrDefault(m => m.Key == key)
+                        ?? throw new InvalidOperationException($"LaunchPad doesn't manage {key}.");
+                    if (!setting.Editable)
+                        throw new InvalidOperationException(setting.Fixed);
+                    if (!Enum.TryParse(Str(args, "mode"), true, out ConfigChoice mode) || !Enum.IsDefined(mode))
+                        throw new InvalidOperationException("Choose what LaunchPad does with it.");
+                    SettingChoice choice = options.Choices.TryGetValue(key, out SettingChoice? known) && known != null ? known : new SettingChoice();
+                    string value = Str(args, "value").Trim();
+                    if (mode == ConfigChoice.Custom && setting.Validate(value) is string bad)
+                        throw new InvalidOperationException(bad);
+                    if (setting.Validate(value) == null)
+                        choice.Value = int.Parse(value).ToString();   // kept for the box also when another choice is picked
+                    choice.Mode = mode;
+                    options.Choices[key] = choice;
+                    settings.Save();
+                    return ClientConfigState();
+                }
             }
             throw new InvalidOperationException($"Unknown request: {method}");
         }
@@ -368,6 +403,61 @@ namespace LandmarkEmulator.LaunchPad
             // else is a normal close.
             bool crashed = code == 0xFF || (uint)code >= 0x80000000;
             Send(new { @event = "gameExited", data = new { code, crashed, hex = $"0x{code:X8}" } });
+        }
+
+        /// <summary>This folder's advanced-mode settings; refused unless advanced mode is on (the choices are advanced only).</summary>
+        private ClientConfigOptions Advanced()
+        {
+            Store();
+            ClientConfigOptions? options = settings.ConfigFor(Game.Folder);
+            if (options is not { Advanced: true })
+                throw new InvalidOperationException("Switch on advanced mode first (Settings > Options).");
+            return options;
+        }
+
+        /// <summary>
+        /// The Client settings panel: each value LaunchPad writes (what it does, the game's original, LaunchPad's
+        /// recommendation, what the file says now, the player's choice, what the next PLAY writes). Reads only.
+        /// </summary>
+        private object ClientConfigState()
+        {
+            Store();
+            ClientConfigOptions? options = settings.ConfigFor(Game.Folder);
+            string path = Path.Combine(Game.Folder, ClientConfigFile.FileName);
+            string text = File.Exists(path) ? File.ReadAllText(path, System.Text.Encoding.Latin1) : "";
+            ServerEntry? server = settings.Selected;
+            JsonElement? info = server != null && lastInfo.TryGetValue(server.Id, out JsonElement i) ? i : null;
+            return new
+            {
+                advanced = options?.Advanced == true,
+                exists = File.Exists(path),
+                server = server?.Name ?? "",
+                settings = ClientConfigFile.Managed.Select(m =>
+                {
+                    var (original, source) = ClientConfigFile.Original(Game.Folder, m);
+                    SettingChoice choice = options != null && options.Choices.TryGetValue(m.Key, out SettingChoice? c) && c != null ? c : new SettingChoice();
+                    string recommended = m.Editable ? m.Recommended
+                        : server == null || info == null ? ""
+                        : m == ClientConfigFile.Server ? LoginAddress(server, info.Value) : MarketplaceUrl(server, info.Value);
+                    return new
+                    {
+                        key = m.Key, section = m.Section, title = m.Title, what = m.What, @fixed = m.Fixed, editable = m.Editable,
+                        min = m.Min, max = m.Max, shipped = m.Shipped, codeDefault = m.CodeDefault,
+                        original, originalSource = source, recommended,
+                        current = ClientConfigFile.Value(text, m.Section, m.Key),
+                        mode = choice.Mode.ToString(), value = choice.Value,
+                        // What the next PLAY writes (null: the line is left as it is).
+                        writes = m.Editable ? ClientConfigFile.ThreadsToWrite(options) : recommended
+                    };
+                }).ToList()
+            };
+        }
+
+        /// <summary>The login server for ClientConfig.ini Server=: the server's address at the login port its /info gives.</summary>
+        private static string LoginAddress(ServerEntry server, JsonElement info)
+        {
+            int loginPort = info.TryGetProperty("loginPort", out JsonElement lp) && lp.TryGetInt32(out int p) && p > 0 ? p : 20042;
+            return $"{server.Address}:{loginPort}";
         }
 
         /// <summary>"host", "host:port" or "[v6]:port" -> host, account-service port (5000 when not given).</summary>
@@ -562,6 +652,7 @@ namespace LandmarkEmulator.LaunchPad
                 locale = settings.Locale,
                 allowServerUpdates = settings.AllowServerUpdates,
                 allowFebruaryWeak = settings.AllowFebruaryWeak,
+                advanced = settings.ConfigFor(Game.Folder)?.Advanced == true,
                 // Can this game folder be the Steam copy a made pack's edits and patches start from (checked when used)?
                 ownSteamCopy = s != null && s.Stack.Count == 0 && Game.Build(Game.Folder) == Patching.SteamBuild,
                 busy = busy != null,

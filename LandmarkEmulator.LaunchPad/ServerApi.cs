@@ -62,11 +62,32 @@ namespace LandmarkEmulator.LaunchPad
             public Failure(string message, int status = 0) : base(message) => Status = status;
         }
 
-        /// <summary>DNS failed (typo / unknown name) vs connect/timeout ("No answer").</summary>
+        /// <summary>
+        /// DNS failed (typo / unknown name) vs connect/timeout ("No answer"). Also told apart: a host that was found but
+        /// refused the connection on that port (stopped server, closed port), a timeout, and a server that answered with
+        /// something that isn't LandmarkEmu's JSON.
+        /// </summary>
         private Failure Unreachable(Exception cause, string noAnswerMessage)
-            => IsUnknownHost(cause)
-                ? new Failure($"Can't find a host named \"{host}\". Check the spelling of the address.")
-                : new Failure(noAnswerMessage);
+        {
+            if (IsUnknownHost(cause))
+                return new Failure($"Can't find a host named \"{host}\". Check the spelling of the address.");
+            if (IsRefused(cause))
+                return new Failure($"\"{host}\" was found, but nothing answered on port {hostPort[(hostPort.LastIndexOf(':') + 1)..]}. "
+                    + "Is the server running, and is that port open?");
+            if (cause is OperationCanceledException)
+                return new Failure($"\"{host}\" did not answer in time. Is the server running, and is that port open?");
+            if (cause is JsonException)
+                return new Failure($"{hostPort} answered, but not like a LandmarkEmu server (is it one, and up to date?).");
+            return new Failure(noAnswerMessage);
+        }
+
+        private static bool IsRefused(Exception e)
+        {
+            for (Exception? x = e; x != null; x = x.InnerException)
+                if (x is SocketException { SocketErrorCode: SocketError.ConnectionRefused })
+                    return true;
+            return false;
+        }
 
         private static bool IsUnknownHost(Exception e)
         {

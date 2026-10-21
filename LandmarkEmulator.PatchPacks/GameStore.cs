@@ -289,6 +289,14 @@ namespace LandmarkEmulator.PatchPacks
             if (Targets.Any(t => t.Files.TryGetValue("Landmark64.exe", out BuildFile want)
                 && Genuine("Landmark64.exe", want, h.Value, weak && WeakAllowed(t, "Landmark64.exe", true))))
                 return null;
+            // The exe matches a known build by size and CRC32 but this LaunchPad has no SHA-256 for it (Daybreak's final
+            // February 2017 build, "0.699", until its fingerprints are added): the install is fine, LaunchPad is just
+            // older than that build's fingerprints, so it must not tell the player to put the Steam game back.
+            if (Targets.FirstOrDefault(t => t.Files.TryGetValue("Landmark64.exe", out BuildFile want) && want.Sha256.Length == 0
+                    && want.Size == h.Value.Size && want.Crc.Equals(h.Value.Crc, StringComparison.OrdinalIgnoreCase)) is TargetBuild known)
+                return $"Landmark64.exe looks like the exe of {known.Label} (it matches Daybreak's file list), but this LaunchPad " +
+                    "can't verify that build yet, so it won't start it. Your game files are probably fine: a newer LaunchPad that " +
+                    "knows this build's fingerprints will start it. Don't restore the Steam game for this.";
             return "Landmark64.exe is not a genuine Daybreak exe (neither Steam's 0.589 exe nor the exe of a known 0.695 build). " +
                 "LaunchPad won't start it. Settings > Patch packs > Back to the Steam game, or Steam's \"Verify integrity of " +
                 "game files\", puts the genuine one back.";

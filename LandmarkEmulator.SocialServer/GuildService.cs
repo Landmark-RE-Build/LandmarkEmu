@@ -279,8 +279,10 @@ namespace LandmarkEmulator.SocialServer
                         Remove(player.Guid, player.Name);
                         break;
                     case KickSub:
-                        reader.ReadULong();
-                        Kick(player, reader.ReadULong());
+                        if (GuildKicks.TryRead(body, out GuildKicks.Request kick))
+                            Kick(player, kick);
+                        else
+                            log.Debug($"Unreadable guild kick from {player}: {BitConverter.ToString(body)}");
                         break;
                     case ChangeMemberRankSub:
                         ChangeRank(player, body);
@@ -699,11 +701,16 @@ namespace LandmarkEmulator.SocialServer
             log.Info($"{player} disbanded guild {guildId}.");
         }
 
-        /// <summary>GuildKick (0x0C): needs KickFromGuild and a target of a lower rank; the target leaves as with /guildquit.</summary>
-        private void Kick(OnlineCharacter player, ulong target)
+        /// <summary>
+        /// GuildKick (0x0C): needs KickFromGuild and a target of a lower rank; the target leaves as with /guildquit. The
+        /// roster menu names the member by guid, /guildkick Name by name (<see cref="GuildKicks"/>).
+        /// </summary>
+        private void Kick(OnlineCharacter player, GuildKicks.Request request)
         {
             Guild guild = GuildOf(player.Guid);
-            if (guild == null || target == player.Guid || !Has(guild, player.Guid, "KickFromGuild")
+            ulong target = guild == null ? 0 : GuildKicks.Resolve(request, guild.Members.Select(m => KeyValuePair.Create(m.Key, m.Value.Name)));
+            log.Debug($"{player}: guild kick of {request.Describe()} → 0x{target:X}.");
+            if (guild == null || target == 0 || target == player.Guid || !Has(guild, player.Guid, "KickFromGuild")
                 || !guild.Members.TryGetValue(target, out var member)
                 || Level(guild, member.Rank) <= Level(guild, guild.Members[player.Guid].Rank))
             {
@@ -740,6 +747,11 @@ namespace LandmarkEmulator.SocialServer
                 .Select(n => guild.Ranks.FirstOrDefault(x => string.Equals(x.Name, n?.Trim(), StringComparison.OrdinalIgnoreCase))?.Id ?? RankByName(n))
                 .FirstOrDefault(x => x != null && x != member.Rank);
             uint newRank = named ?? (member.Rank == MemberRank ? OfficerRank : MemberRank);
+            if (GuildRankChanges.IsLeadershipTransfer(newRank, guild.Members[player.Guid].Rank, guild.Model.LeaderGuid == player.Guid, LeaderRank))
+            {
+                TransferLeadership(player, guild, target);
+                return;
+            }
             if (newRank == LeaderRank || (Level(guild, newRank) <= Level(guild, guild.Members[player.Guid].Rank)
                 && guild.Members[player.Guid].Rank != LeaderRank))
             {
@@ -762,6 +774,37 @@ namespace LandmarkEmulator.SocialServer
             }));
             PushZoneState(new[] { target });
             log.Info($"{player} set {member.Name}'s guild rank to {guild.Ranks.FirstOrDefault(x => x.Id == newRank)?.Name ?? newRank.ToString()}.");
+        }
+
+        /// <summary>
+        /// The leader hands the guild on (<see cref="GuildRankChanges"/>): the member becomes leader, the old leader takes
+        /// the member's former rank [I], both rank changes go to the guild, the log gets Guild.NewLeader, and everyone gets
+        /// the guild again (its leader field).
+        /// </summary>
+        private void TransferLeadership(OnlineCharacter player, Guild guild, ulong target)
+        {
+            var member = guild.Members[target];
+            uint formerRank = GuildRankChanges.FormerLeaderRank(member.Rank, LeaderRank, MemberRank);
+            guild.Members[target] = (member.Name, LeaderRank);
+            guild.Members[player.Guid] = (guild.Members[player.Guid].Name, formerRank);
+            guild.Model.LeaderGuid = target;
+            hub.Store.SetGuildMember(target, guild.Model.Id, LeaderRank);
+            hub.Store.SetGuildMember(player.Guid, guild.Model.Id, formerRank);
+            foreach ((ulong who, string name, uint rank) in new[] { (target, member.Name, LeaderRank), (player.Guid, player.Name, formerRank) })
+                SendToMembers(guild, Build(ChangeMemberRankSub, w =>
+                {
+                    w.Write(guild.Model.Id);
+                    w.Write(who);
+                    w.Write(name);
+                    w.Write(player.Guid);
+                    w.Write(player.Name);
+                    w.Write(rank);
+                }));
+            AddLog(guild, LogNewLeader, "", member.Name);
+            SaveGuild(guild);
+            ResendGuild(guild);
+            PushZoneState(new[] { target, player.Guid });
+            log.Info($"{player} handed the leadership of guild {guild.Model.Id} to {member.Name}.");
         }
 
         /// <summary>

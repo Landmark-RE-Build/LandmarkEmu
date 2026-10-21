@@ -115,6 +115,20 @@ namespace LandmarkEmulator.WorldServer.Game
                 return groupOf.TryGetValue(session, out Group group) ? group.Members.ToList() : new List<WorldSession>();
         }
 
+        /// <summary>
+        /// The player's group as guids: its leader and every member (the player included; with the social service, the
+        /// members on every world). Null when not in a group. For the right-click menus (<see cref="RightClickMenus"/>).
+        /// </summary>
+        public static (ulong Leader, IReadOnlyList<ulong> Members)? StateOf(WorldSession session)
+        {
+            if (Social.SocialServices.Groups is { } service)
+                return service.Of(session.PlayerGuid) is { } view ? (view.Leader, view.Members) : null;
+            lock (sync)
+                return groupOf.TryGetValue(session, out Group group)
+                    ? (group.Leader, group.Members.Select(m => m.PlayerGuid).ToList())
+                    : null;
+        }
+
         /// <summary>Is the player in a group with at least one other member (on any world, with the social service)?
         /// For the "grouped" goals.</summary>
         public static bool IsGrouped(WorldSession session)

@@ -87,6 +87,16 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>
+        /// Does the character <paramref name="listener"/> (online here) have <paramref name="other"/> on their ignore list?
+        /// By guid, for targets that need not be on this world (the guild roster's Ignore / Stop Ignoring buttons).
+        /// </summary>
+        public static bool IsIgnoring(ulong listener, ulong other)
+        {
+            lock (sync)
+                return lists.TryGetValue(listener, out var list) && list.ContainsKey(other);
+        }
+
+        /// <summary>
         /// For invitations: true (and the inviter is told) when the invited player ignores the inviter.
         /// </summary>
         public static bool Refuses(WorldSession target, WorldSession inviter)

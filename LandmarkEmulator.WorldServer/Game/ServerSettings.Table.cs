@@ -158,6 +158,8 @@ namespace LandmarkEmulator.WorldServer.Game
             Edit("RestartSchedule", SettingApply.Now, "Mon,Sat 03:00") with { Check = RestartScheduleCheck, Applier = ReconfigureRestarts,
                 Note = "Live restarted Mon,Sat 03:00 Pacific; the schedule is the owner's choice. A change re-plans the next restart at once." },
             Edit("RestartTimeZone", SettingApply.Now, "America/Los_Angeles") with { Check = TimeZoneCheck, Applier = ReconfigureRestarts },
+            Edit("UpkeepTimeZone", SettingApply.Now, "America/Los_Angeles") with { Check = TimeZoneCheck,
+                Note = "Read at each world entry (SiteUpkeep.DayZone): the day a login counts for." },
             Edit("RestartWarningSeconds", SettingApply.Now) with { Min = 0, Max = 86400, Applier = ReconfigureRestarts },
             Edit("RestartMessage", SettingApply.Now) with { MaxLength = 255, Applier = ReconfigureRestarts },
             Edit("ShutdownBroadcasts", SettingApply.Now, "false") with { RawType = typeof(bool), RawDefault = "false",
@@ -180,6 +182,10 @@ namespace LandmarkEmulator.WorldServer.Game
             Edit("LiveCharacterStats", SettingApply.NextLogin, "true") with { Note = "Sent when a player enters the world (CharacterStats.Enabled)." },
             Edit("PropStreamRange", SettingApply.Now) with { Min = 0, Max = 100000,
                 Note = "Read as players move (Props.StreamRange; the dev command \"propstream\" wins until the restart)." },
+            Edit("StreamHoldUntilLoaded", SettingApply.Now) with {
+                Note = "Read at each world entry and re-zone (PlayerManager.StreamHoldEnabled); a hold already running finishes as it started." },
+            Edit("StreamHoldLimitSeconds", SettingApply.Now) with { Min = 10, Max = 600,
+                Note = "Read when a hold starts or its re-zone reaches its zone-in (PlayerManager.StreamHoldLimit)." },
             Edit("PlayerTeleportRequests", SettingApply.Restart, "true") with { RawType = typeof(bool), RawDefault = "true",
                 Note = "Read at first use (TeleportRequests.Enabled)." },
 
@@ -227,6 +233,11 @@ namespace LandmarkEmulator.WorldServer.Game
             Edit("PlayerStudioReviewerMinSpend", SettingApply.Now, "1000") with { Min = 0, Max = 10000000 },
             Edit("PlayerStudioReviewsPerDay", SettingApply.Now, "2") with { Min = 0, Max = 10000, Note = CommerceNote },
             Edit("PlayerStudioStaffReview", SettingApply.Now, "true") with { Note = CommerceNote },
+            Edit("DesignsFollowAccount", SettingApply.NextLogin, "true") with {
+                Note = "Read at each world entry (Templates.AdoptAccountDesigns): the designs of the account's deleted characters move then." },
+            Edit("PlayerStudioDesignsFreeStorage", SettingApply.Now, "true") with {
+                Note = "Read at each storage check and Designs list (Templates.StudioDesignsFree); the \"free\" column of designs already "
+                    + "shown changes when the list is sent again (next zone-in)." },
             Edit("FounderEntitlements", SettingApply.NextLogin, "false") with {
                 Note = "Live gave these items only to buyers, survivors and winners; on for everyone is this server's choice. Granted at login." },
             Edit("EntitlementPackages", SettingApply.NextLogin) with { Format = new Regex(@"^((founder|yearzero|promo)(\s*,\s*(founder|yearzero|promo))*)?$", RegexOptions.IgnoreCase),
@@ -245,6 +256,8 @@ namespace LandmarkEmulator.WorldServer.Game
             Edit("StoreTradeWaitHours", SettingApply.Now, "12") with { Min = 0, Max = 100000 },
             Edit("OverflowExpiryHours", SettingApply.Now, "24") with { Min = 0, Max = 100000 },
             Edit("MailMaxStack", SettingApply.Now, "9000") with { Min = 0, Max = uint.MaxValue },
+            Edit("LumenTrading", SettingApply.Now, "false") with { Note = "Read at each trade coin offer, trade completion and mail compose "
+                + "(Trades.LumenTradingAllowed); a trade already holding a Lumen offer fails at completion once it is off." },
             Edit("ItemAutoResupply", SettingApply.Now, "true"),
             Edit("ShowcaseFollowDigest", SettingApply.Now, "true") with { Note = CommerceNote },
             Edit("ShowcaseDigestHourUtc", SettingApply.Now) with { Min = 0, Max = 23, Note = CommerceNote },

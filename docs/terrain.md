@@ -269,6 +269,52 @@ lines, fills) send air plus vertex-only voxels the same way.
 
 The server applies only the changed voxels, checks claims and material costs, saves, and broadcasts the result.
 
+**Where brush edits land (checked 2026-10-21).** Every brush (Add, Remove, Fill, Line, Smooth, Paint, Mesh Shapes)
+sends the cell it edited; the server stores each changed voxel at the same cell and index, with the client's flags,
+material and vertex, and sends exactly that back to everyone else (the builder is sent nothing: their client drew and
+kept its own edit). Nothing on the server moves a brush's voxels, so an offset between a brush's preview and its
+result cannot come from the server's copy (Tests/Rules/BuildPlacementTests: the blob as the client packs it, the
+server's readers, Prepare / Commit, the CellsUpdate it sends). The dig rules (corner samples, `SurfaceVertices`) are
+used only by digs (`TerrainEdits.Sphere` has no build caller).
+
+### Pastes and designs (`Building.TurnedVoxels`, `OffGridVoxels`)
+
+The paste is the one placement the server makes itself (the client sends only where and how turned). A voxel's two
+parts live in different places: the material belongs to the grid point (the client samples at voxel corners), the
+vertex to the cube [s, s+1]³ stored at s. A turn that flips an axis maps that cube onto the cube one voxel lower on
+that axis, so the vertex goes to M·s − 1 there, not to M·s with the material. The cubes of the copy's surface whose
+corner voxel is air (every face towards −x, −y, −z, and after a flip the faces turned that way) keep their vertices
+as vertex-only voxels (target material kept; left out where the player may not build). Before 2026-10-21 the vertex
+stayed with the material and air-corner vertices were dropped: turned pastes / designs had their surface up to 0.9
+voxel off along each flipped axis, and smooth copies lost up to 0.7 voxel on their −x / −y / −z faces even unturned
+(BuildPlacementTests, a sloped wedge meshed with the client's rule). The off-grid paste samples the nearest grid
+point to (g − origin)·R⁻¹ (it took the voxel the target's centre fell in: one voxel off along flipped axes).
+
+**Interior empty space (material 0xFFFC) is never stored** (`Building.PastedMaterial`). A copy marks the air its
+build encloses with material 0xFFFC (FUN_143f9a150 → FUN_143f9c330; trace/0695/ruin-stamping.md §1), and the game's
+designs are mostly that (Castle Long Room: 301,860 solid, 480,372 interior, 668,112 surrounding-air voxels; Castle
+Courtyard 32,165 / 2,591 / 59,169). The client's paste (CClipboardData FUN_142a7eeb0) writes it as air (material 0) in
+the Paste Air (2) and Paste Interior Air (3) modes, never on the box's first slice, and not at all in the default
+mode; the server now does the same on both paste paths. Until 2026-10-21 the server wrote it raw into layer 1: the
+mesher (ContourEx) draws 0xFFFC as air, so the design looked right, but the occluder builder of the client's cell
+meshes counts it as solid. Per cell and axis, FUN_142ae77d0 takes the first and last voxel of every column that has
+the material bit, a material ≠ 0 and an opaque VoxelMaterialLibrary entry (FUN_144002a40, no range check: entry 0xFFFC
+is the copy of entry 0 that FUN_143ff41f0 writes at +0x37ff20, TRANSPARENT_TYPE_ID 0 → +8 = 0, FUN_143ffa310);
+FUN_142ae7b40 finds the largest flat rectangle; FUN_142ae8610 keeps it when 100 points on it are "solid" by the same
+test; FUN_143fdf790 stores the quads (CellGeometry +0x108, the mesh blob's "bounds block", FUN_143145780) and
+VoxelVisibility (FUN_1437879d0) turns each into an occluder of the Deep software occlusion system. So every room and
+doorway of a placed design became an occlusion quad: from inside, every terrain cell around it was culled while its
+flora (not occlusion-tested) still drew — "nothing outside is visible" (user report 2026-10-21). At every start
+`TerrainEdits.RepairInteriorAir` turns stored layer-1 0xFFFC voxels into air (the look they had) at a new cell
+version, so clients refetch the cells and the coarse copies are rebuilt; `TerrainEdits.Write` and the coarse copies
+(`TerrainLod.Downsample`) never store it either. Surrounding air (modes 2 and 4) and Remove voxels are still not
+applied by the server's paste (TASKS 6.57). Tests: `Rules/DesignInteriorAirTests`.
+
+Not proven yet: the exact spot the client's paste area (FUN_1436cd920, request origin) has relative to its preview.
+The client computes it from the cursor and the turn with margins (−1 and −(|C|/2 + 1) on x / z, the horizontal mask
+(1, 0, 1, 0) at DAT_1455f07f0 set by FUN_1428a2040), and the server puts the copy's first grid point there; the paste
+log line prints the client area and copy sizes so an in-game paste can settle it.
+
 ### Tool switch and the edit effect others see (`Building.Tools.cs`)
 
 Every build-tool activation sends **ToolBase 0x117 sub 1 ToolPacketActivate** (C→S, no reply; 0.695 writer
@@ -339,7 +385,16 @@ The server only uses this for the `testcell` developer command.
 
 ## Ore veins (`OreVeins.cs`)
 
-- **Cell map:** `CommonData/Voxel/veinData/ContinentVeinData406.vdt`. From offset 460 it holds sections of
+- **Which file:** `CommonData/Voxel/veinData/ContinentVeinData<continent>.vdt`, by the landscape's continent
+  (StaticZoneData CONTINENT_ID), not its zone id [P]. The client's loader FUN_143ff34d0 formats
+  `Voxel\veinData\ContinentVeinData%d.vdt` with the VoxelFarm core's +0x5208, the same id ContinentOceanMap
+  (FUN_143ff3730) and ContinentSurfaceCache (FUN_143ff3fc0) use; FUN_143f9aa30 / FUN_143f9aad0 / FUN_143f94580 set
+  it from the zone's continent definition. So the classic islands read their own id and the Pioneer lands 464-468
+  read 440-444 (`LandscapeContinents`, `OreVeins.VdtPath`). The shipped files agree: 388.vdt exists with no zone 388
+  (zone 387 is continent 388), and 440-444.vdt exist while zones 440-444 are continent 430. The cave placements are
+  named the same way (`CavePieces.PlacementPath`, loader FUN_143ff1310). The event islands' continents 436-438 ship
+  neither.
+- **Cell map:** `ContinentVeinData406.vdt`. From offset 460 it holds sections of
   `{u32 groups, groups × (u32 layer, u32 VoxelBiomes id, u32 1, u32 n, n × u64 sorted level-2 cell ids)}`. Layer 0
   lists the surface biomes' cells (406: VolcanicSurface 47, OldGrowthForestSurface 50, OceanSurface 54, about
   736-1712 m local height), layer 1 the cavern biomes' cells (AncientForestCavern 41, DeciduousCavern 62, about
@@ -395,7 +450,8 @@ What the server keeps for the islands:
 - **Checking the bake:** `csc.py pick 460 436 427 424 437` checks the bake against the shipped cache. A good bake gets
   96-98 % against 436 and sides with 436 where the candidate caches differ.
 - **Materials:** `TerrainMaterials.BiomeBitmapOf` gives the template biome bitmap.
-- **No caves and no ore veins:** no `ContinentCavePlacements` or `ContinentVeinData` file exists for these zones.
+- **No caves and no ore veins:** no `ContinentCavePlacements` or `ContinentVeinData` file exists for their
+  continents 436-438 (the client names both by continent, "Ore veins" above).
 
 ### The Events world
 
@@ -433,6 +489,42 @@ Details and evidence: research/trace/0695/event-islands-695.md.
   a tree up by entity guid when it is chopped. See gameplay.md.
 - Collision comes from the model's `.adr` (`<CollisionData fileName="….cdt"/>`). Two tree models have none:
   344 GnarledPine_Large01 and 350 Birch_Medium01. They are not used, because players walked through them.
+- **Felling a tree touches no terrain** (checked 2026-10-21 after a player's "every login is slow since I felled a
+  tree"; test `TreeFellingTerrainTests`): `Gathering.Chop` sends PlayerUpdate RemovePlayer and frees the spot
+  (`gathered_nodes.txt`), and that is all. No voxel is written, no heal is queued, no cell joins the zone-in manifest,
+  no TerrainCell packet goes out. The next login there gets the same terrain data as before and one AddLightweightProp
+  less. Measured with the server's own generator (40 spots per landscape, 160 m view): a login at the centre of a
+  210 m site on a Pioneer land sees ~16 trees of ~5 models, one 40 m outside the site ~25 trees of the same ~5 models;
+  on 406 52 vs 81 trees of ~8 models. Pioneer lands had no ore-vein cells then (fixed the same day, below), a classic island ~375 per login
+  ring (8 / 34 / 115 within 64 / 128 / 256 m), on and off site alike.
+- The client's terrain work at zone-in does not depend on entities: its scene is a fixed set of cells ("Begin
+  SCENE: … Process Pending: 6186" in both captured first loads, ClientSceneProcessing.log, FUN_1440222c0), of which
+  "Request Pending" are the ones listed in the manifest (they wait for the server). `Avg contour: %d` (main client log,
+  ContourThread::contourLoop FUN_143f98880) is printed each time one contour thread has spent another 5 s meshing,
+  so a long run of those lines means slow meshing (the allocator-slot race, "Slow loading screen" below), not a
+  bigger scene.
+- Fixed 2026-10-21: Pioneer lands 464-468 loaded no vein data. `OreVeins` opened `ContinentVeinData<landscape>.vdt`,
+  but the client loads `ContinentVeinData<continent>.vdt` (FUN_143ff34d0, "Ore veins" above), here 440-444. The
+  server now opens the continent's file (and `CavePieces` the continent's `ContinentCavePlacements`, so cave veins
+  find the Pioneer caverns' walls). Per landscape: an offline run of the server's own loader and generator over the 0.695 install
+  (every 256 m region generated, ground from the baked heights):
+
+  | Landscape | Vein file before → now | Surface / cave pool cells | Veins in the vdt | Veins made (surface / cave) | Ore cells |
+  |---|---|---|---|---|---|
+  | 406 Sleeping Ridge | 406 → 406 | 447,111 / 590,282 | 36,884 | 22,347 / 5,193 | 49,430 |
+  | 391 Arid Thicket | 391 → 391 | 536,775 / 627,740 | 37,757 | 23,590 / 5,521 | 52,580 |
+  | 393-416 (not 409) | own id → own id | 434-556 k / 584-761 k | 36.9-39.8 k | unchanged | unchanged |
+  | 464 Pioneer Jungle | none → 440 | 352,491 / 13,472,604 | 217,588 | 30,585 / 109,396 | 261,098 |
+  | 465 Pioneer Tundra | none → 441 | 353,860 / 13,485,442 | 218,814 | 30,522 / 110,332 | 263,233 |
+  | 466 Pioneer Desert | none → 442 | 344,192 / 13,454,178 | 219,257 | 29,770 / 111,498 | 263,496 |
+  | 467 Pioneer Old Growth | none → 443 | 352,537 / 13,298,689 | 218,330 | 30,527 / 110,393 | 260,139 |
+  | 468 Pioneer Deciduous | none → 444 | 352,490 / 13,085,379 | 214,097 | 30,603 / 107,677 | 258,000 |
+  | 460-462 event islands | none → none (436-438 not shipped) | — | — | — | — |
+
+  The Pioneer files hold ~20 times the classic islands' cave pool and ~6 times their veins (live's data, read as it
+  is), so a Pioneer land carries about five times the ore cells: ~2,300 manifest notes per 3 × 3-region login ring
+  instead of ~430. Their surface veins (~30 k, like a classic island's ~23 k) land on the baked ground, so the
+  files' cells are in the landscapes' own frame.
 
 ## Caves (`CavePieces.cs`, `Caves.cs`)
 
@@ -474,7 +566,9 @@ The client builds caves itself from pre-made pieces; the server reads the same f
   Adventure" lands on the floor of a random cavern (piece 104: air from about −76 m to +75 m around the origin; arrival
   scans down from origin + 10 m) on any landscape with an Underground `.cpa` (391, 393-408, 410-416; setting
   `CavernLandscapes`), re-zoning there when it is another landscape. `CavePieces.IsAir` and `Caves.Floor` /
-  `FloorNear` take the landscape (`ContinentCavePlacements[<zone>]`: zone id = continent id for 391-421, and every
+  `FloorNear` take the landscape (`ContinentCavePlacements[<continent>]`, `CavePieces.PlacementPath`: the continent id
+  is the zone id for 391-421 and 440-444 for the Pioneer lands 464-468; before 2026-10-21 the server opened
+  `[<zone>]` and so knew no Pioneer cave air; every
   island has the same GEOMETRY_OFFSET, so one local frame). Outposts are stamped into each landscape's ruin slots
   (`RuinSlots.cs`), lazily: docs/gameplay.md "Chaos Caverns on every landscape".
 - **Manual template placements** (`RuinSlots.ManualTemplates`; .cpa version > 10, after the CaveTileObjectGaps):
@@ -745,6 +839,32 @@ Process Pending: N" → "Finish SCENE: Total Process Time"), meshed by five `Con
   early. The launcher sets 2: 58 slots used, scene 0.8 s (2026-10-14).
 - The `[Terrain] UseCachedMeshes` / `CacheMeshes` lines are overridden by UserOptions.ini (which the game rewrites),
   so they cannot switch the mesh cache off from ClientConfig.ini.
+- The addresses above are 0.589's. In 0.695 the slot code is FUN_142c05050 (table 0x145427450, stride 0x258, used
+  count 0x145426dd8, global lock 0x145426420; owner check FUN_142c07cf0), reached from the free path FUN_142c05ef0
+  when the thread's TLS slot is empty (blocks up to 0x8000 bytes) [P]. `re/tools/slots.py` (research workspace) reads the 0.695 table by default (`LMEMU_CLIENT=589` for the old one). Options for lifting the limit: trace/0695/allocator-slots-options.md.
+- Thread pools sized by the CPU (0.695) [P]: one thread per logical processor, no limit, for `Resource::Manager
+  Decompression` (FUN_143a8d560) and `TaskManagerJob` (FUN_143a98090); processors − 1 up to 16 for the pool set up
+  in FUN_143a6fcd0; capped: VoxelFarm contour threads 3 (FUN_143f94580), contour job queue ≤ 3 (FUN_143133360),
+  Morpheme network ≤ 4 (FUN_1440b4440). So the more logical processors, the fuller the table, whatever
+  DirectThreadCount says; threads started late (a design's placement preview, docs/gameplay.md "Placing a design")
+  are the ones left without a slot.
+- **Who wins the last slots is a race** [P code, I timing]: a thread takes its slot at its first small allocation,
+  not when it starts. The pool workers (FUN_143a95170) take theirs at their first job; the three contour threads
+  (`ContourThread::contourLoop` FUN_143f98880) only at their first meshing job, after the cell manifest. On a 16+
+  thread CPU the table can't hold everyone, and the bigger the burst of decompression / task jobs before meshing
+  starts (models of creatures, trees, props, chests...), the likelier the pools take the last slots first. Each
+  `Avg contour` line in the client log is another 5 s of meshing by one contour thread, so an hour of them is a
+  contour thread without a slot.
+- **Server-side mitigation: the stream hold** (2026-10-21; docs/gameplay.md "Stream hold", setting
+  `STREAM_HOLD_UNTIL_LOADED`, default on). While the loading screen is up the server sends only what the screen
+  needs and what the arrival stands on (props under the player, the Spire's deck); creatures, trees, chests,
+  outposts, the other props and the warp crystals wait for ClientLoading `{0}`, which the client sends only once
+  its scene has no meshing pending (ShouldDrop FUN_142d54a00 → FUN_14314fa00 → FUN_142ae6b20) [P], or 90 s
+  (`STREAM_HOLD_LIMIT_SECONDS`). So the contour threads start meshing before the asset burst wakes the pools. It
+  changes only the order, not what is sent. It can't make room where the fixed threads alone fill the table; the
+  client-side options (a CPU-count cap in LaunchPad, msconfig processors, E-cores off) are in
+  trace/0695/allocator-slots-options.md and allocator-slots-fix-design.md. To compare, a player can switch the
+  setting off and count the `Avg contour` lines and the ClientSceneProcessing.log `Finish SCENE` times per load.
 
 **History (Daybreak forums, archived):** the live game had this bug. A developer's feedback thread on long load times
 (23 May 2016) collected reports of loads stuck at 50%, mostly on 6- and 8-core CPUs with hyper-threading (i7-5820K,

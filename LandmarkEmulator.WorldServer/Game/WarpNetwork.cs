@@ -432,8 +432,10 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <summary>
         /// Sends the underground portal crystals of the player's landscape (static props, all of them, on every entry: the
         /// client drops them with a re-zone). A landscape whose crystals aren't read yet gets them once they are (<see cref="Update"/>).
+        /// With <paramref name="send"/> false (a loading screen holds the world streams, PlayerManager "Stream hold") only
+        /// the reading starts; the crystals go out when the hold ends.
         /// </summary>
-        public static void Enter(WorldSession session)
+        public static void Enter(WorldSession session, bool send = true)
         {
             uint zone = session.ZoneId == 0 ? Home : session.ZoneId;
             if (!underground.TryGetValue(zone, out List<Node> nodes))
@@ -441,6 +443,8 @@ namespace LandmarkEmulator.WorldServer.Game
                 Prepare(zone);
                 return;
             }
+            if (!send)
+                return;
             List<PlayerUpdateAddLightweightProp> props = crystals.GetOrAdd(zone, _ => nodes.Select(n =>
             {
                 var prop = new PlayerUpdateAddLightweightProp

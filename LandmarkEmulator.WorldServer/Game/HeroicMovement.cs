@@ -47,6 +47,13 @@ namespace LandmarkEmulator.WorldServer.Game
     /// not sent again (the zone-in zero state is what every receiver already assumes).
     /// </para>
     /// <para>
+    /// States are followed per viewer (audit 2026-10-21, docs/observer-sync.md): heroic movement, the swim state and a
+    /// fired hook stay on the receiver's copy of the character until changed, so their end also goes to every viewer
+    /// shown the start (wherever it is now), and once a second a player's current state goes to viewers who came into
+    /// range since (<see cref="CatchUp"/>). Before, a viewer out of range at the end kept the heroic run or the swim
+    /// pose, and one who came near during it saw neither.
+    /// </para>
+    /// <para>
     /// Quantised (audit-bandwidth-2026-10-18 R3): the client sends a SwimmingUpdate on any exact float change of depth
     /// or the two heights (compare FUN_14358c410 uses ==) and has no rate limit of its own (FUN_14358d760) [P], so while
     /// diving or bobbing it sends nearly every frame. Before the compare the server rounds depth to 1/64 of the
@@ -90,17 +97,48 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <summary>Wire header length: u16 base, u8 sub, u64 entity.</summary>
         private const int HeaderLength = 11;
 
-        private sealed class Swimmer
+        /// <summary>The zero SwimmingUpdate body: out of the water, what a receiver assumes for a character it has just made.</summary>
+        private static readonly byte[] ZeroSwim = { 0, 0, 0, 0, 0 };
+
+        /// <summary>How often a player's heroic movement / swimming state is checked against who should see it now.</summary>
+        internal static TimeSpan ScanInterval = TimeSpan.FromSeconds(1);
+
+        /// <summary>
+        /// One player's heroic movement and swimming state and what each viewer's client was told of it. These are states
+        /// the receiver keeps on its copy of the character until told otherwise (SetHeroicMovement: entity +0x1451 bit 0x20
+        /// and the animation network's HeroicMovementActivated / Deactivated, FUN_142ec2740; the swim state, FUN_14358cf30;
+        /// the rope until TerminateGrappleHookEffects, FUN_142ea4f30) [P], so a range-limited relay alone left stale looks
+        /// (audit 2026-10-21): a viewer out of range when the state ended kept it (a heroic run, a swimmer on dry land)
+        /// until the next change, and a viewer who came into range during it saw the default. Hence the per-viewer record:
+        /// a change goes to the viewers in range and its end also to every viewer who was shown the start, and a scan
+        /// (<see cref="ScanInterval"/>) shows the current state to viewers who came into range since.
+        /// </summary>
+        private sealed class Mover
         {
             /// <summary>The newest SwimmingUpdate body not relayed yet (null = none).</summary>
             public byte[] Pending;
             /// <summary>The last body relayed (starts as the zero state every receiver assumes).</summary>
-            public byte[] LastSent = { 0, 0, 0, 0, 0 };
+            public byte[] LastSent = ZeroSwim;
             public DateTime LastSentAt;
+            /// <summary>The swim state each viewer was last sent (a viewer not listed has the zero state).</summary>
+            public readonly Dictionary<WorldSession, byte[]> SwimKnown = new();
+            /// <summary>Heroic movement on (the client's last SetHeroicMovement), and the viewers shown it on.</summary>
+            public bool Heroic;
+            public readonly HashSet<WorldSession> HeroicTold = new();
+            /// <summary>Viewers shown a FireGrapplingHook whose TerminateGrappleHookEffects has not come yet.</summary>
+            public readonly HashSet<WorldSession> GrappleTold = new();
+            public DateTime NextScan;
         }
 
         private static readonly object sync = new();
-        private static readonly Dictionary<WorldSession, Swimmer> swimmers = new();
+        private static readonly Dictionary<WorldSession, Mover> movers = new();
+
+        private static Mover Of(WorldSession session)
+        {
+            if (!movers.TryGetValue(session, out Mover m))
+                movers[session] = m = new Mover();
+            return m;
+        }
 
         [ZoneMessageHandler(ZoneMessageOpcode.HeroicMovement)]
         public static void Handle(WorldSession session, HeroicMovementRequest request)
@@ -109,11 +147,13 @@ namespace LandmarkEmulator.WorldServer.Game
             {
                 case FireGrapplingHook:
                     Achievements.HeroicMovement(session, request.SubOpcode);
-                    Relay(session, request.SubOpcode, request.Body);
+                    Grapple(session, request.Body);
+                    break;
+                case TerminateGrappleHookEffects:
+                    EndGrapple(session, request.Body);
                     break;
                 case SetHeroicMovement:
-                case TerminateGrappleHookEffects:
-                    Relay(session, request.SubOpcode, request.Body);
+                    Heroic(session, request.Body);
                     break;
                 case SwimmingUpdate:
                     Swim(session, request.Body);
@@ -129,6 +169,57 @@ namespace LandmarkEmulator.WorldServer.Game
             }
         }
 
+        /// <summary>FireGrapplingHook: to the viewers in range, who are remembered for its terminate.</summary>
+        private static void Grapple(WorldSession session, byte[] body)
+        {
+            List<WorldSession> to = Viewers(session, inRangeOnly: true);
+            lock (sync)
+                Of(session).GrappleTold.UnionWith(to);
+            Send(session, FireGrapplingHook, body, to);
+        }
+
+        /// <summary>TerminateGrappleHookEffects: to the viewers in range and every viewer shown the hook, wherever now.</summary>
+        private static void EndGrapple(WorldSession session, byte[] body)
+        {
+            List<WorldSession> zone = Viewers(session, inRangeOnly: false);
+            var to = new List<WorldSession>();
+            lock (sync)
+            {
+                Mover m = Of(session);
+                foreach (WorldSession v in zone)
+                    if (m.GrappleTold.Contains(v) || InRange(v, session))
+                        to.Add(v);
+                m.GrappleTold.Clear();
+            }
+            Send(session, TerminateGrappleHookEffects, body, to);
+        }
+
+        /// <summary>
+        /// SetHeroicMovement {bool}: on goes to the viewers in range (remembered); off to them and to every viewer shown
+        /// it on (an off the receiver already has does nothing there: FUN_142ec2740 returns when the bit is unchanged).
+        /// </summary>
+        private static void Heroic(WorldSession session, byte[] body)
+        {
+            if (body.Length < 1)
+                return;
+            bool on = body[0] != 0;
+            List<WorldSession> zone = Viewers(session, inRangeOnly: false);
+            var to = new List<WorldSession>();
+            lock (sync)
+            {
+                Mover m = Of(session);
+                m.Heroic = on;
+                foreach (WorldSession v in zone)
+                    if (InRange(v, session) || (!on && m.HeroicTold.Contains(v)))
+                        to.Add(v);
+                if (on)
+                    m.HeroicTold.UnionWith(to);
+                else
+                    m.HeroicTold.Clear();
+            }
+            Send(session, SetHeroicMovement, new[] { on ? (byte)1 : (byte)0 }, to);
+        }
+
         /// <summary>A SwimmingUpdate: kept as the swimmer's pending state; sent now when the interval has passed.</summary>
         private static void Swim(WorldSession session, byte[] body)
         {
@@ -139,8 +230,7 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             lock (sync)
             {
-                if (!swimmers.TryGetValue(session, out Swimmer s))
-                    swimmers[session] = s = new Swimmer();
+                Mover s = Of(session);
                 byte[] next = Quantise(body);
                 if (s.Pending != null && (s.Pending[0] & DiveFlag) != 0)
                     next[0] |= DiveFlag;
@@ -178,23 +268,70 @@ namespace LandmarkEmulator.WorldServer.Game
             BitConverter.GetBytes(rounded).CopyTo(body, offset);
         }
 
-        /// <summary>Server tick: sends each swimmer's pending state once its interval has passed.</summary>
+        /// <summary>
+        /// Server tick: sends each swimmer's pending state once its interval has passed, and once a
+        /// <see cref="ScanInterval"/> per player shows their current heroic movement / swim state to viewers who came
+        /// into <see cref="RelayRange"/> since (they were too far when it began or last changed).
+        /// </summary>
         public static void Update()
         {
-            List<WorldSession> due;
-            lock (sync)
-                due = swimmers.Where(x => x.Value.Pending != null).Select(x => x.Key).ToList();
+            List<WorldSession> due, scan;
             DateTime now = DateTime.UtcNow;
+            lock (sync)
+            {
+                due = movers.Where(x => x.Value.Pending != null).Select(x => x.Key).ToList();
+                scan = new List<WorldSession>();
+                foreach ((WorldSession subject, Mover m) in movers)
+                    if (now >= m.NextScan && (m.Heroic || !IsZero(m.LastSent)))
+                    {
+                        m.NextScan = now + ScanInterval;
+                        scan.Add(subject);
+                    }
+            }
             foreach (WorldSession session in due)
                 Flush(session, now);
+            foreach (WorldSession subject in scan)
+                CatchUp(subject);
+        }
+
+        /// <summary>The current state to the viewers in range whose client has another (<see cref="Update"/>).</summary>
+        internal static void CatchUp(WorldSession subject)
+        {
+            List<WorldSession> near = Viewers(subject, inRangeOnly: true);
+            var heroic = new List<WorldSession>();
+            var swim = new List<(WorldSession Viewer, byte[] Body)>();
+            lock (sync)
+            {
+                if (!movers.TryGetValue(subject, out Mover m))
+                    return;
+                foreach (WorldSession v in near)
+                {
+                    if (m.Heroic && m.HeroicTold.Add(v))
+                        heroic.Add(v);
+                    byte[] known = m.SwimKnown.GetValueOrDefault(v) ?? ZeroSwim;
+                    if (!known.AsSpan().SequenceEqual(m.LastSent))
+                    {
+                        swim.Add((v, ForNewcomer(m.LastSent)));
+                        if (IsZero(m.LastSent))
+                            m.SwimKnown.Remove(v);
+                        else
+                            m.SwimKnown[v] = m.LastSent;
+                    }
+                }
+            }
+            Send(subject, SetHeroicMovement, new byte[] { 1 }, heroic);
+            foreach ((WorldSession viewer, byte[] body) in swim)
+                Send(subject, SwimmingUpdate, body, new[] { viewer });
         }
 
         private static void Flush(WorldSession session, DateTime now)
         {
+            List<WorldSession> zone = Viewers(session, inRangeOnly: false);
+            var to = new List<WorldSession>();
             byte[] body;
             lock (sync)
             {
-                if (!swimmers.TryGetValue(session, out Swimmer s) || s.Pending == null || now - s.LastSentAt < SwimInterval)
+                if (!movers.TryGetValue(session, out Mover s) || s.Pending == null || now - s.LastSentAt < SwimInterval)
                     return;
                 body = s.Pending;
                 s.Pending = null;
@@ -202,63 +339,132 @@ namespace LandmarkEmulator.WorldServer.Game
                     return;
                 s.LastSent = body;
                 s.LastSentAt = now;
+                // In range: the new state. Out of range: only the way out of the water, to a viewer still holding a swim
+                // state (else that viewer saw a swimmer on dry land when next near); the rest catch up when near (CatchUp).
+                bool zero = IsZero(body);
+                foreach (WorldSession v in zone)
+                {
+                    byte[] known = s.SwimKnown.GetValueOrDefault(v) ?? ZeroSwim;
+                    if ((InRange(v, session) || (zero && !IsZero(known))) && !known.AsSpan().SequenceEqual(body))
+                    {
+                        to.Add(v);
+                        if (zero)
+                            s.SwimKnown.Remove(v);
+                        else
+                            s.SwimKnown[v] = body;
+                    }
+                }
             }
-            Relay(session, SwimmingUpdate, body);
+            Send(session, SwimmingUpdate, body, to);
         }
 
         /// <summary>
-        /// Sends a HeroicMovement packet about the sender to the other players on its landscape within
-        /// <see cref="RelayRange"/>: {u16 0x105, u8 sub, u64 the sender's guid, body}.
+        /// The other players on the sender's landscape who can be sent a HeroicMovement packet about it (within
+        /// <see cref="RelayRange"/> when <paramref name="inRangeOnly"/>): none while the sender is hidden (/hideme) or
+        /// gone, and no viewer in the middle of a re-zone (its client deleted the character at ClientBeginZoning; it gets
+        /// the state with the next introduction, <see cref="IntroduceSwimmer"/>).
         /// </summary>
-        private static void Relay(WorldSession session, byte sub, byte[] body)
+        private static List<WorldSession> Viewers(WorldSession session, bool inRangeOnly)
         {
             if (AdminCommands.IsHidden(session) || session.Disconnected)
-                return;
-            byte[] packet = new byte[HeaderLength + body.Length];
-            packet[0] = 0x05;
-            packet[1] = 0x01;
-            packet[2] = sub;
-            BitConverter.GetBytes(session.PlayerGuid).CopyTo(packet, 3);
-            body.CopyTo(packet, HeaderLength);
-            Vector3 at = session.Position;
-            foreach (WorldSession other in PlayerManager.InZone(session.ZoneId))
-                if (other != session && !other.Disconnected && Vector3.Distance(other.Position, at) <= RelayRange
+                return new List<WorldSession>();
+            return PlayerManager.InZone(session.ZoneId)
+                .Where(other => other != session && !other.Disconnected
+                    && (!inRangeOnly || InRange(other, session))
                     && (other.RezoneTarget == null || Teleport.IsShortMovePending(other)))   // mid re-zone: no entity yet
-                    other.SendRaw(packet);
+                .ToList();
+        }
+
+        private static bool InRange(WorldSession viewer, WorldSession subject)
+            => Vector3.Distance(viewer.Position, subject.Position) <= RelayRange;
+
+        private static bool IsZero(byte[] body) => body.AsSpan().IndexOfAnyExcept((byte)0) < 0;
+
+        /// <summary>
+        /// A swim state for a receiver that has not followed this swimmer: under the surface (0x40) the dive flag 0x80 is
+        /// set, so the receiver's surface state switches to under water as it would have on the dive [I: FUN_14358cf30 acts
+        /// on 0x80 only from state 1; a receiver not in state 1 ignores it].
+        /// </summary>
+        private static byte[] ForNewcomer(byte[] state)
+        {
+            byte[] body = (byte[])state.Clone();
+            if ((body[0] & 0x40) != 0)
+                body[0] |= DiveFlag;
+            return body;
         }
 
         /// <summary>
-        /// Shows a swimmer's current state to a player who has just been shown that character (PlayerManager.Introduce,
-        /// after AddLightweightPc in the same queue, so the receiver knows the entity). Nothing is sent for a player out of
-        /// the water (the zero state is what the receiver assumes) or out of <see cref="RelayRange"/>.
+        /// Sends a HeroicMovement packet about <paramref name="subject"/> to these viewers: {u16 0x105, u8 sub, u64 the
+        /// subject's guid, body}, queued in order with the viewers' other packets.
+        /// </summary>
+        private static void Send(WorldSession subject, byte sub, byte[] body, IEnumerable<WorldSession> viewers)
+        {
+            byte[] packet = null;
+            foreach (WorldSession viewer in viewers)
+            {
+                if (packet == null)
+                {
+                    packet = new byte[HeaderLength - 2 + body.Length];
+                    packet[0] = sub;
+                    BitConverter.GetBytes(subject.PlayerGuid).CopyTo(packet, 1);
+                    body.CopyTo(packet, HeaderLength - 2);
+                }
+                viewer.EnqueueMessage(ZoneMessageOpcode.HeroicMovement, packet);
+            }
+        }
+
+        /// <summary>
+        /// A viewer has just been shown <paramref name="subject"/> (PlayerManager.Introduce, after AddLightweightPc in the
+        /// same queue): its client made a fresh character — not swimming, no heroic movement, no rope — so what it was told
+        /// before is forgotten, and within <see cref="RelayRange"/> it gets the current swim state (out of the water: the
+        /// zero state it assumes, nothing sent) and heroic movement if on. Beyond it, <see cref="CatchUp"/> shows them
+        /// when the viewer comes near.
         /// </summary>
         public static void IntroduceSwimmer(WorldSession viewer, WorldSession subject)
         {
-            byte[] state;
+            byte[] swim = null;
+            bool heroic = false;
+            bool near = InRange(viewer, subject);
             lock (sync)
             {
-                if (!swimmers.TryGetValue(subject, out Swimmer s))
+                if (!movers.TryGetValue(subject, out Mover m))
                     return;
-                state = s.Pending ?? s.LastSent;
+                m.SwimKnown.Remove(viewer);
+                m.HeroicTold.Remove(viewer);
+                m.GrappleTold.Remove(viewer);
+                if (!near)
+                    return;
+                byte[] state = m.Pending ?? m.LastSent;
+                if (!IsZero(state))
+                {
+                    swim = ForNewcomer(state);
+                    m.SwimKnown[viewer] = state;
+                }
+                if (m.Heroic)
+                {
+                    heroic = true;
+                    m.HeroicTold.Add(viewer);
+                }
             }
-            if (state.AsSpan().IndexOfAnyExcept((byte)0) < 0)
-                return;
-            if (Vector3.Distance(viewer.Position, subject.Position) > RelayRange)
-                return;
-            byte[] body = new byte[HeaderLength - 2 + state.Length];
-            body[0] = SwimmingUpdate;
-            BitConverter.GetBytes(subject.PlayerGuid).CopyTo(body, 1);
-            state.CopyTo(body, HeaderLength - 2);
-            if ((body[HeaderLength - 2] & 0x40) != 0)
-                body[HeaderLength - 2] |= DiveFlag;
-            viewer.EnqueueMessage(ZoneMessageOpcode.HeroicMovement, body);
+            if (swim != null)
+                Send(subject, SwimmingUpdate, swim, new[] { viewer });
+            if (heroic)
+                Send(subject, SetHeroicMovement, new byte[] { 1 }, new[] { viewer });
         }
 
-        /// <summary>A player left the world: their pending swimming state goes.</summary>
+        /// <summary>A player left the world: their state goes, and they are no longer anyone's viewer.</summary>
         public static void Forget(WorldSession session)
         {
             lock (sync)
-                swimmers.Remove(session);
+            {
+                movers.Remove(session);
+                foreach (Mover m in movers.Values)
+                {
+                    m.SwimKnown.Remove(session);
+                    m.HeroicTold.Remove(session);
+                    m.GrappleTold.Remove(session);
+                }
+            }
         }
     }
 }

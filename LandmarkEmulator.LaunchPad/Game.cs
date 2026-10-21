@@ -23,48 +23,15 @@ namespace LandmarkEmulator.LaunchPad
         public static bool IsRunning() => GameFolder.IsRunning(Folder);
 
         /// <summary>
-        /// Points ClientConfig.ini at a server: the login server (Server=), the in-game web pages (MarketplaceUrl=), and
-        /// [AssetDelivery] DirectThreadCount=2 (fewer asset threads: with the shipped 10 the game's 64 allocator slots ran
-        /// out as the terrain threads started and the loading screen crawled for minutes). The first change keeps the
-        /// original as ClientConfig.ini.orig. (The same settings the server tools write.)
+        /// Points ClientConfig.ini at a server: the login server (Server=), the in-game web pages ([Marketplace]
+        /// MarketplaceUrl=), and [AssetDelivery] DirectThreadCount (recommended 2: with the shipped 10 the game's 64
+        /// allocator slots ran out as the terrain threads started and the loading screen crawled for minutes). In
+        /// advanced mode the thread count follows the player's choice (LaunchPad's 2, their own value, or the file left
+        /// as it is); without it, always 2. The first change keeps the original as ClientConfig.ini.orig. The rules are
+        /// <see cref="ClientConfigFile"/> (LandmarkEmulator.PatchPacks/ClientConfig.cs).
         /// </summary>
-        public static void PointAt(string folder, string login, string marketplaceUrl)
-        {
-            string config = Path.Combine(folder, "ClientConfig.ini");
-            var lines = File.Exists(config) ? File.ReadAllLines(config).ToList() : new List<string>();
-            bool changed = false;
-            void Set(string key, string value)
-            {
-                string line = $"{key}={value}";
-                int i = lines.FindIndex(l => l.StartsWith(key + "=", StringComparison.Ordinal));
-                if (i >= 0 && lines[i] == line)
-                    return;
-                if (i >= 0)
-                    lines[i] = line;
-                else
-                    lines.Add(line);
-                changed = true;
-            }
-            Set("Server", login);
-            Set("MarketplaceUrl", marketplaceUrl);
-            const string assetLine = "DirectThreadCount=2";
-            if (!lines.Contains(assetLine))
-            {
-                int i = lines.FindIndex(l => l.StartsWith("DirectThreadCount=", StringComparison.Ordinal));
-                if (i >= 0)
-                    lines[i] = assetLine;
-                else if (lines.IndexOf("[AssetDelivery]") is int section and >= 0)
-                    lines.Insert(section + 1, assetLine);
-                else
-                    lines.AddRange(new[] { "", "[AssetDelivery]", assetLine });
-                changed = true;
-            }
-            if (!changed)
-                return;
-            if (File.Exists(config) && !File.Exists(config + ".orig"))
-                File.Copy(config, config + ".orig");
-            File.WriteAllLines(config, lines, Encoding.ASCII);
-        }
+        public static void PointAt(string folder, string login, string marketplaceUrl, ClientConfigOptions? options)
+            => ClientConfigFile.PointAt(folder, login, marketplaceUrl, options);
 
         /// <summary>Starts the game logged in with a session key from the account service.</summary>
         public static Process Start(string folder, string sessionKey, string locale)

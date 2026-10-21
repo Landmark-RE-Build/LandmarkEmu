@@ -724,7 +724,9 @@ Full detail in [terrain.md](terrain.md).
     bool has voxels}`. The paste tool only starts when that material list is not empty, and the client checks
     the player holds those amounts before placing.
   - Paste sends no voxels: the server places the copy it kept (grid point s → M·s, shifted so the turned box's
-    minimum corner is the origin), charges materials, records one undoable edit, answers a Response (sub 7,
+    minimum corner is the origin; a voxel's material goes with its grid point, its vertex with its cube, which a
+    flipped axis moves one voxel lower: `Building.TurnedVoxels`, terrain.md "Pastes and designs"), charges
+    materials, records one undoable edit, answers a Response (sub 7,
     type 2), then TerrainCell sub 3 for every listed cell **before** sending the new voxels. The client holds the
     listed cells pending (and drops their updates) until it hears sub 3; a copy marks them pending too.
 - **0x0A ResponseObserved (S→C)** `{u32 operation, double×4 min, double×4 max, u32×3 direction, bool}` (reader
@@ -1206,11 +1208,15 @@ Client dispatcher FUN_142dad120; all readers re-read the u16 opcode and u32 sub 
   - 0x12 LostClaimServerConnection (S→C, no body): the client shows text 562155 "Unable to process the request.
     Connection to the Build SiteServer is unavailable." as a system message and a chat line.
 - **HudManagerBase 0xDC (u8 sub), right-click menus:** the client asks the server which buttons to show.
-  - 1 RadialMenuRequest (C→S) `{u64 target guid, u32 request type}`. Types: 1 prop, 2 friend (Friends window),
-    3 player in the world, 4 other social row, 5 party member, 6 guild member, 7 chat tab.
+  - 1 RadialMenuRequest (C→S) `{u64 target guid, u32 request type}`. Request types, one per sender [P]: 1 an entity in
+    the world (radial input), 2 the Friends list (ClientFriends.HandleRightClick), 3 the party window
+    (Groups.HandleRightClick), 4 the guild roster (Guild.HandleRightClick), 6 a chat tab (Chat.HandleRightClick).
   - 2 RadialMenuResponse (S→C) `{u64 target guid (must match), u32 menu type, u32 n, n × {u32 sort order,
-    u32 button id, u8 selectable}, u32 request type}`. Button ids are rows of the client's
-    `Resources/RadialMenuButtons.txt`, which gives each button's label and Lua call (e.g. 23 `Ui.TeleportToFriend`).
+    u32 button id, u8 selectable}, u32 request type}`. Menu types are RadialMenuTypes.txt rows: 1 prop, 3 player,
+    4 friend, 5 party member, 6 guild member, 7 chat tab (request 2 → 4, 3 → 5, 4 → 6, 6 → 7). Button ids are rows of the
+    client's `Resources/RadialMenuButtons.txt`, which gives each button's label and Lua call (e.g. 23
+    `Ui.TeleportToFriend`). Request types 2-4 and 6 are drawn as the social windows' context menu, which calls the Lua
+    function with the target guid alone; the radial passes the guid and the target's name (request-variants.md).
   - Closing the prop menu sends nothing (0.695): the X runs Lua RadialMenu.ExitScriptingState (FUN_1435fd800 →
     FUN_14343a640, a scripting-controller state change) and the menu's reset (FUN_14372d730) has no packet. Its title
     can't be set by the server: the context-menu indicator takes its labels from the scripting controller's state

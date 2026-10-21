@@ -38,7 +38,7 @@ The world server tells every game this address, so it must be one they can reach
 
 ### `LOGIN_PORT`
 
-Ports. Players need all but DB_PORT open (Windows Firewall, and port forwarding on your router for players outside your home network). Each is published on the same port number inside the container, except ACCOUNT_PORT, which always maps to the auth container's port 5000. Login server (UDP): the game logs in here.
+Ports. Players need all but DB_PORT open (Windows Firewall, and port forwarding on your router for players outside your home network). Each is published on the same port number inside the container, except ACCOUNT_PORT, which always maps to the auth container's port 5000. On Windows, if compose fails with "port is forbidden" / "excluded", Hyper-V has reserved that host port (check: netsh interface ipv4 show excludedportrange protocol=tcp). Pick a free port outside those ranges — 5000 often sits inside 4923-5022; 5050 is a common substitute for ACCOUNT_PORT. Login server (UDP): the game logs in here.
 
 | `.env` | Service setting | Default | Live |
 |---|---|---|---|
@@ -313,6 +313,22 @@ Placed props are sent to each player only within this many metres (in 64 m squar
 |---|---|---|---|
 | `PROP_STREAM_RANGE` | world: `PropStreamRange` | `400` | not known |
 
+### `STREAM_HOLD_UNTIL_LOADED`
+
+While a player's loading screen is up (login or a long trip), creatures, trees, chests, outposts, warp crystals and the placed props away from where they stand wait until the screen drops (at most STREAM_HOLD_LIMIT_SECONDS), then come all at once. Works around the game's own 64-slot memory limit on PCs with 16 or more CPU threads, where loading could crawl at 50 % for a long time ("Avg contour" lines in the game's log). Only the order changes. false = everything at once, as before 2026-10-21.
+
+| `.env` | Service setting | Default | Live |
+|---|---|---|---|
+| `STREAM_HOLD_UNTIL_LOADED` | world: `StreamHoldUntilLoaded` | `true` | — |
+
+### `STREAM_HOLD_LIMIT_SECONDS`
+
+The longest that hold lasts, in seconds (10-600), for a game that never reports its loading screen down.
+
+| `.env` | Service setting | Default | Live |
+|---|---|---|---|
+| `STREAM_HOLD_LIMIT_SECONDS` | world: `StreamHoldLimitSeconds` | `90` | — |
+
 ### `PLAYER_TELEPORT_REQUESTS`
 
 The Escape menu's "Evac to Safety" moves players: onto the ground where they stand, or just off the build site they stand on. true = live; false answers players' requests in place (admins' /location and map teleports still work).
@@ -532,6 +548,22 @@ Who may review: accounts that spent at least this much Daybreak Cash (x LUMENS_P
 | `PLAYER_STUDIO_REVIEWS_PER_DAY` | commerce: `PlayerStudioReviewsPerDay`<br>world: `PlayerStudioReviewsPerDay` | `2` | 2 |
 | `PLAYER_STUDIO_STAFF_REVIEW` | commerce: `PlayerStudioStaffReview`<br>world: `PlayerStudioStaffReview` | `true` | true |
 
+### `PLAYER_STUDIO_DESIGNS_FREE_STORAGE`
+
+Player Studio designs take no design storage: the copies bought from Player Studio and a creator's designs that are on it (waiting for review or listed). true = as live (wiki Designs: bought designs don't count toward the limit; developers, Hotfix Notes 17 Oct 2014: designs submitted to Player Studio no longer count against Voxel Storage); false = they count.
+
+| `.env` | Service setting | Default | Live |
+|---|---|---|---|
+| `PLAYER_STUDIO_DESIGNS_FREE_STORAGE` | world: `PlayerStudioDesignsFreeStorage` | `true` | true |
+
+### `DESIGNS_FOLLOW_ACCOUNT`
+
+Designs belong to the account: when a character is deleted, its designs (and the designs made of its build sites) go to the account's next character at its world entry. true = as live (developers, Landmark Wipe Q&A 14 Mar 2016: designs); false = they stay with the deleted character.
+
+| `.env` | Service setting | Default | Live |
+|---|---|---|---|
+| `DESIGNS_FOLLOW_ACCOUNT` | world: `DesignsFollowAccount` | `true` | true |
+
 ### `FOUNDER_ENTITLEMENTS`, `ENTITLEMENT_PACKAGES`, `ENTITLEMENT_DELIVERY`
 
 Founder's Pack, Year Zero and promotional items (flags, Void Vault, founder pickaxes and outfits, Year Zero trophy and outfit, Iron Portcullis, Fan Faire souvenirs) for every character, once (true, this server's choice; live gave them only to buyers, Year Zero survivors and winners). false = nobody gets them and their props leave the prop palette. ENTITLEMENT_PACKAGES picks founder / yearzero / promo. ENTITLEMENT_DELIVERY: auto = as live (Founder's Pack items into the bag, Year Zero gifts and promo items by mail), mail, bag, or per package (e.g. founder=bag,promo=bag).
@@ -584,6 +616,14 @@ Storage chests one account may have placed over all its build sites. 0 = no acco
 | `.env` | Service setting | Default | Live |
 |---|---|---|---|
 | `CHEST_ACCOUNT_CAP` | world: `ChestAccountCap` | `0` | 0 |
+
+### `UPKEEP_TIME_ZONE`
+
+The time zone whose calendar days count as build site upkeep login days (every 2 login days add a day of upkeep). America/Los_Angeles = as live (developers, 17 Mar 2015: a day runs 12:00 AM to 11:59 PM Pacific Time); UTC = days by UTC.
+
+| `.env` | Service setting | Default | Live |
+|---|---|---|---|
+| `UPKEEP_TIME_ZONE` | world: `UpkeepTimeZone` | `America/Los_Angeles` | — |
 
 ### `FRIEND_TELEPORT_COOLDOWN_SECONDS`
 
@@ -706,6 +746,14 @@ Most of one item (e.g. ore) one mail attachment may carry: 9000 = as live (wiki 
 | `.env` | Service setting | Default | Live |
 |---|---|---|---|
 | `MAIL_MAX_STACK` | world: `MailMaxStack` | `9000` | 9000 |
+
+### `LUMEN_TRADING`
+
+Lumens change hands between players: offered in the trade window, sent by mail or asked for as cash on delivery. false = as live (the developers' Landmark Wipe Q&A of 14 March 2016: Lumens cannot be traded); true = allowed.
+
+| `.env` | Service setting | Default | Live |
+|---|---|---|---|
+| `LUMEN_TRADING` | world: `LumenTrading` | `false` | false |
 
 ### `ITEM_AUTO_RESUPPLY`
 
@@ -988,6 +1036,8 @@ Class `WorldServerConfiguration` (`LandmarkEmulator.WorldServer/WorldServerConfi
 | `SafeEjectReset` | `bool` | `true` | `SAFE_EJECT_RESET` |
 | `LiveCharacterStats` | `bool` | `true` | `LIVE_CHARACTER_STATS` |
 | `PropStreamRange` | `float` | `400` | `PROP_STREAM_RANGE` |
+| `StreamHoldUntilLoaded` | `bool` | `true` | `STREAM_HOLD_UNTIL_LOADED` |
+| `StreamHoldLimitSeconds` | `int` | `90` | `STREAM_HOLD_LIMIT_SECONDS` |
 | `KeepVertexOnlyVoxels` | `bool` | `true` | `KEEP_VERTEX_ONLY_VOXELS` |
 | `TerrainLodCopies` | `bool` | `true` | `TERRAIN_LOD_COPIES` |
 | `GameDirectory` | `string` | `C:/Program Files (x86)/Steam/steamapps/common/Landmark (e…` | fixed: `/game` |
@@ -1036,6 +1086,7 @@ Class `WorldServerConfiguration` (`LandmarkEmulator.WorldServer/WorldServerConfi
 | `EntitlementDelivery` | `string` | `auto` | `ENTITLEMENT_DELIVERY` |
 | `RestartSchedule` | `string` | (empty) | `RESTART_SCHEDULE` |
 | `RestartTimeZone` | `string` | `America/Los_Angeles` | `RESTART_TIME_ZONE` |
+| `UpkeepTimeZone` | `string` | `America/Los_Angeles` | `UPKEEP_TIME_ZONE` |
 | `RestartWarningSeconds` | `int` | `3600` | `RESTART_WARNING_SECONDS` |
 | `HealthFile` | `string` | (empty) | fixed: `/tmp/world-alive` |
 | `WatchdogSeconds` | `int` | `180` | `WATCHDOG_SECONDS` |
@@ -1067,6 +1118,9 @@ Class `WorldServerConfiguration` (`LandmarkEmulator.WorldServer/WorldServerConfi
 | `StoreTradeWaitHours` | `uint` | `12` | `STORE_TRADE_WAIT_HOURS` |
 | `OverflowExpiryHours` | `uint` | `24` | `OVERFLOW_EXPIRY_HOURS` |
 | `MailMaxStack` | `uint` | `9000` | `MAIL_MAX_STACK` |
+| `LumenTrading` | `bool` | `false` | `LUMEN_TRADING` |
+| `PlayerStudioDesignsFreeStorage` | `bool` | `true` | `PLAYER_STUDIO_DESIGNS_FREE_STORAGE` |
+| `DesignsFollowAccount` | `bool` | `true` | `DESIGNS_FOLLOW_ACCOUNT` |
 | `ItemAutoResupply` | `bool` | `true` | `ITEM_AUTO_RESUPPLY` |
 | `GriefAwards` | `bool` | `true` | `GRIEF_AWARDS` |
 | `GriefDamagePerPoint` | `uint` | `100` | `GRIEF_DAMAGE_PER_POINT` |

@@ -143,6 +143,37 @@ namespace LandmarkEmulator.Tests.Rules
             text = (string)method.Invoke(null, new object[] { list });
         }
 
+        /// <summary>A compose request (sub 1 body after the sub): one recipient, then the attachments as given.</summary>
+        private static Layout Compose(params Func<Layout, Layout>[] attachments)
+        {
+            Layout l = new Layout().U64(0).U32(1).U32(0).U32(0).U32(0).Str("Friend").Str("").U32(0).Str("Hi").Str("Body")
+                .U32((uint)attachments.Length);
+            foreach (Func<Layout, Layout> a in attachments)
+                a(l);
+            return l;
+        }
+
+        private static Layout SentCoins(Layout l, uint coins) => l.U64(0).U32(1).U64(0).U32(coins).U32(0).U32(0);
+        private static Layout CashOnDelivery(Layout l, uint coins) => l.U64(0).U32(5).U32(coins);
+        private static Layout AnItem(Layout l, ulong guid) => l.U64(0).U32(1).U64(guid).U32(1).U32(Ore).U32(0);
+
+        /// <summary>
+        /// Lumens (the compose window's coins) can't be mailed or asked for on delivery while LumenTrading is off (live:
+        /// "they cannot be traded", Wipe Q&amp;A 14 Mar 2016): result 0xA. With it on, both are read as before.
+        /// </summary>
+        [Fact]
+        public void LumensInMail_FollowTheLumenTradingRule()
+        {
+            world.Config.LumenTrading = false;
+            uint Read(Layout l) => Mail.ReadCompose(new LandmarkEmulator.Shared.Network.GamePacketReader(l.ToArray()), out _);
+            Assert.Equal(Mail.NoTradeItem, Read(Compose(l => SentCoins(l, 50))));
+            Assert.Equal(Mail.NoTradeItem, Read(Compose(l => AnItem(l, 0x55), l => CashOnDelivery(l, 50))));
+            Assert.Equal(Mail.Success, Read(Compose(l => AnItem(l, 0x55))));
+            world.Config.LumenTrading = true;
+            Assert.Equal(Mail.Success, Read(Compose(l => SentCoins(l, 50))));
+            Assert.Equal(Mail.Success, Read(Compose(l => AnItem(l, 0x55), l => CashOnDelivery(l, 50))));
+        }
+
         /// <summary>AttachItemToComposeRequest (sub 0x15): over the cap and a Player Design item are answered "invalid".</summary>
         [Theory]
         [InlineData(9000u, 0u)]

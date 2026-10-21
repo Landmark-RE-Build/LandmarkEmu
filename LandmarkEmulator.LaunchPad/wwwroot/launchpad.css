@@ -138,3 +138,16 @@ ul.plain { padding-left: 18px; margin: 8px 0; max-height: 180px; overflow: auto;
 ul.plain li { margin: 3px 0; }
 .small { font-size: 12px; }
 #actionBtn.stop { background: linear-gradient(180deg, #e07a6e, #a8443a); color: #1a0705; }
+
+/* Advanced mode: Client settings */
+#settingsContent .setting h3 { margin: 2px 0 4px; }
+.card > p:first-child { margin-top: 0; }
+.values .prose { color: var(--muted); font-style: italic; }
+.setting .key { font-family: Consolas, monospace; font-size: 12px; font-weight: 400; color: var(--muted); }
+.setting p { margin: 4px 0; }
+table.values { border-collapse: collapse; font-size: 13px; margin: 6px 0; }
+table.values td { padding: 2px 14px 2px 0; vertical-align: top; }
+table.values td:first-child { color: var(--muted); white-space: nowrap; }
+.choices label.check { margin: 5px 0; }
+.choices label.check input.value { width: 64px; margin: 0 4px 0 2px; padding: 3px 6px; }
+.error.small { color: var(--danger); }

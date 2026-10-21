@@ -247,10 +247,6 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
         /// <summary>How long a re-zone into the air over placed props holds the flags (bodies took ≤2.9 s; ours).</summary>
         private const int PropBodyMs = 4000;
 
-        /// <summary>Sideways reach (m) of the props sent ahead of the flags on an arrival over props (64 m down, 16 m up)
-        /// [I ours: the structure the player lands on, with margin].</summary>
-        private const float EarlyPropReach = 48f;
-
         /// <summary>
         /// Does the player arrive at least 1.5 m above the landscape's ground with a placed prop under them (within 4 m
         /// sideways, 12 m down)? Then they would stand on that prop, which has no body yet.
@@ -339,16 +335,12 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                 // re/hooks/physics/logs/r71.jsonl: platform 0x20001CF and its docks) [P], while ClientIsReady lets the
                 // player move at once, so a player put 1.5 m over a platform fell through it
                 // (trace/0695/agent-platform-collision.md §3) [I strong]. The props go first and the flags wait.
-                // Only those near the arrival (EarlyPropReach), not the whole landscape (~250 B a prop): the rest follow
+                // Only those near the arrival (Props.ArrivalReach), not the whole landscape (~250 B a prop): the rest follow
                 // the flags in Reintroduce, so the burst ahead of the flags can't push the deck's own props back in the
                 // reliable queue during the hold (bandwidth audit 2026-10-18 R5).
                 if (ArrivesOverProps(session))
                 {
-                    System.Numerics.Vector3 at = session.Position;
-                    var near = Game.Props.PlacedInBox(session.ZoneId,
-                        at - new System.Numerics.Vector3(EarlyPropReach, 64f, EarlyPropReach),
-                        at + new System.Numerics.Vector3(EarlyPropReach, 16f, EarlyPropReach));
-                    Game.Props.SendEarly(session, near);   // StreamIn (Reintroduce) skips them
+                    Game.Props.SendArrival(session);   // StreamIn (Reintroduce, or the stream hold's end) skips them
                     HoldZoneIn(session, PropBodyMs);
                     return;
                 }
