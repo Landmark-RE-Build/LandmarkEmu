@@ -2,7 +2,7 @@ using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace LandmarkEmulator.LaunchPad
+namespace LandmarkEmulator.ClientLaunch
 {
     /// <summary>
     /// SRP-6a, the player's side (the server side is LandmarkEmulator.Shared/Network/Cryptography/Srp.cs; the same as

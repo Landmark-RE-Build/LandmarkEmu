@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.IO;
-using System.Text;
-using System.Text.RegularExpressions;
+using LandmarkEmulator.ClientLaunch;
 
 namespace LandmarkEmulator.LaunchPad
 {
@@ -35,27 +34,6 @@ namespace LandmarkEmulator.LaunchPad
 
         /// <summary>Starts the game logged in with a session key from the account service.</summary>
         public static Process Start(string folder, string sessionKey, string locale)
-        {
-            string arguments = $"SessionId={sessionKey} CasSessionId=0 STEAM_ENABLED=0";
-            if (!string.IsNullOrWhiteSpace(locale) && Regex.IsMatch(locale, "^[a-z]{2}_[A-Z]{2}$"))
-                arguments += $" Internationalization:Locale={locale}";
-            var info = new ProcessStartInfo(Path.Combine(folder, "Landmark64.exe"), arguments)
-            {
-                WorkingDirectory = folder,
-                UseShellExecute = false
-            };
-            // LaunchPad's own Steam registration (SteamPresence) is not passed on: the game runs with Steam off.
-            info.Environment.Remove("SteamAppId");
-            info.Environment.Remove("SteamGameId");
-            try
-            {
-                return Process.Start(info) ?? throw new InvalidOperationException("The game did not start.");
-            }
-            catch (System.ComponentModel.Win32Exception e)
-            {
-                // The system's own reason, without .NET's long "An error occurred trying to start process ..." wrapper.
-                throw new InvalidOperationException($"Landmark64.exe did not start: {new System.ComponentModel.Win32Exception(e.NativeErrorCode).Message}");
-            }
-        }
+            => GameSession.Start(folder, sessionKey, locale);
     }
 }

@@ -43,7 +43,10 @@
     <!-- Patch packs and the rules they are checked by, shared with the server's patch host (and its embedded lists of
          genuine files: names, sizes and checksums only, no game content). -->
     <ProjectReference Include="..\LandmarkEmulator.PatchPacks\LandmarkEmulator.PatchPacks.csproj" />
+    <!-- SRP login / ServerApi / GameSession — also used by LandmarkLocal. -->
+    <ProjectReference Include="..\LandmarkEmulator.ClientLaunch\LandmarkEmulator.ClientLaunch.csproj" />
     <Using Include="LandmarkEmulator.PatchPacks" />
+    <Using Include="LandmarkEmulator.ClientLaunch" />
   </ItemGroup>
 
 </Project>
