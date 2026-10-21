@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>LandmarkLocal</AssemblyName>
+    <RootNamespace>LandmarkLocal</RootNamespace>
+    <StartupObject>LandmarkLocal.Program</StartupObject>
+    <Description>Solo forever-local LandmarkEmu host (servers + in-app Play).</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LandmarkLocal.Core\LandmarkLocal.Core.csproj" />
+    <!-- SRP login / GameSession — same play path as LaunchPad (not the LaunchPad WinExe). -->
+    <ProjectReference Include="..\LandmarkEmulator.ClientLaunch\LandmarkEmulator.ClientLaunch.csproj" />
+    <ProjectReference Include="..\LandmarkEmulator.PatchPacks\LandmarkEmulator.PatchPacks.csproj" />
+  </ItemGroup>
+
+</Project>

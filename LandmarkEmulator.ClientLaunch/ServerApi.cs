@@ -3,7 +3,7 @@ using System.Net.Http;
 using System.Net.Sockets;
 using System.Text.Json;
 
-namespace LandmarkEmulator.LaunchPad
+namespace LandmarkEmulator.ClientLaunch
 {
     /// <summary>
     /// A server's account service (the auth server's web API, LandmarkEmulator.WebAPI/AuthWebAPI.cs): /info for the

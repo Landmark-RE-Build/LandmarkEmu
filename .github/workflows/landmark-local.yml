@@ -1,0 +1,66 @@
+# Build LandmarkLocal (solo Windows host) and publish a zip artifact.
+# Manual: Actions → LandmarkLocal → Run workflow
+# Release: push a tag landmark-local-v* (e.g. landmark-local-v0.1.0)
+name: LandmarkLocal
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master, feature/landmark-local]
+    tags:
+      - "landmark-local-v*"
+  pull_request:
+    paths:
+      - "LandmarkLocal/**"
+      - "LandmarkLocal.Core/**"
+      - "LandmarkEmulator.ClientLaunch/**"
+      - "LandmarkEmulator.LaunchPad/**"
+      - "LandmarkEmulator.PatchPacks/**"
+      - "LandmarkEmulator.AuthServer/**"
+      - "LandmarkEmulator.WorldServer/**"
+      - "tools/publish-landmark-local.ps1"
+      - ".github/workflows/landmark-local.yml"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Publish LandmarkLocal
+        shell: pwsh
+        run: |
+          powershell -File tools/publish-landmark-local.ps1 -Configuration Release -Output artifacts/LandmarkLocal
+
+      - name: Zip
+        shell: pwsh
+        run: |
+          $name = if ($env:GITHUB_REF_TYPE -eq "tag") { $env:GITHUB_REF_NAME } else { "LandmarkLocal-${{ github.sha }}" }
+          $name = $name -replace '[^\w\.\-]+', '-'
+          Compress-Archive -Path "artifacts/LandmarkLocal\*" -DestinationPath "artifacts/$name.zip" -Force
+          "ZIP_NAME=$name.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Get-Item "artifacts/$name.zip" | Format-List Name, Length
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LandmarkLocal
+          path: artifacts/${{ env.ZIP_NAME }}
+          if-no-files-found: error
+
+      - name: Attach zip to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/landmark-local-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/${{ env.ZIP_NAME }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

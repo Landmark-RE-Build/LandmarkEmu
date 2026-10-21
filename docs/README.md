@@ -9,6 +9,7 @@ Steam build 0.589.1.128895, on which most layouts were first traced; LaunchPad u
 | Document | What it covers |
 |---|---|
 | [docker.md](docker.md) | Running the servers in Docker: the services, every `.env` setting, more worlds, the optional gateway / world-channel / social / commerce / Environment Server containers, the account website, backups. |
+| [landmark-local.md](landmark-local.md) | LandmarkLocal: solo forever-local Windows host — servers on 127.0.0.1 plus in-app Play (account = admin). Docker stays the multi-user path. |
 | [launchpad.md](launchpad.md) | LaunchPad: installing it, the Steam check, the verified 0.695 update and its SHA-256 list, `.lmpatch` packs, the server's patch folder, what PLAY does. |
 | [protocol.md](protocol.md) | Transport (SOE UDP, gateway tunnel, zone opcodes), the 0.695 wire numbering, packet layouts for every system the server handles, and the rules the client enforces when reading them. |
 | [gameplay.md](gameplay.md) | How each server system works: sessions, inventory, abilities and movement, gathering, building, build sites, props and crafting, account items, chests, social, goals, creatures, combat, grief, landscapes, teleports, caverns and outposts, graveyards, death, developer commands. |

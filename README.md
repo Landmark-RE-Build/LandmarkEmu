@@ -43,30 +43,56 @@ Every gameplay setting defaults to how live Landmark behaved, and server owners 
 
 ---
 
-## Playing
+## Quick start — play locally on your PC (Windows)
+
+New to LandmarkEmu and just want a hit of pure Landmark goodness? This is the simplest path: one app runs the servers and starts the game.
+
+### What you need
+
+1. **Landmark** on this PC (Remember, if you're using Steam you can't use Steam's Play button)
+2. **[.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)** (Windows x64) — install the **Desktop Runtime**, not only the ASP.NET one.
+3. The **LandmarkLocal** zip from this project’s [Releases](/releases)  
+
+### Play in five steps
+
+1. Unpack the zip anywhere (e.g. `C:\LandmarkLocal`).
+2. Double-click **`LandmarkLocal.exe`**.
+3. Confirm your **Landmark folder** (the one with `Landmark64.exe` — usually found automatically for Steam installs), then choose an
+   **account name** and **password**. That account is both your normal login and **admin** on this local world.
+4. Click **Start** and wait for **Ready** (the first time can take more than several minutes: it downloads a local database and
+   terrain data, plus the world server has do a bunch of stuff the first time it runs).
+5. Click **Play**. Landmark should start. You do not need to open LaunchPad for this path.
+
+Later visits: open LandmarkLocal → **Start** → **Ready** → **Play** (Your password is remembered).  
+To shut servers down: **Stop**.  
+
+More detail and troubleshooting: [docs/landmark-local.md](docs/landmark-local.md).
+
+---
+
+## Playing on someone else’s server (LaunchPad)
+
+Use this when a friend hosts a server (or you use Docker hosting below) and you join over the network.
 
 1. **Get LaunchPad:** download `LaunchPad.exe` from this project's [Releases](../../releases) (always from here,
    never from a server owner).
 2. **Put it in your Landmark folder** (`steamapps\common\Landmark`, next to `Landmark64.exe`). Rename the game's own
    `LaunchPad.exe` to `LaunchPad.exe.orig` first. LaunchPad only runs from that folder.
-3. **Start it** from the folder, a desktop shortcut, or as a non-Steam game in Steam. Steam's own Play button can no
-   longer start Landmark: it stops at "getting legacy key", because Daybreak's key service is gone.
-4. **Add the server:** Settings → Servers, type the server's address (on the host's own PC, `127.0.0.1`) and save.
+3. **Start it** from the folder, a desktop shortcut, or as a non-Steam game in Steam.
+4. **Add the server:** Settings → Servers, type the server's address and save.
    LaunchPad gets everything else from the server.
 5. **Update the game to 0.695.** The Steam copy is 0.589. LaunchPad installs the 0.695 update from an `.lmpatch` file
    you have (Settings → Patch packs), or from the server you play on: it shows **UPDATE** and asks first, every time.
-   LaunchPad never downloads the game itself; it only patches a complete, unchanged Steam install. Every file it writes
-   must match the SHA-256 of Daybreak's genuine file, and every change is backed up, so "Back to the Steam game" undoes
-   it. Details: [docs/launchpad.md](docs/launchpad.md).
+   Details: [docs/launchpad.md](docs/launchpad.md).
 6. **Create an account** (Log in ▾ → Create account), or use the server's sign-up website. Your password never leaves
    your PC: logins use SRP.
 7. **Press PLAY.**
 
 ---
 
-## Hosting a server
+## Hosting a server for others (Docker)
 
-The servers run in **Docker**. Each part of the server is its own container:
+**Multi-user / internet:** the servers run in **Docker**. Each part of the server is its own container:
 
 | Service | |
 |---|---|

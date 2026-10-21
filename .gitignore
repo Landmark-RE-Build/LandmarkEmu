@@ -360,5 +360,9 @@ network.env
 /.env
 server-data/
 
+# LandmarkLocal dev runtime folder (MariaDB cache, logs, generated configs).
+LandmarkLocal/run/
+artifacts/LandmarkLocal/
+
 # Server patch folder: the packs themselves (*.lmpatch, above) and the refused ones.
 docker/launcher/patches/rejected/

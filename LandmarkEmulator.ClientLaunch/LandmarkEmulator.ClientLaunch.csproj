@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Shared client launch pieces: Auth SRP register/login (ServerApi) and starting Landmark64.
+    Used by LaunchPad and LandmarkLocal so neither WinExe has to ProjectReference the other.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>LandmarkEmulator.ClientLaunch</RootNamespace>
+    <AssemblyName>LandmarkEmulator.ClientLaunch</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LandmarkEmulator.PatchPacks\LandmarkEmulator.PatchPacks.csproj" />
+    <Using Include="LandmarkEmulator.PatchPacks" />
+  </ItemGroup>
+
+</Project>
