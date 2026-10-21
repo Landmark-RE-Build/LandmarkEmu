@@ -14,14 +14,21 @@ public sealed class GameDataSetupResult
 public static class GameDataSetup
 {
     public const string TerrainZipName = "LandmarkEmu-terrain-heights.zip";
+    /// <summary>
+    /// Dedicated <c>terrain</c> release tag — not <c>latest</c>, so LandmarkLocal / other release tags
+    /// do not have to carry this ~750 MB asset or become "latest" for the download to work.
+    /// </summary>
     public const string TerrainDownloadUrl =
-        "https://github.com/Landmark-RE-Build/LandmarkEmu/releases/latest/download/LandmarkEmu-terrain-heights.zip";
+        "https://github.com/Landmark-RE-Build/LandmarkEmu/releases/download/terrain/LandmarkEmu-terrain-heights.zip";
 
     public static string ManualTerrainInstructions(LocalPaths paths) =>
-        "Terrain heights are required for trees, ground checks and starting build sites.\n" +
-        $"1. Download {TerrainZipName} from the project's GitHub Releases.\n" +
-        $"2. Put the zip here (still zipped):\n   {Path.Combine(paths.Root, TerrainZipName)}\n" +
-        "   or in cache\\ next to LandmarkLocal, then Start again.";
+        "What to do:\n" +
+        $"1. Get {TerrainZipName} from the project's GitHub Releases (same place as LandmarkLocal).\n" +
+        "2. Put that zip (still zipped) next to LandmarkLocal.exe:\n" +
+        $"   {Path.Combine(paths.Root, TerrainZipName)}\n" +
+        "   or in the cache folder:\n" +
+        $"   {Path.Combine(paths.CacheDir, TerrainZipName)}\n" +
+        "3. Click Start again.";
 
     public static async Task<GameDataSetupResult> RunAsync(LocalPaths paths, LocalSettings settings,
         IProgress<string>? progress = null, CancellationToken ct = default)
@@ -55,14 +62,17 @@ public static class GameDataSetup
 
         CopyBundledServerData(paths, progress, ct);
 
-        bool terrain = await EnsureTerrainAsync(paths, progress, ct);
-        if (!terrain)
+        (bool terrainOk, string? terrainError) = await EnsureTerrainAsync(paths, progress, ct);
+        if (!terrainOk)
         {
+            string why = string.IsNullOrWhiteSpace(terrainError)
+                ? "Terrain heights are missing."
+                : terrainError.Trim();
             return new GameDataSetupResult
             {
                 Ok = false,
                 TerrainPresent = false,
-                Message = ManualTerrainInstructions(paths),
+                Message = why + "\n\n" + ManualTerrainInstructions(paths),
             };
         }
 
@@ -105,39 +115,64 @@ public static class GameDataSetup
         }
     }
 
-    static async Task<bool> EnsureTerrainAsync(LocalPaths paths, IProgress<string>? progress, CancellationToken ct)
+    static async Task<(bool Ok, string? Error)> EnsureTerrainAsync(
+        LocalPaths paths, IProgress<string>? progress, CancellationToken ct)
     {
         if (HasTerrainBins(paths.GameDataDir))
-            return true;
+            return (true, null);
 
         string? zip = FindTerrainZip(paths);
         if (zip == null)
         {
             progress?.Report("Downloading terrain heights…");
+            progress?.Report(LocalOrchestrator.StatusPrefix + "Downloading terrain heights…");
             try
             {
-                // No pinned checksum in Releases (asset can grow); cache by file presence after unpack stamp.
                 zip = await DownloadTerrainLooseAsync(paths, progress, ct);
             }
             catch (Exception ex)
             {
-                progress?.Report("Terrain download failed: " + ex.Message);
-                return false;
+                string msg = "Could not download terrain heights: " + FriendlyDownloadError(ex);
+                progress?.Report(msg);
+                progress?.Report(LocalOrchestrator.StatusPrefix + "Failed — terrain download");
+                return (false, msg);
             }
         }
 
         if (zip == null || !File.Exists(zip))
-            return false;
+        {
+            string msg = "Terrain heights zip was not found and could not be downloaded.";
+            progress?.Report(msg);
+            progress?.Report(LocalOrchestrator.StatusPrefix + "Failed — terrain missing");
+            return (false, msg);
+        }
 
         string stamp = TerrainStamp(zip);
         string stampFile = Path.Combine(paths.GameDataDir, ".terrain-heights");
         if (File.Exists(stampFile) && File.ReadAllText(stampFile).Trim() == stamp && HasTerrainBins(paths.GameDataDir))
-            return true;
+            return (true, null);
 
-        await ZipProgress.ExtractToDirectoryAsync(
-            zip, paths.GameDataDir, "Unpacking terrain heights (once; can take a few minutes)", progress, ct);
+        try
+        {
+            await ZipProgress.ExtractToDirectoryAsync(
+                zip, paths.GameDataDir, "Unpacking terrain heights (once; can take a few minutes)", progress, ct);
+        }
+        catch (Exception ex)
+        {
+            string msg = "Could not unpack terrain heights: " + ex.Message;
+            progress?.Report(msg);
+            return (false, msg);
+        }
+
         File.WriteAllText(stampFile, stamp);
-        return HasTerrainBins(paths.GameDataDir);
+        if (!HasTerrainBins(paths.GameDataDir))
+        {
+            string msg = $"Unpacked {Path.GetFileName(zip)} but found no TerrainHeights*.bin files inside.";
+            progress?.Report(msg);
+            return (false, msg);
+        }
+
+        return (true, null);
     }
 
     public static bool HasTerrainBins(string gameDataDir)
@@ -164,7 +199,7 @@ public static class GameDataSetup
         return $"{info.Length}-{info.LastWriteTimeUtc.Ticks}";
     }
 
-    static async Task<string?> DownloadTerrainLooseAsync(LocalPaths paths, IProgress<string>? progress, CancellationToken ct)
+    static async Task<string> DownloadTerrainLooseAsync(LocalPaths paths, IProgress<string>? progress, CancellationToken ct)
     {
         paths.EnsureLayout();
         string dest = Path.Combine(paths.CacheDir, TerrainZipName);
@@ -176,16 +211,53 @@ public static class GameDataSetup
         using HttpResponseMessage response = await http.GetAsync(TerrainDownloadUrl, HttpCompletionOption.ResponseHeadersRead, ct);
         if (!response.IsSuccessStatusCode)
         {
-            progress?.Report($"Terrain download HTTP {(int)response.StatusCode}");
-            return null;
+            throw new InvalidOperationException(
+                $"HTTP {(int)response.StatusCode} from\n{TerrainDownloadUrl}\n" +
+                "(that file is not on GitHub Releases yet, or the link is wrong).");
         }
+
+        long? total = response.Content.Headers.ContentLength;
         string temp = dest + ".partial";
-        await using (Stream input = await response.Content.ReadAsStreamAsync(ct))
+        await using Stream input = await response.Content.ReadAsStreamAsync(ct);
         await using (Stream output = File.Create(temp))
-            await input.CopyToAsync(output, ct);
+        {
+            byte[] buffer = new byte[1 << 20];
+            long read = 0;
+            long lastReport = -1;
+            int n;
+            while ((n = await input.ReadAsync(buffer.AsMemory(0, buffer.Length), ct)) > 0)
+            {
+                await output.WriteAsync(buffer.AsMemory(0, n), ct);
+                read += n;
+                long mb = read / (1024 * 1024);
+                if (mb != lastReport && (mb % 5 == 0 || read == total))
+                {
+                    lastReport = mb;
+                    string line = total is long t && t > 0
+                        ? $"Downloading terrain heights… {mb} / {t / (1024 * 1024)} MB"
+                        : $"Downloading terrain heights… {mb} MB";
+                    progress?.Report(line);
+                    progress?.Report(LocalOrchestrator.StatusPrefix + line);
+                }
+            }
+        }
+
         if (File.Exists(dest))
             File.Delete(dest);
         File.Move(temp, dest);
+        progress?.Report("Terrain heights download finished.");
         return dest;
+    }
+
+    static string FriendlyDownloadError(Exception ex)
+    {
+        for (Exception? e = ex; e != null; e = e.InnerException)
+        {
+            if (e is HttpRequestException http)
+                return http.Message;
+            if (e is TaskCanceledException)
+                return "the download timed out or was cancelled.";
+        }
+        return ex.Message;
     }
 }

@@ -28,7 +28,7 @@ You do **not** need to open LaunchPad for local play. LaunchPad is still install
 | Message | What to do |
 |---|---|
 | Landmark folder invalid | Pick the folder that has `Landmark64.exe` inside it. |
-| Terrain heights / download failed | Get `LandmarkEmu-terrain-heights.zip` from [Releases](../../releases), put it next to `LandmarkLocal.exe` (still zipped), click Start again. |
+| Terrain heights / download failed | Auto-download uses the fixed [terrain](https://github.com/Landmark-RE-Build/LandmarkEmu/releases/tag/terrain) release. If that fails: get `LandmarkEmu-terrain-heights.zip` from there, put it next to `LandmarkLocal.exe` (still zipped), click Start again. |
 | Port already in use | Something else is using a server port. Click **Stop**, close other LandmarkEmu/Docker copies, try Start again. |
 | Wrong account name or password | Clear the remembered login by changing the account name, or enter the correct password. |
 | Game build mismatch | Put the `.lmpatch` update in the `patches` folder next to LandmarkLocal, Start again, then Play. |

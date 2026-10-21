@@ -77,8 +77,14 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            SetPhase(HostPhase.Failed, "Failed");
-            Append("Failed: " + ex.Message);
+            string detail = ex.Message.Trim();
+            string headline = FirstLine(detail);
+            if (headline.Length > 80)
+                headline = headline[..77] + "…";
+            SetPhase(HostPhase.Failed, "Failed — " + headline);
+            Append("Failed: " + detail);
+            MessageBox.Show(this, detail, "LandmarkLocal — Start failed",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         finally
         {
@@ -86,6 +92,12 @@ public partial class MainWindow : Window
             SetButtons();
             UpdateChecklist();
         }
+    }
+
+    static string FirstLine(string text)
+    {
+        int n = text.IndexOfAny(['\r', '\n']);
+        return n < 0 ? text : text[..n];
     }
 
     async void Stop_Click(object sender, RoutedEventArgs e)
