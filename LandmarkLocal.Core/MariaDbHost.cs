@@ -98,9 +98,14 @@ public sealed class MariaDbHost : IDisposable
 
     public void Stop(TimeSpan? grace = null)
     {
+        StopAsync(grace).GetAwaiter().GetResult();
+    }
+
+    public async Task StopAsync(TimeSpan? grace = null)
+    {
         if (_process == null)
             return;
-        _process.Stop(grace ?? TimeSpan.FromSeconds(20));
+        await _process.StopAsync(grace ?? TimeSpan.FromSeconds(20));
         _process.Dispose();
         _process = null;
     }

@@ -7,6 +7,7 @@ public enum HostPhase
     Stopped,
     Starting,
     Ready,
+    Stopping,
     Failed,
 }
 

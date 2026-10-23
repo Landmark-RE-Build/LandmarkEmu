@@ -53,18 +53,17 @@ New to LandmarkEmu and just want a hit of pure Landmark goodness? This is the si
 2. The **LandmarkLocal** zip from this project’s [Releases](/releases)  
    (self-contained — no separate .NET install)
 
-### Play in five steps
+### Play in a few steps
 
 1. Unpack the zip anywhere (e.g. `C:\LandmarkLocal`).
 2. Double-click **`LandmarkLocal.exe`**.
 3. Confirm your **Landmark folder** (the one with `Landmark64.exe` — usually found automatically for Steam installs), then choose an
    **account name** and **password**. That account is both your normal login and **admin** on this local world.
-4. Click **Start** and wait for **Ready** (the first time can take more than several minutes: it downloads a local database and
-   terrain data, plus the world server has do a bunch of stuff the first time it runs).
-5. Click **Play**. Landmark should start. You do not need to open LaunchPad for this path.
+4. Click **PLAY** — servers start if needed (first time can take several minutes: database, terrain, world load), then Landmark launches.
+   You do not need to open LaunchPad for this path.
 
-Later visits: open LandmarkLocal → **Start** → **Ready** → **Play** (Your password is remembered).  
-To shut servers down: **Stop**.  
+Later visits: open LandmarkLocal → **PLAY** (password remembered; servers start if they were stopped).  
+To shut servers down: **Stop** (status shows **Stopping…** while that finishes). Closing the window asks whether to stop or leave servers running in the tray.
 
 More detail and troubleshooting (fresh PCs, Smart App Control, DirectX): [docs/landmark-local.md](docs/landmark-local.md).
 

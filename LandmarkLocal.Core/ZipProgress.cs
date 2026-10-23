@@ -7,7 +7,8 @@ public static class ZipProgress
 {
     /// <summary>
     /// Extracts <paramref name="zipPath"/> into <paramref name="destDir"/> on a background thread,
-    /// reporting about every 5% (and start/finish).
+    /// reporting about every 5% (and start/finish). Also emits <see cref="LocalOrchestrator.StatusPrefix"/>
+    /// lines so the GUI banner can update.
     /// </summary>
     public static async Task ExtractToDirectoryAsync(
         string zipPath,
@@ -16,7 +17,7 @@ public static class ZipProgress
         IProgress<string>? progress,
         CancellationToken ct = default)
     {
-        progress?.Report($"{label}…");
+        Report(progress, $"{label}…");
         await Task.Run(() =>
         {
             Directory.CreateDirectory(destDir);
@@ -57,10 +58,16 @@ public static class ZipProgress
                 if (pct != lastPct && (pct == 100 || pct % 5 == 0 || done == 1))
                 {
                     lastPct = pct;
-                    progress?.Report($"{label}… {pct}% ({done}/{total})");
+                    Report(progress, $"{label}… {pct}% ({done}/{total})");
                 }
             }
         }, ct);
-        progress?.Report($"{label} — done.");
+        Report(progress, $"{label} — done.");
+    }
+
+    static void Report(IProgress<string>? progress, string line)
+    {
+        progress?.Report(line);
+        progress?.Report(LocalOrchestrator.StatusPrefix + line);
     }
 }

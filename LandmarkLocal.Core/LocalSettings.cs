@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 
 namespace LandmarkLocal;
 
@@ -116,18 +117,61 @@ public sealed class LocalSettings
 
     public static string? TryFindSteamLandmark()
     {
-        string[] candidates =
-        [
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
-                "Steam", "steamapps", "common", "Landmark"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-                "Steam", "steamapps", "common", "Landmark"),
-        ];
-        foreach (string c in candidates)
+        foreach (string c in EnumerateSteamLandmarkCandidates())
         {
             if (LooksLikeLandmarkFolder(c))
                 return c;
         }
         return null;
+    }
+
+    /// <summary>Default Steam common paths plus libraries listed in each Steam install's libraryfolders.vdf.</summary>
+    public static IEnumerable<string> EnumerateSteamLandmarkCandidates()
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        string[] steamRoots =
+        [
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Steam"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Steam"),
+        ];
+
+        foreach (string steamRoot in steamRoots)
+        {
+            string common = Path.Combine(steamRoot, "steamapps", "common", "Landmark");
+            if (seen.Add(common))
+                yield return common;
+
+            foreach (string library in ReadSteamLibraryFolders(steamRoot))
+            {
+                string landmark = Path.Combine(library, "steamapps", "common", "Landmark");
+                if (seen.Add(landmark))
+                    yield return landmark;
+            }
+        }
+    }
+
+    static IEnumerable<string> ReadSteamLibraryFolders(string steamRoot)
+    {
+        string vdf = Path.Combine(steamRoot, "steamapps", "libraryfolders.vdf");
+        if (!File.Exists(vdf))
+            yield break;
+
+        string text;
+        try { text = File.ReadAllText(vdf); }
+        catch { yield break; }
+
+        foreach (string path in ParseSteamLibraryPaths(text))
+            yield return path;
+    }
+
+    /// <summary>Parses <c>path</c> entries from a Steam <c>libraryfolders.vdf</c> body.</summary>
+    public static IEnumerable<string> ParseSteamLibraryPaths(string vdfText)
+    {
+        foreach (Match m in Regex.Matches(vdfText, "\"path\"\\s+\"([^\"]+)\"", RegexOptions.IgnoreCase))
+        {
+            string path = m.Groups[1].Value.Replace(@"\\", @"\");
+            if (path.Length > 0)
+                yield return path;
+        }
     }
 }

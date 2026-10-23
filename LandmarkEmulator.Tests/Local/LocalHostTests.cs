@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -157,6 +158,46 @@ namespace LandmarkEmulator.Tests.Local
             ReadinessSnapshot snap = await ReadinessProbe.ProbeAsync(settings);
             Assert.False(snap.InfoOk);
             Assert.NotEqual(HostPhase.Ready, snap.Phase);
+        }
+
+        [Fact]
+        public void StartupProgress_ParsesPercentAndMbPair()
+        {
+            Assert.True(StartupProgress.TryParse("Unpacking MariaDB… 40% (20/50)", out double pct, out bool det));
+            Assert.True(det);
+            Assert.Equal(40, pct);
+            Assert.True(StartupProgress.TryParse("Downloading x… 10 / 40 MB", out double mbPct, out bool mbDet));
+            Assert.True(mbDet);
+            Assert.Equal(25, mbPct);
+            Assert.False(StartupProgress.TryParse("Starting Auth server…", out _, out _));
+        }
+
+        [Fact]
+        public void LocalSettings_ParseSteamLibraryPaths_ReadsPathEntries()
+        {
+            const string vdf = """
+                "libraryfolders"
+                {
+                	"0"
+                	{
+                		"path"		"C:\\Program Files (x86)\\Steam"
+                		"apps" { }
+                	}
+                	"1"
+                	{
+                		"path"		"D:\\SteamLibrary"
+                	}
+                }
+                """;
+            var paths = LocalSettings.ParseSteamLibraryPaths(vdf).ToList();
+            Assert.Contains(@"C:\Program Files (x86)\Steam", paths);
+            Assert.Contains(@"D:\SteamLibrary", paths);
+        }
+
+        [Fact]
+        public void HostPhase_IncludesStopping()
+        {
+            Assert.True(Enum.IsDefined(typeof(HostPhase), HostPhase.Stopping));
         }
     }
 }
