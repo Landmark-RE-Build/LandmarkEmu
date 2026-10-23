@@ -6,8 +6,9 @@ Want friends over the internet? Use Docker instead: [docker.md](docker.md).
 ## What you need
 
 1. **Landmark** installed from Steam on this PC.
-2. **[.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)** (Windows x64).
-3. The **LandmarkLocal** zip from [Releases](../../releases) (unpack it anywhere, e.g. `C:\LandmarkLocal`).
+2. The **LandmarkLocal** zip from [Releases](../../releases) (unpack it anywhere, e.g. `C:\LandmarkLocal`).
+
+The release zip is **self-contained** (Windows x64): you do **not** need to install the .NET or ASP.NET Core runtimes.
 
 ## How to play
 
@@ -25,13 +26,15 @@ You do **not** need to open LaunchPad for local play. LaunchPad is still install
 
 ## If Start or Play fails
 
-| Message | What to do |
+| Message / symptom | What to do |
 |---|---|
 | Landmark folder invalid | Pick the folder that has `Landmark64.exe` inside it. |
 | Terrain heights / download failed | Auto-download uses the fixed [terrain](https://github.com/Landmark-RE-Build/LandmarkEmu/releases/tag/terrain) release. If that fails: get `LandmarkEmu-terrain-heights.zip` from there, put it next to `LandmarkLocal.exe` (still zipped), click Start again. |
 | Port already in use | Something else is using a server port. Click **Stop**, close other LandmarkEmu/Docker copies, try Start again. |
 | Wrong account name or password | Clear the remembered login by changing the account name, or enter the correct password. |
 | Game build mismatch | Put the `.lmpatch` update in the `patches` folder next to LandmarkLocal, Start again, then Play. |
+| Windows blocks the app / Smart App Control | On some Windows 11 PCs, Smart App Control blocks unsigned downloads. Turn Smart App Control off (or allow the app) if Windows will not run `LandmarkLocal.exe`. |
+| Landmark fails with a DirectX / graphics error on a fresh PC | Install the [DirectX End-User Runtime](https://www.microsoft.com/en-us/download/details.aspx?id=35) from Microsoft, then try Play again. That is for the game client, not LandmarkLocal. |
 
 ## Your saves
 
@@ -60,4 +63,9 @@ LandmarkLocal status
 powershell -File tools/publish-landmark-local.ps1
 ```
 
-Output goes to `artifacts/LandmarkLocal/`. Dev runs use `LandmarkLocal/run/`.
+Output goes to `artifacts/LandmarkLocal/` (self-contained win-x64). Dev runs use `LandmarkLocal/run/` and still need a local .NET SDK/runtime.
+
+### Releases (GitHub Actions)
+
+How to ship a zip (PR → merge → Release, major/minor bumps, where to click):  
+**[devops-landmark-local.md](devops-landmark-local.md)**.
