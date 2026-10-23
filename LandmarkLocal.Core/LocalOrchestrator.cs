@@ -54,10 +54,14 @@ public sealed class LocalOrchestrator : IDisposable
             if (conflicts.Count > 0)
             {
                 string detail = string.Join("; ", conflicts.Select(c => $"{c.Name} ({c.Protocol} {c.Port}): {c.Detail}"));
-                throw new InvalidOperationException("A required port is already in use. Stop the other program or change settings.\n" + detail);
+                throw new InvalidOperationException(
+                    "A required port is already in use — often leftover LandmarkLocal servers from a previous run.\n" +
+                    "Click Stop in LandmarkLocal (or close other LandmarkEmu/Docker copies), then Start again.\n" +
+                    detail);
             }
 
             progress?.Report("Preparing game data…");
+            progress?.Report(StatusPrefix + "Preparing game data…");
             GameDataSetupResult gamedata = await GameDataSetup.RunAsync(_paths, _settings, progress, ct);
             if (!gamedata.Ok)
                 throw new InvalidOperationException(gamedata.Message);
@@ -85,6 +89,8 @@ public sealed class LocalOrchestrator : IDisposable
             LaunchPadInstallResult lp = LaunchPadInstaller.Install(_paths, _settings);
             progress?.Report(lp.Ok ? lp.Message : "LaunchPad: " + lp.Message);
 
+            progress?.Report("Setting up MariaDB…");
+            progress?.Report(StatusPrefix + "Setting up MariaDB…");
             _db = new MariaDbHost(_paths, _settings);
             await _db.EnsureInitializedAsync(progress, ct);
             if (!_db.IsRunning)
@@ -92,11 +98,13 @@ public sealed class LocalOrchestrator : IDisposable
             await _db.WaitReadyAsync(TimeSpan.FromMinutes(2), ct);
 
             progress?.Report("Starting Auth server…");
+            progress?.Report(StatusPrefix + "Starting Auth server…");
             _auth = HiddenProcess.StartDotNet(authExe, authDir, Path.Combine(_paths.LogsDir, "auth.log"));
             await WaitForAsync(async () => (await ReadinessProbe.ProbeAsync(_settings, ct)).InfoOk,
                 TimeSpan.FromMinutes(3), "Auth", progress, StatusTick(progress), ct);
 
             progress?.Report("Starting World server…");
+            progress?.Report(StatusPrefix + "Starting World server…");
             _world = HiddenProcess.StartDotNet(worldExe, worldDir, Path.Combine(_paths.LogsDir, "world.log"));
 
             var worldStarted = DateTime.UtcNow;
@@ -120,7 +128,7 @@ public sealed class LocalOrchestrator : IDisposable
                 waits.ReportWaiting(
                     "Waiting for the world to register…",
                     worldStarted,
-                    firstTip: "The world loads tables and landscapes first; a minute or two is normal, longer on a slow disk.");
+                    firstTip: "The world loads tables and landscapes first; several minutes is normal on a slow disk.");
 
                 if (_auth.HasExited)
                     throw new InvalidOperationException("Auth server exited early. See logs\\auth.log");
@@ -143,34 +151,58 @@ public sealed class LocalOrchestrator : IDisposable
 
     public async Task StopAsync(IProgress<string>? progress = null)
     {
-        progress?.Report("Stopping world…");
-        _world?.Stop(TimeSpan.FromSeconds(90));
-        _world?.Dispose();
-        _world = null;
+        Phase = HostPhase.Stopping;
+        ReportStop(progress, "Stopping world — this can take up to a minute…");
+        if (_world != null)
+        {
+            await _world.StopAsync(TimeSpan.FromSeconds(90));
+            _world.Dispose();
+            _world = null;
+        }
 
-        progress?.Report("Stopping auth…");
-        _auth?.Stop(TimeSpan.FromSeconds(20));
-        _auth?.Dispose();
-        _auth = null;
+        ReportStop(progress, "Stopping auth…");
+        if (_auth != null)
+        {
+            await _auth.StopAsync(TimeSpan.FromSeconds(20));
+            _auth.Dispose();
+            _auth = null;
+        }
 
-        progress?.Report("Stopping MariaDB…");
-        _db?.Stop(TimeSpan.FromSeconds(20));
-        _db?.Dispose();
-        _db = null;
+        ReportStop(progress, "Stopping MariaDB…");
+        if (_db != null)
+        {
+            await _db.StopAsync(TimeSpan.FromSeconds(20));
+            _db.Dispose();
+            _db = null;
+        }
 
         // PID file from a prior Start, plus by-name fallback (e.g. Auth was restarted by hand).
-        KillRecorded();
-        KillByImageName("LandmarkEmulator.WorldServer");
-        KillByImageName("LandmarkEmulator.AuthServer");
-        KillMysqldUnderOurData();
+        ReportStop(progress, "Cleaning up leftover processes…");
+        await Task.Run(() =>
+        {
+            KillRecorded();
+            KillByImageName("LandmarkEmulator.WorldServer");
+            KillByImageName("LandmarkEmulator.AuthServer");
+            KillMysqldUnderOurData();
+        });
         PidStore.Clear(_paths);
         Phase = HostPhase.Stopped;
         LastMessage = "Stopped.";
-        await Task.CompletedTask;
+        progress?.Report("Stopped.");
+        progress?.Report(StatusPrefix + "Stopped");
+    }
+
+    static void ReportStop(IProgress<string>? progress, string line)
+    {
+        progress?.Report(line);
+        progress?.Report(StatusPrefix + line);
     }
 
     public async Task<ReadinessSnapshot> StatusAsync(CancellationToken ct = default)
     {
+        if (Phase is HostPhase.Stopping)
+            return new ReadinessSnapshot { Phase = HostPhase.Stopping, Message = LastMessage };
+
         if (Phase == HostPhase.Ready || Phase == HostPhase.Starting)
         {
             ReadinessSnapshot snap = await ReadinessProbe.ProbeAsync(_settings, ct);

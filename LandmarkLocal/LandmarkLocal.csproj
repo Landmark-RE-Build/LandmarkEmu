@@ -4,6 +4,7 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>LandmarkLocal</AssemblyName>
@@ -17,6 +18,12 @@
     <!-- SRP login / GameSession — same play path as LaunchPad (not the LaunchPad WinExe). -->
     <ProjectReference Include="..\LandmarkEmulator.ClientLaunch\LandmarkEmulator.ClientLaunch.csproj" />
     <ProjectReference Include="..\LandmarkEmulator.PatchPacks\LandmarkEmulator.PatchPacks.csproj" />
+  </ItemGroup>
+
+  <!-- Keep WPF as the default Application/Brush; tray uses Forms via explicit aliases. -->
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
   </ItemGroup>
 
 </Project>

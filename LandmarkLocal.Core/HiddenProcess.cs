@@ -88,6 +88,12 @@ public sealed class HiddenProcess : IDisposable
 
     public void Stop(TimeSpan grace)
     {
+        StopAsync(grace).GetAwaiter().GetResult();
+    }
+
+    /// <summary>Graceful close, then kill if still running — does not block the caller thread while waiting.</summary>
+    public async Task StopAsync(TimeSpan grace)
+    {
         if (HasExited)
             return;
         try
@@ -100,11 +106,28 @@ public sealed class HiddenProcess : IDisposable
             // ignored
         }
 
-        if (!_process.WaitForExit((int)grace.TotalMilliseconds))
+        try
         {
-            try { _process.Kill(entireProcessTree: true); }
-            catch { /* already gone */ }
-            _process.WaitForExit(5000);
+            using var cts = new CancellationTokenSource(grace);
+            await _process.WaitForExitAsync(cts.Token);
+            return;
+        }
+        catch (OperationCanceledException)
+        {
+            // grace elapsed
+        }
+
+        try { _process.Kill(entireProcessTree: true); }
+        catch { /* already gone */ }
+
+        try
+        {
+            using var killWait = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await _process.WaitForExitAsync(killWait.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // best effort
         }
     }
 

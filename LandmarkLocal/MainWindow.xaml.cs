@@ -1,23 +1,34 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Threading;
+using LandmarkEmulator.PatchPacks;
 using Microsoft.Win32;
+using Drawing = System.Drawing;
+using Forms = System.Windows.Forms;
 
 namespace LandmarkLocal;
 
 public partial class MainWindow : Window
 {
     // LaunchPad palette: ok / accent / muted / danger
-    static readonly Brush ReadyBrush = new SolidColorBrush(Color.FromRgb(0x7C, 0xC4, 0x7F));
-    static readonly Brush StartingBrush = new SolidColorBrush(Color.FromRgb(0xE3, 0xA4, 0x3A));
-    static readonly Brush StoppedBrush = new SolidColorBrush(Color.FromRgb(0x97, 0xA6, 0xAB));
-    static readonly Brush FailedBrush = new SolidColorBrush(Color.FromRgb(0xD9, 0x68, 0x5C));
+    static readonly SolidColorBrush ReadyBrush = new(Color.FromRgb(0x7C, 0xC4, 0x7F));
+    static readonly SolidColorBrush StartingBrush = new(Color.FromRgb(0xE3, 0xA4, 0x3A));
+    static readonly SolidColorBrush StoppedBrush = new(Color.FromRgb(0x97, 0xA6, 0xAB));
+    static readonly SolidColorBrush FailedBrush = new(Color.FromRgb(0xD9, 0x68, 0x5C));
 
     readonly LocalPaths _paths;
+    readonly DispatcherTimer _clientPoll;
     LocalSettings _settings;
     LocalOrchestrator? _host;
     CancellationTokenSource? _cts;
     bool _busy;
     HostPhase _phase = HostPhase.Stopped;
+    bool _forceClose;
+    bool _closeInProgress;
+    bool _clientRunning;
+    Forms.NotifyIcon? _tray;
+    WindowState _lastNonMinimized = WindowState.Normal;
 
     public MainWindow()
     {
@@ -34,6 +45,11 @@ public partial class MainWindow : Window
             Append("Found Landmark at: " + found);
         UpdateChecklist();
         UpdateRemembered();
+        EnsureTray();
+        _clientPoll = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _clientPoll.Tick += (_, _) => RefreshClientRunning();
+        _clientPoll.Start();
+        RefreshClientRunning();
         _ = RefreshStatusAsync();
     }
 
@@ -55,15 +71,22 @@ public partial class MainWindow : Window
     {
         if (_busy)
             return;
+        await StartServersAsync();
+    }
+
+    async Task<bool> StartServersAsync()
+    {
         PersistForm();
-        if (!CanStart(out string? startBlocker))
+        if (!CanStartServers(out string? startBlocker))
         {
-            MessageBox.Show(this, startBlocker!, "LandmarkLocal", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
+            System.Windows.MessageBox.Show(this, startBlocker!, "LandmarkLocal",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return false;
         }
 
         _busy = true;
         SetPhase(HostPhase.Starting, "Starting…");
+        ShowProgressIndeterminate();
         SetButtons();
         _cts = new CancellationTokenSource();
         var progress = new Progress<string>(OnStartupProgress);
@@ -73,7 +96,10 @@ public partial class MainWindow : Window
             _host = new LocalOrchestrator(_paths, _settings);
             await _host.StartAsync(progress, _cts.Token);
             SetPhase(HostPhase.Ready, "Ready");
+            HideProgress();
             Append(_host.LastMessage);
+            UpdateTrayText();
+            return true;
         }
         catch (Exception ex)
         {
@@ -82,9 +108,11 @@ public partial class MainWindow : Window
             if (headline.Length > 80)
                 headline = headline[..77] + "…";
             SetPhase(HostPhase.Failed, "Failed — " + headline);
+            HideProgress();
             Append("Failed: " + detail);
-            MessageBox.Show(this, detail, "LandmarkLocal — Start failed",
+            System.Windows.MessageBox.Show(this, detail, "LandmarkLocal — Start failed",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
         }
         finally
         {
@@ -104,19 +132,30 @@ public partial class MainWindow : Window
     {
         if (_busy)
             return;
+        await StopServersAsync();
+    }
+
+    async Task StopServersAsync()
+    {
         _busy = true;
+        SetPhase(HostPhase.Stopping, "Stopping…");
+        ShowProgressIndeterminate();
         SetButtons();
         _cts?.Cancel();
-        var progress = new Progress<string>(Append);
+        var progress = new Progress<string>(OnStartupProgress);
         try
         {
             _host ??= new LocalOrchestrator(_paths, _settings);
             await _host.StopAsync(progress);
             SetPhase(HostPhase.Stopped, "Stopped");
+            HideProgress();
+            UpdateTrayText();
         }
         catch (Exception ex)
         {
             Append("Stop: " + ex.Message);
+            SetPhase(HostPhase.Failed, "Stop failed");
+            HideProgress();
         }
         finally
         {
@@ -134,9 +173,18 @@ public partial class MainWindow : Window
         string? password = PasswordBox.Password.Length > 0 ? PasswordBox.Password : null;
         if (!_settings.HasRememberedLogin() && string.IsNullOrEmpty(password))
         {
-            MessageBox.Show(this, "Enter a password (at least 6 characters) the first time you Play.",
+            System.Windows.MessageBox.Show(this,
+                "Enter a password (at least 6 characters) the first time you Play.",
                 "LandmarkLocal", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
+        }
+
+        if (_phase != HostPhase.Ready)
+        {
+            if (!await StartServersAsync())
+                return;
+            if (_phase != HostPhase.Ready)
+                return;
         }
 
         _busy = true;
@@ -150,11 +198,13 @@ public partial class MainWindow : Window
             PasswordBox.Clear();
             UpdateRemembered();
             Append(result.Message);
+            RefreshClientRunning();
         }
         catch (Exception ex)
         {
             Append("Play: " + ex.Message);
-            MessageBox.Show(this, ex.Message, "LandmarkLocal", MessageBoxButton.OK, MessageBoxImage.Warning);
+            System.Windows.MessageBox.Show(this, ex.Message, "LandmarkLocal",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         finally
         {
@@ -177,8 +227,8 @@ public partial class MainWindow : Window
             if (!string.IsNullOrWhiteSpace(snap.Message)
                 && (snap.Phase == HostPhase.Ready || snap.Phase == HostPhase.Failed || snap.Phase == HostPhase.Stopped))
                 Append(snap.Message);
-            else if (snap.Phase == HostPhase.Starting)
-                StatusLabel.Text = "Starting… " + snap.Message;
+            else if (snap.Phase is HostPhase.Starting or HostPhase.Stopping)
+                StatusLabel.Text = snap.Phase + "… " + snap.Message;
         }
         catch (Exception ex)
         {
@@ -188,6 +238,7 @@ public partial class MainWindow : Window
         {
             UpdateChecklist();
             SetButtons();
+            UpdateTrayText();
         }
     }
 
@@ -210,7 +261,7 @@ public partial class MainWindow : Window
         StatusLabel.Foreground = phase switch
         {
             HostPhase.Ready => ReadyBrush,
-            HostPhase.Starting => StartingBrush,
+            HostPhase.Starting or HostPhase.Stopping => StartingBrush,
             HostPhase.Failed => FailedBrush,
             _ => StoppedBrush,
         };
@@ -228,8 +279,8 @@ public partial class MainWindow : Window
         ChecklistBox.Text =
             Mark(folderOk) + " Landmark folder\n"
             + Mark(accountOk) + " Account name (this is also your admin)\n"
-            + Mark(passwordOk) + " Password (before Start; remembered after Play)\n"
-            + Mark(ready) + " Servers ready — then press Play";
+            + Mark(passwordOk) + " Password for Play (remembered after first Play)\n"
+            + Mark(ready) + " Servers ready — or press PLAY to start them";
     }
 
     void UpdateRemembered()
@@ -244,7 +295,7 @@ public partial class MainWindow : Window
     bool PasswordReady()
         => _settings.HasRememberedLogin(AdminBox.Text.Trim()) || PasswordBox.Password.Length >= 6;
 
-    bool CanStart(out string? blocker)
+    bool CanStartServers(out string? blocker)
     {
         if (!LocalSettings.LooksLikeLandmarkFolder(LandmarkBox.Text.Trim().Trim('"')))
         {
@@ -256,23 +307,44 @@ public partial class MainWindow : Window
             blocker = "Account name: 3 to 32 letters, digits or _.";
             return false;
         }
-        if (!PasswordReady())
-        {
-            blocker = "Enter a password (at least 6 characters) before Start. It is used when you press Play.";
-            return false;
-        }
         blocker = null;
         return true;
     }
 
+    void RefreshClientRunning()
+    {
+        string folder = LandmarkBox.Text.Trim().Trim('"');
+        bool running = folder.Length > 0
+                       && LocalSettings.LooksLikeLandmarkFolder(folder)
+                       && GameFolder.IsRunning(folder);
+        if (running == _clientRunning)
+            return;
+        _clientRunning = running;
+        SetButtons();
+    }
+
     void SetButtons()
     {
-        // Start only when servers are down (or last start failed); Stop only when something is up / coming up.
-        bool serversUpOrStarting = _phase is HostPhase.Starting or HostPhase.Ready;
-        StartButton.IsEnabled = !_busy && !serversUpOrStarting && CanStart(out _);
-        StopButton.IsEnabled = !_busy && serversUpOrStarting;
+        bool serversUpOrMoving = _phase is HostPhase.Starting or HostPhase.Ready or HostPhase.Stopping;
+        bool canForm = CanStartServers(out _);
+        StartButton.IsEnabled = !_busy && !serversUpOrMoving && canForm;
+        StopButton.IsEnabled = !_busy && _phase is HostPhase.Starting or HostPhase.Ready;
         RefreshButton.IsEnabled = !_busy;
-        PlayButton.IsEnabled = !_busy && _phase == HostPhase.Ready;
+
+        if (_clientRunning)
+        {
+            PlayButton.Content = "RUNNING";
+            PlayButton.IsEnabled = false;
+            PlayButton.ToolTip = "Landmark is already running. Close the game first.";
+            return;
+        }
+
+        PlayButton.Content = "PLAY";
+        PlayButton.ToolTip = "Starts the servers if needed, then launches Landmark";
+        // PLAY: start+launch when stopped/failed, or launch when ready — needs password when not remembered.
+        bool playFormOk = canForm && PasswordReady();
+        PlayButton.IsEnabled = !_busy && playFormOk
+            && _phase is HostPhase.Stopped or HostPhase.Failed or HostPhase.Ready;
     }
 
     void OnStartupProgress(string line)
@@ -285,11 +357,45 @@ public partial class MainWindow : Window
         if (line.StartsWith(LocalOrchestrator.StatusPrefix, StringComparison.Ordinal))
         {
             string status = line[LocalOrchestrator.StatusPrefix.Length..];
-            if (_phase is HostPhase.Starting or HostPhase.Stopped)
-                SetPhase(HostPhase.Starting, status);
+            if (_phase is HostPhase.Starting or HostPhase.Stopped or HostPhase.Stopping)
+            {
+                HostPhase paint = _phase == HostPhase.Stopping ? HostPhase.Stopping : HostPhase.Starting;
+                SetPhase(paint, status);
+            }
+            ApplyProgressFromLine(status);
             return;
         }
         Append(line);
+        ApplyProgressFromLine(line);
+    }
+
+    void ApplyProgressFromLine(string line)
+    {
+        if (StartupProgress.TryParse(line, out double percent, out bool determinate) && determinate)
+        {
+            SetupProgress.Visibility = Visibility.Visible;
+            SetupProgress.IsIndeterminate = false;
+            SetupProgress.Value = percent;
+        }
+        else if (_phase is HostPhase.Starting or HostPhase.Stopping)
+        {
+            // Keep bar visible during waits without a % — indeterminate.
+            if (SetupProgress.Visibility != Visibility.Visible || !SetupProgress.IsIndeterminate)
+                ShowProgressIndeterminate();
+        }
+    }
+
+    void ShowProgressIndeterminate()
+    {
+        SetupProgress.Visibility = Visibility.Visible;
+        SetupProgress.IsIndeterminate = true;
+    }
+
+    void HideProgress()
+    {
+        SetupProgress.IsIndeterminate = false;
+        SetupProgress.Value = 0;
+        SetupProgress.Visibility = Visibility.Collapsed;
     }
 
     void Append(string line)
@@ -303,11 +409,178 @@ public partial class MainWindow : Window
         LogBox.ScrollToEnd();
     }
 
+    void EnsureTray()
+    {
+        if (_tray != null)
+            return;
+        _tray = new Forms.NotifyIcon
+        {
+            Icon = Drawing.SystemIcons.Application,
+            Text = "LandmarkLocal",
+            Visible = false,
+        };
+        var menu = new Forms.ContextMenuStrip();
+        menu.Items.Add("Open LandmarkLocal", null, (_, _) => Dispatcher.Invoke(ShowFromTray));
+        menu.Items.Add("Stop servers", null, async (_, _) =>
+        {
+            await Dispatcher.InvokeAsync(async () =>
+            {
+                ShowFromTray();
+                if (!_busy && _phase is HostPhase.Ready or HostPhase.Starting)
+                    await StopServersAsync();
+            });
+        });
+        menu.Items.Add("Quit", null, async (_, _) =>
+        {
+            await Dispatcher.InvokeAsync(async () => await QuitFromTrayAsync());
+        });
+        _tray.ContextMenuStrip = menu;
+        _tray.DoubleClick += (_, _) => Dispatcher.Invoke(ShowFromTray);
+    }
+
+    void UpdateTrayText()
+    {
+        if (_tray == null)
+            return;
+        _tray.Text = _phase switch
+        {
+            HostPhase.Ready => "LandmarkLocal — servers running",
+            HostPhase.Starting => "LandmarkLocal — starting…",
+            HostPhase.Stopping => "LandmarkLocal — stopping…",
+            _ => "LandmarkLocal",
+        };
+    }
+
+    void ShowInTray()
+    {
+        EnsureTray();
+        UpdateTrayText();
+        _tray!.Visible = true;
+        _tray.ShowBalloonTip(3000, "LandmarkLocal",
+            "Servers are still running. Double-click the tray icon to open again.",
+            Forms.ToolTipIcon.Info);
+        Hide();
+    }
+
+    void ShowFromTray()
+    {
+        Show();
+        WindowState = _lastNonMinimized == WindowState.Minimized ? WindowState.Normal : _lastNonMinimized;
+        Activate();
+        if (_tray != null)
+            _tray.Visible = false;
+    }
+
+    async Task QuitFromTrayAsync()
+    {
+        if (_busy)
+            return;
+        if (_phase is HostPhase.Ready or HostPhase.Starting)
+            await StopServersAsync();
+        _forceClose = true;
+        if (_tray != null)
+        {
+            _tray.Visible = false;
+            _tray.Dispose();
+            _tray = null;
+        }
+        Close();
+    }
+
+    void Window_StateChanged(object? sender, EventArgs e)
+    {
+        if (WindowState == WindowState.Minimized
+            && _phase is HostPhase.Ready or HostPhase.Starting)
+        {
+            ShowInTray();
+            return;
+        }
+        if (WindowState != WindowState.Minimized)
+            _lastNonMinimized = WindowState;
+    }
+
+    async void Window_Closing(object? sender, CancelEventArgs e)
+    {
+        if (_forceClose)
+        {
+            if (_tray != null)
+            {
+                _tray.Visible = false;
+                _tray.Dispose();
+                _tray = null;
+            }
+            return;
+        }
+
+        if (_phase is HostPhase.Stopped or HostPhase.Failed)
+        {
+            if (_tray != null)
+            {
+                _tray.Visible = false;
+                _tray.Dispose();
+                _tray = null;
+            }
+            return;
+        }
+
+        if (_phase is HostPhase.Stopping || _closeInProgress)
+        {
+            e.Cancel = true;
+            return;
+        }
+
+        e.Cancel = true;
+        MessageBoxResult choice = System.Windows.MessageBox.Show(this,
+            "Servers are still running.\n\n" +
+            "Yes — Stop servers and quit\n" +
+            "No — Leave servers running (stay in the tray)\n" +
+            "Cancel — Keep this window open",
+            "LandmarkLocal",
+            MessageBoxButton.YesNoCancel,
+            MessageBoxImage.Question);
+
+        if (choice == MessageBoxResult.Cancel)
+            return;
+
+        if (choice == MessageBoxResult.No)
+        {
+            ShowInTray();
+            return;
+        }
+
+        // Yes — stop then quit
+        _closeInProgress = true;
+        try
+        {
+            if (!_busy)
+                await StopServersAsync();
+            _forceClose = true;
+            if (_tray != null)
+            {
+                _tray.Visible = false;
+                _tray.Dispose();
+                _tray = null;
+            }
+            Close();
+        }
+        finally
+        {
+            _closeInProgress = false;
+        }
+    }
+
     protected override void OnClosed(EventArgs e)
     {
+        _clientPoll.Stop();
         _cts?.Cancel();
-        // Do not stop servers when the window closes — CLI/GUI are control surfaces only.
+        // Do not stop servers here — Closing already handled Stop-and-quit vs leave-running.
         _host?.Dispose();
+        if (_tray != null)
+        {
+            _tray.Visible = false;
+            _tray.Dispose();
+            _tray = null;
+        }
         base.OnClosed(e);
     }
 }
