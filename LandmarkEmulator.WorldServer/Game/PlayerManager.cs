@@ -655,6 +655,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 MovementEffects.Forget(session);
                 Afk.Forget(session);
                 Emotes.Forget(session);
+                FacialAnim.ClearSpeaker(session.TransientId);
                 SafeEject.Forget(session);
                 Creatures.Forget(session);
                 Chests.Forget(session);

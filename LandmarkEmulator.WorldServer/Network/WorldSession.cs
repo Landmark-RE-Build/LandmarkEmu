@@ -972,6 +972,30 @@ namespace LandmarkEmulator.WorldServer.Network
             });
         }
 
+        /// <summary>
+        /// SOEmote facial-anim receiver (SendSelf +0x285). Default on; updated by ClientFacialAnimSettings (<c>0xF3</c>).
+        /// When false, the server does not send this session <c>0xF2</c> frames.
+        /// </summary>
+        public bool FacialAnimReceiver => currentCharacter?.FacialAnimReceiver ?? true;
+
+        /// <summary><c>/soemote receiver</c> → <c>0xF3</c>: persist preference and apply for the rest of this session.</summary>
+        public void SetFacialAnimReceiver(bool receive)
+        {
+            if (currentCharacter == null)
+                return;
+            if (currentCharacter.FacialAnimReceiver == receive)
+                return;
+            currentCharacter.FacialAnimReceiver = receive;
+            ulong characterId = currentCharacter.Id;
+            DatabaseManager.Instance.CharacterDatabase.Save(c =>
+            {
+                var model = new CharacterModel { Id = characterId };
+                c.Character.Attach(model);
+                model.FacialAnimReceiver = receive;
+                c.MarkModified(model, nameof(model.FacialAnimReceiver));
+            });
+        }
+
         private void SavePlayedTime(bool leaving = false)
         {
             if (currentCharacter == null || enteredWorld is not DateTime start)
@@ -1238,7 +1262,8 @@ namespace LandmarkEmulator.WorldServer.Network
             message.SpeechSetId = Character.Race;
             message.ModelId = GetModelForGenderFromProfile(ProfileData, (Gender)Character.Gender);
             modelId = message.ModelId;
-            //message.FacialAnimReceiver = true;
+            // SOEmote: +0x285. Master kill-switch FACIAL_ANIM_RECEIVER AND the character's persisted opt-in (0xF3).
+            message.FacialAnimReceiver = Game.FacialAnim.MasterEnabled && FacialAnimReceiver;
             // Client +0x287: claim permission checks always pass (FUN_142d15900).
             message.BypassClaimPermissions = ConfigurationManager<WorldServerConfiguration>.Instance.Config.FreeBuild;
 

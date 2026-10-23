@@ -315,6 +315,12 @@ namespace LandmarkEmulator.Database.Character.Migrations
                         .HasDefaultValue("")
                         .HasColumnName("bio");
 
+                    b.Property<bool>("FacialAnimReceiver")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(true)
+                        .HasColumnName("facialAnimReceiver");
+
                     b.Property<uint>("ChatBubbleBackground")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int(10) unsigned")

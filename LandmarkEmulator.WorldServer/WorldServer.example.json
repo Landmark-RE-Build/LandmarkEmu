@@ -46,6 +46,11 @@
 
   "Continent": 406,
   "FreeBuild": false,
+  "AgentApiEnabled": false,
+  "FacialAnimReceiver": true,
+  "AgentApiRatePerMinute": 60,
+  "AgentApiMaxLookRange": 200,
+  "AgentApiMaxSphereRadius": 50,
   "MovementEffects": true,
   "MeleeTargeters": true,
   "BlockStanceVisible": true,

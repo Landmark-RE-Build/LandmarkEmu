@@ -17,12 +17,13 @@ namespace LandmarkEmulator.WorldServer
     /// the live dump) - Game/Inventory/ItemDefinitionManager (keeps the client's window responding while it takes the list);
     /// AdminMonitorPush (false) - Game/AdminMonitor; WebPagesPort (19001;
     /// WEB_PAGES_PORT), WebPagesHost (loopback; Docker 0.0.0.0), WebPagesUrl (empty = http://127.0.0.1:WebPagesPort) -
-    /// Game/WebPages, Game/Store; SettingsOverridesFile (empty = settings-overrides.json beside the program; Docker
-    /// /data/settings-overrides.json) - Game/ServerSettings, the admin Settings page, whose saved values are the last
-    /// configuration source and win over everything above. Environment only: LANDMARK_SEASON, HAT_DROPS (Game/RareDrops);
-    /// internal, not owner settings: LANDMARK_NOSTREAM (a test aid, Game/DevCommands.NoStreaming), ZONE_INTERNAL_PORT (set
-    /// by docker/gateway/world.override.yml), GATEWAY_INTERNAL_ADDRESS (the older spelling of
-    /// <see cref="GatewayInternalAddress"/>).</para>
+    /// Game/WebPages, Game/Store; AgentApiEnabled (false; AGENT_API_ENABLED), AgentApiRatePerMinute (60),
+    /// AgentApiMaxLookRange (200), AgentApiMaxSphereRadius (50) - Game/AgentApi; SettingsOverridesFile (empty =
+    /// settings-overrides.json beside the program; Docker /data/settings-overrides.json) - Game/ServerSettings, the admin
+    /// Settings page, whose saved values are the last configuration source and win over everything above. Environment
+    /// only: LANDMARK_SEASON, HAT_DROPS (Game/RareDrops); internal, not owner settings: LANDMARK_NOSTREAM (a test aid,
+    /// Game/DevCommands.NoStreaming), ZONE_INTERNAL_PORT (set by docker/gateway/world.override.yml),
+    /// GATEWAY_INTERNAL_ADDRESS (the older spelling of <see cref="GatewayInternalAddress"/>).</para>
     /// <para>Internal keys (no .env line on purpose; tools/wiki_reference.py INTERNAL_SETTINGS): Network__Host (Docker
     /// listens on every interface in the container; the port is WORLD_PORT), the Database__*__Provider keys (always
     /// MySql), <see cref="StoreLumenPrices"/> (the JSON form of STORE_PRICES).</para>
@@ -40,6 +41,28 @@ namespace LandmarkEmulator.WorldServer
         /// props only where you have build permission). Docker: FREE_BUILD.
         /// </summary>
         public bool FreeBuild { get; set; }
+
+        /// <summary>
+        /// Enables <c>/api/agent/*</c> (Bearer service keys acting as a player for building). Off by default. Docker:
+        /// AGENT_API_ENABLED. See docs/agent-mcp.md.
+        /// </summary>
+        public bool AgentApiEnabled { get; set; }
+
+        /// <summary>Per-key request budget per UTC minute for the Agent API. Docker: AGENT_API_RATE_PER_MINUTE.</summary>
+        public int AgentApiRatePerMinute { get; set; } = 60;
+
+        /// <summary>Max look radius (metres) for <c>/api/agent/look</c>. Docker: AGENT_API_MAX_LOOK_RANGE.</summary>
+        public float AgentApiMaxLookRange { get; set; } = 200f;
+
+        /// <summary>Max dig/carve sphere radius (metres) for <c>/api/agent/voxel/sphere</c>. Docker: AGENT_API_MAX_SPHERE_RADIUS.</summary>
+        public float AgentApiMaxSphereRadius { get; set; } = 50f;
+
+        /// <summary>
+        /// Master enable for SOEmote facial anim: when false, SendSelf <c>FacialAnimReceiver</c> is forced off and no
+        /// <c>0xF2</c> is sent. When true, each character's persisted opt-in (default on; <c>/soemote receiver</c> / 0xF3)
+        /// decides. Docker: FACIAL_ANIM_RECEIVER.
+        /// </summary>
+        public bool FacialAnimReceiver { get; set; } = true;
 
         /// <summary>
         /// Shift's sprint and the boot abilities (double jump, leaps, glide, Electric Charge) carry their client-run movement

@@ -30,6 +30,11 @@ namespace LandmarkEmulator.Database.Character.Model
         /// <summary>The player's profile text (0.695 Bio, at most 512 characters: client "BioLengthMax").</summary>
         public string Bio { get; set; } = "";
         /// <summary>
+        /// SOEmote proximity facial-anim receiver (SendSelf +0x285 / ClientFacialAnimSettings 0xF3). Default on; opt-out
+        /// via <c>/soemote receiver off</c>. Server skips <c>0xF2</c> to characters with this false.
+        /// </summary>
+        public bool FacialAnimReceiver { get; set; } = true;
+        /// <summary>
         /// Chat bubble colours and size (CommandPacketSetChatBubbleColor 0x1E/0x15 {u32 fg, u32 bg, u32 size, u64 guid},
         /// Lua Ui.SetChatColorFgBgSz): the character's own, shown to others through LightweightToFullPc and 0x15. Defaults
         /// are the client's for a new character entity (FUN_142e88840: FUN_143b94310 0xFFFFFF, FUN_143b941a0 0xD4E2F0, 1).

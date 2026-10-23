@@ -134,6 +134,11 @@ namespace LandmarkEmulator.Database.Character
                     .HasColumnType("varchar(512)")
                     .HasDefaultValue("");
 
+                entity.Property(e => e.FacialAnimReceiver)
+                    .HasColumnName("facialAnimReceiver")
+                    .HasColumnType("tinyint(1)")
+                    .HasDefaultValue(true);
+
                 entity.Property(e => e.ChatBubbleForeground)
                     .HasColumnName("chatBubbleFg")
                     .HasColumnType("int(10) unsigned")

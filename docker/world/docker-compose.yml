@@ -53,6 +53,11 @@ services:
       Continent: ${HOME_CONTINENT:-406}
       # Build and place props anywhere without a build site (false = live: only where you have build permission).
       FreeBuild: ${FREE_BUILD:-false}
+      AgentApiEnabled: ${AGENT_API_ENABLED:-false}
+      AgentApiRatePerMinute: ${AGENT_API_RATE_PER_MINUTE:-60}
+      AgentApiMaxLookRange: ${AGENT_API_MAX_LOOK_RANGE:-200}
+      AgentApiMaxSphereRadius: ${AGENT_API_MAX_SPHERE_RADIUS:-50}
+      FacialAnimReceiver: ${FACIAL_ANIM_RECEIVER:-true}
       # Sprint / boot abilities carry their client-run movement effects (true = live; without them nothing moves).
       MovementEffects: ${MOVEMENT_EFFECTS:-true}
       # Melee swings run as the client's Sweep targeter: the client reports whom it hit, the server checks and strikes
