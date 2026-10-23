@@ -1,4 +1,5 @@
 # Builds a release-shaped LandmarkLocal folder: app + Auth + World + LaunchPad + data/.
+# Self-contained win-x64 so players need no separate .NET / ASP.NET install (grandma path).
 # Usage (from repo root):  powershell -File tools/publish-landmark-local.ps1
 param(
     [string]$Configuration = "Release",
@@ -17,15 +18,17 @@ if ([System.IO.Path]::IsPathRooted($Output)) {
 if (Test-Path $out) { Remove-Item -Recurse -Force $out }
 New-Item -ItemType Directory -Path $out -Force | Out-Null
 
-# No PDBs / debug symbols in the player zip.
+# No PDBs / debug symbols in the player zip. Bundle the runtime into each app folder.
 $publishProps = @(
+    "-r", "win-x64",
+    "--self-contained", "true",
     "-p:DebugType=None",
     "-p:DebugSymbols=false"
 )
 
 function Publish-Project([string]$Project, [string]$Dest, [string[]]$ExtraArgs = @()) {
-    Write-Host "Publishing $Project → $Dest"
-    & dotnet publish $Project -c $Configuration -o $Dest --self-contained false @publishProps @ExtraArgs
+    Write-Host "Publishing $Project → $Dest (self-contained win-x64)"
+    & dotnet publish $Project -c $Configuration -o $Dest @publishProps @ExtraArgs
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed: $Project" }
 }
 
@@ -69,4 +72,4 @@ Remove-DebugJunk $out
 
 Write-Host "Done: $out"
 Write-Host "Zip that folder for release. MariaDB and terrain heights download on first Start."
-Write-Host "Players need the .NET 10 Desktop Runtime (Windows x64) installed."
+Write-Host "Self-contained: no separate .NET / ASP.NET install needed on the player PC."

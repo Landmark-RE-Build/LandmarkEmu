@@ -1,15 +1,26 @@
-# Build LandmarkLocal (solo Windows host) and publish a zip artifact.
-# Manual: Actions → LandmarkLocal → Run workflow
-# Release: push a tag landmark-local-v* (e.g. landmark-local-v0.1.0)
+# LandmarkLocal — solo Windows host (self-contained zip).
+#
+# - PR → main (relevant paths): build + upload artifact (no release).
+# - Push / merge → main (relevant paths): build, bump patch (or PR label), tag, GitHub Release.
+# - Manual: Actions → LandmarkLocal → Run workflow on main; choose patch / minor / major.
+#
+# Manual major/minor on a merge: add PR label landmark-local-minor or landmark-local-major
+# (otherwise patch). workflow_dispatch bump wins when you run by hand.
 name: LandmarkLocal
 
 on:
   workflow_dispatch:
+    inputs:
+      bump:
+        description: Semver bump for the new landmark-local-v* tag
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
   push:
-    branches: [main, master, feature/landmark-local]
-    tags:
-      - "landmark-local-v*"
-  pull_request:
+    branches: [main]
     paths:
       - "LandmarkLocal/**"
       - "LandmarkLocal.Core/**"
@@ -19,16 +30,37 @@ on:
       - "LandmarkEmulator.AuthServer/**"
       - "LandmarkEmulator.WorldServer/**"
       - "tools/publish-landmark-local.ps1"
+      - "tools/landmark-local-next-version.ps1"
       - ".github/workflows/landmark-local.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "LandmarkLocal/**"
+      - "LandmarkLocal.Core/**"
+      - "LandmarkEmulator.ClientLaunch/**"
+      - "LandmarkEmulator.LaunchPad/**"
+      - "LandmarkEmulator.PatchPacks/**"
+      - "LandmarkEmulator.AuthServer/**"
+      - "LandmarkEmulator.WorldServer/**"
+      - "tools/publish-landmark-local.ps1"
+      - "tools/landmark-local-next-version.ps1"
+      - ".github/workflows/landmark-local.yml"
+
+concurrency:
+  group: landmark-local-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
     runs-on: windows-latest
     permissions:
       contents: write
+      pull-requests: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -40,10 +72,48 @@ jobs:
         run: |
           powershell -File tools/publish-landmark-local.ps1 -Configuration Release -Output artifacts/LandmarkLocal
 
+      - name: Decide version bump
+        id: ver
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_BUMP: ${{ github.event.inputs.bump }}
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          $bump = "patch"
+          if ($env:EVENT_NAME -eq "workflow_dispatch" -and $env:DISPATCH_BUMP) {
+            $bump = $env:DISPATCH_BUMP
+          } elseif ($env:EVENT_NAME -eq "push") {
+            try {
+              $labelLines = @(gh api "repos/$env:REPO/commits/$env:SHA/pulls" --jq ".[].labels.[].name" 2>$null)
+              if ($labelLines -contains "landmark-local-major") { $bump = "major" }
+              elseif ($labelLines -contains "landmark-local-minor") { $bump = "minor" }
+            } catch {
+              Write-Host "No merged PR labels for this commit (default patch)."
+            }
+          }
+          Write-Host "Bump: $bump"
+          $lines = powershell -File tools/landmark-local-next-version.ps1 -Bump $bump
+          foreach ($line in $lines) {
+            if ($line -match '^(VERSION|TAG|PREVIOUS|BUMP)=(.*)$') {
+              "$($Matches[1])=$($Matches[2])" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+              Write-Host $line
+            }
+          }
+
       - name: Zip
         shell: pwsh
+        env:
+          TAG: ${{ steps.ver.outputs.TAG }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          $name = if ($env:GITHUB_REF_TYPE -eq "tag") { $env:GITHUB_REF_NAME } else { "LandmarkLocal-${{ github.sha }}" }
+          if ($env:EVENT_NAME -in @("push", "workflow_dispatch") -and $env:TAG) {
+            $name = $env:TAG
+          } else {
+            $name = "LandmarkLocal-${{ github.sha }}"
+          }
           $name = $name -replace '[^\w\.\-]+', '-'
           Compress-Archive -Path "artifacts/LandmarkLocal\*" -DestinationPath "artifacts/$name.zip" -Force
           "ZIP_NAME=$name.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -56,11 +126,39 @@ jobs:
           path: artifacts/${{ env.ZIP_NAME }}
           if-no-files-found: error
 
-      - name: Attach zip to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/landmark-local-v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: artifacts/${{ env.ZIP_NAME }}
-          generate_release_notes: true
+      # Org action allowlist: use gh CLI (same as launchpad.yml), not third-party release actions.
+      - name: Tag and publish GitHub Release
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        shell: pwsh
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.ver.outputs.TAG }}
+          VERSION: ${{ steps.ver.outputs.VERSION }}
+          BUMP: ${{ steps.ver.outputs.BUMP }}
+          PREVIOUS: ${{ steps.ver.outputs.PREVIOUS }}
+        run: |
+          if ($env:GITHUB_REF -ne "refs/heads/main") {
+            throw "Releases are only created from main (ref=$env:GITHUB_REF)."
+          }
+          $tag = $env:TAG
+          $zip = "artifacts/$env:ZIP_NAME"
+          $repo = "${{ github.repository }}"
+          $sha = "${{ github.sha }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a $tag $sha -m "LandmarkLocal $env:VERSION ($env:BUMP from $env:PREVIOUS)"
+          git push origin "refs/tags/$tag"
+
+          $notes = @(
+            "LandmarkLocal **$($env:VERSION)** (self-contained Windows x64).",
+            "",
+            "Semver bump: ``$($env:BUMP)`` (previous tag version: $($env:PREVIOUS)).",
+            "Unpack, run ``LandmarkLocal.exe``. MariaDB and terrain download on first Start."
+          ) -join "`n"
+
+          if (gh release view $tag --repo $repo 2>$null) {
+            gh release upload $tag $zip --clobber --repo $repo
+          } else {
+            gh release create $tag $zip --title "LandmarkLocal $env:VERSION" --notes $notes --repo $repo --target $sha
+          }

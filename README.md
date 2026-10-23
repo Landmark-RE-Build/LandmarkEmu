@@ -50,8 +50,8 @@ New to LandmarkEmu and just want a hit of pure Landmark goodness? This is the si
 ### What you need
 
 1. **Landmark** on this PC (Remember, if you're using Steam you can't use Steam's Play button)
-2. **[.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)** (Windows x64) — install the **Desktop Runtime**, not only the ASP.NET one.
-3. The **LandmarkLocal** zip from this project’s [Releases](/releases)  
+2. The **LandmarkLocal** zip from this project’s [Releases](/releases)  
+   (self-contained — no separate .NET install)
 
 ### Play in five steps
 
@@ -66,7 +66,7 @@ New to LandmarkEmu and just want a hit of pure Landmark goodness? This is the si
 Later visits: open LandmarkLocal → **Start** → **Ready** → **Play** (Your password is remembered).  
 To shut servers down: **Stop**.  
 
-More detail and troubleshooting: [docs/landmark-local.md](docs/landmark-local.md).
+More detail and troubleshooting (fresh PCs, Smart App Control, DirectX): [docs/landmark-local.md](docs/landmark-local.md).
 
 ---
 
