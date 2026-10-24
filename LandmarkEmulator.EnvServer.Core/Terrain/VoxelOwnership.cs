@@ -48,6 +48,10 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
 
         private static readonly object sync = new();
         private static readonly Dictionary<uint, Dictionary<ulong, Grid>> stores = new();
+        /// <summary>
+        /// Grids with <see cref="Grid.Dirty"/> set. <see cref="Flush"/> walks this instead of every ownership cell.
+        /// </summary>
+        private static readonly HashSet<(uint Zone, ulong Id)> dirty = new();
         private static string folder;
 
         private static uint Zone(uint zone) => zone == 0 ? TerrainStore.HomeContinent : zone;
@@ -58,6 +62,26 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
             if (!stores.TryGetValue(zone, out var store))
                 stores[zone] = store = new();
             return store;
+        }
+
+        /// <summary>How many grids are waiting for <see cref="Flush"/> (tests).</summary>
+        public static int DirtyCount
+        {
+            get { lock (sync) return dirty.Count; }
+        }
+
+        /// <summary>Caller holds <see cref="sync"/>.</summary>
+        private static void MarkDirty(uint zone, ulong id, Grid grid)
+        {
+            grid.Dirty = true;
+            dirty.Add((Zone(zone), id));
+        }
+
+        /// <summary>Caller holds <see cref="sync"/>.</summary>
+        private static void ClearDirty(uint zone, ulong id, Grid grid)
+        {
+            grid.Dirty = false;
+            dirty.Remove((Zone(zone), id));
         }
 
         /// <summary>
@@ -129,24 +153,30 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 return;
             var pending = new List<(uint Zone, ulong Id, byte[] Data)>();
             lock (sync)
-                foreach ((uint zone, var store) in stores)
-                    foreach ((ulong id, Grid grid) in store)
+            {
+                if (dirty.Count == 0)
+                    return;
+                foreach ((uint zone, ulong id) in dirty.ToList())
+                {
+                    if (!Of(zone).TryGetValue(id, out Grid grid) || !grid.Dirty)
                     {
-                        if (!grid.Dirty)
-                            continue;
-                        grid.Dirty = false;
-                        using var stream = new MemoryStream();
-                        using var writer = new BinaryWriter(stream);
-                        writer.Write(grid.Version);
-                        writer.Write((byte)grid.Owners.Count);
-                        foreach (ulong owner in grid.Owners)
-                            writer.Write(owner);
-                        byte[] packed = TerrainStore.Pack(grid.Owner);
-                        writer.Write(packed.Length);
-                        writer.Write(packed);
-                        writer.Flush();
-                        pending.Add((zone, id, stream.ToArray()));
+                        dirty.Remove((zone, id));
+                        continue;
                     }
+                    ClearDirty(zone, id, grid);
+                    using var stream = new MemoryStream();
+                    using var writer = new BinaryWriter(stream);
+                    writer.Write(grid.Version);
+                    writer.Write((byte)grid.Owners.Count);
+                    foreach (ulong owner in grid.Owners)
+                        writer.Write(owner);
+                    byte[] packed = TerrainStore.Pack(grid.Owner);
+                    writer.Write(packed.Length);
+                    writer.Write(packed);
+                    writer.Flush();
+                    pending.Add((zone, id, stream.ToArray()));
+                }
+            }
             int failed = 0;
             string error = null;
             foreach ((uint zone, ulong id, byte[] data) in pending)
@@ -168,7 +198,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                     // was otherwise only written again after its next change).
                     lock (sync)
                         if (Of(zone).TryGetValue(id, out Grid grid))
-                            grid.Dirty = true;
+                            MarkDirty(zone, id, grid);
                     failed++;
                     error = e.Message;
                 }
@@ -218,7 +248,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 if (changed)
                 {
                     grid.Version++;
-                    grid.Dirty = true;
+                    MarkDirty(zone, cell, grid);
                 }
             }
         }
@@ -231,7 +261,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 {
                     Array.Clear(grid.Owner);
                     grid.Version++;
-                    grid.Dirty = true;
+                    MarkDirty(zone, cell, grid);
                 }
         }
 

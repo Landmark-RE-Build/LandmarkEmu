@@ -151,6 +151,11 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         /// itself (as before landscapes), other landscapes' in TerrainEdits/&lt;zone&gt;/.
         /// </summary>
         private static readonly Dictionary<uint, Dictionary<ulong, Overlay>> stores = new();
+        /// <summary>
+        /// Keys of overlays with <see cref="Overlay.Dirty"/> set. <see cref="Flush"/> walks this instead of every cell
+        /// (hundreds of thousands of outpost stamps would otherwise cost a full core every tick while idle).
+        /// </summary>
+        private static readonly HashSet<(uint Zone, ulong Key)> dirty = new();
         private static string folder;
 
         private static uint Home => TerrainStore.HomeContinent;
@@ -185,7 +190,29 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
             get { lock (sync) return stores.Values.Sum(s => s.Count); }
         }
 
+        /// <summary>How many overlays are waiting for <see cref="Flush"/> (tests; under <see cref="sync"/>).</summary>
+        public static int DirtyCount
+        {
+            get { lock (sync) return dirty.Count; }
+        }
+
         public static int VoxelIndex(int x, int y, int z) => y + BlockData.Size * (x + BlockData.Size * z);
+
+        /// <summary>Caller holds <see cref="sync"/>. Indexes the overlay for <see cref="Flush"/>.</summary>
+        private static void MarkDirty(uint zone, ulong key, Overlay overlay)
+        {
+            zone = zone == 0 ? Home : zone;
+            overlay.Dirty = true;
+            dirty.Add((zone, key));
+        }
+
+        /// <summary>Caller holds <see cref="sync"/>.</summary>
+        private static void ClearDirty(uint zone, ulong key, Overlay overlay)
+        {
+            zone = zone == 0 ? Home : zone;
+            overlay.Dirty = false;
+            dirty.Remove((zone, key));
+        }
 
         /// <summary>Loads saved overlays (per landscape one <see cref="CellPack"/>; older one-file-per-cell folders are packed once).</summary>
         public static void Load(string directory)
@@ -239,7 +266,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                                 indices.Add(i);
                             }
                         overlay.Version++;
-                        overlay.Dirty = true;
+                        MarkDirty(zone, key, overlay);
                         repaired.Add((zone, CellOf(key), indices));
                     }
             foreach ((uint zone, ulong cell, List<int> indices) in repaired)
@@ -311,7 +338,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 if (stripped > 0)
                 {
                     overlay.Version++;
-                    overlay.Dirty = true;
+                    MarkDirty(zone, id, overlay);
                     log.Info($"Cell {id:X16}: dropped {stripped} voxels without a material.");
                 }
                 else
@@ -462,20 +489,28 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
             if (now < flushRetryAt && folder != null)
                 return;
             lock (sync)
-                foreach ((uint zone, var overlays) in stores)
-                    foreach ((ulong id, Overlay overlay) in Of(zone))
-                        if (overlay.Dirty)
-                        {
-                            overlay.Dirty = false;
-                            overlay.LastEdit = now;
-                            if (Array.TrueForAll(overlay.Blocks.Flags, f => f == 0))
-                            {
-                                // Nothing left (regenerated, healed): no file, so the next start doesn't list the cell.
-                                (pending ??= new()).Add((zone, id, overlay.Version, null));
-                                continue;
-                            }
-                            (pending ??= new()).Add((zone, id, overlay.Version, overlay.Blocks.Save()));
-                        }
+            {
+                // O(dirty), not O(all edited cells): idle ticks must not walk outpost stamps every millisecond.
+                if (dirty.Count == 0)
+                    return;
+                foreach ((uint zone, ulong id) in dirty.ToList())
+                {
+                    if (!Of(zone).TryGetValue(id, out Overlay overlay) || !overlay.Dirty)
+                    {
+                        dirty.Remove((zone, id));
+                        continue;
+                    }
+                    ClearDirty(zone, id, overlay);
+                    overlay.LastEdit = now;
+                    if (Array.TrueForAll(overlay.Blocks.Flags, f => f == 0))
+                    {
+                        // Nothing left (regenerated, healed): no file, so the next start doesn't list the cell.
+                        (pending ??= new()).Add((zone, id, overlay.Version, null));
+                        continue;
+                    }
+                    (pending ??= new()).Add((zone, id, overlay.Version, overlay.Blocks.Save()));
+                }
+            }
             if (pending == null || folder == null)
                 return;
             // One append per landscape (Props of a save burst coalesce on the tick); a dropped cell gets a tombstone.
@@ -500,7 +535,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                         var overlays = Of(group.Key);
                         foreach (var record in records)
                             if (overlays.TryGetValue(record.Id, out Overlay overlay))
-                                overlay.Dirty = true;
+                                MarkDirty(group.Key, record.Id, overlay);
                     }
                     flushRetryAt = now + FlushRetry;
                     if (now >= nextFlushWarning)
@@ -625,7 +660,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                             continue;
                         }
                         overlay.Version++;
-                        overlay.Dirty = true;
+                        MarkDirty(zone, key, overlay);
                         regrown.Add((zone, id));
                     }
                 }
@@ -680,7 +715,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 return false;
             }
             overlay.Version++;
-            overlay.Dirty = true;
+            MarkDirty(entry.Zone, Key(cell, DigLayer), overlay);
             return true;
         }
 
@@ -815,8 +850,10 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                     SmoothOffsets(gx, gy, gz, radius, cells, zone, layer, allowed);
                 foreach (ulong id in cells)
                 {
-                    Of(zone)[Key(id, layer)].Version++;
-                    Of(zone)[Key(id, layer)].Dirty = true;
+                    ulong key = Key(id, layer);
+                    Overlay overlay = Of(zone)[key];
+                    overlay.Version++;
+                    MarkDirty(zone, key, overlay);
                 }
             }
             // Destruction heals at its own time, never postponed by later digs (HealQueue).
@@ -887,8 +924,10 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                         }
                 foreach (ulong id in cells)
                 {
-                    Of(zone)[Key(id, layer)].Version++;
-                    Of(zone)[Key(id, layer)].Dirty = true;
+                    ulong key = Key(id, layer);
+                    Overlay overlay = Of(zone)[key];
+                    overlay.Version++;
+                    MarkDirty(zone, key, overlay);
                 }
             }
             return cells.ToList();
@@ -1385,9 +1424,10 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                         HealQueue.SpheresNear(entry.Zone, (open.X, open.Y, open.Z), open.Radius, 2 * VoxelSize), cells, entry.Zone, DigLayer, allowed);
                     foreach (ulong id in cells)
                     {
-                        Overlay overlay = Of(entry.Zone)[Key(id, DigLayer)];
+                        ulong digKey = Key(id, DigLayer);
+                        Overlay overlay = Of(entry.Zone)[digKey];
                         overlay.Version++;
-                        overlay.Dirty = true;
+                        MarkDirty(entry.Zone, digKey, overlay);
                         changed.Add((entry.Zone, id));
                     }
                 }
@@ -1442,7 +1482,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                     if (!any)
                         continue;
                     overlay.Version++;
-                    overlay.Dirty = true;
+                    MarkDirty(zone, key, overlay);
                     if (!changed.Contains(id))
                         changed.Add(id);
                 }
@@ -1541,8 +1581,10 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 });
                 foreach (ulong id in cells)
                 {
-                    Of(zone)[Key(id, DigLayer)].Version++;
-                    Of(zone)[Key(id, DigLayer)].Dirty = true;
+                    ulong digKey = Key(id, DigLayer);
+                    Overlay overlay = Of(zone)[digKey];
+                    overlay.Version++;
+                    MarkDirty(zone, digKey, overlay);
                 }
             }
             if (cells.Count > 0)
@@ -1578,8 +1620,10 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 });
                 foreach (ulong id in cells)
                 {
-                    store[Key(id, DigLayer)].Version++;
-                    store[Key(id, DigLayer)].Dirty = true;
+                    ulong digKey = Key(id, DigLayer);
+                    Overlay overlay = store[digKey];
+                    overlay.Version++;
+                    MarkDirty(zone, digKey, overlay);
                 }
             }
             return (cells.ToList(), changed);
@@ -1594,7 +1638,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                     Of(zone)[Key(id, PoiLayer)] = overlay = new Overlay();
                 overlay.Blocks.Load(saved);
                 overlay.Version++;
-                overlay.Dirty = true;
+                MarkDirty(zone, Key(id, PoiLayer), overlay);
             }
         }
 
@@ -1696,7 +1740,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                     overlay.Blocks.Offsets[i * 3 + 2] = result.Offsets[i * 3 + 2];
                 }
                 overlay.Version++;
-                overlay.Dirty = true;
+                MarkDirty(zone, Key(id, layer), overlay);
             }
             // The builder owns what the edit left solid; what it emptied or healed is nobody's (Voxel Vision).
             VoxelOwnership.Set(zone, id, indices, i => (result.Flags[i] & 1) != 0 && result.Materials[i] != 0, owner);
@@ -1765,7 +1809,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 // CompressBlockData); adopting it keeps the server's and the client's versions equal, so its cached copy
                 // stays valid (no re-download) and the next edit's base version can be checked.
                 overlay.Version = clientVersion != 0 ? clientVersion : overlay.Version + 1;
-                overlay.Dirty = true;
+                MarkDirty(zone, Key(id, layer), overlay);
             }
             VoxelOwnership.Set(zone, id, indices, i => (result.Flags[i] & 1) != 0 && result.Materials[i] != 0, owner);
             return after;
@@ -1882,7 +1926,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                     Array.Clear(overlay.Blocks.Materials);
                     Array.Clear(overlay.Blocks.Offsets);
                     overlay.Version++;
-                    overlay.Dirty = true;
+                    MarkDirty(zone, Key(id, layer), overlay);
                 }
             VoxelOwnership.ClearCell(zone, id);
         }
@@ -1915,7 +1959,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                     overlay.Blocks.Offsets[v.Index * 3 + 2] = v.O2;
                 }
                 overlay.Version++;
-                overlay.Dirty = true;
+                MarkDirty(zone, Key(id, layer), overlay);
             }
         }
 
@@ -2236,9 +2280,9 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                         }
                         cellsMoved++;
                         target.Version = overlay.Version + 1;
-                        target.Dirty = true;
+                        MarkDirty(zone, Key(key, BuildLayer), target);
                         overlay.Version++;
-                        overlay.Dirty = true;
+                        MarkDirty(zone, key, overlay);
                     }
                 }
             File.WriteAllText(marker, "Build-site voxels moved from layer 0 to layer 1.");
