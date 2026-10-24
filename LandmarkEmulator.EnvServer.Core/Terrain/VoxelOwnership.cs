@@ -43,7 +43,22 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
             public byte[] Owner { get; } = new byte[BlockData.Count];
             public List<ulong> Owners { get; } = new();
             public uint Version { get; set; } = 1;
-            public bool Dirty { get; set; }
+
+            /// <summary>
+            /// Changed since its last save. Set only by <see cref="SetDirty"/> (through MarkDirty / ClearDirty), which keeps
+            /// the <see cref="dirty"/> index in step: a grid flagged without the index would never be saved.
+            /// </summary>
+            public bool Dirty { get; private set; }
+
+            /// <summary>Flags the grid and updates <see cref="dirty"/> together (caller holds <see cref="sync"/>).</summary>
+            public void SetDirty(uint zone, ulong id, bool value)
+            {
+                Dirty = value;
+                if (value)
+                    dirty.Add((zone, id));
+                else
+                    dirty.Remove((zone, id));
+            }
         }
 
         private static readonly object sync = new();
@@ -73,15 +88,13 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         /// <summary>Caller holds <see cref="sync"/>.</summary>
         private static void MarkDirty(uint zone, ulong id, Grid grid)
         {
-            grid.Dirty = true;
-            dirty.Add((Zone(zone), id));
+            grid.SetDirty(Zone(zone), id, true);
         }
 
         /// <summary>Caller holds <see cref="sync"/>.</summary>
         private static void ClearDirty(uint zone, ulong id, Grid grid)
         {
-            grid.Dirty = false;
-            dirty.Remove((Zone(zone), id));
+            grid.SetDirty(Zone(zone), id, false);
         }
 
         /// <summary>

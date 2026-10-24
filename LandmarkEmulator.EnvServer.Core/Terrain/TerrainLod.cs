@@ -63,6 +63,14 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         private static DateTime nextCheck = DateTime.MinValue;
         private static Task running;
 
+        /// <summary>
+        /// <see cref="TerrainEdits.ChangeStamp"/> at the last look, and whether a layer still had changes not built yet
+        /// (waiting for <see cref="Quiet"/>, or a refresh in progress). With neither, nothing can have changed and the look
+        /// is skipped: until 2026-10-24 every look copied every cell's version (TerrainEdits.Versions) every 5 s.
+        /// </summary>
+        private static long lookedAtStamp = -1;
+        private static bool pending;
+
         private static uint TopLevel(uint layer) => layer == TerrainEdits.DigLayer ? MaxDigLevel : MaxLevel;
 
         private static Dictionary<ulong, Copy> Of(uint zone, uint layer)
@@ -160,6 +168,12 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
             if (!Enabled || now < nextCheck || running is { IsCompleted: false })
                 return;
             nextCheck = now + CheckEvery;
+            // No cell version moved since the last look and nothing was left to build: skip the copy of every version.
+            long stamp = TerrainEdits.ChangeStamp;
+            if (stamp == lookedAtStamp && !pending)
+                return;
+            lookedAtStamp = stamp;
+            bool waiting = false;
             var due = new List<(uint Zone, uint Layer)>();
             foreach (uint zone in TerrainEdits.Zones())
                 for (uint layer = 0; layer < TerrainEdits.LayerCount; layer++)
@@ -170,10 +184,16 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                         if (!lastLook.TryGetValue((zone, layer), out var look) || !Same(look.Versions, versions))
                             lastLook[(zone, layer)] = look = (versions, now);
                         var from = built.TryGetValue((zone, layer), out var b) ? b : null;
-                        if ((from == null ? versions.Count > 0 : !Same(from, versions)) && now - look.Moved >= Quiet)
-                            due.Add((zone, layer));
+                        if (from == null ? versions.Count > 0 : !Same(from, versions))
+                        {
+                            // Changed and not built yet: look again next time even if nothing else moves.
+                            waiting = true;
+                            if (now - look.Moved >= Quiet)
+                                due.Add((zone, layer));
+                        }
                     }
                 }
+            pending = waiting;
             if (due.Count > 0)
                 running = Task.Run(() =>
                 {
