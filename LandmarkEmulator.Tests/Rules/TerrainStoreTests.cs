@@ -74,5 +74,64 @@ namespace LandmarkEmulator.Tests.Rules
                 try { Directory.Delete(folder, true); } catch (IOException) { }
             }
         }
+
+        /// <summary>
+        /// Flush indexes dirty overlays instead of scanning the whole store: a write raises DirtyCount, one Flush clears
+        /// it, and a second idle Flush leaves it empty (idle world ticks must not walk every stamped cell).
+        /// </summary>
+        [Fact]
+        public void TerrainEdits_Flush_ClearsDirtyIndexWithoutRescanning()
+        {
+            uint zone = 9501;
+            ulong cell = TerrainStore.CellId(TerrainEdits.Level, 160000, 130, 160000);
+            int index = TerrainEdits.VoxelIndex(1, 1, 1);
+            try
+            {
+                TerrainEdits.Write(cell, new List<TerrainEdits.VoxelValue>
+                {
+                    new(index, 3, 7, BlockData.CentreOffset, BlockData.CentreOffset, BlockData.CentreOffset)
+                }, zone);
+                Assert.True(TerrainEdits.DirtyCount >= 1);
+
+                TerrainEdits.Flush();
+                Assert.Equal(0, TerrainEdits.DirtyCount);
+
+                TerrainEdits.Flush();
+                Assert.Equal(0, TerrainEdits.DirtyCount);
+            }
+            finally
+            {
+                TerrainEdits.ClearCell(cell, zone);
+                TerrainEdits.Flush();
+            }
+        }
+
+        /// <summary>Ownership Flush uses the same dirty index: Set dirties, Flush clears, idle Flush stays clean.</summary>
+        [Fact]
+        public void VoxelOwnership_Flush_ClearsDirtyIndex()
+        {
+            string folder = Path.Combine(Path.GetTempPath(), "lmemu-ownership-dirty-" + Guid.NewGuid().ToString("N"));
+            uint zone = 9502;
+            ulong cell = TerrainStore.CellId(TerrainEdits.Level, 160010, 130, 160010);
+            try
+            {
+                Directory.CreateDirectory(folder);
+                // Sets the ownership save folder (and loads any empty tree) so Flush can clear the dirty index.
+                TerrainEdits.Load(folder);
+                VoxelOwnership.Set(zone, cell, new[] { 0, 1, 2 }, _ => true, owner: 42);
+                Assert.True(VoxelOwnership.DirtyCount >= 1);
+
+                TerrainEdits.Flush();
+                Assert.Equal(0, VoxelOwnership.DirtyCount);
+
+                TerrainEdits.Flush();
+                Assert.Equal(0, VoxelOwnership.DirtyCount);
+            }
+            finally
+            {
+                VoxelOwnership.ClearCell(zone, cell);
+                try { Directory.Delete(folder, true); } catch (IOException) { }
+            }
+        }
     }
 }
