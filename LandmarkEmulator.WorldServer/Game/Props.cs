@@ -1274,9 +1274,10 @@ namespace LandmarkEmulator.WorldServer.Game
                 return;
             }
             prop.Placed = true;
-            // A bag placement that opened build mode is over: build mode closes again (BuildModeHolster).
+            // First Save settles a bag placement's mark; build mode stays open while the gizmo can still move it
+            // (BuildModeHolster.PlacementSettled — closing on first Save tore the ghost down mid-positioning).
             if (!wasPlaced)
-                BuildModeHolster.PlacementEnded(guid);
+                BuildModeHolster.PlacementSettled(guid);
             // Props To You "Place the Starting Location prop" (1313): every site gets one by itself (EnsureStartingLocation),
             // so moving it is the placement a player makes (the 7 Jun 2016 "Props to You" fix; audit-equipment-goals F4).
             if (wasPlaced && changed && prop.PropId == StoryTools.StartingLocationProp)

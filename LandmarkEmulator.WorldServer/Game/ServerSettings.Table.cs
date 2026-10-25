@@ -269,7 +269,7 @@ namespace LandmarkEmulator.WorldServer.Game
             Edit("FriendRequestsMutual", SettingApply.Now, "true") with { Note = SocialNote + " Read at each accepted request (Friends.HandleResponse); "
                 + "friends already made stay as they are." },
             Edit("StoryPosePersists", SettingApply.Now, "true"),
-            Edit("PlaceOpensBuildMode", SettingApply.Now, "false") with { Note = "On is this server's choice (asked for by the user); live never opened Build Mode for it." },
+            Edit("PlaceOpensBuildMode", SettingApply.Now, "false") with { Note = "On is this server's choice (asked for by the user); live never opened Build Mode for it. Cancel closes it; a successful place leaves it open." },
             Edit("DayCycleSpeed", SettingApply.Restart, "8") with { Min = 0.01, Max = 10000, Note = "Read at start-up (WorldClock.DefaultCycleSpeed)." },
             Edit("FinderReturnHome", SettingApply.Now),
             Edit("CavernTripsOtherWorlds", SettingApply.Now, "true"),

@@ -36,10 +36,12 @@ namespace LandmarkEmulator.WorldServer.Game
     /// [P] Neither touches the placement: SetActivePaletteCategory (FUN_1435d2d70 → FUN_1434cfaf0) calls the category
     /// collection's vtable slot 1, which is empty (FUN_143748730) for PaletteCollectionProps and every other
     /// collection but the tints (FUN_14374ca20: AvailableTintsRequest).</item>
-    /// <item>When that placement ends (placed: first Save; cancelled: the unplaced prop removed — Escape, refusal, re-zone)
-    /// build mode is closed again the same way, unless the player switched it off and on themselves meanwhile or has
-    /// started another placement (a palette click). Off a build site the placement is refused before it starts
-    /// (Props.BeginPlacement), so nothing opens.</item>
+    /// <item>When that placement is <b>cancelled</b> (the unplaced prop removed — Escape before the first Save, refusal,
+    /// re-zone) build mode is closed again the same way, unless the player switched it off and on themselves meanwhile
+    /// or has started another placement (a palette click). A successful first Save does <b>not</b> close it: the client
+    /// keeps sending Saves while the placement gizmo is open, and closing build mode mid-gizmo tears the ghost down
+    /// (fix/bag-placement-gizmo-timeout). The player Tabs out when done. Off a build site the placement is refused
+    /// before it starts (Props.BeginPlacement), so nothing opens.</item>
     /// <item>Only a build mode the placement really opened is closed: the open is guarded client-side, so the client may
     /// do nothing. The player is marked "open pending" when the code is sent and counts as opened by the placement
     /// only when the client's CommandPacketBuilderMode {1} arrives within <see cref="OpenConfirmWindow"/>; any other
@@ -82,7 +84,7 @@ namespace LandmarkEmulator.WorldServer.Game
         private static readonly Dictionary<WorldSession, DateTime> closeDue = new();
 
         /// <summary>
-        /// How long after a bag placement ends build mode is closed. [I] Ours: long enough for a palette click that
+        /// How long after a cancelled bag placement build mode is closed. [I] Ours: long enough for a palette click that
         /// replaces the placement (cancel, then PlacePropById) to start its own one, which keeps build mode open.
         /// </summary>
         internal static readonly TimeSpan CloseDelay = TimeSpan.FromSeconds(1);
@@ -129,10 +131,18 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>
-        /// A placement ended (placed, or its unplaced prop removed). If it was a bag placement that opened build mode,
-        /// build mode is closed <see cref="CloseDelay"/> later on the world tick (<see cref="Update"/>).
+        /// The bag placement's first Save settled the prop; the gizmo may still be open for fine-tuning. Clears the
+        /// placement mark only — does not close build mode (see class remarks; fix/bag-placement-gizmo-timeout).
         /// </summary>
-        public static void PlacementEnded(ulong propGuid)
+        public static void PlacementSettled(ulong propGuid) => ClearPlacing(propGuid, scheduleClose: false);
+
+        /// <summary>
+        /// A bag placement was cancelled (its unplaced prop removed). If it opened build mode, that mode is closed
+        /// <see cref="CloseDelay"/> later on the world tick (<see cref="Update"/>).
+        /// </summary>
+        public static void PlacementEnded(ulong propGuid) => ClearPlacing(propGuid, scheduleClose: true);
+
+        private static void ClearPlacing(ulong propGuid, bool scheduleClose)
         {
             WorldSession session = null;
             lock (sync)
@@ -147,7 +157,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     return;
                 placing.Remove(session);
                 // Opened by it, or its open still unanswered (the answer may come before the close is due).
-                if (openedByPlacement.Contains(session) || openPending.ContainsKey(session))
+                if (scheduleClose && (openedByPlacement.Contains(session) || openPending.ContainsKey(session)))
                     closeDue[session] = DateTime.UtcNow + CloseDelay;
             }
         }

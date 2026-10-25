@@ -651,7 +651,7 @@ Story creatures keep the mood and stance a Story Node gave them: saved with the 
 
 ### `PLACE_OPENS_BUILD_MODE`
 
-Placing a prop from the bag (right-click a prop item) opens Build Mode on its Props page, and closes it again when that placement is placed or cancelled. true = this server's default; false = as live (the placement runs outside build mode; live's client never opened it for one).
+Placing a prop from the bag (right-click a prop item) opens Build Mode on its Props page. Cancel before the first Save closes it again; a successful place leaves Build Mode open (Tab out when done). true = this server's default; false = as live (the placement runs outside build mode; live's client never opened it for one).
 
 | `.env` | Service setting | Default | Live |
 |---|---|---|---|
