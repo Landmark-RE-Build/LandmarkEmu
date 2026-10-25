@@ -380,15 +380,17 @@ part in it after one reply per design.
     prop item's placement starts (the bag's right-click → InventoryPacketActivateItem → `Props.BeginPlacement`), the
     server runs the client's own `Voxel.SetEnableBuildingMode(true)` through client Lua, guarded by
     `Voxel.AllowBuildingMode()` exactly as Tab is, with the build widget on its Props page. The client answers with
-    CommandPacketBuilderMode {1} as for Tab (the held item is put away). When that placement is placed (first Save) or
-    cancelled (Escape → PropPickUp, re-zone) build mode is closed the same way a second later — unless the player
-    switched build mode off/on themselves meanwhile or started another placement from the palette. Only a build mode
-    the client confirmed opening (its CommandPacketBuilderMode {1} within 2 s of the server's open) counts as the
-    placement's: if the client's guard said no and the player then presses Tab, that build mode is theirs and stays
-    open. The close runs on the world tick. Already in build mode: nothing changes. Off a build site the placement is refused first, so nothing opens. Why Lua: the 0.695 client
-    switches build mode only in FUN_14346cc90, reached with "on" only from Voxel.ToggleBuildingMode /
-    SetEnableBuildingMode, the Tab key command and the zone-in restore from SendSelf +0x286 — no server packet turns
-    it on mid-session, and neither the bag's ActivateItem (FUN_1435dd400) nor the placement start calls it.
+    CommandPacketBuilderMode {1} as for Tab (the held item is put away). Cancel before the first Save (Escape →
+    PropPickUp, re-zone) closes build mode a second later; a successful place leaves it open (Tab out when done).
+    Closing on first Save was wrong: the client repeats Save while the gizmo is open, and turning build mode off
+    mid-gizmo tore the ghost down (~2 s after starting a place). Only a build mode the client confirmed opening (its
+    CommandPacketBuilderMode {1} within 2 s of the server's open) counts as the placement's: if the client's guard
+    said no and the player then presses Tab, that build mode is theirs and stays open. The cancel-close runs on the
+    world tick. Already in build mode: nothing changes. Off a build site the placement is refused first, so nothing
+    opens. Why Lua: the 0.695 client switches build mode only in FUN_14346cc90, reached with "on" only from
+    Voxel.ToggleBuildingMode / SetEnableBuildingMode, the Tab key command and the zone-in restore from SendSelf
+    +0x286 — no server packet turns it on mid-session, and neither the bag's ActivateItem (FUN_1435dd400) nor the
+    placement start calls it.
   - **Streamed by region** (`Game/Props.Stream.cs`, bandwidth audit 2026-10-18 R8). Each landscape's placed props are
     listed by the 64 m square their origin stands in; a mover pack's parts in every part's square, so the whole pack
     comes and goes together. A player is sent the props of the squares within `PropStreamRange` (Docker

@@ -182,7 +182,7 @@ namespace LandmarkEmulator.WorldServer
                 Run("crafting", Game.Crafting.Update);
                 Run("achievements", Game.Achievements.Update);
                 Run("props", Game.Props.Update);
-                Run("build mode", Game.BuildModeHolster.Update);   // closes a bag placement's build mode once due
+                Run("build mode", Game.BuildModeHolster.Update);   // closes a cancelled bag placement's build mode once due
                 Run("gathering", Game.Gathering.Update);
                 Run("claims", Game.Claims.Update);
                 // The sites left on an event island that closed at this start (EventIslandExpireOnClose; once).

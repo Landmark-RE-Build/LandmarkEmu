@@ -676,10 +676,11 @@ namespace LandmarkEmulator.WorldServer
         public bool StoryPosePersists { get; set; } = true;
 
         /// <summary>
-        /// Placing a prop from the bag (using a prop item) opens Build Mode on its Props page, as Tab would, and closes it
-        /// again when that placement is placed or cancelled (Game/BuildModeHolster). <b>On by default although live did not
-        /// do it</b> (the 0.695 client never enters build mode for a placement and live's notes only say such items are
-        /// still placed by right-clicking them in the inventory): the user asked for it (2026-10-18).
+        /// Placing a prop from the bag (using a prop item) opens Build Mode on its Props page, as Tab would
+        /// (Game/BuildModeHolster). Cancel before the first Save closes it again; a successful place leaves it open
+        /// (Tab out when done — closing on first Save killed the placement gizmo). <b>On by default although live did
+        /// not do it</b> (the 0.695 client never enters build mode for a placement and live's notes only say such items
+        /// are still placed by right-clicking them in the inventory): the user asked for it (2026-10-18).
         /// Off = live (the placement runs outside build mode). Docker: PLACE_OPENS_BUILD_MODE.
         /// </summary>
         public bool PlaceOpensBuildMode { get; set; } = true;

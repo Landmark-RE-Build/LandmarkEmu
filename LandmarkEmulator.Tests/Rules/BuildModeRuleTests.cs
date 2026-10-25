@@ -39,7 +39,7 @@ namespace LandmarkEmulator.Tests.Rules
         private static void Backdate(string map, WorldSession s, TimeSpan by) => Map(map)[s] = Map(map)[s] - by;
 
         [Fact]
-        public void ConfirmedOpen_IsClosedOnTheTickAfterThePlacement()
+        public void ConfirmedOpen_IsClosedOnTheTickAfterCancel()
         {
             WorldSession s = world.Session(++nextGuid, "Placer");
             ulong prop = ++nextGuid;
@@ -49,13 +49,36 @@ namespace LandmarkEmulator.Tests.Rules
                 Assert.NotEmpty(FakeWorld.Outgoing(s));                // the open code went out
                 BuildModeHolster.BuildMode(s, true);                   // the client's CommandPacketBuilderMode {1}
                 Assert.True(OpenedByPlacement(s));
-                BuildModeHolster.PlacementEnded(prop);
+                BuildModeHolster.PlacementEnded(prop);                 // cancel (unplaced prop removed)
                 BuildModeHolster.Update();
                 Assert.Empty(FakeWorld.Outgoing(s));                   // not yet: CloseDelay
                 Backdate("closeDue", s, BuildModeHolster.CloseDelay);
                 BuildModeHolster.Update();
                 Assert.NotEmpty(FakeWorld.Outgoing(s));                // the close code
                 Assert.False(OpenedByPlacement(s));
+            }
+            finally
+            {
+                BuildModeHolster.Forget(s);
+            }
+        }
+
+        [Fact]
+        public void FirstSave_DoesNotCloseBuildMode()
+        {
+            // The client repeats Save while the gizmo is open; closing on first Save tore the ghost down.
+            WorldSession s = world.Session(++nextGuid, "Settler");
+            ulong prop = ++nextGuid;
+            try
+            {
+                BuildModeHolster.OpenForPlacement(s, Prop(prop));
+                BuildModeHolster.BuildMode(s, true);
+                FakeWorld.Outgoing(s);
+                BuildModeHolster.PlacementSettled(prop);               // first Save
+                Assert.False(Map("closeDue").ContainsKey(s));
+                BuildModeHolster.Update();
+                Assert.Empty(FakeWorld.Outgoing(s));
+                Assert.True(OpenedByPlacement(s));                    // still the placement's build mode
             }
             finally
             {
