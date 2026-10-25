@@ -2190,12 +2190,11 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
   client with a processor affinity mask from LaunchPad (no game-file change) and measuring slots with re/tools/slots.py.
 
 ### L199. Paste area vs the client's preview (placeoffset 2026-10-21)
-- **Need:** whether the client's paste area (FUN_1436cd920: −1 and −(|C|/2 + 1) margins on x/z, horizontal mask
-  (1,0,1,0) set at FUN_1428a2040) puts the copy's first voxel where the server puts it (the area's corner); a 1-2 voxel
-  margin could itself explain the "1 or 2 blocks off" report. Also: coarse distance copies (LOD) average voxels with no
-  surface → distant builds up to half a voxel off after they refresh (~20 s).
-- **Try next:** one in-game paste log line ("pasted … client area …, copy …, first voxel at …"), or a Frida capture
-  of FUN_1436cd920 vs the paste thread's area (FUN_143f98b80).
+- **CLOSED 2026-10-25 (Frida + server log):** Identity: area vs packet = `(1,1,1)` → −1 on each axis. Turned: client
+  folds min-corner shift into the packet on flipped axes and skips that +1 there (yaw90: packet−area =
+  `(−sizeZ,+1,+1)`; blanket −1 put flipped axis one low vs area/preview). Server: `PasteOriginAdjust = -1` only where
+  `shift[i]==0`; `Dot` matches preview `Σ s_j·row_j`. Confirmed in-game 2026-10-25.
+- **Was:** turn-dependent manual nudges; size-margin guess (out — identity `area−copy 0,0,0`).
 
 ### L200. Client calls the server could make for the slot problem (2026-10-21; trace/0695/client-commands-for-slots.md)
 - **Known [P]:** no reachable client call resizes the Decompression / TaskManagerJob pools; DirectThreadCount is read

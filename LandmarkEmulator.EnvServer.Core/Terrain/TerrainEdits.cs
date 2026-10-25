@@ -1907,7 +1907,11 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 // The client sends the version it gave the layer after this edit (CRC32 of its compressed layer,
                 // CompressBlockData); adopting it keeps the server's and the client's versions equal, so its cached copy
                 // stays valid (no re-download) and the next edit's base version can be checked.
-                overlay.Version = clientVersion != 0 ? clientVersion : overlay.Version + 1;
+                // When the client sends NewVersion 0 (seen on 0.695 Add-tool clicks, 2026-10-24), do NOT increment: a
+                // solo builder is left out of Broadcast and only learns versions from their own NewVersion / a manifest
+                // note. Incrementing to 1,2,3… while they keep BaseVersion 0 made every other brush click "not applied"
+                // (stale). Leaving the version unchanged keeps Base 0 matching until a real CRC arrives.
+                overlay.Version = clientVersion != 0 ? clientVersion : overlay.Version;
                 MarkDirty(zone, Key(id, layer), overlay);
             }
             VoxelOwnership.Set(zone, id, indices, i => (result.Flags[i] & 1) != 0 && result.Materials[i] != 0, owner);

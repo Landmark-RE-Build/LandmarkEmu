@@ -406,6 +406,21 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>
+        /// Brush aim from an ApplyDiffRequest tail (writer FUN_1430b0510 +0x70/+0x78/+0x84): the aimed cell, the brush
+        /// voxel position, and the brush size. Used to check preview/aim vs where the edited voxels actually sit (L199
+        /// brush follow-up).
+        /// </summary>
+        private readonly struct BrushAim
+        {
+            public readonly ulong Cell;
+            public readonly int X, Y, Z, SizeX, SizeY, SizeZ;
+            public BrushAim(ulong cell, int x, int y, int z, int sx, int sy, int sz)
+            {
+                Cell = cell; X = x; Y = y; Z = z; SizeX = sx; SizeY = sy; SizeZ = sz;
+            }
+        }
+
+        /// <summary>
         /// The ApplyDiffRequest fields after the cell list (writer FUN_1430b0510, decoded 2026-10-13 from live edits):
         /// u64 the cell the tool aimed at (+0x70); i32×3 voxel position (+0x78) and i32×3 size (+0x84) of the brush;
         /// materials used (+0x90: u32 n, n × (u16 material, u32 count)); u64 build site (+0xc0, FUN_1430b7610);
@@ -414,11 +429,16 @@ namespace LandmarkEmulator.WorldServer.Game
         /// f32×3 (+0xe4); u32 n × (u32, vec3, vec3) (+0xf0); u8 (+0x108). Returns the per-cell versions, or null if the
         /// tail can't be read; <paramref name="kind"/> is the operation kind (0 if unread).
         /// </summary>
-        private static Dictionary<ulong, (uint Base, uint New)> ReadEditVersions(byte[] body, int p, out uint kind)
+        private static Dictionary<ulong, (uint Base, uint New)> ReadEditVersions(byte[] body, int p, out uint kind, out BrushAim? brush)
         {
             kind = 0;
+            brush = null;
             try
             {
+                ulong aimCell = BitConverter.ToUInt64(body, p);
+                int bx = BitConverter.ToInt32(body, p + 8), by = BitConverter.ToInt32(body, p + 12), bz = BitConverter.ToInt32(body, p + 16);
+                int sx = BitConverter.ToInt32(body, p + 20), sy = BitConverter.ToInt32(body, p + 24), sz = BitConverter.ToInt32(body, p + 28);
+                brush = new BrushAim(aimCell, bx, by, bz, sx, sy, sz);
                 p += 8 + 12 + 12;
                 int materials = BitConverter.ToInt32(body, p);
                 if (materials > 0 && materials < 256)
@@ -447,6 +467,34 @@ namespace LandmarkEmulator.WorldServer.Game
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Global voxel AABB of every bit set in the ApplyDiff masks (the voxels the client packed), for comparison with
+        /// <see cref="BrushAim"/>.
+        /// </summary>
+        private static (long MinX, long MinY, long MinZ, long MaxX, long MaxY, long MaxZ, int Count)? WrittenVoxelBounds(
+            List<(ulong Id, byte[] Changed, BlockData Result, byte[] Packed)> edits)
+        {
+            long minX = long.MaxValue, minY = long.MaxValue, minZ = long.MaxValue;
+            long maxX = long.MinValue, maxY = long.MinValue, maxZ = long.MinValue;
+            int count = 0;
+            foreach ((ulong id, byte[] changed, _, _) in edits)
+            {
+                (_, uint cx, uint cy, uint cz) = TerrainStore.Decode(id);
+                long ox = (long)cx * BlockData.Size, oy = (long)cy * BlockData.Size, oz = (long)cz * BlockData.Size;
+                for (int i = 0; i < BlockData.Count; i++)
+                {
+                    if ((changed[i >> 3] & (0x80 >> (i & 7))) == 0)
+                        continue;
+                    int y = i % BlockData.Size, x = i / BlockData.Size % BlockData.Size, z = i / (BlockData.Size * BlockData.Size);
+                    long gx = ox + x, gy = oy + y, gz = oz + z;
+                    if (gx < minX) minX = gx; if (gy < minY) minY = gy; if (gz < minZ) minZ = gz;
+                    if (gx > maxX) maxX = gx; if (gy > maxY) maxY = gy; if (gz > maxZ) maxZ = gz;
+                    count++;
+                }
+            }
+            return count == 0 ? null : (minX, minY, minZ, maxX, maxY, maxZ, count);
         }
 
 
@@ -628,6 +676,7 @@ namespace LandmarkEmulator.WorldServer.Game
             var seen = new List<ulong>();
             Dictionary<ulong, (uint Base, uint New)> versions = null;
             uint kind = 0;
+            BrushAim? brushAim = null;
             try
             {
                 int p = 1 + 24;
@@ -659,7 +708,7 @@ namespace LandmarkEmulator.WorldServer.Game
                         edits.Add((id, changed, BlockData.Deserialize(raw, changed.Length),
                             EnvironmentServer.IsRemote ? body.AsSpan(blob, length).ToArray() : null));
                 }
-                versions = ReadEditVersions(body, p, out kind);
+                versions = ReadEditVersions(body, p, out kind, out brushAim);
             }
             catch (Exception e)
             {
@@ -673,6 +722,17 @@ namespace LandmarkEmulator.WorldServer.Game
             }
 
             long tParse = watch.ElapsedMilliseconds;
+            // Brush aim vs packed voxels (L199 follow-up): someone reported preview≠result for individual voxels.
+            // ApplyDiff is client-authored; if writtenMin − brushPos is a constant ≠ 0, the client's aim field and its
+            // cell blob disagree (Frida: tools/brush). The builder is not sent their own edit back, so a server shift
+            // here would desync them from everyone else — log only until the delta is proven.
+            if (brushAim is { } aim && edits.Count > 0 && WrittenVoxelBounds(edits) is { } written)
+            {
+                log.Info($"{session.CharacterName} brush aim {aim.X},{aim.Y},{aim.Z} size {aim.SizeX}×{aim.SizeY}×{aim.SizeZ} "
+                    + $"(cell {aim.Cell:X}) → written min {written.MinX},{written.MinY},{written.MinZ} "
+                    + $"max {written.MaxX},{written.MaxY},{written.MaxZ} (n={written.Count}, "
+                    + $"min−aim {written.MinX - aim.X},{written.MinY - aim.Y},{written.MinZ - aim.Z}, kind {kind})");
+            }
             if (heals.Count > 0)
             {
                 Heal(session, heals, zone);
@@ -702,6 +762,9 @@ namespace LandmarkEmulator.WorldServer.Game
             {
                 (uint Base, uint New) v = default;
                 bool has = versions != null && versions.TryGetValue(id, out v);
+                if (has)
+                    log.Debug($"{session.CharacterName}: edit cell {id:X} base={v.Base:X} new={v.New:X} "
+                        + $"(server {Env.LayerVersion(id, zone, TerrainEdits.BuildLayer):X})");
                 request.Cells.Add(new EditCell
                 {
                     Cell = id, Changed = changed, Result = result, Packed = packed, HasVersions = has, BaseVersion = v.Base, NewVersion = v.New
@@ -721,8 +784,9 @@ namespace LandmarkEmulator.WorldServer.Game
                 return;
             }
             foreach (ulong id in done.Stale)
-                log.Debug($"{session.CharacterName}: edit of cell {id:X} based on version "
-                    + $"{(versions != null && versions.TryGetValue(id, out var sv) ? sv.Base : 0):X}, server has "
+                log.Info($"{session.CharacterName}: edit of cell {id:X} based on version "
+                    + $"{(versions != null && versions.TryGetValue(id, out var sv) ? sv.Base : 0):X} "
+                    + $"(new {(versions != null && versions.TryGetValue(id, out var nv) ? nv.New : 0):X}), server has "
                     + $"{Env.LayerVersion(id, zone, TerrainEdits.BuildLayer):X}; not applied.");
             if (done.Result == InsufficientMaterials)
             {
@@ -748,6 +812,15 @@ namespace LandmarkEmulator.WorldServer.Game
             SendResponse(session, ApplyDiffSub, 0);
             SendCellResponses(session, edits.Select(e => e.Id));
             UndoLocalEdit(session, done.Stale);
+            // Builder is left out of Broadcast (keeps their local layer-1 draw). When NewVersion was 0 the server used
+            // to increment its own version and the next click arrived with BaseVersion 0 → stale / voxels "didn't place".
+            // A manifest note alone tells their client the layer version without replacing the cell they are editing.
+            foreach (ulong id in cells)
+            {
+                uint ver = Env.LayerVersion(id, zone, TerrainEdits.BuildLayer);
+                if (ver != 0)
+                    ZoneTerrain.SendManifestEntry(session, id, TerrainEdits.BuildLayer, ver, 0);
+            }
             if (record.Cells.Count > 0)
             {
                 Remember(session, record);
@@ -760,8 +833,8 @@ namespace LandmarkEmulator.WorldServer.Game
             // FillStamp, Remove, Heal, Smooth, Paint), else from what the edit did.
             uint operation = ObservedOperation(session, kind, record, out bool stamp);
             Observe(session, zone, operation, record, stamp);
-            // Nothing goes back to the builder: their client committed the edit to layer 1 and updated its own
-            // manifest when the per-cell reply confirmed it (FUN_143f52b60), the same layer the server keeps it in.
+            // Nothing else goes back to the builder: their client committed the edit to layer 1 (FUN_143f52b60); the
+            // manifest note above is only the version, not a CellsUpdate body.
             log.Debug($"{session.CharacterName} built: {done.Voxels} voxels in {cells.Count} cell(s) ({watch.ElapsedMilliseconds} ms: "
                 + $"read {tParse}, checks {tCheck - tParse}, store {tApply - tCheck}{(EnvironmentServer.IsRemote ? " (Environment Server)" : "")}, "
                 + $"rest {watch.ElapsedMilliseconds - tApply}); vertex-only voxels "

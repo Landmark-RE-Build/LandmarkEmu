@@ -31,6 +31,15 @@ namespace LandmarkEmulator.WorldServer.Game
     {
         public const uint CopyAction = 0, SaveDesignAction = 3, PasteAction = 4;
 
+        /// <summary>
+        /// Per-axis nudge on the paste request origin (L199). Frida on FUN_1436cd920: identity packets sit one voxel
+        /// above the area/preview corner on every axis (server − areaVoxels = (1,1,1)), so those axes need −1. On a
+        /// turned paste the client already folds the min-corner shift into the packet on flipped axes and omits that
+        /// +1 there (2026-10-25 yaw90: packet − area = (−sizeZ, +1, +1); with a blanket −1 the flipped axis landed one
+        /// low). Apply −1 only where <c>shift[i] == 0</c>.
+        /// </summary>
+        internal const int PasteOriginAdjust = -1;
+
         /// <summary>What a player last copied: the selection's voxels (grid origin = the box's minimum corner).</summary>
         /// <summary>
         /// What a paste places: blocks by cell relative to the box's corner (a copy or a saved design is one block, a
@@ -318,11 +327,13 @@ namespace LandmarkEmulator.WorldServer.Game
             (double gx, double gy, double gz) = TerrainEdits.ToGlobal(at);
             long vx = (long)Math.Floor(gx / TerrainEdits.VoxelSize), vy = (long)Math.Floor(gy / TerrainEdits.VoxelSize),
                 vz = (long)Math.Floor(gz / TerrainEdits.VoxelSize);
+            // Unturned PlaceDesign: same −1 as Paste on axes with no min-corner shift (identity → all three).
+            long xr = vx - PasteOriginAdjust, yr = vy - PasteOriginAdjust, zr = vz - PasteOriginAdjust;
             var request = new SelectionRequest
             {
                 Action = PasteAction,
-                Cell = TerrainStore.CellId(TerrainEdits.Level, (uint)(vx / BlockData.Size), (uint)(vy / BlockData.Size), (uint)(vz / BlockData.Size)),
-                X = (uint)(vx % BlockData.Size), Y = (uint)(vy % BlockData.Size), Z = (uint)(vz % BlockData.Size),
+                Cell = TerrainStore.CellId(TerrainEdits.Level, (uint)(xr / BlockData.Size), (uint)(yr / BlockData.Size), (uint)(zr / BlockData.Size)),
+                X = (uint)(xr % BlockData.Size), Y = (uint)(yr % BlockData.Size), Z = (uint)(zr % BlockData.Size),
                 TemplateGuid = guid,
                 PasteMode = PasteSolidsMode
             };
@@ -446,8 +457,9 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>
-        /// Places the player's clipboard: grid point s goes to M·s (M = the request's 3 × 3 rotation, rows first), moved
-        /// so the turned box's minimum corner lands on the request's origin; a voxel's in-voxel offset turns with it.
+        /// Places the player's clipboard: grid point s goes where the client's paste preview puts it
+        /// (<c>s.x·row0 + s.y·row1 + s.z·row2</c>, rows from the request's 4×4 i32 matrix), moved so the turned box's
+        /// minimum corner lands on the request's origin; a voxel's in-voxel offset turns with it.
         /// </summary>
         private static List<ulong> Paste(WorldSession session, SelectionRequest request)
         {
@@ -478,15 +490,19 @@ namespace LandmarkEmulator.WorldServer.Game
                 return null;
             }
 
-            // Where the turned box's minimum corner sits relative to M·s.
+            // Where the turned box's minimum corner sits relative to the preview map (s → Σ s_j·row_j).
             int[] size = { (int)clipboard.SizeX, (int)clipboard.SizeY, (int)clipboard.SizeZ };
             var shift = new int[3];
             for (int i = 0; i < 3; i++)
                 for (int j = 0; j < 3; j++)
-                    shift[i] -= Math.Min(0, m[i * 4 + j] * size[j]);
-            long baseX = (long)cellX * BlockData.Size + request.X + shift[0];
-            long baseY = (long)cellY * BlockData.Size + request.Y + shift[1];
-            long baseZ = (long)cellZ * BlockData.Size + request.Z + shift[2];
+                    shift[i] -= Math.Min(0, m[j * 4 + i] * size[j]);
+            // −1 only on axes the client did not already fold into the packet via the min-corner shift (see PasteOriginAdjust).
+            int adjX = shift[0] == 0 ? PasteOriginAdjust : 0;
+            int adjY = shift[1] == 0 ? PasteOriginAdjust : 0;
+            int adjZ = shift[2] == 0 ? PasteOriginAdjust : 0;
+            long baseX = (long)cellX * BlockData.Size + request.X + shift[0] + adjX;
+            long baseY = (long)cellY * BlockData.Size + request.Y + shift[1] + adjY;
+            long baseZ = (long)cellZ * BlockData.Size + request.Z + shift[2] + adjZ;
 
             Dictionary<ulong, List<TerrainEdits.VoxelValue>> byCell = TurnedVoxels(clipboard, m, baseX, baseY, baseZ, request.PasteMode);
             if ((byCell.Count == 0 && clipboard.Props.Count == 0) || byCell.Count > (request.TemplateGuid != 0 ? MaxCellsPerDesign : MaxCellsPerEdit))
@@ -572,15 +588,20 @@ namespace LandmarkEmulator.WorldServer.Game
             SendResponse(session, AddTemporaryBlockSub, 0);
             // Every listed cell the server holds goes out (the paster's client dropped its preview of them).
             List<ulong> changed = byCell.Keys.Concat(request.Cells.Where(c => Env.Has(c, zone))).Distinct().ToList();
-            log.Debug($"{session.CharacterName} pasted {voxels} voxels into {byCell.Count} cell(s) at {request.X},{request.Y},{request.Z} (client area {request.SizeX}×{request.SizeY}×{request.SizeZ}, copy {clipboard.SizeX}×{clipboard.SizeY}×{clipboard.SizeZ}, first voxel at {baseX},{baseY},{baseZ}) "
+            // Info while L199 (preview vs paste origin) is open: area − copy sizes are the margin the client
+            // baked into the request; a +2 / +2 on x/z with a 1-voxel shift matches FUN_1436cd920's −1 margins.
+            log.Info($"{session.CharacterName} pasted {voxels} voxels into {byCell.Count} cell(s) at {request.X},{request.Y},{request.Z} "
+                + $"(client area {request.SizeX}×{request.SizeY}×{request.SizeZ}, copy {clipboard.SizeX}×{clipboard.SizeY}×{clipboard.SizeZ}, "
+                + $"area−copy {(int)request.SizeX - (int)clipboard.SizeX},{(int)request.SizeY - (int)clipboard.SizeY},{(int)request.SizeZ - (int)clipboard.SizeZ}, "
+                + $"first voxel at {baseX},{baseY},{baseZ}) "
                 + $"turned [{m[0]} {m[1]} {m[2]}; {m[4]} {m[5]} {m[6]}; {m[8]} {m[9]} {m[10]}].");
             return changed;
         }
 
         /// <summary>
-        /// The voxels a paste writes: grid point s of the clipboard goes to base + M·s (M = the request's 3 × 3 turn, rows
-        /// first; base already holds the shift that puts the turned box's minimum corner on the request's origin). The
-        /// clipboard's solid voxels are written; empty ones leave the target as it is.
+        /// The voxels a paste writes: grid point s of the clipboard goes to base + preview(s) (same map as the client's
+        /// paste cursor: Σ s_j·row_j; base already holds the shift that puts the turned box's minimum corner on the
+        /// request's origin). The clipboard's solid voxels are written; empty ones leave the target as it is.
         /// <para>
         /// A voxel carries two things that live in different places (docs/terrain.md "How the client draws a dig"): its
         /// material belongs to the grid point (the client samples at voxel corners), its vertex to the cube [s, s+1]³
@@ -609,11 +630,11 @@ namespace LandmarkEmulator.WorldServer.Game
         {
             int[] size = { (int)clipboard.SizeX, (int)clipboard.SizeY, (int)clipboard.SizeZ };
             long[] b = { baseX, baseY, baseZ };
-            // n: one voxel on each axis the turn flips (the row's ±1 is negative).
+            // n: one voxel on each world axis the turn flips (coefficient of some clipboard axis is −1).
             var flip = new int[3];
             for (int i = 0; i < 3; i++)
                 for (int j = 0; j < 3; j++)
-                    if (m[i * 4 + j] < 0)
+                    if (m[j * 4 + i] < 0)
                         flip[i] = 1;
             // The target voxels the paste makes solid (global voxel → material), the ones it makes air (interior empty
             // space in the air modes), and the vertices of the target cubes.
@@ -783,8 +804,8 @@ namespace LandmarkEmulator.WorldServer.Game
                     g[i] = b[i];
                     for (int j = 0; j < 3; j++)
                     {
-                        g[i] += m[i * 4 + j] * p[j];
-                        if (m[i * 4 + j] < 0)
+                        g[i] += m[j * 4 + i] * p[j];
+                        if (m[j * 4 + i] < 0)
                             g[i] += 1;
                     }
                 }
@@ -858,10 +879,15 @@ namespace LandmarkEmulator.WorldServer.Game
 
         public const byte ZoneUnknownPropListSub = 8, ZoneMissingPropListSub = 9;
 
-        private static int Dot(int[] m, int row, int[] v) => m[row * 4] * v[0] + m[row * 4 + 1] * v[1] + m[row * 4 + 2] * v[2];
+        /// <summary>
+        /// Paste-preview map for one world axis: packet stores cursor rows at +0x270/+0x280/+0x290 row-major in the
+        /// 4×4 i32 block; the client draws <c>Σ s_j·row_j</c> (FUN_14315feb0). Using row·s instead was the transpose
+        /// (Frida 2026-10-24: same matrix bytes, placed yaw mirrored vs preview).
+        /// </summary>
+        private static int Dot(int[] m, int axis, int[] v) => m[axis] * v[0] + m[4 + axis] * v[1] + m[8 + axis] * v[2];
 
-        private static byte Offset(int[] m, int row, int[] centred)
-            => (byte)Math.Clamp(BlockData.CentreOffset + Dot(m, row, centred), 0, 255);
+        private static byte Offset(int[] m, int axis, int[] centred)
+            => (byte)Math.Clamp(BlockData.CentreOffset + Dot(m, axis, centred), 0, 255);
 
         /// <summary>Is the 3 × 3 part a quarter-turn rotation or mirror (one ±1 per row and column)?</summary>
         private static bool IsRotation(int[] m)

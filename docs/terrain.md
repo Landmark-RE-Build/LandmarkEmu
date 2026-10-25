@@ -310,10 +310,12 @@ version, so clients refetch the cells and the coarse copies are rebuilt; `Terrai
 (`TerrainLod.Downsample`) never store it either. Surrounding air (modes 2 and 4) and Remove voxels are still not
 applied by the server's paste (TASKS 6.57). Tests: `Rules/DesignInteriorAirTests`.
 
-Not proven yet: the exact spot the client's paste area (FUN_1436cd920, request origin) has relative to its preview.
-The client computes it from the cursor and the turn with margins (−1 and −(|C|/2 + 1) on x / z, the horizontal mask
-(1, 0, 1, 0) at DAT_1455f07f0 set by FUN_1428a2040), and the server puts the copy's first grid point there; the paste
-log line prints the client area and copy sizes so an in-game paste can settle it.
+**Paste origin vs preview (L199, 2026-10-24/25).** Frida on `FUN_1436cd920` (`tools/paste`): identity packets sit
+one voxel above the area/preview corner on every axis (server origin − `areaVoxels` = `(1,1,1)`). Cursor size at
++0x240 is design size + 1; the three `dec`s make the request size. On a turned paste the client already folds the
+min-corner shift into the packet on flipped axes and skips that +1 there (yaw90: packet − area =
+`(−sizeZ, +1, +1)`); a blanket −1 then put the flipped axis one low. `Building.Paste` applies
+`PasteOriginAdjust = -1` only on axes with `shift[i] == 0`.
 
 ### Tool switch and the edit effect others see (`Building.Tools.cs`)
 
