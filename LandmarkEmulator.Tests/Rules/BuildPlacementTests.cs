@@ -386,7 +386,7 @@ namespace LandmarkEmulator.Tests.Rules
             var shift = new int[3];
             for (int i = 0; i < 3; i++)
                 for (int j = 0; j < 3; j++)
-                    shift[i] -= Math.Min(0, m[i * 4 + j] * size[j]);
+                    shift[i] -= Math.Min(0, m[j * 4 + i] * size[j]);
             long[] b = { origin[0] + shift[0], origin[1] + shift[1], origin[2] + shift[2] };
             var pasted = Building.TurnedVoxels(clip, m, b[0], b[1], b[2]);
 
@@ -405,8 +405,9 @@ namespace LandmarkEmulator.Tests.Rules
             Sample Source(long x, long y, long z)
                 => x >= 0 && y >= 0 && z >= 0 && x <= size[0] && y <= size[1] && z <= size[2] && clip.At((int)x, (int)y, (int)z) is (BlockData blk, int i)
                     ? FromBlock(blk, i) : default;
+            // Same map as Building.Dot / the client's paste preview (Σ s_j·row_j).
             (double, double, double) Move(double x, double y, double z)
-                => (b[0] + m[0] * x + m[1] * y + m[2] * z, b[1] + m[4] * x + m[5] * y + m[6] * z, b[2] + m[8] * x + m[9] * y + m[10] * z);
+                => (b[0] + m[0] * x + m[4] * y + m[8] * z, b[1] + m[1] * x + m[5] * y + m[9] * z, b[2] + m[2] * x + m[6] * y + m[10] * z);
 
             int misplaced = 0, edges = 0;
             double max = 0;
@@ -475,11 +476,11 @@ namespace LandmarkEmulator.Tests.Rules
                 var shift = new int[3];
                 for (int i = 0; i < 3; i++)
                     for (int j = 0; j < 3; j++)
-                        shift[i] -= Math.Min(0, m[i * 4 + j] * size[j]);
+                        shift[i] -= Math.Min(0, m[j * 4 + i] * size[j]);
                 long[] b = { Origin[0] + shift[0], Origin[1] + shift[1], Origin[2] + shift[2] };
                 var onGrid = Building.TurnedVoxels(clip, m, b[0], b[1], b[2]);
-                // R's rows are where the clipboard axes go: row j = column j of M.
-                float[] t = { m[0], m[4], m[8], 0, m[1], m[5], m[9], 0, m[2], m[6], m[10], 0, 0, 0, 0, 1 };
+                // Off-grid t rows = packet rows (clipboard axis j → t row j), matching on-grid Dot / preview.
+                float[] t = { m[0], m[1], m[2], 0, m[4], m[5], m[6], 0, m[8], m[9], m[10], 0, 0, 0, 0, 1 };
                 double v = TerrainEdits.VoxelSize;
                 var offGrid = Building.OffGridVoxels(clip, t, b[0] * v, b[1] * v, b[2] * v, out _, out _, out _, out _, out _, out _);
                 Assert.NotNull(offGrid);

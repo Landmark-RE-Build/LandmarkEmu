@@ -1,16 +1,45 @@
+# Keep the Docker build context small. The image only needs the server projects
+# listed in docker/Dockerfile (restore + publish) and docker/world-entrypoint.sh.
+# Runtime data (game folder, server-data) is mounted by compose, not baked in.
+
 **/bin/
 **/obj/
 .git/
 .vs/
-docker/auth/.env
+.cursor/
+.github/
 **/*.user
-export/
-docker/worlds/*.env
-publish/
-# Settings, server data and downloads never go into the images.
-.env
-network.env
-server-data/
-gameData/
 *.zip
 *.lmpatch
+*.pcap
+*.pcapng
+
+# Settings and host-only data — never go into the images.
+.env
+network.env
+docker/auth/.env
+docker/worlds/*.env
+export/
+publish/
+server-data/
+gameData/
+artifacts/
+local/
+NetworkCaptures/
+
+# Docs / research / tooling — not compiled into the server images.
+docs/
+research/
+wiki/
+tools/
+data/
+
+# Projects not published by docker/Dockerfile (desktop, capture, tests, local host).
+LandmarkEmulator.Tests/
+LandmarkEmulator.CaptureImport/
+LandmarkEmulator.Parser/
+LandmarkEmulator.LaunchPad/
+LandmarkEmulator.Launcher/
+LandmarkEmulator.ClientLaunch/
+LandmarkLocal/
+LandmarkLocal.Core/
