@@ -162,9 +162,9 @@ namespace LandmarkEmulator.Tests.Rules
                 Assert.True(creatureModels.Contains(model), $"model {model} is no creature prop's model");
                 Assert.True(CreatureWeapons.Rows.Any(r => r.Model == model && r.Weapon.Model == weapon.Model), $"model {model}: default not from its rows");
             }
-            // The world's kobold kinds (no prop): the ranged kobold model keeps its bow, the caster its staff.
-            Assert.Equal("Wield_Bow_Kobold_Kobold_A_A1_000.adr", CreatureWeapons.Lookup(0, 1570).Model);
-            Assert.Equal("Wield_Staff_Kobold_Kobold_A_A1_000.adr", CreatureWeapons.Lookup(0, 1571).Model);
+            // The world's kobold kinds (no prop): capture-calibrated HorseBow / Dwarf staff defaults.
+            Assert.Equal("Wield_Bow_HorseBow_HorseBow_B_A3_001.adr", CreatureWeapons.Lookup(0, 1570).Model);
+            Assert.Equal("Wield_Staff_Dwarf_Dwarf_D_A1_000.adr", CreatureWeapons.Lookup(0, 1571).Model);
         }
 
         [Fact]
@@ -230,8 +230,24 @@ namespace LandmarkEmulator.Tests.Rules
             Assert.Equal("Wield_Bow_Epic_Fire_01_Fire_Fire_000.adr", CreatureWeapons.Lookup(2446, 1457).Model);    // Barren Fireshot
             Assert.Equal("Wield_Dagger_DarkElf_DarkElf_A_A5_000.adr", CreatureWeapons.Lookup(2514, 1102).Model);   // Ebonguard Fireblade
             Assert.Equal("Wield_Pick_Landmark_PracticeSword_Dummy.adr", CreatureWeapons.Lookup(2890, 1708).Model); // Target Dummy
-            Assert.Equal("Wield_Bow_Kobold_Kobold_A_A1_000.adr", CreatureWeapons.Lookup(2709, 1570).Model);        // Scalewind Ranged
+            Assert.Equal("Wield_Bow_HorseBow_HorseBow_B_A3_001.adr", CreatureWeapons.Lookup(2709, 1570).Model);     // Scalewind Ranged
             Assert.Equal("Wield_1HBlade_Dwarf_Dwarf_C_A0_000.adr", CreatureWeapons.Lookup(2703, 1457).Model);      // Barren Melee
+            Assert.Equal("Wield_Blade2H_Dwarf_Dwarf_D_A1_000.adr", CreatureWeapons.Lookup(2492, 1125).Model);      // Shockblade (capture)
+            // Bow + quiver recipe (A): outer 2 / att 2 then outer 2 / att 11 (agent-creature-quiver.md).
+            var bowPackets = CreatureWeapons.Messages(1ul, CreatureWeapons.Lookup(2445, 1457)).ToList();
+            Assert.Equal(2, bowPackets.Count);
+            Assert.Equal(CreatureWeapons.MainHandSlot, bowPackets[0].EquipSlotId);
+            Assert.Equal(CreatureWeapons.MainHandSlot, bowPackets[0].AttachmentSlot);
+            Assert.False(bowPackets[0].ReplaceIfOccupied);
+            Assert.Equal("Wield_Bow_HorseBow_HorseBow_B_A3_001.adr", bowPackets[0].ModelName);
+            Assert.Equal(CreatureWeapons.MainHandSlot, bowPackets[1].EquipSlotId);
+            Assert.Equal(CreatureWeapons.OffHandSlot, bowPackets[1].AttachmentSlot);
+            Assert.True(bowPackets[1].ReplaceIfOccupied);
+            Assert.Equal("Wield_Quiver_Halas_Halas_B_A3_000.adr", bowPackets[1].ModelName);
+            var staffPackets = CreatureWeapons.Messages(1ul, CreatureWeapons.Lookup(2458, 1457)).ToList();
+            Assert.Equal(2, staffPackets.Count);
+            Assert.Equal("", staffPackets[1].ModelName);
+            Assert.Equal(CreatureWeapons.OffHandSlot, staffPackets[1].AttachmentSlot);
         }
     }
 }

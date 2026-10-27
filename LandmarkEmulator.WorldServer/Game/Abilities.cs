@@ -777,8 +777,12 @@ namespace LandmarkEmulator.WorldServer.Game
         /// </summary>
         private static ulong TargetGuid(AbilityCastAttempt attempt, WorldSession session)
         {
+            // Tail +36 is often 4 (or other tiny junk) when the client has no entity under the reticle; treating that as
+            // a real guid blocked CurrentTarget and logged "at 0x4: missed" while aiming at a living creature.
             ulong inCast = attempt.Tail is { Length: >= 44 } tail ? BitConverter.ToUInt64(tail, 36) : 0;
-            return inCast != 0 ? inCast : session.CurrentTarget;
+            if (inCast > 0xFFFF)
+                return inCast;
+            return session.CurrentTarget;
         }
 
         /// <summary>Primary swing of every pick (Adventurer's/Charmed/... 1018, Hewer's 136 → Overseer's 142, Pickaxes 169).</summary>

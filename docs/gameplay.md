@@ -726,29 +726,26 @@ world tick, and a second click within 5 s is ignored. Dev `founderchest`.
 - Name and health over an NPC: HUDIndicatorSettings type 13/1 → indicator code 22 (Npc) when requirement 21 "NPC
   Combatant" (`NotPlayer && NotProp && TargetCanBeHarmed && TargetNotPropProfile`) holds; TargetCanBeHarmed is
   TargetMaxHealth > 0, so the hit points (PlayerUpdate 0x03) are sent with every spawn.
-- **Creature weapons** (`Game/CreatureWeapons.cs`; OPEN-LEADS L95, on by default, a best guess): a weapon model in a creature's main
+- **Creature weapons** (`Game/CreatureWeapons.cs`; OPEN-LEADS L95, on by default): a weapon model in a creature's main
   hand, EquipmentSetCharacterEquipmentSlot (slot 2) for the creature's guid, sent once to each player right after the
   creature's full NPC data (the client finds only full entities by guid) and again when a story creature's weapons are
   Equipped / Sheathed (Story Node "Weapon Visuals", spawner "Spawn With Weapons Equipped", the Equip / Unequip Links);
-  Sheathed empties the hand. The client has no table of which weapon model each creature held (live kept that on the
-  server; research/trace/0695/agent-assets.md §2), so the table is a best guess with a proof per row ([P] client data, [W]
-  wiki / forum / dev posts, [I] ours):
+  Sheathed empties the hand. Bow creatures also get a Halas quiver (outer slot 2, attachment slot 11, replace bool)
+  matching Courage live traffic (`research/trace/0695/agent-creature-quiver.md`). The client has no full
+  creature→weapon table (live kept that on the server; agent-assets.md §2); rows use icon type [P], Courage capture
+  actors where seen (`[P capture]`, `NetworkCaptures/_research/combat-loot-probe/`), else affinity/wiki [W] / guess [I]:
   - **Type [P]**: each creature prop's palette icon names its weapon (ImageSetMappings → Images.txt:
     `Barren_Sword_Fire`, `Edbonguard_Daggers_Earth`, `Lumerian_Blaster_Lightning`, `Giant_Club_Earth` ...; a dev post
     of 15 Mar 2016 says the icons show the creature's type, weapon and damage types). Icons that say
     `Nothing` (monsters, animals, hounds, wisps, giants, golem, elemental) get no weapon. The Barren skeleton's
     animation set replaces the 1H-sword attacks, so its swords are 1H [P].
-  - **Model [W] / [I]**: an actor made for the race that no item uses (kobold bow / staffs, DarkElf bow); else the
-    players' weapon of that type and the creature's affinity (wiki "Creature Prop": affinity creatures' weapons copy
-    the attacks of the players' Affinity equipment), with the item's tint; else the art set of the
-    creature's armour (Qeynos for Highfall, DarkElf for Ebonguard, Colony for NovaTech, the giant-sized Ogre set for
-    Stoneskin); else a plain actor of that type. Wiki pages that name a weapon are cited (Barren Flameblade "flaming
-    greatsword", Scalewind Marine / Highfall Forceguard "a large sword", Stoneskin Stormlasher "lightning infused
-    sword", Ebonguard Fireblade "a menacing blade", Barren Fireshot "a flaming bow"; the Target Dummy "swing its sword",
-    hotfix 11 May 2016 → the practice sword).
+  - **Model [P capture] / [W] / [I]**: capture-preferred actors for shared types (HorseBow, Dwarf staff / 1H / 2H,
+    DarkElf dagger, Ogre 2H, …); else the players' affinity weapon; else armour art set (Qeynos / DarkElf / Colony /
+    Ogre); else a plain actor. Affinity/epic actors stay where capture did not contradict. Wiki pages that name a
+    weapon are cited. NPC shields were not in the Courage dump — sword-and-shield rows still send the sword only.
   - **Which creature**: one row per creature prop (with its ruin-template twins); the outposts' ruin spawners
     (`Spawner: Ruins: Barren Melee` ...) take the creature of their model and role; other creatures of a listed model
-    take the model's default. Only the main hand is sent (sword-and-shield creatures show the sword).
+    take the model's default.
 
   **Setting** `CreatureWeapons` (Docker `CREATURE_WEAPONS`, default `true`; `false` = none); dev `creatureweapon
   <guid hex|near> <Wield_*.adr|off> [tint]` puts any weapon actor in a creature's hand whatever the setting (e.g.
@@ -1189,9 +1186,9 @@ The full list is the `switch` in `DevCommands.cs`.
 
 - Rendered character portraits (live had a render service; the server keeps and serves the client's own uploads —
   no 0.589 window shows portraits).
-- The exact weapon model each creature held on live (the client has no table for it; `CreatureWeapons` is a best
-  guess: the type from the creature's icon, the model ours), a sword-and-shield creature's shield (off hand), and
-  control points as spawners.
+- Per-prop weapon actors beyond the Courage capture calibration (`CreatureWeapons` still guesses affinity/epic and
+  unseen types), NPC off-hand shields (no NPC shield packets in that dump; quiver attach is built), and control
+  points as spawners.
 - Features that are built but not yet checked in game are marked "untested in game" in the feature list
   (`research/trace/0695/FEATURES.md`).
 

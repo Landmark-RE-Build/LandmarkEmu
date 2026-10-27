@@ -12,7 +12,10 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
     {
         public uint ProfileId { get; set; }
         public ulong CharacterGuid { get; set; }
-        /// <summary>EquipmentSlotDefinitions id: 2 = main hand, 4 = feet, 5 = grappling hook, 8 = chest...</summary>
+        /// <summary>
+        /// Outer EquipmentSlotDefinitions id (reader → clear key in FUN_142e42da0 / FUN_142ebb340): 2 = main hand, 4 =
+        /// feet, 5 = grappling hook, 8 = chest, 11 = off hand...
+        /// </summary>
         public uint EquipSlotId { get; set; }
         public ulong ItemGuid { get; set; }
         public string ModelName { get; set; } = "";
@@ -24,6 +27,16 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
         /// PFX_Weapon_Ambient_Fire_Bow_01), played on the model while it is equipped.
         /// </summary>
         public uint CompositeEffect { get; set; }
+        /// <summary>
+        /// Attachment record slot (+0x188): mesh attach / replace key in FUN_142ebd620. Null = same as
+        /// <see cref="EquipSlotId"/>. Live NPC quivers use outer 2 with attachment 11 (trace/0695/agent-creature-quiver.md).
+        /// </summary>
+        public uint? AttachmentSlot { get; set; }
+        /// <summary>
+        /// Attachment trailing bool (+400): when true, replace an existing model-actor at <see cref="AttachmentSlot"/>
+        /// (FUN_143b95650). Live weapons use false; quiver / shield use true.
+        /// </summary>
+        public bool ReplaceIfOccupied { get; set; }
 
         public void Write(GamePacketWriter writer)
         {
@@ -40,9 +53,9 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
             writer.Write(""); // decal alias
             writer.Write(TintId);
             writer.Write(CompositeEffect);
-            writer.Write(EquipSlotId);
+            writer.Write(AttachmentSlot ?? EquipSlotId);
             writer.Write(0u);
-            writer.Write(false);
+            writer.Write(ReplaceIfOccupied);
         }
     }
 

@@ -1448,19 +1448,29 @@ namespace LandmarkEmulator.WorldServer.Game
             return len < 1.5f || forwards.Any(f => Vector3.Dot(to / len, f) >= cos);
         }
 
-        /// <summary>Living creatures whose centre (1 m up) passes within <paramref name="width"/> m of a ray, nearest first.</summary>
+        /// <summary>
+        /// Living creatures whose upright body (0.5–4.5 m above the feet) passes within <paramref name="width"/> m of a
+        /// ray, nearest first. A single point at +1 m missed camera aim at a giant's chest/head (reticle on the model,
+        /// ray clear of the feet centre).
+        /// </summary>
         public static List<ulong> AlongRay(uint zone, Vector3 origin, Vector3 direction, float range, float width)
         {
             var hits = new List<(float T, ulong Guid)>();
             lock (sync)
                 foreach (Creature c in Nearby(zone, origin, range + 10f).Where(Alive))
                 {
-                    Vector3 centre = c.Position + new Vector3(0f, 1f, 0f);
-                    float t = Vector3.Dot(centre - origin, direction);
-                    if (t <= 0 || t > range)
-                        continue;
-                    if (Vector3.Distance(origin + direction * t, centre) <= width)
-                        hits.Add((t, c.Guid));
+                    float bestT = float.MaxValue;
+                    for (float h = 0.5f; h <= 4.5f; h += 1f)
+                    {
+                        Vector3 centre = c.Position + new Vector3(0f, h, 0f);
+                        float t = Vector3.Dot(centre - origin, direction);
+                        if (t <= 0 || t > range)
+                            continue;
+                        if (Vector3.Distance(origin + direction * t, centre) <= width && t < bestT)
+                            bestT = t;
+                    }
+                    if (bestT < float.MaxValue)
+                        hits.Add((bestT, c.Guid));
                 }
             return hits.OrderBy(h => h.T).Select(h => h.Guid).Distinct().ToList();
         }
@@ -1489,8 +1499,10 @@ namespace LandmarkEmulator.WorldServer.Game
             // [I] Its mood and stance once more for the same reason.
             SendPose(session, c);
             // Its weapon in hand (CreatureWeapons; on by default): only now, as the slot packet finds full entities only.
+            // Bows also get a quiver (outer 2 / attach 11) per Courage capture + agent-creature-quiver.md.
             if (WeaponShown(c) is CreatureWeapons.Weapon weapon)
-                session.EnqueueMessage(CreatureWeapons.Message(c.Guid, weapon));
+                foreach (var packet in CreatureWeapons.Messages(c.Guid, weapon))
+                    session.EnqueueMessage(packet);
             return true;
         }
 
@@ -1517,10 +1529,11 @@ namespace LandmarkEmulator.WorldServer.Game
         {
             if (!always && WeaponOf(c) == null)
                 return;
-            var message = CreatureWeapons.Message(c.Guid, WeaponShown(c));
+            var packets = CreatureWeapons.Messages(c.Guid, WeaponShown(c)).ToList();
             foreach (WorldSession s in ViewersOf(c))
                 if (IsFullFor(s, c.Guid))
-                    s.EnqueueMessage(message);
+                    foreach (var message in packets)
+                        s.EnqueueMessage(message);
         }
 
         /// <summary>

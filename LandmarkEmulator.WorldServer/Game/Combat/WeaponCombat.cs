@@ -908,8 +908,6 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
         }
 
         private static readonly Dictionary<WorldSession, WeaponChannel> channels = new();
-        /// <summary>The cast guid of each player's last channel opened (kept after it ends: the cast's own handler asks).</summary>
-        private static readonly Dictionary<WorldSession, ulong> lastChannelCast = new();
 
         /// <summary>Is this cast id a held channel of this weapon (the channelled kind in its caster info)?</summary>
         public static bool IsChannel(ItemDefinitionManager.ItemDefinition weapon, uint ability)
@@ -924,7 +922,6 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             {
                 channels.Remove(p, out old);
                 channels[p] = new WeaponChannel { Cast = cast, Swing = swing, Block = block, Started = DateTime.UtcNow, LongestMs = longest };
-                lastChannelCast[p] = cast.CastGuid;
             }
             // An older channel still on record (its CancelCast lost): the client replaced it with this cast.
             if (old != null)
@@ -933,13 +930,17 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
         }
 
         /// <summary>
-        /// Was this cast taken as a held channel? Then the cast's handler confirms it (<see cref="ContinueChannel"/>) instead
-        /// of answering: an answer would end the client's channel.
+        /// Is this cast still an open held channel? Then the cast's handler confirms it (<see cref="ContinueChannel"/>)
+        /// instead of answering: an answer would end the client's channel. Must check the live channel only — a released
+        /// stance that left its cast guid remembered made the next cast with the same guid (Flame Bound Bastion after
+        /// Molten Rebuke) skip CastSuccess and lock the client until relog (2026-10-27).
         /// </summary>
         public static bool ChannelOpened(WorldSession p, AbilityCastAttempt cast)
         {
             lock (sync)
-                return lastChannelCast.TryGetValue(p, out ulong guid) && guid == cast.CastGuid;
+                return channels.TryGetValue(p, out WeaponChannel c)
+                    && c.Cast.CastGuid == cast.CastGuid
+                    && c.Cast.CastHash == cast.CastHash;
         }
 
         /// <summary>
@@ -1205,14 +1206,17 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
             return swing.Hits.Count > 0;
         }
 
-        /// <summary>Where the aim lands: the first creature on the ray, else Range along it (dropped to the ground).</summary>
+        /// <summary>
+        /// Where the aim lands: the first creature on the ray, else Range along the camera ray (kept in 3D). Used to
+        /// clamp Y to the player's feet + 2 m, which put AreaAtAim splashes (Raygun Ooze Bolt) on the ground under an
+        /// elevated reticle and missed ledge giants.
+        /// </summary>
         private static Vector3 AimPoint(WorldSession player, Vector3 origin, Vector3 dir, float range)
         {
             ulong first = Creatures.AlongRay(player.ZoneId, origin, dir, range + 5f, 1.5f).FirstOrDefault();
             if (first != 0 && Creatures.PositionOfGuid(first) is Vector3 p)
                 return p;
-            Vector3 point = origin + dir * Math.Min(range, 30f);
-            return new Vector3(point.X, Math.Min(point.Y, player.Position.Y + 2f), point.Z);
+            return origin + dir * Math.Min(range, 30f);
         }
 
         /// <summary>Damage after the attacker's states and gear: Exalt +20 %, Infect +4 % a stack, Supercharge +30 % on Power, Flow at max +15 % (The Drowners Ring).</summary>
@@ -1920,7 +1924,6 @@ namespace LandmarkEmulator.WorldServer.Game.Combat
                 areas.RemoveAll(a => a.Source == p);
                 charging.Remove(p);
                 channels.Remove(p);
-                lastChannelCast.Remove(p);
             }
             // The six-shooters' hand (a concurrent map): kept the whole session alive after logout (bughunt-combat.md B9).
             leftHandNext.TryRemove(p, out _);
