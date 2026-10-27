@@ -156,6 +156,27 @@ namespace LandmarkEmulator.Tests.Config
                 Assert.Equal(200, players.Status);
                 Assert.Contains("\"ok\":true", players.Body);
 
+                // Item browse APIs: same cookie + CSRF rules; empty search is ok with no definitions loaded in this harness.
+                Assert.Equal(403, Request("POST", "/api/admin/items", new() { ["q"] = "pick" }, cookie).Status);
+                Assert.Equal(403, Request("POST", "/api/admin/item-categories", null, cookie).Status);
+                Answer items = Request("POST", "/api/admin/items", new() { ["csrf"] = csrf, ["q"] = "pick" }, cookie, "http://127.0.0.1:19001");
+                Assert.Equal(200, items.Status);
+                Assert.Contains("\"ok\":true", items.Body);
+                Assert.Contains("\"items\":", items.Body);
+                Answer cats = Request("POST", "/api/admin/item-categories", new() { ["csrf"] = csrf }, cookie, "http://127.0.0.1:19001");
+                Assert.Equal(200, cats.Status);
+                Assert.Contains("\"ok\":true", cats.Body);
+                Assert.Contains("\"categories\":", cats.Body);
+                Assert.Contains("lmAdminCmdHistory", menu.Body);
+                Assert.Contains("loadCreatures", menu.Body);
+                Answer creatures = Request("POST", "/api/admin/creatures", new() { ["csrf"] = csrf }, cookie, "http://127.0.0.1:19001");
+                Assert.Equal(200, creatures.Status);
+                Assert.Contains("\"ok\":true", creatures.Body);
+                Assert.Contains("\"id\":\"kobold\"", creatures.Body);
+                Assert.Contains("\"id\":\"wolf\"", creatures.Body);
+                Assert.Contains("\"id\":\"fungus\"", creatures.Body);
+                Assert.Equal(403, Request("POST", "/api/admin/creatures", null, cookie).Status);
+
                 // The login ends when the admin leaves the world (their Showcase token goes).
                 Store.Forget(admin);
                 Assert.Equal(403, Request("GET", "/admin", null, cookie).Status);

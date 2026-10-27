@@ -29,7 +29,8 @@ namespace LandmarkEmulator.WorldServer.Game
     /// <item>Admins only (<see cref="AdminRequest"/>: opened as /admin?t=token from the game, then by an HttpOnly cookie,
     /// <see cref="AdminSessions"/>): GET /admin (the admin menu, <see cref="Admin"/>), GET /admin/monitor and GET
     /// /api/admin/monitor (the server monitor, <see cref="AdminMonitor"/>: read-only, built on the world thread), GET
-    /// /admin/settings and /api/admin/settings… (<see cref="ServerSettingsPage"/>), POST /api/admin/players, psqueue, run.</item>
+    /// /admin/settings and /api/admin/settings… (<see cref="ServerSettingsPage"/>), POST /api/admin/players, psqueue, run,
+    /// item-categories, items, creatures.</item>
     /// <item>JSON API, all with the player's token (t=...): GET /api/me, GET /api/catalogue, GET /api/gallery (published
     /// + tagged sites with tags, likes, Play Mode, listing time, screenshot, comment count, contests; /api/me also gives the
     /// player's Lumens and whether the store is free, /api/catalogue each item's price in Lumens), GET
@@ -460,6 +461,16 @@ namespace LandmarkEmulator.WorldServer.Game
             {
                 case "/api/admin/players":
                     return Json(new { ok = true, players = Admin.Players() });
+                case "/api/admin/item-categories":
+                    return Json(new { ok = true, categories = Admin.ItemCategories() });
+                case "/api/admin/items":
+                {
+                    Admin.ItemSearch found = Admin.Items(query.GetValueOrDefault("q"), query.GetValueOrDefault("category"));
+                    return Json(new { ok = true, items = found.Items.Select(i => new { id = i.Id, name = i.Name, categories = i.Categories }),
+                        matched = found.Matched, shown = found.Shown });
+                }
+                case "/api/admin/creatures":
+                    return Json(new { ok = true, creatures = Admin.CreatureKinds() });
                 case "/api/admin/psqueue":
                 {
                     // Player Studio products the peers rejected, waiting for staff (Commerce "Live's review rules"; P1210).

@@ -73,6 +73,24 @@ render tweaks (radius, fog, foreground scale, shadow quality, near/far).
 Logs: every admin command is written at Info level with the admin's name and the decoded fields (`Admin X /goto ...`);
 refused ones at Warn.
 
+## Admin menu (/admin)
+
+The in-game `/admin` page (`Game/Admin.cs`) runs the same dev commands as `dev_commands.txt` for the selected target
+(Me, Everyone, or an online player). The page is ES5-only (the client's browser is old).
+
+- **Give item:** type an item definition id, or search by name / `#id` and optional category (`POST /api/admin/items`,
+  `POST /api/admin/item-categories`); click a hit to fill the id, then Give. Enter in the id, count, or search box
+  submits that row.
+- **Enter:** most one-line fields (travel, time of day, broadcast, kick, shutdown, Any command) run their action on Enter
+  (kick and shutdown still confirm).
+- **Any command:** Up/Down and the recent chips reuse the last ~50 commands in this browser (`localStorage`
+  `lmAdminCmdHistory`).
+- **Creatures:** the spawn list is filled from the server (`POST /api/admin/creatures`): every `kindsByName` entry plus
+  the named `DevKind` aliases (fungus, abomination, chomper, woodslaug, catapult, healer). Spawner props as
+  `creature p&lt;id&gt;` stay on Any command.
+
+Other admin pages from the same login: **Server monitor** (`/admin/monitor`) and **Server settings** (`/admin/settings`).
+
 ## Broadcasts and kicks (/admin menu, dev commands)
 
 - **System Broadcast** (`broadcast <text>`; the admin menu's Broadcast box sends it to everyone): BaseBroadcastPacket

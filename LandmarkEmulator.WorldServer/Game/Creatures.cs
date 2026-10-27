@@ -208,6 +208,34 @@ namespace LandmarkEmulator.WorldServer.Game
             ["skeleton"] = Skeleton, ["slaug"] = Slaug, ["ogre"] = Ogre, ["wolf"] = SpiritWolf, ["deer"] = Deer
         };
 
+        /// <summary>
+        /// Named <c>creature &lt;kind&gt;</c> aliases built on first use (<see cref="DevKind"/>), for the admin menu.
+        /// Spawner props via <c>p&lt;id&gt;</c> stay on Any command (too many to list).
+        /// </summary>
+        private static readonly (string Id, string Name)[] namedDevKinds =
+        {
+            ("fungus", "Fiery Fungus"), ("abomination", "Abomination"), ("chomper", "Forest Chomper"),
+            ("woodslaug", "Wood Slaug"), ("catapult", "Highfall Catapult"), ("healer", "Healer"),
+        };
+
+        /// <summary>
+        /// Every named kind the admin menu can spawn: <see cref="kindsByName"/> then the fixed <see cref="DevKind"/>
+        /// aliases (id = the <c>creature</c> argument, name = what to show).
+        /// </summary>
+        public static IReadOnlyList<object> AdminSpawnKinds()
+        {
+            var rows = new List<object>(kindsByName.Count + namedDevKinds.Length);
+            foreach (KeyValuePair<string, Kind> kv in kindsByName.OrderBy(k => k.Value.Name, StringComparer.OrdinalIgnoreCase))
+                rows.Add(new { id = kv.Key, name = kv.Value.Name });
+            foreach ((string id, string name) in namedDevKinds)
+            {
+                if (kindsByName.ContainsKey(id))
+                    continue;
+                rows.Add(new { id, name });
+            }
+            return rows;
+        }
+
         /// <summary>A prop's internal name (spawner props name their creature: "Spawner: Ruins: Barren Melee …").</summary>
         public static string PropName(uint propId) => Props.InternalName(propId) ?? "";
 
