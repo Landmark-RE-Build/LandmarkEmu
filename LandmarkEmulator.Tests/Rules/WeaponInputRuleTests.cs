@@ -256,5 +256,26 @@ namespace LandmarkEmulator.Tests.Rules
             Assert.False(WeaponCombat.ReleaseChannel(p));                    // nothing left to release
             WeaponCombat.Forget(p);
         }
+
+        /// <summary>
+        /// After Molten Rebuke releases, a later cast that reuses the same cast guid (live Bastion packets used 0x4)
+        /// must not look "still channelled" — that skipped CastSuccess and locked the client (2026-10-27).
+        /// </summary>
+        [Fact]
+        public void BlockingStance_AfterRelease_SameCastGuidIsNotStillOpen()
+        {
+            using var world = new FakeWorld();
+            var bastion = Weapon(3030);
+            WorldSession p = world.Session(0x7004, "BastionReuse");
+            const ulong reused = 0x4;
+            AbilityCastAttempt stance = Cast(770, reused);
+            Assert.False(WeaponCombat.Use(p, stance, bastion, 770, 50));
+            Assert.True(WeaponCombat.ChannelOpened(p, stance));
+            Assert.True(WeaponCombat.ReleaseChannel(p));
+            Assert.False(WeaponCombat.ChannelOpened(p, stance));
+            AbilityCastAttempt next = Cast(769, reused);   // Cinder Strike-style basic with the same guid
+            Assert.False(WeaponCombat.ChannelOpened(p, next));
+            WeaponCombat.Forget(p);
+        }
     }
 }
