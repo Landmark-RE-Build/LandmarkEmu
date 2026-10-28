@@ -507,15 +507,18 @@ cloaked one) and TrailBlazer_001 (Courtier's), matched by their icons 754 / 755 
 mesh's default. Not given (no item record exists): Mastercraft Bracer, Ring of Bounty, Mega Pocket, the original
 Founder's Pickaxe, the title Founder.
 
-**Founder's Chest** (prop 898, at every Spire beside the Resupply Chest): it gives back missing founder items (hotfix
-28 Mar 2014; wiki Spire 2016). Clicking it gives back the founder
-package's soulbound (NO_TRADE) items the character holds nowhere — not in the bag / vault / equipment / overflow, not
-placed by them, not in their chests (or chests on their sites, or a picked-up chest in their bag), not in a letter —
-into the bag (the rest by mail), and re-teaches the package's recipes. Answers are live's own texts: 562158 "Retrieving
-your missing Founder's Pack items…", 562157 nothing missing, 562156 no Founder's Pack (founder package switched off),
-562130 refused while lapsed-site contents wait. The client's Spire template has only the Resupply Chest (same model,
-724), so the server adds 898 1.6 m beside it (live's spot is not known). The mailbox is read once per click off the
-world tick, and a second click within 5 s is ignored. Dev `founderchest`.
+**Resupply Chest** (prop 884, in the Spire template; model 724): one chest does both restores. Clicking it gives back
+missing Adventurer's Tools (31 Mar 2015 hotfix; text 562716), then missing Founder's Pack soulbound items (hotfix
+28 Mar 2014; wiki Spire still calls that behaviour "Founder's Chest"). Founder restore covers the package's NO_TRADE
+items the character holds nowhere — not in the bag / vault / equipment / overflow, not placed by them, not in their
+chests (or chests on their sites, or a picked-up chest in their bag), not in a letter — into the bag (the rest by mail),
+and re-teaches the package's recipes. Founder answers are live's own texts (client group `ResupplyChest.*`): 562158
+"Retrieving your missing Founder's Pack items…", 562157 nothing missing, 562156 no Founder's Pack (founder package
+switched off), 562130 refused while lapsed-site contents wait. "No Founder's Pack" stays quiet on the chest click when
+the package is off; "nothing missing" still answers so the click is acknowledged. `founderchest` prints both idle
+replies. PropDefs 898 is not placed —
+the template only has 884. The mailbox is read once per click off the world tick, and a second founder restore within
+5 s is ignored. Dev `resupply` (full chest) / `founderchest` (founder path only).
 
 ## Storage chests (`Game/Chests.cs`)
 
@@ -1122,8 +1125,7 @@ Rates are ours; the patch notes only say "rare" or "a chance".
 - `Game/Spire.cs`: the teleporter hub of every landscape (the client's Spire template, model 596 and its props): nearest
   level ground to the zone centre (home included; deck ≤ 17 m relief ≈ plinth height); deck seated into the landscape
   (no air-box stamp / fill; docs/terrain.md "Voxel templates"). Usable props: Replicator, Repair Station, Mailbox, Crimson Parlor, Portal Crystal,
-  Resupply Chest 884 (missing starter tools back) and the Founder's Chest 898 the server adds beside it (missing
-  Founder's Pack items back).
+  Resupply Chest 884 (missing starter tools and Founder's Pack items back; one template prop, not a second spawn).
 - `Game/Teleport.cs`: moves a player, snapped to the ground.
 - `Game/Templates.cs`: designs (save, list, place, rename, delete); design items add the client's .otd templates
   as designer templates (Designs tab "Collected"). Starter Castle: the 27 castle pieces with a client .otd file are

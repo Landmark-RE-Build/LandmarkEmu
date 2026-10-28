@@ -33,7 +33,7 @@ Run from `dev_commands.txt` or the admin menu's *Any command* (see [Running dev 
 | `durabilityof` | `durabilityof <item def>` | Console / admins | Wear and condition of the player's items of that kind. |
 | `equipped` | `equipped` | Console / admins | Each equipped item with its definition's slot, model and categories. |
 | `finditem` | `finditem <text\|#id>` | Console / admins | Item definitions whose name contains the text (as this client names them), or by id. |
-| `founderchest` | `founderchest` | Console / admins | As using the Spire's Founder's Chest (missing Founder's Pack items back). |
+| `founderchest` | `founderchest` | Console / admins | Founder's Pack restore only (same path the Spire Resupply Chest runs after tools; prints idle replies). |
 | `give` | `give <item id> <count>` | Console / admins | Gives items to the player (into the bag; what does not fit goes to overflow). |
 | `giveoverflow` | `giveoverflow <item> <count> [minutes]` | Console / admins | Puts items straight into overflow (tests of "Retrieve all"); minutes: they expire that soon instead of after OverflowExpiryHours (OverflowExpiry). |
 | `itemaudit` | `itemaudit` | Console / admins | ItemAudit.txt (what each item does on this server; unhandled abilities first). |
@@ -41,7 +41,7 @@ Run from `dev_commands.txt` or the admin menu's *Any command* (see [Running dev 
 | `itemstats` | `itemstats on\|off` | Console / admins | Tool stats in item records (from the next item sent / login). |
 | `lootbag` | `lootbag <item> [count]` | Console / admins | A loot bag at the player's feet (pickup → loot toast). |
 | `lootfree` | `lootfree <item> [count]` | Console / admins | One OWNERLESS loot bag 3 m ahead of the first target, shown to every player on that landscape within 50 m; the first to come within 5 m claims it (NotifyOwnerlessLootClaimed to all), and only the claimer's client picks it up. |
-| `resupply` | `resupply` | Console / admins | As using the Spire's Resupply Chest (missing starter tools back). |
+| `resupply` | `resupply` | Console / admins | As using the Spire's Resupply Chest (missing starter tools, then Founder's Pack restore). |
 | `setwear` | `setwear <item def> <wear points>` | Console / admins | Wear the player's carried items of that kind. 0 = as new. |
 | `sortbag` | `sortbag` | Console / admins | Reverses the bag's order the way the window's sort sends it (RearrangeItemSlots). |
 | `station` | `station <station id>` | Console / admins | Opens that crafting station's window wherever the player is. |
