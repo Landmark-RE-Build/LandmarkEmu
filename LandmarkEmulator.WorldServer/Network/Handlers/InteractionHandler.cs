@@ -63,9 +63,7 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                     else if (Game.Spire.IsBarber(guid) || Game.Props.IsParlor(guid))
                         Game.ClientLua.Run(session, "CharacterCustomization.StartCustomization");
                     else if (Game.Spire.IsResupplyChest(guid))
-                        Game.Spire.Resupply(session);
-                    else if (Game.Spire.IsFounderChest(guid))
-                        Game.Entitlements.RestoreFounderItems(session);
+                        Game.Spire.UseResupplyChest(session);
                     else if (Game.Spire.IsCrystal(guid))
                         // The Spire's Portal Crystal: the player stands at the hub (Spire menu: World / Local Travel).
                         Game.WarpNetwork.ActivateTerminal(session, Game.WarpNetwork.HubNodeOn(session.ZoneId), false);

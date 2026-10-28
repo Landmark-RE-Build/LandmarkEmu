@@ -74,11 +74,11 @@ namespace LandmarkEmulator.WorldServer.Game
         private const uint BarberProp = 2942;
 
         /// <summary>
-        /// The Spire's Resupply Chest (PropDefs 884, in the Spire template). 31 Mar 2015 hotfix: new players start with
-        /// building tools, and the chest at the spires replaces missing ones [P]. The client keeps item group 6
-        /// = {3253 Adventurer's Mining Pick, 3259 Adventurer's Logging Axe} (ItemGroupMappings, the starter tools) and the
-        /// text 562716 "Retrieving your missing Adventurer's Tools." that no client table uses [P]; using the chest gives back
-        /// each of the two the player no longer has [I: the trigger and rule from the hotfix note] (OPEN-LEADS L161).
+        /// The Spire's Resupply Chest (PropDefs 884, in the Spire template; model 724, the founder-chest mesh) [P].
+        /// One chest does both live restore jobs: starter tools (31 Mar 2015 hotfix) and missing Founder's Pack items
+        /// (28 Mar 2014 / wiki Spire "Founder's Chest") [P/W]. The client names the founder-restore texts under
+        /// <c>ResupplyChest.*</c> (562130 / 562156-562158) [P], and the Spire template holds only 884 — prop 898 exists
+        /// in PropDefs but is not placed. Clicking it runs <see cref="UseResupplyChest"/>.
         /// </summary>
         public const uint ResupplyChestProp = 884;
         private static readonly uint[] StarterTools = { 3253, 3259 };
@@ -87,30 +87,20 @@ namespace LandmarkEmulator.WorldServer.Game
         public static bool IsResupplyChest(ulong guid) => propDefinitions.TryGetValue(guid, out uint def) && def == ResupplyChestProp;
 
         /// <summary>
-        /// The Founder's Chest (PropDefs 898, name text 562116 "Theme_FoundersPack_Chests_Founder01", model 724
-        /// Theme_FoundersPack_Chests_Founder01.adr [P prop dump]): the Founder's Chest at each hub gives back whatever
-        /// is missing (hotfix 28 Mar 2014) and a fix for the Founder's Chest sometimes not returning lost items (17 Dec
-        /// 2014) [P developer notes]; the 2016 wiki still lists it at the Spire
-        /// (it gives missing items only to alpha and beta testers, Spire; "travel
-        /// to the spire and click the yellow and blue Founder's Chest", Noble's Regalia) [W]. Using it runs
-        /// <see cref="Entitlements.RestoreFounderItems"/> (trace/0695/audit-wiki-gaps.md #11).
-        /// <para>
-        /// Where it stands: the client's Spire template holds no prop 898, only the Resupply Chest 884 — whose model is the
-        /// same founder chest (724) [P]. So it is added by the server beside the Resupply Chest, <see cref="FounderChestOffset"/>
-        /// along that chest's own sideways axis, same turn and scale [I: live's spot is not known; that live may have had
-        /// one chest doing both is an open question, OPEN-LEADS].
-        /// </para>
+        /// Using the Spire's Resupply Chest: missing Adventurer's Tools back, then missing Founder's Pack items
+        /// (<see cref="Entitlements.RestoreFounderItems"/>; "no Founder's Pack" stays quiet when the package is off,
+        /// but "nothing missing" still answers so the click is acknowledged).
         /// </summary>
-        public const uint FounderChestProp = 898;
-        private const uint FounderChestModel = 724;
-        /// <summary>Beside the Resupply Chest, in that chest's own frame (metres) [I].</summary>
-        private static readonly Vector3 FounderChestOffset = new(1.6f, 0f, 0f);
-        /// <summary>The Founder's Chest's guid index on every Spire, outside the template's 1..n sequence.</summary>
-        private const ulong FounderChestIndex = 0x898;
+        public static void UseResupplyChest(WorldSession session)
+        {
+            Resupply(session);
+            Entitlements.RestoreFounderItems(session, quietWhenIdle: true);
+        }
 
-        public static bool IsFounderChest(ulong guid) => propDefinitions.TryGetValue(guid, out uint def) && def == FounderChestProp;
-
-        /// <summary>The Resupply Chest: gives back the starter tools this player has none of (bag, equipped or vault).</summary>
+        /// <summary>
+        /// Gives back each starter tool (item group 6: 3253 pick, 3259 axe) the player has none of (bag, equipped or
+        /// vault), with text 562716 [P; I rule from the 31 Mar 2015 hotfix] (OPEN-LEADS L161).
+        /// </summary>
         public static int Resupply(WorldSession session)
         {
             int given = 0;
@@ -985,7 +975,7 @@ namespace LandmarkEmulator.WorldServer.Game
 
         /// <summary>Can players use this Spire prop?</summary>
         public static bool Usable(ulong guid) => StationAt(guid) != 0 || IsMailbox(guid) || IsBarber(guid) || IsCrystal(guid)
-            || IsResupplyChest(guid) || IsFounderChest(guid);
+            || IsResupplyChest(guid);
 
         /// <summary>
         /// The template's props where it puts them; the Spire itself gets index 1 (its guid is the respawn site id).
@@ -1012,17 +1002,6 @@ namespace LandmarkEmulator.WorldServer.Game
                 if (Usable(spawn.Guid))   // named like a placed station (the hover prompt shows it)
                     spawn.NameId = GameTableManager.Instance.PropDefs.GetEntry(p.PropId)?.NameStringId ?? 0;
                 list.Add(spawn);
-                if (p.PropId == ResupplyChestProp)
-                {
-                    // The Founder's Chest beside it (see FounderChestProp).
-                    uint model = Props.ModelOf(FounderChestProp);
-                    Vector3 at = Local(corner, p.Position) + Vector3.Transform(FounderChestOffset, p.Rotation);
-                    // Its own index (not the next in the template's sequence), so the template props' guids don't shift.
-                    PlayerUpdateAddLightweightProp founder = Prop(site.Zone, FounderChestIndex, model != 0 ? model : FounderChestModel, at, p.Rotation, p.Scale);
-                    propDefinitions[founder.Guid] = FounderChestProp;
-                    founder.NameId = GameTableManager.Instance.PropDefs.GetEntry(FounderChestProp)?.NameStringId ?? 0;
-                    list.Add(founder);
-                }
             }
             log.Info($"Spire of landscape {site.Zone}: {list.Count} template props (prop ids {string.Join(", ", template.Props.Select(p => p.PropId).Distinct().OrderBy(v => v))}).");
             return list;

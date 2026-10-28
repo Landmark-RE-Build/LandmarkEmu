@@ -42,8 +42,9 @@ namespace LandmarkEmulator.WorldServer.Game
     /// <para>Not granted (open leads in the report): Mastercraft Bracer, Ring of Bounty,
     /// Mega Pocket, the Founder's Pickaxe 434 and the title Founder — the client has their names (560066-560108) but
     /// neither the live item list nor the server has an item record for them.</para>
-    /// <para>Live's "restore missing Founder's Pack items" is the Founder's Chest at every Spire
-    /// (<see cref="Spire.FounderChestProp"/> 898 → <see cref="RestoreFounderItems"/>).</para>
+    /// <para>Live's "restore missing Founder's Pack items" is the Spire Resupply Chest
+    /// (<see cref="Spire.ResupplyChestProp"/> 884 → <see cref="RestoreFounderItems"/>; the client groups the reply
+    /// texts under <c>ResupplyChest.*</c>).</para>
     /// </summary>
     public static class Entitlements
     {
@@ -176,14 +177,15 @@ namespace LandmarkEmulator.WorldServer.Game
             RetrievingText = 562158;
 
         /// <summary>
-        /// The Founder's Chest at the Spires (trace/0695/audit-wiki-gaps.md #11): the Founder's Chest at each hub gives
-        /// back whatever is missing (28 Mar 2014) [P]; it replaces tools that can't be crafted, such as the Founder's
-        /// Pickaxe, and other founder's pack items that were lost or deleted (wiki Spire) [W]. Gives back the founder
-        /// package's items the
-        /// character no longer holds anywhere, and re-teaches its recipes.
+        /// Founder's Pack restore via the Spire Resupply Chest (trace/0695/audit-wiki-gaps.md #11; wiki still calls the
+        /// behaviour "Founder's Chest"): gives back whatever is missing (28 Mar 2014) [P]; it replaces tools that can't
+        /// be crafted, such as the Founder's Pickaxe, and other founder's pack items that were lost or deleted (wiki
+        /// Spire) [W]. Gives back the founder package's items the character no longer holds anywhere, and re-teaches its
+        /// recipes.
         /// <list type="bullet">
-        /// <item>Only while the founder package is switched on (FounderEntitlements + EntitlementPackages); else 562156. A
-        /// character that never got the package (it was switched on later) gets it now, as at world entry.</item>
+        /// <item>Only while the founder package is switched on (FounderEntitlements + EntitlementPackages); else 562156
+        /// (unless <paramref name="quietWhenIdle"/>). A character that never got the package (it was switched on later)
+        /// gets it now, as at world entry.</item>
         /// <item>Refused with 562130 while the character has lapsed-site contents still to retrieve
         /// (<see cref="SiteContents"/>: live's "pending Build Site mail", which could still hold the items).</item>
         /// <item>"Held" = in the bag, vault, equipment or overflow; placed in the world by this character; in a chest they
@@ -193,13 +195,16 @@ namespace LandmarkEmulator.WorldServer.Game
         /// copy it [I]; consumables are never given back (live's own text says so; the package has none).</item>
         /// </list>
         /// Items go into the bag, the rest by mail as the package's letter.
+        /// <para><paramref name="quietWhenIdle"/> is set from <see cref="Spire.UseResupplyChest"/> so a click does not
+        /// print "no Founder's Pack" when the package is off (tool restore is the common case). "Nothing missing"
+        /// (562157), pending-mail, and retrieving replies still show.</para>
         /// <para>The checks in memory run on the world thread; the mailbox check for the items not held otherwise is one
         /// read of the recipient's letters (<c>ISocialService.MailAttachmentKinds</c>) on a pool thread, and the rest
         /// finishes at the session's next flush. A click within <see cref="FounderChestCooldown"/> of the last one is
         /// ignored. Until 2026-10-18 each founder item ran its own synchronous mailbox scan on the tick, and spam-clicking
         /// the chest stalled the world (review 2026-10-18b #5).</para>
         /// </summary>
-        public static void RestoreFounderItems(WorldSession session)
+        public static void RestoreFounderItems(WorldSession session, bool quietWhenIdle = false)
         {
             DateTime now = DateTime.UtcNow;
             if (founderChestUsed.TryGetValue(session.PlayerGuid, out DateTime last) && now - last < FounderChestCooldown)
@@ -216,7 +221,8 @@ namespace LandmarkEmulator.WorldServer.Game
             Package package = Enabled().FirstOrDefault(p => p.Id == FounderPackage);
             if (package == null)
             {
-                Chat.System(session, Text(NoFounderPackText, "We are unable to retrieve any lost Founder's Pack items because you do not own a Founder's Pack"));
+                if (!quietWhenIdle)
+                    Chat.System(session, Text(NoFounderPackText, "We are unable to retrieve any lost Founder's Pack items because you do not own a Founder's Pack"));
                 log.Info($"{session.CharacterName}: Founder's Chest, no founder package (FounderEntitlements / EntitlementPackages).");
                 return;
             }

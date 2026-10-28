@@ -1276,12 +1276,12 @@ namespace LandmarkEmulator.WorldServer.Game
                                 Claims.BeginPlacement(session);
                             break;
                         case "resupply":
-                            // resupply: as using the Spire's Resupply Chest (missing starter tools back).
+                            // resupply: as using the Spire's Resupply Chest (tools + Founder's Pack restore).
                             foreach (WorldSession session in targets)
-                                Spire.Resupply(session);
+                                Spire.UseResupplyChest(session);
                             break;
                         case "founderchest":
-                            // founderchest: as using the Spire's Founder's Chest (missing Founder's Pack items back).
+                            // founderchest: Founder's Pack restore only (same path the Resupply Chest runs after tools).
                             foreach (WorldSession session in targets)
                                 Entitlements.RestoreFounderItems(session);
                             break;
