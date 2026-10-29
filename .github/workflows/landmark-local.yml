@@ -160,5 +160,17 @@ jobs:
           if (gh release view $tag --repo $repo 2>$null) {
             gh release upload $tag $zip --clobber --repo $repo
           } else {
-            gh release create $tag $zip --title "LandmarkLocal $env:VERSION" --notes $notes --repo $repo --target $sha
+            # --notes prepends to GitHub's commit/PR changelog (--generate-notes).
+            $createArgs = @(
+              "release", "create", $tag, $zip,
+              "--title", "LandmarkLocal $env:VERSION",
+              "--notes", $notes,
+              "--generate-notes",
+              "--repo", $repo,
+              "--target", $sha
+            )
+            if ($env:PREVIOUS -and $env:PREVIOUS -ne "(none)") {
+              $createArgs += @("--notes-start-tag", "landmark-local-v$($env:PREVIOUS)")
+            }
+            & gh @createArgs
           }
