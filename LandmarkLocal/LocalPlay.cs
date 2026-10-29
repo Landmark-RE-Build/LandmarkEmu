@@ -12,6 +12,8 @@ public sealed class LocalPlayResult
     public string Message { get; init; } = "";
     public bool AccountCreated { get; init; }
     public bool Patched { get; init; }
+    /// <summary>User-visible alert when experimental in-memory patches could not be applied (game still started).</summary>
+    public string PatchAlert { get; init; } = "";
 }
 
 /// <summary>
@@ -107,14 +109,35 @@ public static class LocalPlay
         }
 
         progress?.Report("Starting Landmark…");
-        Process started = GameSession.Start(settings.LandmarkFolder, sessionKey, settings.Locale);
+        AllocatorSlotExpand alloc = settings.AllocatorSlotExpand;
+        ContourThreadExpand contour = ContourThreadPatch.ClampToAllocator(settings.ContourThreadExpand, alloc);
+        var launch = new ClientLaunchOptions
+        {
+            AllocatorSlotExpand = alloc,
+            ContourThreadExpand = contour,
+        };
+        Process started = GameSession.Start(settings.LandmarkFolder, sessionKey, settings.Locale, launch, out ClientLaunchPatches patches);
         progress?.Report($"Landmark started (pid {started.Id}).");
+        string alert = "";
+        if (patches.Allocator.Status == AllocatorPatchStatus.Failed)
+        {
+            progress?.Report(patches.Allocator.UserMessage);
+            alert = patches.Allocator.UserMessage;
+        }
+        if (patches.Contour.Status == AllocatorPatchStatus.Failed)
+        {
+            progress?.Report(patches.Contour.UserMessage);
+            alert = string.IsNullOrEmpty(alert)
+                ? patches.Contour.UserMessage
+                : alert + "\n\n" + patches.Contour.UserMessage;
+        }
 
         return new LocalPlayResult
         {
             Ok = true,
             AccountCreated = created,
             Patched = patched,
+            PatchAlert = alert,
             Message = created
                 ? "Account created and Landmark started. You are admin on this local world."
                 : "Landmark started. You are admin on this local world.",

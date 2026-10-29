@@ -105,6 +105,8 @@
                   <RowDefinition Height="Auto"/>
                   <RowDefinition Height="Auto"/>
                   <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="120"/>
@@ -134,6 +136,32 @@
                              Foreground="{StaticResource OkBrush}" FontSize="12" Text="Remembered"
                              Visibility="Collapsed"/>
                 </Grid>
+
+                <StackPanel Grid.Row="3" Grid.Column="0" Orientation="Vertical" VerticalAlignment="Center"
+                            ToolTip="0.695 / 0.699 only. Raises the in-memory allocator table from 64 to 127 slots.">
+                  <TextBlock Style="{StaticResource LpLabel}" Text="Slot expand" Margin="0"/>
+                  <TextBlock Text="experimental" Foreground="{StaticResource DangerBrush}" FontSize="11" Margin="0,2,0,0"/>
+                </StackPanel>
+                <ComboBox x:Name="AllocatorExpandBox" Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,4"
+                          SelectionChanged="AllocatorExpand_Changed"
+                          ToolTip="Off (default). Auto applies on 16+ logical processors. On always tries. Mismatch shows an alert and starts unpatched.">
+                  <ComboBoxItem Content="Off (default)" Tag="Off"/>
+                  <ComboBoxItem Content="Auto (16+ CPUs)" Tag="Auto"/>
+                  <ComboBoxItem Content="On" Tag="On"/>
+                </ComboBox>
+
+                <StackPanel Grid.Row="4" Grid.Column="0" Orientation="Vertical" VerticalAlignment="Center"
+                            ToolTip="Raise contour workers 3→5. Requires Slot expand Auto or On.">
+                  <TextBlock Style="{StaticResource LpLabel}" Text="Contour threads" Margin="0"/>
+                  <TextBlock Text="experimental" Foreground="{StaticResource DangerBrush}" FontSize="11" Margin="0,2,0,0"/>
+                </StackPanel>
+                <ComboBox x:Name="ContourExpandBox" Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,4"
+                          SelectionChanged="Form_Changed"
+                          ToolTip="Off (default). Requires Slot expand. Applied only after allocator expand succeeds.">
+                  <ComboBoxItem Content="Off (default)" Tag="Off"/>
+                  <ComboBoxItem Content="Auto (with slot expand)" Tag="Auto"/>
+                  <ComboBoxItem Content="On" Tag="On"/>
+                </ComboBox>
               </Grid>
             </Border>
           </StackPanel>

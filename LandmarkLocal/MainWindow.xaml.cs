@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
+using LandmarkEmulator.ClientLaunch;
 using LandmarkEmulator.PatchPacks;
 using Microsoft.Win32;
 using Drawing = System.Drawing;
@@ -39,6 +40,10 @@ public partial class MainWindow : Window
             ? LocalSettings.TryFindSteamLandmark() ?? ""
             : _settings.LandmarkFolder;
         AdminBox.Text = _settings.AdminAccountName;
+        SelectAllocatorExpand(_settings.AllocatorSlotExpand);
+        SelectContourExpand(ContourThreadPatch.ClampToAllocator(
+            _settings.ContourThreadExpand, _settings.AllocatorSlotExpand));
+        UpdateContourExpandEnabled();
         Append("LandmarkLocal folder: " + _paths.Root);
         if (LocalSettings.TryFindSteamLandmark() is string found
             && string.IsNullOrWhiteSpace(_settings.LandmarkFolder))
@@ -195,9 +200,19 @@ public partial class MainWindow : Window
         {
             LocalPlayResult result = await LocalPlay.PlayAsync(_paths, _settings, password, progress, _cts.Token);
             _settings = LocalSettings.LoadOrCreate(_paths);
+            SelectAllocatorExpand(_settings.AllocatorSlotExpand);
+            SelectContourExpand(ContourThreadPatch.ClampToAllocator(
+                _settings.ContourThreadExpand, _settings.AllocatorSlotExpand));
+            UpdateContourExpandEnabled();
             PasswordBox.Clear();
             UpdateRemembered();
             Append(result.Message);
+            if (!string.IsNullOrEmpty(result.PatchAlert))
+            {
+                Append(result.PatchAlert);
+                System.Windows.MessageBox.Show(this, result.PatchAlert, "Experimental client patch",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
             RefreshClientRunning();
         }
         catch (Exception ex)
@@ -247,11 +262,78 @@ public partial class MainWindow : Window
         string prevAccount = _settings.AdminAccountName.Trim();
         _settings.LandmarkFolder = LandmarkBox.Text.Trim().Trim('"');
         _settings.AdminAccountName = AdminBox.Text.Trim();
+        _settings.AllocatorSlotExpand = ReadAllocatorExpand();
+        _settings.ContourThreadExpand = ContourThreadPatch.ClampToAllocator(
+            ReadContourExpand(), _settings.AllocatorSlotExpand);
         if (!string.Equals(prevAccount, _settings.AdminAccountName, StringComparison.OrdinalIgnoreCase))
             _settings.ForgetLogin();
         _settings.EnsureCredentials();
         _settings.Save(_paths);
         _host?.UpdateSettings(_settings);
+    }
+
+    void AllocatorExpand_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        UpdateContourExpandEnabled();
+        if (ReadAllocatorExpand() == AllocatorSlotExpand.Off)
+            SelectContourExpand(ContourThreadExpand.Off);
+        Form_Changed(sender, e);
+    }
+
+    void UpdateContourExpandEnabled()
+    {
+        bool on = ReadAllocatorExpand() is AllocatorSlotExpand.Auto or AllocatorSlotExpand.On;
+        ContourExpandBox.IsEnabled = on;
+        if (!on)
+            SelectContourExpand(ContourThreadExpand.Off);
+    }
+
+    void SelectAllocatorExpand(AllocatorSlotExpand mode)
+    {
+        string tag = mode.ToString();
+        foreach (var item in AllocatorExpandBox.Items.OfType<System.Windows.Controls.ComboBoxItem>())
+        {
+            if (string.Equals(item.Tag as string, tag, StringComparison.OrdinalIgnoreCase))
+            {
+                AllocatorExpandBox.SelectedItem = item;
+                return;
+            }
+        }
+        AllocatorExpandBox.SelectedIndex = 0;
+    }
+
+    void SelectContourExpand(ContourThreadExpand mode)
+    {
+        string tag = mode.ToString();
+        foreach (var item in ContourExpandBox.Items.OfType<System.Windows.Controls.ComboBoxItem>())
+        {
+            if (string.Equals(item.Tag as string, tag, StringComparison.OrdinalIgnoreCase))
+            {
+                ContourExpandBox.SelectedItem = item;
+                return;
+            }
+        }
+        ContourExpandBox.SelectedIndex = 0;
+    }
+
+    AllocatorSlotExpand ReadAllocatorExpand()
+    {
+        if (AllocatorExpandBox.SelectedItem is System.Windows.Controls.ComboBoxItem item
+            && item.Tag is string tag
+            && Enum.TryParse(tag, true, out AllocatorSlotExpand mode)
+            && Enum.IsDefined(mode))
+            return mode;
+        return AllocatorSlotExpand.Off;
+    }
+
+    ContourThreadExpand ReadContourExpand()
+    {
+        if (ContourExpandBox.SelectedItem is System.Windows.Controls.ComboBoxItem item
+            && item.Tag is string tag
+            && Enum.TryParse(tag, true, out ContourThreadExpand mode)
+            && Enum.IsDefined(mode))
+            return mode;
+        return ContourThreadExpand.Off;
     }
 
     void SetPhase(HostPhase phase, string label)

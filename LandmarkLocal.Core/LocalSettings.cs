@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using LandmarkEmulator.PatchPacks;
 
 namespace LandmarkLocal;
 
@@ -18,6 +19,14 @@ public sealed class LocalSettings
     public string Locale { get; set; } = "";
     /// <summary>Allow February 2017 (0.699) weak fingerprints for local packs — on for solo grandma installs.</summary>
     public bool AllowFebruaryWeak { get; set; } = true;
+    /// <summary>
+    /// Experimental: expand the thread-allocator slot table in memory on Play (0.695 / 0.699 only). Default Off.
+    /// </summary>
+    public AllocatorSlotExpand AllocatorSlotExpand { get; set; } = AllocatorSlotExpand.Off;
+    /// <summary>
+    /// Experimental: raise contour workers 3→5. Default Off. Only when <see cref="AllocatorSlotExpand"/> is Auto/On.
+    /// </summary>
+    public ContourThreadExpand ContourThreadExpand { get; set; } = ContourThreadExpand.Off;
     public string DbPassword { get; set; } = "";
     public string DbRootPassword { get; set; } = "";
     public int DbPort { get; set; } = Defaults.DbPort;

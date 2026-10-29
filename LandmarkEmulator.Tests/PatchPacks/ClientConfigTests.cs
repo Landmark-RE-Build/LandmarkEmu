@@ -216,6 +216,33 @@ namespace LandmarkEmulator.Tests.PatchPacks
             Assert.Equal(ConfigChoice.Recommended, new ClientConfigOptions().Effective(ClientConfigFile.ThreadsKey).Mode);
         }
 
+        [Fact]
+        public void AllocatorSlotExpand_DefaultsOff_AndRoundTripsAsText()
+        {
+            Assert.Equal(AllocatorSlotExpand.Off, new ClientConfigOptions().AllocatorSlotExpand);
+            var options = new ClientConfigOptions { Advanced = true, AllocatorSlotExpand = AllocatorSlotExpand.Auto };
+            string json = JsonSerializer.Serialize(options);
+            Assert.Contains("\"Auto\"", json);
+            ClientConfigOptions back = JsonSerializer.Deserialize<ClientConfigOptions>(json);
+            Assert.Equal(AllocatorSlotExpand.Auto, back.AllocatorSlotExpand);
+        }
+
+        [Fact]
+        public void ContourThreadExpand_DefaultsOff_AndRoundTripsAsText()
+        {
+            Assert.Equal(ContourThreadExpand.Off, new ClientConfigOptions().ContourThreadExpand);
+            var options = new ClientConfigOptions
+            {
+                Advanced = true,
+                AllocatorSlotExpand = AllocatorSlotExpand.On,
+                ContourThreadExpand = ContourThreadExpand.Auto,
+            };
+            string json = JsonSerializer.Serialize(options);
+            Assert.Contains("\"Auto\"", json);
+            ClientConfigOptions back = JsonSerializer.Deserialize<ClientConfigOptions>(json);
+            Assert.Equal(ContourThreadExpand.Auto, back.ContourThreadExpand);
+        }
+
         // ---- PLAY writes nothing beyond the listed values
 
         /// <summary>The [Terrain] lines an old workspace script added to players' files (they do nothing).</summary>

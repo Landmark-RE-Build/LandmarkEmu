@@ -4,6 +4,32 @@ using System.Text.RegularExpressions;
 
 namespace LandmarkEmulator.PatchPacks
 {
+    /// <summary>
+    /// Experimental in-memory allocator slot expand (64→127) for 0.695 / 0.699. Not a ClientConfig.ini key —
+    /// stored on <see cref="ClientConfigOptions"/> in launchpad.json (and LandmarkLocal settings).
+    /// </summary>
+    [JsonConverter(typeof(JsonStringEnumConverter<AllocatorSlotExpand>))]
+    public enum AllocatorSlotExpand
+    {
+        Off = 0,
+        /// <summary>Apply only when the machine has 16 or more logical processors.</summary>
+        Auto = 1,
+        On = 2,
+    }
+
+    /// <summary>
+    /// Experimental in-memory contour / Contouring Job raise (3→5) for 0.695 / 0.699. Requires
+    /// <see cref="AllocatorSlotExpand"/> Auto or On. Not a ClientConfig.ini key.
+    /// </summary>
+    [JsonConverter(typeof(JsonStringEnumConverter<ContourThreadExpand>))]
+    public enum ContourThreadExpand
+    {
+        Off = 0,
+        /// <summary>Apply whenever allocator slot expand applies this launch.</summary>
+        Auto = 1,
+        On = 2,
+    }
+
     /// <summary>What LaunchPad does with one value it manages in ClientConfig.ini (Settings > Client settings, advanced mode).</summary>
     [JsonConverter(typeof(JsonStringEnumConverter<ConfigChoice>))]
     public enum ConfigChoice
@@ -33,6 +59,17 @@ namespace LandmarkEmulator.PatchPacks
     {
         public bool Advanced { get; set; }
         public Dictionary<string, SettingChoice> Choices { get; set; } = new();
+        /// <summary>
+        /// Experimental: expand the thread-allocator slot table in memory on PLAY (0.695 / 0.699 only).
+        /// Independent of ClientConfig.ini; default Off. Shown in Client settings while advanced mode is on.
+        /// </summary>
+        public AllocatorSlotExpand AllocatorSlotExpand { get; set; } = AllocatorSlotExpand.Off;
+
+        /// <summary>
+        /// Experimental: raise contour / Contouring Job workers from 3 to 5 in memory. Default Off.
+        /// Only meaningful when <see cref="AllocatorSlotExpand"/> is Auto or On (cleared to Off when allocator is Off).
+        /// </summary>
+        public ContourThreadExpand ContourThreadExpand { get; set; } = ContourThreadExpand.Off;
 
         /// <summary>The choice in force for a key: Recommended unless advanced mode is on and the player chose otherwise.</summary>
         public SettingChoice Effective(string key)
