@@ -1,5 +1,7 @@
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using LandmarkEmulator.ClientLaunch;
@@ -24,10 +26,13 @@ public partial class MainWindow : Window
     LocalOrchestrator? _host;
     CancellationTokenSource? _cts;
     bool _busy;
+    bool _loadingForm;
     HostPhase _phase = HostPhase.Stopped;
     bool _forceClose;
     bool _closeInProgress;
     bool _clientRunning;
+    /// <summary>Settings opened because Landmark folder was missing/invalid — close when a valid folder is chosen.</summary>
+    bool _promptingForGameFolder;
     Forms.NotifyIcon? _tray;
     WindowState _lastNonMinimized = WindowState.Normal;
 
@@ -40,14 +45,23 @@ public partial class MainWindow : Window
             ? LocalSettings.TryFindSteamLandmark() ?? ""
             : _settings.LandmarkFolder;
         AdminBox.Text = _settings.AdminAccountName;
-        SelectAllocatorExpand(_settings.AllocatorSlotExpand);
-        SelectContourExpand(ContourThreadPatch.ClampToAllocator(
-            _settings.ContourThreadExpand, _settings.AllocatorSlotExpand));
-        UpdateContourExpandEnabled();
+        LoadClientFormFromSettings();
+        ShowSettingsTab("game");
         Append("LandmarkLocal folder: " + _paths.Root);
         if (LocalSettings.TryFindSteamLandmark() is string found
             && string.IsNullOrWhiteSpace(_settings.LandmarkFolder))
             Append("Found Landmark at: " + found);
+
+        if (LocalSettings.LooksLikeLandmarkFolder(CurrentLandmarkFolder()))
+        {
+            // Steam auto-fill or saved path: persist so next launch is already set.
+            if (string.IsNullOrWhiteSpace(_settings.LandmarkFolder))
+                PersistForm();
+        }
+        else
+            PromptForGameFolder();
+
+        RefreshLandmarkFolderHint();
         UpdateChecklist();
         UpdateRemembered();
         EnsureTray();
@@ -61,8 +75,152 @@ public partial class MainWindow : Window
     void Browse_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new OpenFolderDialog { Title = "Select your Landmark folder (Landmark64.exe)" };
-        if (dlg.ShowDialog(this) == true)
-            LandmarkBox.Text = dlg.FolderName;
+        if (dlg.ShowDialog(this) != true)
+            return;
+
+        LandmarkBox.Text = dlg.FolderName;
+        if (LocalSettings.LooksLikeLandmarkFolder(dlg.FolderName))
+        {
+            AcceptGameFolderAndLeaveSettingsIfPrompting();
+            return;
+        }
+
+        WarnWrongGameFolder();
+        RefreshLandmarkFolderHint();
+    }
+
+    void Settings_Click(object sender, RoutedEventArgs e) => OpenSettings("game");
+
+    void SettingsClose_Click(object sender, RoutedEventArgs e) => CloseSettings();
+
+    void SettingsNav_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string tab })
+            ShowSettingsTab(tab);
+    }
+
+    void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape && SettingsOverlay.Visibility == Visibility.Visible)
+        {
+            CloseSettings();
+            e.Handled = true;
+        }
+    }
+
+    void OpenSettings(string tab)
+    {
+        ShowSettingsTab(tab);
+        SettingsOverlay.Visibility = Visibility.Visible;
+        RefreshLandmarkFolderHint();
+    }
+
+    void CloseSettings()
+    {
+        PersistForm();
+        _promptingForGameFolder = false;
+        SettingsOverlay.Visibility = Visibility.Collapsed;
+        RefreshLandmarkFolderHint();
+        UpdateChecklist();
+        SetButtons();
+    }
+
+    /// <summary>Start / Stop / Play should show the activity log, not sit under Settings.</summary>
+    void DismissSettingsForAction()
+    {
+        if (SettingsOverlay.Visibility == Visibility.Visible)
+            CloseSettings();
+    }
+
+    void PromptForGameFolder()
+    {
+        _promptingForGameFolder = true;
+        OpenSettings("game");
+        Append("Choose your Landmark folder (the one with Landmark64.exe).");
+    }
+
+    void LandmarkFolder_Changed(object sender, TextChangedEventArgs e)
+    {
+        Form_Changed(sender, e);
+        RefreshLandmarkFolderHint();
+        if (_promptingForGameFolder
+            && SettingsOverlay.Visibility == Visibility.Visible
+            && LocalSettings.LooksLikeLandmarkFolder(CurrentLandmarkFolder()))
+            AcceptGameFolderAndLeaveSettingsIfPrompting();
+    }
+
+    void AcceptGameFolderAndLeaveSettingsIfPrompting()
+    {
+        if (!_promptingForGameFolder)
+        {
+            PersistForm();
+            RefreshLandmarkFolderHint();
+            UpdateChecklist();
+            SetButtons();
+            return;
+        }
+
+        Append("Landmark folder set: " + CurrentLandmarkFolder());
+        CloseSettings();
+    }
+
+    void WarnWrongGameFolder()
+    {
+        System.Windows.MessageBox.Show(this,
+            "That folder doesn't look like Landmark.\n\n"
+            + "Pick the install that contains Landmark64.exe and a Resources folder "
+            + "(usually under Steam → steamapps → common → Landmark).",
+            "LandmarkLocal — Wrong folder",
+            MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
+
+    string CurrentLandmarkFolder() => LandmarkBox.Text.Trim().Trim('"');
+
+    void RefreshLandmarkFolderHint()
+    {
+        string folder = CurrentLandmarkFolder();
+        if (LocalSettings.LooksLikeLandmarkFolder(folder))
+        {
+            LandmarkFolderHint.Text = "Looks good — Landmark64.exe found.";
+            LandmarkFolderHint.Foreground = ReadyBrush;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(folder))
+        {
+            LandmarkFolderHint.Text = _promptingForGameFolder
+                ? "Required — browse to your Landmark install (Landmark64.exe)."
+                : "Not set — browse to the folder with Landmark64.exe.";
+            LandmarkFolderHint.Foreground = (SolidColorBrush)FindResource("MutedBrush");
+            return;
+        }
+
+        LandmarkFolderHint.Text =
+            "This isn't a Landmark folder — need Landmark64.exe and a Resources folder inside it.";
+        LandmarkFolderHint.Foreground = FailedBrush;
+    }
+
+    void ShowSettingsTab(string tab)
+    {
+        TabGame.Visibility = tab == "game" ? Visibility.Visible : Visibility.Collapsed;
+        TabClient.Visibility = tab == "client" ? Visibility.Visible : Visibility.Collapsed;
+        TabAbout.Visibility = tab == "about" ? Visibility.Visible : Visibility.Collapsed;
+        PaintNav(NavGameButton, tab == "game");
+        PaintNav(NavClientButton, tab == "client");
+        PaintNav(NavAboutButton, tab == "about");
+    }
+
+    void PaintNav(Button button, bool active)
+    {
+        button.Background = active
+            ? (SolidColorBrush)FindResource("Panel2Brush")
+            : Brushes.Transparent;
+        button.BorderBrush = active
+            ? (SolidColorBrush)FindResource("AccentBrush")
+            : Brushes.Transparent;
+        button.Foreground = active
+            ? (SolidColorBrush)FindResource("TextBrush")
+            : (SolidColorBrush)FindResource("MutedBrush");
     }
 
     void Form_Changed(object sender, RoutedEventArgs e)
@@ -76,6 +234,7 @@ public partial class MainWindow : Window
     {
         if (_busy)
             return;
+        DismissSettingsForAction();
         await StartServersAsync();
     }
 
@@ -84,6 +243,8 @@ public partial class MainWindow : Window
         PersistForm();
         if (!CanStartServers(out string? startBlocker))
         {
+            if (!LocalSettings.LooksLikeLandmarkFolder(CurrentLandmarkFolder()))
+                PromptForGameFolder();
             System.Windows.MessageBox.Show(this, startBlocker!, "LandmarkLocal",
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return false;
@@ -137,6 +298,7 @@ public partial class MainWindow : Window
     {
         if (_busy)
             return;
+        DismissSettingsForAction();
         await StopServersAsync();
     }
 
@@ -174,6 +336,7 @@ public partial class MainWindow : Window
     {
         if (_busy)
             return;
+        DismissSettingsForAction();
         PersistForm();
         string? password = PasswordBox.Password.Length > 0 ? PasswordBox.Password : null;
         if (!_settings.HasRememberedLogin() && string.IsNullOrEmpty(password))
@@ -200,10 +363,7 @@ public partial class MainWindow : Window
         {
             LocalPlayResult result = await LocalPlay.PlayAsync(_paths, _settings, password, progress, _cts.Token);
             _settings = LocalSettings.LoadOrCreate(_paths);
-            SelectAllocatorExpand(_settings.AllocatorSlotExpand);
-            SelectContourExpand(ContourThreadPatch.ClampToAllocator(
-                _settings.ContourThreadExpand, _settings.AllocatorSlotExpand));
-            UpdateContourExpandEnabled();
+            LoadClientFormFromSettings();
             PasswordBox.Clear();
             UpdateRemembered();
             Append(result.Message);
@@ -257,11 +417,33 @@ public partial class MainWindow : Window
         }
     }
 
+    void LoadClientFormFromSettings()
+    {
+        _loadingForm = true;
+        try
+        {
+            SelectLocale(_settings.Locale);
+            FebruaryWeakBox.IsChecked = _settings.AllowFebruaryWeak;
+            SelectAllocatorExpand(_settings.AllocatorSlotExpand);
+            SelectContourExpand(ContourThreadPatch.ClampToAllocator(
+                _settings.ContourThreadExpand, _settings.AllocatorSlotExpand));
+            UpdateContourExpandEnabled();
+            SelectDirectThreadCount(_settings.ClientConfigForPlay());
+        }
+        finally
+        {
+            _loadingForm = false;
+        }
+    }
+
     void PersistForm()
     {
         string prevAccount = _settings.AdminAccountName.Trim();
-        _settings.LandmarkFolder = LandmarkBox.Text.Trim().Trim('"');
+        _settings.LandmarkFolder = CurrentLandmarkFolder();
         _settings.AdminAccountName = AdminBox.Text.Trim();
+        _settings.Locale = ReadLocale();
+        _settings.AllowFebruaryWeak = FebruaryWeakBox.IsChecked == true;
+        PersistDirectThreadCount();
         _settings.AllocatorSlotExpand = ReadAllocatorExpand();
         _settings.ContourThreadExpand = ContourThreadPatch.ClampToAllocator(
             ReadContourExpand(), _settings.AllocatorSlotExpand);
@@ -272,7 +454,75 @@ public partial class MainWindow : Window
         _host?.UpdateSettings(_settings);
     }
 
-    void AllocatorExpand_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    void Dtc_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loadingForm)
+            return;
+        DtcError.Visibility = Visibility.Collapsed;
+        if (DtcCustom.IsChecked == true)
+            DtcValueBox.Focus();
+        Form_Changed(sender, e);
+    }
+
+    void DtcValue_Changed(object sender, TextChangedEventArgs e)
+    {
+        if (_loadingForm)
+            return;
+        if (DtcCustom.IsChecked != true)
+            DtcCustom.IsChecked = true;
+        DtcError.Visibility = Visibility.Collapsed;
+        Form_Changed(sender, e);
+    }
+
+    void SelectDirectThreadCount(ClientConfigOptions options)
+    {
+        SettingChoice choice = options.Effective(ClientConfigFile.ThreadsKey);
+        DtcValueBox.Text = string.IsNullOrWhiteSpace(choice.Value)
+            ? ClientConfigFile.Threads.Recommended
+            : choice.Value.Trim();
+        switch (choice.Mode)
+        {
+            case ConfigChoice.Custom:
+                DtcCustom.IsChecked = true;
+                break;
+            case ConfigChoice.Leave:
+                DtcLeave.IsChecked = true;
+                break;
+            case ConfigChoice.Recommended:
+                DtcRecommended.IsChecked = true;
+                break;
+            default:
+                DtcRecommended.IsChecked = true;
+                break;
+        }
+    }
+
+    void PersistDirectThreadCount()
+    {
+        ClientConfigOptions options = _settings.ClientConfigForPlay();
+        ConfigChoice mode = ConfigChoice.Recommended;
+        if (DtcLeave.IsChecked == true)
+            mode = ConfigChoice.Leave;
+        else if (DtcCustom.IsChecked == true)
+            mode = ConfigChoice.Custom;
+
+        string value = DtcValueBox.Text.Trim();
+        if (mode == ConfigChoice.Custom && ClientConfigFile.Threads.Validate(value) is string bad)
+        {
+            DtcError.Text = bad + " PLAY will use the recommended 2 until this is fixed.";
+            DtcError.Visibility = Visibility.Visible;
+        }
+        else if (string.IsNullOrWhiteSpace(value))
+            value = ClientConfigFile.Threads.Recommended;
+
+        options.Choices[ClientConfigFile.ThreadsKey] = new SettingChoice
+        {
+            Mode = mode,
+            Value = value,
+        };
+    }
+
+    void AllocatorExpand_Changed(object sender, SelectionChangedEventArgs e)
     {
         UpdateContourExpandEnabled();
         if (ReadAllocatorExpand() == AllocatorSlotExpand.Off)
@@ -284,6 +534,7 @@ public partial class MainWindow : Window
     {
         bool on = ReadAllocatorExpand() is AllocatorSlotExpand.Auto or AllocatorSlotExpand.On;
         ContourExpandBox.IsEnabled = on;
+        ContourNeedsAllocatorHint.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
         if (!on)
             SelectContourExpand(ContourThreadExpand.Off);
     }
@@ -291,7 +542,7 @@ public partial class MainWindow : Window
     void SelectAllocatorExpand(AllocatorSlotExpand mode)
     {
         string tag = mode.ToString();
-        foreach (var item in AllocatorExpandBox.Items.OfType<System.Windows.Controls.ComboBoxItem>())
+        foreach (var item in AllocatorExpandBox.Items.OfType<ComboBoxItem>())
         {
             if (string.Equals(item.Tag as string, tag, StringComparison.OrdinalIgnoreCase))
             {
@@ -305,7 +556,7 @@ public partial class MainWindow : Window
     void SelectContourExpand(ContourThreadExpand mode)
     {
         string tag = mode.ToString();
-        foreach (var item in ContourExpandBox.Items.OfType<System.Windows.Controls.ComboBoxItem>())
+        foreach (var item in ContourExpandBox.Items.OfType<ComboBoxItem>())
         {
             if (string.Equals(item.Tag as string, tag, StringComparison.OrdinalIgnoreCase))
             {
@@ -316,9 +567,30 @@ public partial class MainWindow : Window
         ContourExpandBox.SelectedIndex = 0;
     }
 
+    void SelectLocale(string locale)
+    {
+        string want = locale ?? "";
+        foreach (var item in LocaleBox.Items.OfType<ComboBoxItem>())
+        {
+            if (string.Equals(item.Tag as string ?? "", want, StringComparison.OrdinalIgnoreCase))
+            {
+                LocaleBox.SelectedItem = item;
+                return;
+            }
+        }
+        LocaleBox.SelectedIndex = 0;
+    }
+
+    string ReadLocale()
+    {
+        if (LocaleBox.SelectedItem is ComboBoxItem item && item.Tag is string tag)
+            return tag;
+        return "";
+    }
+
     AllocatorSlotExpand ReadAllocatorExpand()
     {
-        if (AllocatorExpandBox.SelectedItem is System.Windows.Controls.ComboBoxItem item
+        if (AllocatorExpandBox.SelectedItem is ComboBoxItem item
             && item.Tag is string tag
             && Enum.TryParse(tag, true, out AllocatorSlotExpand mode)
             && Enum.IsDefined(mode))
@@ -328,7 +600,7 @@ public partial class MainWindow : Window
 
     ContourThreadExpand ReadContourExpand()
     {
-        if (ContourExpandBox.SelectedItem is System.Windows.Controls.ComboBoxItem item
+        if (ContourExpandBox.SelectedItem is ComboBoxItem item
             && item.Tag is string tag
             && Enum.TryParse(tag, true, out ContourThreadExpand mode)
             && Enum.IsDefined(mode))
@@ -352,14 +624,14 @@ public partial class MainWindow : Window
 
     void UpdateChecklist()
     {
-        bool folderOk = LocalSettings.LooksLikeLandmarkFolder(LandmarkBox.Text.Trim().Trim('"'));
+        bool folderOk = LocalSettings.LooksLikeLandmarkFolder(CurrentLandmarkFolder());
         bool accountOk = AccountRules.IsValidAccountName(AdminBox.Text.Trim());
         bool passwordOk = _settings.HasRememberedLogin(AdminBox.Text.Trim())
                           || PasswordBox.Password.Length >= 6;
         bool ready = _phase == HostPhase.Ready;
 
         ChecklistBox.Text =
-            Mark(folderOk) + " Landmark folder\n"
+            Mark(folderOk) + " Landmark folder (Settings ⚙)\n"
             + Mark(accountOk) + " Account name (this is also your admin)\n"
             + Mark(passwordOk) + " Password for Play (remembered after first Play)\n"
             + Mark(ready) + " Servers ready — or press PLAY to start them";
@@ -379,9 +651,9 @@ public partial class MainWindow : Window
 
     bool CanStartServers(out string? blocker)
     {
-        if (!LocalSettings.LooksLikeLandmarkFolder(LandmarkBox.Text.Trim().Trim('"')))
+        if (!LocalSettings.LooksLikeLandmarkFolder(CurrentLandmarkFolder()))
         {
-            blocker = "Set your Landmark folder (the one with Landmark64.exe) first.";
+            blocker = "Set your Landmark folder in Settings ⚙ (the one with Landmark64.exe) first.";
             return false;
         }
         if (!AccountRules.IsValidAccountName(AdminBox.Text.Trim()))
@@ -395,7 +667,7 @@ public partial class MainWindow : Window
 
     void RefreshClientRunning()
     {
-        string folder = LandmarkBox.Text.Trim().Trim('"');
+        string folder = CurrentLandmarkFolder();
         bool running = folder.Length > 0
                        && LocalSettings.LooksLikeLandmarkFolder(folder)
                        && GameFolder.IsRunning(folder);

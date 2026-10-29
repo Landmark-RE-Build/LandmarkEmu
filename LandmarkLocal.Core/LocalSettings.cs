@@ -20,6 +20,11 @@ public sealed class LocalSettings
     /// <summary>Allow February 2017 (0.699) weak fingerprints for local packs — on for solo grandma installs.</summary>
     public bool AllowFebruaryWeak { get; set; } = true;
     /// <summary>
+    /// ClientConfig.ini choices for PLAY (today: DirectThreadCount). <see cref="ClientConfigOptions.Advanced"/> is
+    /// kept true so Settings → Client choices apply (LandmarkLocal has no separate advanced toggle).
+    /// </summary>
+    public ClientConfigOptions ClientConfig { get; set; } = new() { Advanced = true };
+    /// <summary>
     /// Experimental: expand the thread-allocator slot table in memory on Play (0.695 / 0.699 only). Default Off.
     /// </summary>
     public AllocatorSlotExpand AllocatorSlotExpand { get; set; } = AllocatorSlotExpand.Off;
@@ -76,6 +81,14 @@ public sealed class LocalSettings
             DbPassword = RandomPassword();
         if (string.IsNullOrEmpty(DbRootPassword))
             DbRootPassword = RandomPassword();
+    }
+
+    /// <summary>ClientConfig.ini options for PLAY — always advanced so Settings → Client choices apply.</summary>
+    public ClientConfigOptions ClientConfigForPlay()
+    {
+        ClientConfig ??= new ClientConfigOptions();
+        ClientConfig.Advanced = true;
+        return ClientConfig;
     }
 
     public void Save(LocalPaths paths)

@@ -29,6 +29,7 @@ Player-facing install docs stay in [landmark-local.md](landmark-local.md).
 ## What ships
 
 The LandmarkLocal zip is a **self-contained Windows x64** folder: LandmarkLocal + Auth + World + LaunchPad.  
+`LandmarkLocal.exe` at the root is **single-file** (LaunchPad in its subfolder is too); Auth/World under `servers/` stay multi-file.  
 Players do **not** need a separate .NET install. MariaDB and terrain still download on first **Start**.
 
 Built by: `tools/publish-landmark-local.ps1`  

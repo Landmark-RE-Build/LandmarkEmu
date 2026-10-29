@@ -99,7 +99,7 @@ public static class LocalPlay
         // PointAt returns false when ClientConfig.ini already matches (nothing to write) — that is OK.
         try
         {
-            if (!ClientConfigFile.PointAt(settings.LandmarkFolder, login, marketplace, null))
+            if (!ClientConfigFile.PointAt(settings.LandmarkFolder, login, marketplace, settings.ClientConfigForPlay()))
                 progress?.Report("ClientConfig.ini already points at this PC.");
         }
         catch (Exception ex)

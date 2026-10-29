@@ -13,7 +13,7 @@ The release zip is **self-contained** (Windows x64): you do **not** need to inst
 ## How to play
 
 1. Double-click **`LandmarkLocal.exe`**.
-2. Confirm **Landmark folder** (folder with `Landmark64.exe` — usually found automatically under Steam, including extra Steam libraries).
+2. If the Landmark install isn’t set yet, **Settings → Game folder** opens for you. Browse to the folder with `Landmark64.exe` (usually found automatically under Steam, including extra Steam libraries); a good pick closes Settings, a wrong folder warns. You can reopen Settings (⚙) anytime for language, February-build options, or **Client** (DirectThreadCount recommended 2, optional experimental allocator / contour patches).
 3. Choose an **account name** and **password** (first time). That account is both your normal play login and **admin** on this local world.
 4. Click **PLAY** — LandmarkLocal starts the servers if needed (first time can take several minutes while it downloads the database and terrain), waits until Ready, creates the account if needed, updates the game when the server hosts a pack, and starts Landmark.
 
@@ -65,7 +65,7 @@ LandmarkLocal status
 powershell -File tools/publish-landmark-local.ps1
 ```
 
-Output goes to `artifacts/LandmarkLocal/` (self-contained win-x64). Dev runs use `LandmarkLocal/run/` and still need a local .NET SDK/runtime.
+Output goes to `artifacts/LandmarkLocal/` (self-contained win-x64). The root is a single `LandmarkLocal.exe` plus folders (`servers/`, `LaunchPad/`, `data/`, …) — not a DLL pile. Dev runs use `LandmarkLocal/run/` and still need a local .NET SDK/runtime.
 
 ### Releases (GitHub Actions)
 

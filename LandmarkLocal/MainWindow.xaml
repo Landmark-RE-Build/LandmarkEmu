@@ -7,7 +7,8 @@
         Background="{StaticResource BgBrush}"
         Foreground="{StaticResource TextBrush}"
         Closing="Window_Closing"
-        StateChanged="Window_StateChanged">
+        StateChanged="Window_StateChanged"
+        PreviewKeyDown="Window_PreviewKeyDown">
   <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
     <Border.Background>
       <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
@@ -38,6 +39,9 @@
           <Button x:Name="PlayButton" DockPanel.Dock="Right" Content="PLAY" Width="190" Height="54"
                   Style="{StaticResource LpPlayButton}" Click="Play_Click" Margin="16,0,0,0"
                   ToolTip="Starts the servers if needed, then launches Landmark"/>
+          <Button x:Name="SettingsButton" DockPanel.Dock="Right" Content="&#x2699;" Width="42" Height="42"
+                  Style="{StaticResource LpCogButton}" Click="Settings_Click" Margin="0,0,0,0"
+                  VerticalAlignment="Center" ToolTip="Settings"/>
           <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
             <Button x:Name="StartButton" Content="Start" Style="{StaticResource LpButton}"
                     Width="96" Height="36" Margin="0,0,8,0" Click="Start_Click"
@@ -50,27 +54,10 @@
         </DockPanel>
       </Border>
 
-      <!-- Activity is docked with a floor height so the taller banner/progress cannot crush it. -->
-      <DockPanel Margin="16">
-        <Border DockPanel.Dock="Bottom" Height="168" CornerRadius="6"
-                BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
-                Background="{StaticResource PanelBrush}" Margin="0,10,0,0">
-          <DockPanel>
-            <Border DockPanel.Dock="Top" Padding="12,8" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1">
-              <TextBlock Text="ACTIVITY" FontWeight="SemiBold" FontSize="12"
-                         Foreground="{StaticResource AccentBrush}"/>
-            </Border>
-            <TextBox x:Name="LogBox" IsReadOnly="True" TextWrapping="Wrap"
-                     VerticalScrollBarVisibility="Auto" BorderThickness="0" Padding="12,8"
-                     FontFamily="Consolas" FontSize="12"
-                     Background="Transparent" Foreground="{StaticResource MutedBrush}"
-                     CaretBrush="{StaticResource TextBrush}"/>
-          </DockPanel>
-        </Border>
-
-        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <!-- Main + settings overlay (LaunchPad #lpSettings covers content). -->
+      <Grid>
+        <ScrollViewer Margin="16" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
           <StackPanel>
-            <!-- Banner + checklist -->
             <Border CornerRadius="6" BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
                     Padding="18,14" Margin="0,0,0,12">
               <Border.Background>
@@ -97,14 +84,11 @@
               </StackPanel>
             </Border>
 
-            <!-- Settings card -->
+            <!-- Play essentials stay on the home screen (like LaunchPad login). -->
             <Border CornerRadius="6" BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
-                    Background="{StaticResource PanelBrush}" Padding="16,12">
+                    Background="{StaticResource PanelBrush}" Padding="16,12" Margin="0,0,0,12">
               <Grid>
                 <Grid.RowDefinitions>
-                  <RowDefinition Height="Auto"/>
-                  <RowDefinition Height="Auto"/>
-                  <RowDefinition Height="Auto"/>
                   <RowDefinition Height="Auto"/>
                   <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
@@ -114,18 +98,13 @@
                   <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource LpLabel}" Text="Landmark folder"/>
-                <TextBox x:Name="LandmarkBox" Grid.Row="0" Grid.Column="1" Margin="0,4" TextChanged="Form_Changed"/>
-                <Button Grid.Row="0" Grid.Column="2" Content="Browse…" Style="{StaticResource LpButton}"
-                        Margin="8,4,0,4" Click="Browse_Click"/>
-
-                <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource LpLabel}" Text="Account name"/>
-                <TextBox x:Name="AdminBox" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,4"
+                <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource LpLabel}" Text="Account name"/>
+                <TextBox x:Name="AdminBox" Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,4"
                          ToolTip="Your play account — also admin on this local world."
                          TextChanged="Form_Changed"/>
 
-                <TextBlock Grid.Row="2" Grid.Column="0" Style="{StaticResource LpLabel}" Text="Password"/>
-                <Grid Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,4">
+                <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource LpLabel}" Text="Password"/>
+                <Grid Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,4">
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
@@ -136,37 +115,184 @@
                              Foreground="{StaticResource OkBrush}" FontSize="12" Text="Remembered"
                              Visibility="Collapsed"/>
                 </Grid>
-
-                <StackPanel Grid.Row="3" Grid.Column="0" Orientation="Vertical" VerticalAlignment="Center"
-                            ToolTip="0.695 / 0.699 only. Raises the in-memory allocator table from 64 to 127 slots.">
-                  <TextBlock Style="{StaticResource LpLabel}" Text="Slot expand" Margin="0"/>
-                  <TextBlock Text="experimental" Foreground="{StaticResource DangerBrush}" FontSize="11" Margin="0,2,0,0"/>
-                </StackPanel>
-                <ComboBox x:Name="AllocatorExpandBox" Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,4"
-                          SelectionChanged="AllocatorExpand_Changed"
-                          ToolTip="Off (default). Auto applies on 16+ logical processors. On always tries. Mismatch shows an alert and starts unpatched.">
-                  <ComboBoxItem Content="Off (default)" Tag="Off"/>
-                  <ComboBoxItem Content="Auto (16+ CPUs)" Tag="Auto"/>
-                  <ComboBoxItem Content="On" Tag="On"/>
-                </ComboBox>
-
-                <StackPanel Grid.Row="4" Grid.Column="0" Orientation="Vertical" VerticalAlignment="Center"
-                            ToolTip="Raise contour workers 3→5. Requires Slot expand Auto or On.">
-                  <TextBlock Style="{StaticResource LpLabel}" Text="Contour threads" Margin="0"/>
-                  <TextBlock Text="experimental" Foreground="{StaticResource DangerBrush}" FontSize="11" Margin="0,2,0,0"/>
-                </StackPanel>
-                <ComboBox x:Name="ContourExpandBox" Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,4"
-                          SelectionChanged="Form_Changed"
-                          ToolTip="Off (default). Requires Slot expand. Applied only after allocator expand succeeds.">
-                  <ComboBoxItem Content="Off (default)" Tag="Off"/>
-                  <ComboBoxItem Content="Auto (with slot expand)" Tag="Auto"/>
-                  <ComboBoxItem Content="On" Tag="On"/>
-                </ComboBox>
               </Grid>
+            </Border>
+
+            <Border Height="168" CornerRadius="6"
+                    BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                    Background="{StaticResource PanelBrush}">
+              <DockPanel>
+                <Border DockPanel.Dock="Top" Padding="12,8" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1">
+                  <TextBlock Text="ACTIVITY" FontWeight="SemiBold" FontSize="12"
+                             Foreground="{StaticResource AccentBrush}"/>
+                </Border>
+                <TextBox x:Name="LogBox" IsReadOnly="True" TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Auto" BorderThickness="0" Padding="12,8"
+                         FontFamily="Consolas" FontSize="12"
+                         Background="Transparent" Foreground="{StaticResource MutedBrush}"
+                         CaretBrush="{StaticResource TextBrush}"/>
+              </DockPanel>
             </Border>
           </StackPanel>
         </ScrollViewer>
-      </DockPanel>
+
+        <!-- Settings overlay -->
+        <Border x:Name="SettingsOverlay" Visibility="Collapsed"
+                Background="#E612181B" BorderBrush="{StaticResource LineBrush}" BorderThickness="0">
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="170"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Background="#33000000" BorderBrush="{StaticResource LineBrush}"
+                    BorderThickness="0,0,1,0" Padding="0,10">
+              <StackPanel>
+                <Button x:Name="NavGameButton" Content="Game folder" Style="{StaticResource LpSettingsNav}"
+                        Tag="game" Click="SettingsNav_Click"/>
+                <Button x:Name="NavClientButton" Content="Client" Style="{StaticResource LpSettingsNav}"
+                        Tag="client" Click="SettingsNav_Click"/>
+                <Button x:Name="NavAboutButton" Content="About" Style="{StaticResource LpSettingsNav}"
+                        Tag="about" Click="SettingsNav_Click"/>
+              </StackPanel>
+            </Border>
+
+            <DockPanel Grid.Column="1" Margin="22,10,16,16">
+              <Button DockPanel.Dock="Top" HorizontalAlignment="Right" Content="&#x2715;"
+                      Style="{StaticResource LpSettingsClose}" Click="SettingsClose_Click"
+                      ToolTip="Close settings"/>
+              <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <Grid>
+                  <!-- Game folder -->
+                  <StackPanel x:Name="TabGame" Visibility="Visible">
+                    <TextBlock Text="Game folder" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                    <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,14"
+                               Text="The Landmark install with Landmark64.exe. Usually found under Steam. Other options for this solo install live here too."/>
+
+                    <TextBlock Style="{StaticResource LpLabel}" Text="Landmark folder" Margin="0,0,0,4"/>
+                    <DockPanel Margin="0,0,0,4">
+                      <Button DockPanel.Dock="Right" Content="Browse…" Style="{StaticResource LpButton}"
+                              Margin="8,0,0,0" Click="Browse_Click"/>
+                      <TextBox x:Name="LandmarkBox" TextChanged="LandmarkFolder_Changed"/>
+                    </DockPanel>
+                    <TextBlock x:Name="LandmarkFolderHint" TextWrapping="Wrap" FontSize="12" Margin="0,0,0,12"
+                               Foreground="{StaticResource MutedBrush}"/>
+
+                    <TextBlock Style="{StaticResource LpLabel}" Text="Game language" Margin="0,0,0,4"/>
+                    <ComboBox x:Name="LocaleBox" Margin="0,0,0,12" SelectionChanged="Form_Changed"
+                              ToolTip="Passed to Landmark64 on Play. Default leaves the game's language alone.">
+                      <ComboBoxItem Content="Default" Tag=""/>
+                      <ComboBoxItem Content="English" Tag="en_US"/>
+                      <ComboBoxItem Content="Deutsch" Tag="de_DE"/>
+                      <ComboBoxItem Content="Français" Tag="fr_FR"/>
+                      <ComboBoxItem Content="Español" Tag="es_ES"/>
+                    </ComboBox>
+
+                    <CheckBox x:Name="FebruaryWeakBox" Margin="0,4,0,0" Foreground="{StaticResource TextBrush}"
+                              Checked="Form_Changed" Unchecked="Form_Changed"
+                              Content="Allow the February 2017 build's three files without a SHA-256 match"/>
+                    <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="24,6,0,0"
+                               Text="On for solo installs so weak fingerprints on that build still pass local pack checks."/>
+                  </StackPanel>
+
+                  <!-- Client: ClientConfig.ini + experimental in-memory patches -->
+                  <StackPanel x:Name="TabClient" Visibility="Collapsed">
+                    <TextBlock Text="Client" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                    <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,14"
+                               Text="What PLAY writes into ClientConfig.ini, plus optional in-memory experimental fixes. Login and Showcase addresses are always set for this PC; DirectThreadCount follows your choice below. Allocator / contour patches never change Landmark64.exe on disk."/>
+
+                    <Border CornerRadius="6" BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                            Background="{StaticResource PanelBrush}" Padding="14,12" Margin="0,0,0,12">
+                      <StackPanel>
+                        <TextBlock FontWeight="SemiBold" Margin="0,0,0,2">
+                          <Run Text="Asset loading threads"/>
+                          <Run Text=" [AssetDelivery] DirectThreadCount" Foreground="{StaticResource MutedBrush}" FontWeight="Normal" FontSize="12"/>
+                        </TextBlock>
+                        <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,10"
+                                   Text="How many threads the game starts to read asset files. Each takes one of the allocator's per-thread slots. Steam's 10 can starve terrain threads and stall the loading screen; 2 is the recommended balance. 1 is the least that works; LandmarkLocal allows 1–10."/>
+                        <RadioButton x:Name="DtcRecommended" GroupName="Dtc" Margin="0,2"
+                                     Foreground="{StaticResource TextBrush}" Checked="Dtc_Changed"
+                                     Content="LandmarkLocal sets it (recommended: 2)"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,2">
+                          <RadioButton x:Name="DtcCustom" GroupName="Dtc" VerticalAlignment="Center"
+                                       Foreground="{StaticResource TextBrush}" Checked="Dtc_Changed"
+                                       Content="Use my value:"/>
+                          <TextBox x:Name="DtcValueBox" Width="48" Margin="8,0,8,0" MaxLength="2"
+                                   VerticalAlignment="Center" TextChanged="DtcValue_Changed"
+                                   ToolTip="Whole number from 1 to 10"/>
+                          <TextBlock Text="1–10" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
+                        </StackPanel>
+                        <TextBlock x:Name="DtcError" Foreground="{StaticResource DangerBrush}" FontSize="12"
+                                   Margin="24,0,0,4" Visibility="Collapsed"/>
+                        <RadioButton x:Name="DtcLeave" GroupName="Dtc" Margin="0,2"
+                                     Foreground="{StaticResource TextBrush}" Checked="Dtc_Changed"
+                                     Content="Leave the file as it is"/>
+                      </StackPanel>
+                    </Border>
+
+                    <Border CornerRadius="6" BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                            Background="{StaticResource PanelBrush}" Padding="14,12" Margin="0,0,0,12">
+                      <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                          <TextBlock Text="Allocator slot expand" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                          <Border Background="#33D9685C" CornerRadius="10" Padding="7,1" Margin="8,0,0,0"
+                                  VerticalAlignment="Center">
+                            <TextBlock Text="experimental" Foreground="{StaticResource DangerBrush}" FontSize="11" FontWeight="SemiBold"/>
+                          </Border>
+                        </StackPanel>
+                        <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,10"
+                                   Text="Raise the game's per-thread allocator table from 64 to 127 slots in memory while the process starts. Helps large-CPU (more than 8 cores) PCs work around loading hangs entering the world. Off by default. Auto applies when the PC has 16 or more logical processors. If the exe does not match the expected code, LandmarkLocal shows an alert and starts the game unpatched."/>
+                        <ComboBox x:Name="AllocatorExpandBox" SelectionChanged="AllocatorExpand_Changed"
+                                  ToolTip="Off (default). Auto applies on 16+ logical processors. On always tries.">
+                          <ComboBoxItem Content="Off (default)" Tag="Off"/>
+                          <ComboBoxItem Content="Auto (16+ CPUs)" Tag="Auto"/>
+                          <ComboBoxItem Content="On" Tag="On"/>
+                        </ComboBox>
+                      </StackPanel>
+                    </Border>
+
+                    <Border CornerRadius="6" BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                            Background="{StaticResource PanelBrush}" Padding="14,12">
+                      <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                          <TextBlock Text="Contour threads" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                          <Border Background="#33D9685C" CornerRadius="10" Padding="7,1" Margin="8,0,0,0"
+                                  VerticalAlignment="Center">
+                            <TextBlock Text="experimental" Foreground="{StaticResource DangerBrush}" FontSize="11" FontWeight="SemiBold"/>
+                          </Border>
+                        </StackPanel>
+                        <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,10"
+                                   Text="Raise VoxelFarm contour / Contouring Job workers from 3 to 5 in memory. Requires Allocator slot expand Auto or On. Off by default. Applied only after allocator expand succeeds on that start. If the exe does not match the expected code, LandmarkLocal shows an alert and starts the game unpatched."/>
+                        <TextBlock x:Name="ContourNeedsAllocatorHint" TextWrapping="Wrap" FontSize="12"
+                                   Foreground="{StaticResource MutedBrush}" Margin="0,0,0,8"
+                                   Text="Turn on Allocator slot expand (Auto or On) to enable this."
+                                   Visibility="Collapsed"/>
+                        <ComboBox x:Name="ContourExpandBox" SelectionChanged="Form_Changed"
+                                  ToolTip="Off (default). Requires Slot expand. Applied only after allocator expand succeeds.">
+                          <ComboBoxItem Content="Off (default)" Tag="Off"/>
+                          <ComboBoxItem Content="Auto (with slot expand)" Tag="Auto"/>
+                          <ComboBoxItem Content="On" Tag="On"/>
+                        </ComboBox>
+                      </StackPanel>
+                    </Border>
+                  </StackPanel>
+
+                  <!-- About -->
+                  <StackPanel x:Name="TabAbout" Visibility="Collapsed">
+                    <TextBlock Text="About" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                    <TextBlock TextWrapping="Wrap" Margin="0,0,0,10"
+                               Text="LandmarkLocal: play LandmarkEmu alone on this Windows PC. MariaDB, Auth, and World run on loopback; PLAY creates your admin account and starts Landmark."/>
+                    <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,10"
+                               Text="Your password never leaves this PC: logging in uses SRP, and after the first Play a key is remembered that only works for that account on this local world."/>
+                    <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"
+                               Text="LandmarkEmu is a fan project, not affiliated with Daybreak Games. Landmark is a trademark of Daybreak Game Company."/>
+                  </StackPanel>
+                </Grid>
+              </ScrollViewer>
+            </DockPanel>
+          </Grid>
+        </Border>
+      </Grid>
     </DockPanel>
   </Border>
 </Window>
