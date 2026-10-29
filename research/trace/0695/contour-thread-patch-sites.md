@@ -3,7 +3,12 @@
 Research only (2026-10-29). Read from open Ghidra program `Landmark64.exe` at `D:\Landmark\Game\Landmark64.exe`.
 **No exe / LaunchPad / ClientLaunch changes.** Marks: **[P]** proven in this decompile / bytes; **[I]** inferred; **[P docs]** prior repo docs.
 
-Image base `0x140000000`, PE **TimeDateStamp `0x58A38FA2`** — same stamp as `AllocatorSlotPatch.ExpectedTimeDateStamp` (shared 0.695/0.699 profile world) **[P]**.
+Image base `0x140000000`. Two builds share the same site bytes **[P]**:
+
+- `Landmark64_0.695.exe` — PE **TimeDateStamp `0x586D8017`** (2017-01-04) → `AllocatorSlotPatch.TimeDateStamp0695`
+- Ghidra `Landmark64.exe` / profile world — **`0x58A38FA2`** (2017-02-14) → `AllocatorSlotPatch.ExpectedTimeDateStamp`
+
+ClientLaunch accepts either stamp; all allocator LEA/cap/scan and contour C1/C2 sites match on both **[P]** (byte check on `Landmark64_0.695.exe` 2026-10-29).
 
 **0.589:** no binary / decompile on this machine — cannot pin the historical **5** immediates. Treat K=5 as the documented live-era target only **[P docs]** / unavailable here.
 
@@ -172,7 +177,7 @@ UI copy sketch: *“Contour threads (experimental) — raise VoxelFarm contour /
 
 ## 7. Hand-off for ClientLaunch (AllocatorSlotPatch style)
 
-Same PE gate: **`ExpectedTimeDateStamp = 0x58A38FA2`**. Validate-before-write; short expected hex only.
+Same PE gate: **`AcceptedTimeDateStamps`** = `0x586D8017` | `0x58A38FA2`. Validate-before-write; short expected hex only.
 
 ```csharp
 // Contour thread count (FUN_143f94580) — raise floor + min cap to K=5
@@ -218,5 +223,5 @@ Optional wider validate (job): read 20 bytes at `0x143133840` expecting
 | VAs / bytes / formulas above | **[P]** this Ghidra session |
 | Re-zone recreates contour workers | **[P docs]** `client-commands-for-slots.md` §3.2 |
 | 0.589 had 5 contour threads | **[P docs]** only — **no 0.589 binary here** |
-| Stamp shared with P4 / 0.699 | **[P]** `0x58A38FA2` |
+| Stamps (sites identical) | **[P]** `0x586D8017` (0.695.exe) + `0x58A38FA2` (profile) |
 | VoxelCellJob shares C1 count | **[P]** (docs table “separate always 3” was misleading) |
