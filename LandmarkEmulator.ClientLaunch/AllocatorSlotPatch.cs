@@ -7,7 +7,7 @@ namespace LandmarkEmulator.ClientLaunch
 {
     /// <summary>
     /// In-memory P4: move the 0.695/0.699 allocator slot table from 64 to 127 entries while the process is suspended.
-    /// One shared site profile (Frida-proven on PE stamp 0x58a38fa2). Validates every rewrite site before any write.
+    /// One shared site profile (proven on PE stamps 0x586d8017 / 0x58a38fa2). Validates every rewrite site before any write.
     /// </summary>
     public static class AllocatorSlotPatch
     {
@@ -17,7 +17,11 @@ namespace LandmarkEmulator.ClientLaunch
         public const int SlotStride = 0x258;
         public const int NewCount = 127;
         public const int NewTableBytes = NewCount * SlotStride; // 0x129A8
+        /// <summary>Landmark64_0.695.exe (2017-01-04).</summary>
+        public const uint TimeDateStamp0695 = 0x586D8017u;
+        /// <summary>Shared 0.695/0.699 profile world build (2017-02-14).</summary>
         public const uint ExpectedTimeDateStamp = 0x58A38FA2u;
+        public static readonly uint[] AcceptedTimeDateStamps = [TimeDateStamp0695, ExpectedTimeDateStamp];
         public const int AutoProcessorThreshold = 16;
 
         /// <summary>One RIP-relative LEA that must still target the old table (or table+Add) before patching.</summary>
@@ -130,8 +134,8 @@ namespace LandmarkEmulator.ClientLaunch
             if (stampBytes == null || stampBytes.Length != 4)
                 return "could not read PE TimeDateStamp";
             uint stamp = BitConverter.ToUInt32(stampBytes);
-            if (stamp != ExpectedTimeDateStamp)
-                return $"PE TimeDateStamp 0x{stamp:x8}, expected 0x{ExpectedTimeDateStamp:x8}";
+            if (Array.IndexOf(AcceptedTimeDateStamps, stamp) < 0)
+                return $"PE TimeDateStamp 0x{stamp:x8}, expected 0x{TimeDateStamp0695:x8} or 0x{ExpectedTimeDateStamp:x8}";
             return null;
         }
 

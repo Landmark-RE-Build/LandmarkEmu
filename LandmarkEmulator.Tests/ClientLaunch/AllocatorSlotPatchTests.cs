@@ -99,12 +99,14 @@ namespace LandmarkEmulator.Tests.ClientLaunch
             Assert.Contains("TimeDateStamp", reason);
         }
 
-        [Fact]
-        public void ValidateTimeDateStamp_AcceptsExpected()
+        [Theory]
+        [InlineData(AllocatorSlotPatch.TimeDateStamp0695)]
+        [InlineData(AllocatorSlotPatch.ExpectedTimeDateStamp)]
+        public void ValidateTimeDateStamp_AcceptsKnownBuilds(uint stamp)
         {
             var image = new byte[0x200];
             BitConverter.TryWriteBytes(image.AsSpan(0x3C, 4), 0x80);
-            BitConverter.TryWriteBytes(image.AsSpan(0x80 + 8, 4), AllocatorSlotPatch.ExpectedTimeDateStamp);
+            BitConverter.TryWriteBytes(image.AsSpan(0x80 + 8, 4), stamp);
             Assert.Null(AllocatorSlotPatch.ValidateTimeDateStamp((va, len) =>
             {
                 int off = (int)(va - AllocatorSlotPatch.ImageBase);
