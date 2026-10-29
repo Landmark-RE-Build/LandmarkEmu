@@ -11,8 +11,13 @@ N = 4000
 os.makedirs("heightbake", exist_ok=True)
 log = open("heightbake/bake_all.log", "a", buffering=1)
 state = {"rows": 0}
+hook_error = []
 hf = mf = None
 def on_message(m, data):
+    if m["type"] == "error":
+        hook_error.append(m.get("description") or str(m))
+        log.write(str(m) + "\n")
+        return
     if m["type"] != "send":
         log.write(str(m) + "\n"); return
     p = m["payload"]
@@ -31,6 +36,11 @@ dev = frida.get_local_device()
 pid = [p.pid for p in dev.enumerate_processes() if p.name.lower() == "landmark64.exe"][0]
 script = dev.attach(pid).create_script(open("hook_heightbake.js").read())
 script.on("message", on_message); script.load()
+time.sleep(0.5)
+if hook_error:
+    raise SystemExit("heightbake hook failed: " + hook_error[0])
+if "start" not in script.list_exports_sync():
+    raise SystemExit("heightbake hook loaded but has no start() export (see heightbake/bake_all.log)")
 log.write(f"attached {pid}\n")
 for zone in zones:
     t0 = time.time()

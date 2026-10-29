@@ -37,6 +37,8 @@
     <ProjectReference Include="..\LandmarkEmulator.GatewayServer\LandmarkEmulator.GatewayServer.csproj" />
     <!-- The patch-pack rules shared by LaunchPad and the patch host (PatchPacks/PatchSecurityTests.cs). -->
     <ProjectReference Include="..\LandmarkEmulator.PatchPacks\LandmarkEmulator.PatchPacks.csproj" />
+    <!-- Suspended-start / allocator expand (ClientLaunch/AllocatorSlotPatchTests.cs). -->
+    <ProjectReference Include="..\LandmarkEmulator.ClientLaunch\LandmarkEmulator.ClientLaunch.csproj" />
     <ProjectReference Include="..\LandmarkEmulator.WebAPI\LandmarkEmulator.WebAPI.csproj" />
     <!-- The capture tools, for the CellsUpdate walk (Packets/CellsUpdateLayoutTests.cs). -->
     <ProjectReference Include="..\LandmarkEmulator.Parser\LandmarkEmulator.Parser.csproj" />

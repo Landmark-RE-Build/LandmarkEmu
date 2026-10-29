@@ -34,6 +34,7 @@ Clear is invoked with **outer 2**, so it blanks the entity hash entry for key 2 
 |-------|--------|
 | **Emu / WorldServer** | Extend `EquipmentSetCharacterEquipmentSlot` writer: separate attachment slot + bool; `CreatureWeapons` send quiver after bow as (A) with `Wield_Quiver_Halas_Halas_B_A3_000.adr`. |
 | **Frida** (optional) | Only if you need live proof that `+0x280.+0x10(2)` does not call `FUN_143b97060(2)` on the quiver packet — anchors above. |
+| **Loot / rates (AGENTS #22)** | Creature kill / Chaos Cavern resource tables → host-editable content + reload (`AGENTS.md` conventions; `PROMPT-loot-table-tuning.md`). Not this topic. |
 | **Out of scope** | Full creature→weapon table; loot; player equipment UI. |
 
 ## Ghidra renames (this pass)

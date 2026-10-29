@@ -342,6 +342,7 @@ Settings > Options > **Advanced mode** (off by default). It is kept per game fol
 "ClientConfig": {
   "D:\\Steam\\steamapps\\common\\Landmark": {
     "Advanced": true,
+    "AllocatorSlotExpand": "Off",
     "Choices": { "DirectThreadCount": { "Mode": "Custom", "Value": "4" } }
   }
 }
@@ -350,6 +351,19 @@ Settings > Options > **Advanced mode** (off by default). It is kept per game fol
 A folder gets an entry only once the player changes something there. Without an entry, or with `Advanced` false, PLAY
 writes the values above exactly as before advanced mode existed; the choices are kept while it is off and count again
 when it is switched back on. Advanced mode adds one tab.
+
+**Allocator slot expand** (experimental, Client settings): Off (default) / Auto / On. Not a `ClientConfig.ini` key —
+LaunchPad keeps it only in `launchpad.json`. On **0.695 and 0.699** only, PLAY may start `Landmark64.exe` suspended,
+read every known rewrite site, and only then move the in-memory per-thread allocator table from 64 to 127 slots
+(nothing written to the exe on disk). Auto applies when the PC has 16 or more logical processors. If the PE stamp or
+any site byte check fails, LaunchPad shows an alert (e.g. wrong or already-patched build), resumes the process
+**unpatched**, and the game still starts. LandmarkLocal has the same setting and the same alert on Play.
+
+**Contour threads** (experimental, Client settings): Off (default) / Auto / On. Raises VoxelFarm contour /
+Contouring Job workers from 3 to 5 in memory. **Requires Allocator slot expand Auto or On** — the
+UI disables this control otherwise, and turning allocator expand Off clears contour expand to Off. Applied only after
+allocator expand **succeeds** on that start; site mismatch shows a separate alert. Sites:
+`research/trace/0695/contour-thread-patch-sites.md`.
 
 **Client settings** lists every value PLAY writes, each with what it does, the game's original (from
 `ClientConfig.ini.orig`, else Steam's file), LaunchPad's value, the file's current value and what the next PLAY writes:

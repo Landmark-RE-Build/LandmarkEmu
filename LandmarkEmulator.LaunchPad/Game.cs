@@ -35,5 +35,10 @@ namespace LandmarkEmulator.LaunchPad
         /// <summary>Starts the game logged in with a session key from the account service.</summary>
         public static Process Start(string folder, string sessionKey, string locale)
             => GameSession.Start(folder, sessionKey, locale);
+
+        /// <summary>Starts the game with optional in-memory patches (allocator / contour expand).</summary>
+        public static Process Start(
+            string folder, string sessionKey, string locale, ClientLaunchOptions? options, out ClientLaunchPatches patches)
+            => GameSession.Start(folder, sessionKey, locale, options, out patches);
     }
 }

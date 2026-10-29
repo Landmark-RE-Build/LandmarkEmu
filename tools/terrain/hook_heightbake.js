@@ -3,13 +3,19 @@
 // the sampler's own calls (on the terrain worker threads), a chunk at a time, so it never runs on a foreign thread.
 const mod = Process.getModuleByName("Landmark64.exe");
 const rva = a => mod.base.add(ptr(a).sub(ptr("0x140000000")));
-// The sampler's address per client build, picked by the exe's PE time stamp: 0.589 (2016-06-04) FUN_143fc3e00, 0.695
-// (0x586d8017, 2017-01-04) FUN_144087ab0 (same code, trace/0695/functions.tsv). Both start with the bytes below.
+// Sampler addresses: 0.589 FUN_143fc3e00, 0.695 FUN_144087ab0 (same code, trace/0695/functions.tsv). Pick by prologue,
+// not PE stamp — later 0.695 builds keep the same RVA (e.g. stamp 0x58a38fa2, 2017-02-14) but are not the Jan stamp
+// the old check hard-coded (0x586d8017), which aborted before rpc.exports and made bake_all look like "no start".
 const stamp = mod.base.add(mod.base.add(0x3c).readU32() + 8).readU32();
-const target = rva(stamp === 0x586d8017 ? "0x144087ab0" : "0x143fc3e00");
 const PROLOGUE = "48 8b c4 55 53 56 57 41 54 41 55 41 56 41 57 48";
-if (Array.from(new Uint8Array(target.readByteArray(16))).map(b => b.toString(16).padStart(2, "0")).join(" ") !== PROLOGUE)
+function prologueAt(abs) {
+  return Array.from(new Uint8Array(rva(abs).readByteArray(16)))
+    .map(b => b.toString(16).padStart(2, "0")).join(" ");
+}
+const samplerAbs = ["0x144087ab0", "0x143fc3e00"].find(a => prologueAt(a) === PROLOGUE);
+if (!samplerAbs)
   throw new Error("heightbake: unknown client build (stamp 0x" + stamp.toString(16) + "), sampler not found");
+const target = rva(samplerAbs);
 const sig = ['pointer', 'double', 'double', 'double', 'pointer', 'pointer', 'pointer', 'pointer', 'int', 'double'];
 const orig = new NativeFunction(target, 'double', sig);
 const OX = 25584000, OZ = 25564500, OY = 20000;

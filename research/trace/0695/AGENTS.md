@@ -40,3 +40,40 @@ All read trace/architecture/internal-transport.md (the shared contract) and writ
 | 19 | BUILD world-channel step 1: interface split for trade broker / encounters / commerce / claim votes / relog / locale (no behaviour change) | done (merged 6d7dbbf) | git worktree <workspace>\wt-worldchannel, branch phaseb/worldchannel-split | Commerce, Trades, Encounters, Ratings, portraits, relog session | social (#18), transport library (coordinator) |
 | 20 | BUILD Environment Server step 1: archive tag + terrain / voxel library split inside the world server (no behaviour change) | done (merged 7304e4a) | git worktree <workspace>\wt-envserver, branch phaseb/envserver-split | Game/Terrain/*, TerrainEdits, WorldEditing, Building, BuildingClipboard, Caves, OreVeins, Outposts ruin stamping | social (#18), world-channel (#19), transport (coordinator) |
 | 21 | BUILD social steps 2-4 + presence / friends / ignore moved into LandmarkEmulator.SocialServer (SOCIAL_ADDRESS empty = local, unchanged) | done (merged 8a66bae) | git worktree <workspace>\wt-social2, branch phaseb/social-service | SocialServer, Database.Social, RemoteSocialService, Game/Social, Friends, Ignores | commerce / trade / encounters (#19), terrain (#20), gateway (coordinator) |
+| 22 | Tunable content loader: host-editable tables under world `/data`, reload without world restart; extract existing C# loot / rate tables on touch | queued (coordinator) | docs note when shipped; first tables: cavern resources, creature Kind.Loot / kill extras | Content root + reload API; loot / rate JSON; migration of hardcoded tables when a system is touched | packet layouts, client `/gamedata` Resources/*.txt, Chaos Cavern geometry / outpost stamping (hand off) |
+
+## Conventions — tunable resources (added 2026-10-28)
+
+Server-authored numbers that operators (and agents) will retune — loot tables, drop weights, chances, amounts,
+spawn densities, healer intervals, similar balance knobs — must not stay as only `const` / `static readonly` in C#.
+
+**What counts.** Drop tables and rates (creature kill, cavern resources, chests when retuned, gathering chances,
+kill extras like campfire / Lumens / recipe). Not packet layouts, opcodes, or client `Resources/*.txt` shipped under
+`GameDataPath` / `/gamedata`.
+
+**Where files live.**
+
+- **Defaults in the repo** (shipped with the world image), e.g. under WorldServer content next to the program.
+- **Live overrides on the host** under `server-data/worlds/<WORLD_KEY>/content/` → container `/data/content/` (same RW
+  volume as `settings-overrides.json` and `dev_commands.txt`). Edit on the host without rebuilding the image.
+- **Never** put server-authored tunables only under `/gamedata`: that tree is the client table copy, mounted read-only,
+  and `setup` refreshes it from `GAME_DIR`.
+- Precedence: baked / shipped default &lt; world override under `/data/content/`.
+
+**Reload.** Every tunable loader must support reload without a world restart (dev command such as `loot reload` /
+`content reload`; admin hook optional). A bad or missing override keeps the previous good table and logs; never
+half-apply. Next roll uses the new table; in-flight bags may keep what they already rolled.
+
+**Existing hardcoded tables.** When you **touch** a system that still embeds rates in C# (`Creatures.CavernResource` /
+`CavernRareChance`, `Kind.Loot`, kill extras, `Gathering` chances, `RewardChests` / `LootChests` / outpost crystal
+picks, …), **extract that table in the same change** onto the content path above. Do not add a second parallel C#
+table. New Chaos Caverns / combat / gathering work must not introduce new `const double` drop rates.
+
+**Evidence honesty.** Files keep `[P]` / `[I]` / "ours" provenance (header or `_meta`). Moving a guess into JSON does
+not make it live data.
+
+**Coordination.** Topic #22 owns the loader and shared table files. Agents calibrating loot (e.g.
+`NetworkCaptures/_research/combat-loot-probe/PROMPT-loot-table-tuning.md`) or working Chaos Cavern gameplay edit
+**content files + reload**, not `Creatures.cs` constants; if the loader is not landed yet, extract as part of the
+same feature branch or hand off one line to #22. Quiver / creature weapons stay out of loot (see
+`agent-creature-quiver.md`).

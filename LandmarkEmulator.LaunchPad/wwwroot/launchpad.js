@@ -310,9 +310,11 @@
     $('spinnerText').textContent = 'Starting Landmark...';
     openModal('spinnerModal');
     setBusy(true);
-    call('play', { server: srv.id }).then(function () {
+    call('play', { server: srv.id }).then(function (r) {
       setProgress(100, 'Landmark is running.');
       setTimeout(closeModals, 1500);
+      if (r && r.patchAlert) showError(r.patchAlert, 'Allocator slot expand');
+      if (r && r.contourPatchAlert) showError(r.contourPatchAlert, 'Contour threads');
     }).catch(function (e) {
       showError(e.message, 'Could not start the game');
     }).then(function () { setBusy(false); });
@@ -494,6 +496,80 @@
   function renderClientConfig(c) {
     var list = $('ccList'); list.innerHTML = '';
     c.settings.forEach(function (s) { list.appendChild(settingCard(s, c)); });
+    list.appendChild(allocatorExpandCard(c));
+    list.appendChild(contourExpandCard(c));
+  }
+
+  function experimentalBadge() {
+    return el('span', 'experimental', 'badge experimental');
+  }
+
+  function allocatorExpandCard(c) {
+    var card = el('div', null, 'card setting');
+    var head = el('h3', 'Allocator slot expand ');
+    head.appendChild(experimentalBadge());
+    card.appendChild(head);
+    card.appendChild(el('p',
+      'Raise the game\'s per-thread allocator table from 64 to 127 slots in memory while ' +
+      'the process starts. Helps large-CPU (more than 8 cores) PCs work around loading hangs entering the world. ' +
+      'Off by default. Auto applies when the PC has 16 or more logical processors. ' +
+      'If the exe does not match the expected code, LaunchPad shows an alert and starts the game unpatched.',
+      'small'));
+    var box = el('div', null, 'choices'), err = el('p', '', 'error small');
+    var current = c.allocatorSlotExpand || 'Off';
+    function choose(mode) {
+      err.textContent = '';
+      call('setAllocatorSlotExpand', { mode: mode }).then(renderClientConfig)
+        .catch(function (e) { err.textContent = e.message; });
+    }
+    ['Off', 'Auto', 'On'].forEach(function (mode) {
+      var label = el('label', null, 'check'), r = document.createElement('input');
+      r.type = 'radio'; r.name = 'cc-allocatorSlotExpand'; r.value = mode; r.checked = current === mode;
+      label.appendChild(r);
+      label.appendChild(document.createTextNode(mode === 'Off' ? 'Off (default)' : mode === 'Auto' ? 'Auto (16+ logical processors)' : 'On'));
+      r.addEventListener('change', function () { if (r.checked) choose(mode); });
+      box.appendChild(label);
+    });
+    card.appendChild(box);
+    card.appendChild(err);
+    return card;
+  }
+
+  function contourExpandCard(c) {
+    var card = el('div', null, 'card setting');
+    var head = el('h3', 'Contour threads ');
+    head.appendChild(experimentalBadge());
+    card.appendChild(head);
+    card.appendChild(el('p',
+      'Raise VoxelFarm contour / Contouring Job workers from 3 to 5 in memory. Requires Allocator ' +
+      'slot expand Auto or On. Off by default. Applied only after allocator expand succeeds on that start. ' +
+      'If the exe does not match the expected code, LaunchPad shows an alert and starts the game unpatched.',
+      'small'));
+    var box = el('div', null, 'choices'), err = el('p', '', 'error small');
+    var alloc = c.allocatorSlotExpand || 'Off';
+    var enabled = alloc === 'Auto' || alloc === 'On';
+    var current = enabled ? (c.contourThreadExpand || 'Off') : 'Off';
+    function choose(mode) {
+      err.textContent = '';
+      call('setContourThreadExpand', { mode: mode }).then(renderClientConfig)
+        .catch(function (e) { err.textContent = e.message; });
+    }
+    ['Off', 'Auto', 'On'].forEach(function (mode) {
+      var label = el('label', null, 'check'), r = document.createElement('input');
+      r.type = 'radio'; r.name = 'cc-contourThreadExpand'; r.value = mode; r.checked = current === mode;
+      r.disabled = !enabled;
+      label.appendChild(r);
+      label.appendChild(document.createTextNode(
+        mode === 'Off' ? 'Off (default)' : mode === 'Auto' ? 'Auto (with allocator expand)' : 'On'));
+      if (enabled) r.addEventListener('change', function () { if (r.checked) choose(mode); });
+      box.appendChild(label);
+    });
+    if (!enabled) {
+      card.appendChild(el('p', 'Turn on Allocator slot expand (Auto or On) to enable this.', 'muted small'));
+    }
+    card.appendChild(box);
+    card.appendChild(err);
+    return card;
   }
 
   function settingCard(s, c) {

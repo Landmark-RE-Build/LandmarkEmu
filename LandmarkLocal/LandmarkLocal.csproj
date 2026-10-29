@@ -13,6 +13,16 @@
     <Description>Solo forever-local LandmarkEmu host (servers + in-app Play).</Description>
   </PropertyGroup>
 
+  <!-- Release zip: one LandmarkLocal.exe at the folder root (no DLL pile). Dev builds stay multi-file. -->
+  <PropertyGroup Condition="'$(_IsPublishing)' == 'true'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <PathMap>$(MSBuildProjectDirectory)=LandmarkLocal</PathMap>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\LandmarkLocal.Core\LandmarkLocal.Core.csproj" />
     <!-- SRP login / GameSession — same play path as LaunchPad (not the LaunchPad WinExe). -->

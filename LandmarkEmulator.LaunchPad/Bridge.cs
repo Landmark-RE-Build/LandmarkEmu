@@ -238,15 +238,37 @@ namespace LandmarkEmulator.LaunchPad
                     // A fresh login for the game's session key (the saved key logs in without the password).
                     var (sessionKey, _, _) = await api.Login(account, null, key, salt);
                     // ClientConfig.ini: this server, and the asset threads by the player's choice (advanced mode; else 2).
-                    Game.PointAt(Game.Folder, LoginAddress(server, info), MarketplaceUrl(server, info), settings.ConfigFor(Game.Folder));
-                    Process started = Game.Start(Game.Folder, sessionKey, settings.Locale);
+                    ClientConfigOptions? config = settings.ConfigFor(Game.Folder);
+                    Game.PointAt(Game.Folder, LoginAddress(server, info), MarketplaceUrl(server, info), config);
+                    // Experimental expands only count while advanced mode is on (choices are kept while off).
+                    AllocatorSlotExpand allocMode = config is { Advanced: true }
+                        ? config.AllocatorSlotExpand
+                        : AllocatorSlotExpand.Off;
+                    ContourThreadExpand contourMode = config is { Advanced: true }
+                        ? ContourThreadPatch.ClampToAllocator(config.ContourThreadExpand, allocMode)
+                        : ContourThreadExpand.Off;
+                    var launch = new ClientLaunchOptions
+                    {
+                        AllocatorSlotExpand = allocMode,
+                        ContourThreadExpand = contourMode,
+                    };
+                    Process started = Game.Start(Game.Folder, sessionKey, settings.Locale, launch, out ClientLaunchPatches patches);
                     started.EnableRaisingEvents = true;
                     // BeginInvoke, not Invoke: Process raises Exited holding a lock on itself, and waiting here for the
                     // window thread (which then reads the process) deadlocked the launcher.
                     started.Exited += (_, _) => window.Dispatcher.BeginInvoke(() => GameExited(started));
                     game = started;
                     window.WindowState = WindowState.Minimized;
-                    return null;
+                    // Fail-open: game is running; surface loud alerts when experimental patches could not be applied.
+                    bool allocFail = patches.Allocator.Status == AllocatorPatchStatus.Failed;
+                    bool contourFail = patches.Contour.Status == AllocatorPatchStatus.Failed;
+                    if (!allocFail && !contourFail)
+                        return null;
+                    return new
+                    {
+                        patchAlert = allocFail ? patches.Allocator.UserMessage : null,
+                        contourPatchAlert = contourFail ? patches.Contour.UserMessage : null,
+                    };
                 }
                 case "setOption":
                 {
@@ -362,6 +384,29 @@ namespace LandmarkEmulator.LaunchPad
                     return State();
                 case "clientConfig":
                     return ClientConfigState();
+                case "setAllocatorSlotExpand":
+                {
+                    ClientConfigOptions options = Advanced();
+                    if (!Enum.TryParse(Str(args, "mode"), true, out AllocatorSlotExpand mode) || !Enum.IsDefined(mode))
+                        throw new InvalidOperationException("Choose Off, Auto, or On.");
+                    options.AllocatorSlotExpand = mode;
+                    if (mode == AllocatorSlotExpand.Off)
+                        options.ContourThreadExpand = ContourThreadExpand.Off;
+                    settings.Save();
+                    return ClientConfigState();
+                }
+                case "setContourThreadExpand":
+                {
+                    ClientConfigOptions options = Advanced();
+                    if (!Enum.TryParse(Str(args, "mode"), true, out ContourThreadExpand mode) || !Enum.IsDefined(mode))
+                        throw new InvalidOperationException("Choose Off, Auto, or On.");
+                    if (mode != ContourThreadExpand.Off && options.AllocatorSlotExpand == AllocatorSlotExpand.Off)
+                        throw new InvalidOperationException(
+                            "Turn on Allocator slot expand (Auto or On) before enabling Contour threads.");
+                    options.ContourThreadExpand = ContourThreadPatch.ClampToAllocator(mode, options.AllocatorSlotExpand);
+                    settings.Save();
+                    return ClientConfigState();
+                }
                 case "setConfigChoice":
                 {
                     ClientConfigOptions options = Advanced();
@@ -432,6 +477,10 @@ namespace LandmarkEmulator.LaunchPad
                 advanced = options?.Advanced == true,
                 exists = File.Exists(path),
                 server = server?.Name ?? "",
+                allocatorSlotExpand = (options?.AllocatorSlotExpand ?? AllocatorSlotExpand.Off).ToString(),
+                contourThreadExpand = ContourThreadPatch.ClampToAllocator(
+                    options?.ContourThreadExpand ?? ContourThreadExpand.Off,
+                    options?.AllocatorSlotExpand ?? AllocatorSlotExpand.Off).ToString(),
                 settings = ClientConfigFile.Managed.Select(m =>
                 {
                     var (original, source) = ClientConfigFile.Original(Game.Folder, m);

@@ -44,7 +44,8 @@ function Remove-DebugJunk([string]$Dir) {
     } | Remove-Item -Force
 }
 
-Publish-Project "LandmarkLocal/LandmarkLocal.csproj" $out
+# Single-file LandmarkLocal.exe at the zip root (same pattern as LaunchPad publish).
+Publish-Project "LandmarkLocal/LandmarkLocal.csproj" $out @("-p:_IsPublishing=true")
 
 $authOut = Join-Path $out "servers/AuthServer"
 Publish-Project "LandmarkEmulator.AuthServer/LandmarkEmulator.AuthServer.csproj" $authOut
