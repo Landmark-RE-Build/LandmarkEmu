@@ -225,16 +225,27 @@ namespace LandmarkEmulator.WorldServer.Game
             c.Back = DateTime.UtcNow + Respawn;
             List<WorldSession> viewers = Viewers(c);
             HitEffects.PlayOn(c.Prop.Guid, Open, viewers);
-            uint[] resources = { 34, 35, 36, 37, 39, 51, 56, 57, 58, 2000, 2001, 2002 };
+            ContentTables.ChestTable table = ContentTables.CaveTreasureTable();
+            uint[] resources = table.ResourcePool is { Length: > 0 } ? table.ResourcePool
+                : new uint[] { 34, 35, 36, 37, 39, 51, 56, 57, 58, 2000, 2001, 2002 };
+            int rolls = table.ResourceRolls > 0 ? table.ResourceRolls : 3;
             int sharers = 0;
             foreach (WorldSession p in PlayerManager.Snapshot().Where(p => p.ZoneId == c.Zone && !Health.IsDead(p)
                 && Vector3.Distance(p.Position, c.At) <= ShareRange))
             {
                 var loot = new List<(uint, uint)>();
-                for (int i = 0; i < 3; i++)
-                    loot.Add((resources[random.Next(resources.Length)], (uint)random.Next(c.Deep ? 6 : 4, c.Deep ? 16 : 11)));
-                if (random.NextDouble() < 0.1)
-                    loot.Add((Gathering.AdventureEssence, 1));
+                uint lo = c.Deep ? table.DeepMin : table.ShallowMin;
+                uint hi = c.Deep ? table.DeepMax : table.ShallowMax;
+                if (lo == 0 && hi == 0)
+                {
+                    lo = c.Deep ? 6u : 4u;
+                    hi = c.Deep ? 15u : 10u;
+                }
+                if (lo > hi)
+                    (lo, hi) = (hi, lo);
+                for (int i = 0; i < rolls; i++)
+                    loot.Add((resources[random.Next(resources.Length)], (uint)random.Next((int)lo, (int)hi + 1)));
+                ContentTables.AddChanceExtras(loot, table.Extras, random);
                 // Essences on each player's session curve (P4776, TASKS 6.17).
                 Pacing.PaceEssences(loot, p, random);
                 LootPinatas.SpawnBag(p, c.At + new Vector3(0f, 0.6f, 0f), loot);

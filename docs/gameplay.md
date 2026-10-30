@@ -669,7 +669,7 @@ the template only has 884. The mailbox is read once per click off the world tick
   - Slaugs chase and hit.
 - Cavern creatures walk the cave floor and react to 3D distance, so players on the surface above don't wake them.
   Health, damage and loot are ours: live's were server data. Loot is Monster Essence, the affinity essence and
-  Adventure Essence.
+  Adventure Essence (tunable under `Resources/Content/loot/` / host `/data/content/loot/`; `loot reload`).
 - **Creature pathing** (`Game/Pathing.cs`, TASKS 6.61; research/trace/architecture/pathing.md). Live ran a pathing system with
   navigation meshes built from the voxel terrain (the client's admin page 32 "Pathing Information - Zone": NavMeshCells,
   stitch sections, silhouettes, avoidance obstacles, nav-mesh jobs); its format was server-only. Ours is a walkable
@@ -993,6 +993,18 @@ no Landmark source names an amount, so all numbers are ours.
   prop under them (within 4 m sideways, 12 m down: a Magical Platform, a walkway) sends the props within 48 m of it
   at ClientIsReady (the rest of the stream range follows the flags) and holds the zone-done flags 4 s, so the player can't move before the bodies exist; the Spire does the
   same with 6 s (docs/terrain.md "Voxel templates", the Spire's arrival).
+
+### Creature kill and chest loot tables (`Game/ContentTables.cs`)
+
+Kill bags, cavern resource rolls, cave treasure, Lost Chest and Lost Crystal loot live in JSON under
+`Resources/Content/loot/` (baked) with host overrides at `server-data/worlds/<WORLD_KEY>/content/` → `/data/content/`
+(docs/docker.md). Soft-calibrated from Courage combat capture bag previews (`NetworkCaptures/_research/combat-loot-probe/loot-outcomes.md`)
+and forum loot-chat inventories (`forum-loot.md`): confirm Lumens / essences / rare campfire+recipe on kills; nudged
+`default_humanoid` + `highfall_catapult` toward essence-forward bags; chests get a richer item mix (Lightstone,
+essences, potions, Lumens) without inventing precise % from n≈10 bags. Rates remain ours `[I]` unless marked `[P]`.
+Reload with `loot reload` / `content reload` (no world restart). Full multi-item bag contents still need an
+inventory-after-pickup capture; clean chest-open capture still desired to separate dig auto-loot from true chest bags.
+Quiver / creature weapons stay out of loot.
 
 ### Rare and seasonal drops (`Game/RareDrops.cs`)
 

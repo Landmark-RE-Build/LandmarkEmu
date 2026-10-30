@@ -1,0 +1,17 @@
+{
+  "_meta": {
+    "provenance": "Migrated from Outposts CompleteChannels Lost Crystal loot (wiki Lost Crystals). Rates still ours [I]; keep wiki-shaped mix unless a clear inventory post appears. Hat / seasonal outfit hooks stay in C# (RareDrops).",
+    "notes": "Lost Crystal channel completion (not lockout trip-only). Reload: loot reload / content reload."
+  },
+  "recipeChance": 0.6,
+  "secondRecipeChance": 0.3,
+  "campfireChance": 0.5,
+  "campfireItem": 3894,
+  "affinityEssences": [1587, 1588, 1589, 1590, 1591, 1592, 1593],
+  "affinityMin": 1,
+  "affinityMax": 3,
+  "adventureMin": 2,
+  "adventureMax": 4,
+  "lumenMin": 2,
+  "lumenMax": 5
+}

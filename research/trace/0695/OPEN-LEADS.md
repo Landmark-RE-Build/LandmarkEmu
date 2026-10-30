@@ -1631,6 +1631,11 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
   2016-07-08-57649), Morpheme .mrn event tracks (what fires on Activate_01), dev posts about the 1 Apr recipe limits.
 
 ### L120. Chaos Cavern resource drops and creature healers (TASKS 6.16, 6.21)
+- **Note 2026-10-30:** cavern resource rolls and creature/chest loot tables moved to host-editable
+  `Resources/Content/loot/` + `/data/content/loot/` (`ContentTables`, AGENTS #22). Rates still ours `[I]`; Courage
+  bag-preview outcomes + forum loot-chat soft-nudged humanoid kills and chest item mix
+  (`NetworkCaptures/_research/combat-loot-probe/loot-outcomes.md`, `forum-loot.md`). Still need inventory-after-pickup
+  combat capture and clean chest-open capture for full bag inventories.
 - **CLOSED 2026-10-18 (pass 4, CLOSE-BY-DESIGN):** no client-side or archived source can show more; the server's current behaviour is documented per lead in trace/0695/agent-leads4.md (numbers ours [I] where noted).
 - **Pass 3, 2026-10-17: UNCHANGED** — Only the Barren Lightbringer has a heal (wiki "Ability 1: Rejuvenate"). It is already built. (trace/0695/agent-leads3-b.md)
 - **Pass 2, 2026-10-17: ADVANCED (small)** — P4696: healers chase enemies when they are not healing. The wiki ties healer/support to Radiance. No rates. (trace/0695/agent-leads2-c.md)

@@ -124,6 +124,12 @@ WorldServer.json < `.env` < the page. The page shows where each value comes from
 override; deleting the file (world stopped) removes them all. Network, ports, ids, folders, passwords and the admin
 list stay `.env`-only (docs/admin.md "Settings page").
 
+**Tunable content** (loot / drop tables, AGENTS #22) lives beside that file under
+`server-data/worlds/<WORLD_KEY>/content/` → `/data/content/` (same world volume). Baked defaults ship in the image as
+`Resources/Content/` (see `Resources/Content/README.md`). On first start the world seeds empty `content/loot/*.json`
+from those defaults without overwriting host edits. Edit on the host, then `loot reload` or `content reload` in a
+dev/admin console — no world restart. A bad file keeps the previous good table.
+
 ## More worlds
 
 1. Copy `docker/worlds/extra-world.env.example` to e.g. `docker/worlds/liberation.env` and set:
