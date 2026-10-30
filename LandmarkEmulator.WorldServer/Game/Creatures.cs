@@ -59,18 +59,20 @@ namespace LandmarkEmulator.WorldServer.Game
         private enum Behaviour { Melee, Stationary, Ranged, Exploder, Dummy, Siege }
 
         /// <summary>
-        /// A creature kind. <paramref name="Mine"/>: an Exploder that is a Proximity Mine (or the Vine Trap, which the prop
-        /// dump files as "hazard: proximity mine"): its own warning / blast effects, a knock-down, no loot, no fungus goals.
+        /// A creature kind. <paramref name="LootKey"/> indexes <see cref="ContentTables"/> kill loot
+        /// (<c>loot/creature-kills.json</c>); <c>none</c> / empty = no bag rolls.
+        /// <paramref name="Mine"/>: an Exploder that is a Proximity Mine (or the Vine Trap, which the prop dump files as
+        /// "hazard: proximity mine"): its own warning / blast effects, a knock-down, no loot, no fungus goals.
         /// <paramref name="Healer"/>: heals hurt creatures of its own side between attacks and otherwise fights as a ranged
         /// caster that follows its target (TASKS 6.21, P4696; <see cref="TryHeal"/>). <paramref name="Prop"/>: the creature
         /// prop (spawner) it was made from, 0 for the world's own kinds: its weapon (<see cref="CreatureWeapons"/>) is per prop.
         /// </summary>
-        private sealed record Kind(string Name, uint Model, uint MaxHealth, uint Damage, (uint Item, uint Min, uint Max)[] Loot,
+        private sealed record Kind(string Name, uint Model, uint MaxHealth, uint Damage, string LootKey,
             Behaviour Style = Behaviour.Melee, bool Mine = false, bool Healer = false, uint Projectile = 0, uint Prop = 0);
 
         // ---- Chaos Caverns and surface monsters (launch, wiki "Monsters (PvE)"). Models come from the creature props
         // (prop dump), names from the props' own biome variants; health, damage and loot are ours (server data on live).
-        private const uint MonsterEssence = 3682, AfflictionEssence = 1588, FireEssence = 1589, Dirt = 44, Stone = 46;
+        private const uint MonsterEssence = 3682;
 
         private static uint ModelOf(uint prop, uint fallback) => Props.ModelOf(prop) is uint m and not 0 ? m : fallback;
 
@@ -82,16 +84,14 @@ namespace LandmarkEmulator.WorldServer.Game
         /// Fiber and Sap, plus the dirt / rock of the blast (amounts ours); the rare roll is in <see cref="ExplodeLoot"/>.
         /// </summary>
         private static Kind FieryFungus => fieryFungus ??= new("Fiery Fungus", ModelOf(869, ModelOf(1950, 0)), 150, 180,
-            new[] { (921u, 1u, 3u), (922u, 0u, 1u), (Dirt, 2u, 6u), (Stone, 1u, 4u), (FireEssence, 0u, 1u) }, Behaviour.Exploder);
-
-        /// <summary>A Fiery Fungus's chance of rare loot (an unknown recipe), ours.</summary>
-        private const double FungusRareChance = 0.03;
+            "fiery_fungus", Behaviour.Exploder);
 
         /// <summary>An exploded fungus's bag for the player who set it off: its loot and, rarely, a recipe (P3522).</summary>
         private static List<(uint, uint)> ExplodeLoot(Creature c, WorldSession trigger)
         {
             var loot = RollLoot(c.Kind);
-            if (random.NextDouble() < FungusRareChance && RecipeBook.RandomUnknownRecipeItem(trigger, random) is uint recipe and not 0)
+            if (random.NextDouble() < ContentTables.KillExtrasTable().FungusRareChance
+                && RecipeBook.RandomUnknownRecipeItem(trigger, random) is uint recipe and not 0)
                 loot.Add((recipe, 1u));
             // Its Fire Essence on the session curve like every essence (P4776, TASKS 6.17).
             return Pacing.PaceEssences(loot, trigger, random);
@@ -99,7 +99,7 @@ namespace LandmarkEmulator.WorldServer.Game
 
         /// <summary>Abomination: slithers close, then spits poison goo from a distance (Affliction).</summary>
         private static Kind Abomination => abomination ??= new("Abomination", ModelOf(1438, 1337), 600, 60,
-            new[] { (MonsterEssence, 1u, 2u), (AfflictionEssence, 0u, 1u), (Gathering.AdventureEssence, 0u, 1u) }, Behaviour.Ranged);
+            "abomination", Behaviour.Ranged);
 
         /// <summary>
         /// The cave biome's Chomper and Slaug (VoxelBiomes caverns → the props' biome variants: 41 Ancient Forest →
@@ -120,10 +120,8 @@ namespace LandmarkEmulator.WorldServer.Game
                     45 => (1522u, "Frozen Chomper", 1706u, "Pale Slaug"),
                     _ => (1521u, "Mossy Chomper", 1701u, "Creeper Slaug")
                 };
-                kinds = (new Kind(chomperName, ModelOf(chomper, 461), 900, 90,
-                        new[] { (MonsterEssence, 1u, 3u), (AfflictionEssence, 0u, 1u), (Gathering.AdventureEssence, 0u, 1u) }, Behaviour.Stationary),
-                    new Kind(slaugName, ModelOf(slaug, 1241), 650, 70,
-                        new[] { (MonsterEssence, 1u, 2u), (Gathering.AdventureEssence, 0u, 1u) }));
+                kinds = (new Kind(chomperName, ModelOf(chomper, 461), 900, 90, "cavern_chomper", Behaviour.Stationary),
+                    new Kind(slaugName, ModelOf(slaug, 1241), 650, 70, "cavern_slaug"));
                 cavernKinds[biome] = kinds;
                 return kinds;
             }
@@ -187,19 +185,19 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <summary>How often an idle story creature looks for a creature of the opposing faction (6.20; ours).</summary>
         private static readonly TimeSpan FoeScanInterval = TimeSpan.FromSeconds(1);
 
-        // Kobolds of the 0.589 model set; loot is raw resources until loot tables are known.
-        private static readonly Kind KoboldRunt = new("Kobold Runt", 1573, 300, 25, new[] { (34u, 1u, 3u), (35u, 1u, 3u) });
-        private static readonly Kind KoboldMelee = new("Kobold", 1569, 500, 40, new[] { (36u, 1u, 3u), (34u, 1u, 2u) });
-        private static readonly Kind KoboldCaster = new("Kobold Shaman", 1571, 400, 50, new[] { (37u, 1u, 2u), (51u, 0u, 1u) });
+        // Kobolds of the 0.589 model set; loot keys → ContentTables creature-kills.json.
+        private static readonly Kind KoboldRunt = new("Kobold Runt", 1573, 300, 25, "kobold_runt");
+        private static readonly Kind KoboldMelee = new("Kobold", 1569, 500, 40, "kobold_melee");
+        private static readonly Kind KoboldCaster = new("Kobold Shaman", 1571, 400, 50, "kobold_caster");
         // Other bipeds that share the player animation network (their .adr files name PlayerAnimationNetwork, like the
         // kobolds), so they walk and attack with the same animation selections.
-        private static readonly Kind Skeleton = new("Skeleton", 1457, 450, 45, new[] { (46u, 1u, 3u), (37u, 0u, 1u) });
-        private static readonly Kind Slaug = new("Slaug", 1241, 550, 55, new[] { (35u, 1u, 3u), (51u, 0u, 1u) });
-        private static readonly Kind Ogre = new("Ogre", 1456, 1200, 90, new[] { (36u, 2u, 5u), (39u, 1u, 2u) });
+        private static readonly Kind Skeleton = new("Skeleton", 1457, 450, 45, "skeleton");
+        private static readonly Kind Slaug = new("Slaug", 1241, 550, 55, "slaug");
+        private static readonly Kind Ogre = new("Ogre", 1456, 1200, 90, "ogre");
 
         // Animals on the NPC animation network (Char_Wolf_SpiritWolf / Char_Deer_Deer .adr): tried via dev "creature".
-        private static readonly Kind SpiritWolf = new("Spirit Wolf", 1463, 400, 35, new[] { (34u, 0u, 1u) });
-        private static readonly Kind Deer = new("Deer", 1462, 200, 0, new[] { (34u, 0u, 1u) });
+        private static readonly Kind SpiritWolf = new("Spirit Wolf", 1463, 400, 35, "spirit_wolf");
+        private static readonly Kind Deer = new("Deer", 1462, 200, 0, "deer");
 
         /// <summary>Creature kinds by dev name (dev command "creature").</summary>
         private static readonly Dictionary<string, Kind> kindsByName = new(StringComparer.OrdinalIgnoreCase)
@@ -1810,19 +1808,24 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             // The loot drops as a bag where the creature fell; the killer collects it by walking over it.
             var loot = RollLoot(c.Kind);
-            // NPCs may drop campfires (P3583); the rate is ours.
-            if (!c.Story && random.NextDouble() < CampfireChance)
-                loot.Add((CozyCampfire, 1u));
+            ContentTables.KillExtras extras = ContentTables.KillExtrasTable();
+            // NPCs may drop campfires (P3583); the rate is ours (ContentTables killExtras).
+            if (!c.Story && random.NextDouble() < extras.CampfireChance)
+                loot.Add((extras.CampfireItem, 1u));
             if (!c.Story && RareDrops.Beacon(random) is uint beacon and not 0)
                 loot.Add((beacon, 1u));
             // Every activity that gives loot, harvesting or combat, may also give Lumens and recipes (21 Mar 2016,
             // P4169; recipes from fighting, P4166 / P4224), on the session curve (Pacing).
-            // Rates ours, as gathering's.
+            // Rates ours, as gathering's (ContentTables killExtras).
             if (!c.Story)
             {
-                if (random.NextDouble() < KillLumenChance * Pacing.Factor(killer))
-                    loot.Add((Health.LumenItem, (uint)random.Next(1, 4)));
-                if (random.NextDouble() < KillRecipeChance && RecipeBook.RandomUnknownRecipeItem(killer, random) is uint recipe and not 0)
+                if (random.NextDouble() < extras.LumenChance * Pacing.Factor(killer))
+                {
+                    uint lMin = Math.Min(extras.LumenMin, extras.LumenMax);
+                    uint lMax = Math.Max(extras.LumenMin, extras.LumenMax);
+                    loot.Add((Health.LumenItem, (uint)random.Next((int)lMin, (int)lMax + 1)));
+                }
+                if (random.NextDouble() < extras.RecipeChance && RecipeBook.RandomUnknownRecipeItem(killer, random) is uint recipe and not 0)
                     loot.Add((recipe, 1u));
                 // A Barren also rolls for one of the twelve "Recipe: Barren …" items (L44, user 2026-10-17: the non-elite
                 // Barren props are unlocked by drops; more unlock through fighting, P4224): 1 % a kill, 30 % from a
@@ -2186,11 +2189,12 @@ namespace LandmarkEmulator.WorldServer.Game
         private static List<(uint, uint)> RollLoot(Kind kind)
         {
             var loot = new List<(uint, uint)>();
-            foreach ((uint item, uint min, uint max) in kind.Loot)
+            foreach (ContentTables.LootRange row in ContentTables.KillLoot(kind.LootKey))
             {
-                uint count = (uint)random.Next((int)min, (int)max + 1);
+                uint lo = Math.Min(row.Min, row.Max), hi = Math.Max(row.Min, row.Max);
+                uint count = (uint)random.Next((int)lo, (int)hi + 1);
                 if (count > 0)
-                    loot.Add((item, count));
+                    loot.Add((row.Item, count));
             }
             return loot;
         }
@@ -2760,18 +2764,8 @@ namespace LandmarkEmulator.WorldServer.Game
         // are left out (the fungus blast already drops them). Amounts and rates are ours (live's were server data,
         // OPEN-LEADS L120).
 
-        /// <summary>The uncommon underground resources a cavern monster may drop (1-3 of one).</summary>
-        private static readonly uint[] CavernUncommon = { 36, 37, 39, 49, 50 };
-        /// <summary>The rare ones (1 of one, at <see cref="CavernRareChance"/>).</summary>
-        private static readonly uint[] CavernRare = { 56, 58, 59 };
-        /// <summary>Chance a cavern resource roll gives a gemstone instead (ours).</summary>
-        private const double CavernRareChance = 0.08;
-
-        /// <summary>One random cavern resource reward: a gemstone at <see cref="CavernRareChance"/>, else 1-3 of an uncommon one.</summary>
-        private static (uint, uint) CavernResource()
-            => random.NextDouble() < CavernRareChance
-                ? (CavernRare[random.Next(CavernRare.Length)], 1u)
-                : (CavernUncommon[random.Next(CavernUncommon.Length)], (uint)random.Next(1, 4));
+        /// <summary>One random cavern resource reward (<see cref="ContentTables"/> cavern-resources.json).</summary>
+        private static (uint, uint) CavernResource() => ContentTables.RollCavernResource(random);
 
         // ---- Healers (TASKS 6.21) ---------------------------------------------------------------------------------------
         // P4696 (26 Apr 2016): healers with nobody to heal chase enemies who leave their range instead of standing
@@ -3033,13 +3027,6 @@ namespace LandmarkEmulator.WorldServer.Game
                     Combat.Statuses.Apply(x.Guid, Combat.Status.Crush, null, viewers: ViewersOf(x));
             }
         }
-
-        /// <summary>Cozy Campfire item 3894 and the chance a world creature drops one (ours).</summary>
-        private const uint CozyCampfire = 3894;
-        private const double CampfireChance = 0.05;
-
-        /// <summary>A kill's chance of 1-3 Lumens (scaled by <see cref="Pacing"/>) and of an unknown recipe (ours).</summary>
-        private const double KillLumenChance = 0.15, KillRecipeChance = 0.01;
 
         /// <summary>An undamaged creature that notices a player picks its target at random within this distance (P3651).</summary>
         private const float RandomTargetRange = 40f;
@@ -3467,23 +3454,22 @@ namespace LandmarkEmulator.WorldServer.Game
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             name = System.Text.RegularExpressions.Regex.Replace(name, @"\s*\(\d+ Limit\)\s*$", "").Trim();
             bool boss = n.Contains("BOSS", StringComparison.Ordinal);
-            var noLoot = Array.Empty<(uint, uint, uint)>();
             // Combat hardware (PropCategory 121): the Target Dummy stands and swings (ThinkDummy); mines and the Vine Trap
             // are hazards that go off like a Fiery Fungus (ThinkFungus). Neither drops loot.
             if (propId is TargetDummyProp or RuinTargetDummyProp)
-                return new Kind(name.Length > 0 ? name : "Target Dummy", model, DummyHealth, 0, noLoot, Behaviour.Dummy, Prop: propId);
+                return new Kind(name.Length > 0 ? name : "Target Dummy", model, DummyHealth, 0, "none", Behaviour.Dummy, Prop: propId);
             if (propId is ProximityMineProp or RuinProximityMineProp or VineTrapProp or RuinVineTrapProp)
-                return new Kind(name.Length > 0 ? name : "Proximity Mine", model, MineHealth, MineDamage, noLoot, Behaviour.Exploder, Mine: true);
+                return new Kind(name.Length > 0 ? name : "Proximity Mine", model, MineHealth, MineDamage, "none", Behaviour.Exploder, Mine: true);
             // A story Fiery Fungus (creature prop 2613, ruin spawner 1909) explodes as the world's do: P5269 calls fungi
             // "non-pathing creatures". Its loot and blast are the world fungus's (P3522).
             if (n.Contains("Fung", StringComparison.OrdinalIgnoreCase))
                 return new Kind(name.Length > 0 ? name : "Fiery Fungus", model, FieryFungus.MaxHealth, FieryFungus.Damage,
-                    FieryFungus.Loot, Behaviour.Exploder);
+                    "fiery_fungus", Behaviour.Exploder);
             // The Highfall Catapult (2941, combat hardware): a siege engine (ThinkSiege, TASKS 3.13). An Elite with Fire
-            // affinity (wiki): Elite-like health and damage per rock, plus a chance of Fire Essence (numbers ours).
+            // affinity (wiki). Soft-nudge loot in ContentTables highfall_catapult [P capture Courage].
             if (propId == HighfallCatapultProp || n.Contains("Catapult", StringComparison.OrdinalIgnoreCase))
                 return new Kind(name.Length > 0 ? name : "Highfall Catapult", model, 1600, 120,
-                    new[] { (34u, 1u, 3u), (Gathering.AdventureEssence, 0u, 1u), (FireEssence, 0u, 1u) }, Behaviour.Siege);
+                    "highfall_catapult", Behaviour.Siege);
             // Healers (Shaman / Priestess / Riftmender, TASKS 6.21): ranged casters that heal their side (TryHeal).
             bool healer = IsHealerName(n);
             // Outpost archers and casters shoot (P5727: outpost NPCs stop shooting through walls [P];
@@ -3499,8 +3485,9 @@ namespace LandmarkEmulator.WorldServer.Game
                 : n.Contains("Stag", StringComparison.OrdinalIgnoreCase) || n.Contains("Deer", StringComparison.OrdinalIgnoreCase) ? (200u, 0u)
                 : (550u, 50u);
             name = boss ? name.Replace("BOSS", "").Replace("GIANTS", "Giant").Trim() : name;
+            // Soft-nudge: essence-forward vs ore-heavy default [P capture Courage / forum xf:603072]; see creature-kills.json.
             return new Kind(name.Length > 0 ? name : "Creature", model, health, damage,
-                new[] { (34u, 1u, 3u), (Gathering.AdventureEssence, 0u, 1u) }, style, Healer: healer, Projectile: projectile, Prop: propId);
+                "default_humanoid", style, Healer: healer, Projectile: projectile, Prop: propId);
         }
 
         /// <summary>

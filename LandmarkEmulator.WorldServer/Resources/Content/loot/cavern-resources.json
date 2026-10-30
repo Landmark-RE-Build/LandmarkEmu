@@ -1,0 +1,11 @@
+{
+  "_meta": {
+    "provenance": "Migrated from Creatures.CavernUncommon / CavernRare / CavernRareChance (TASKS 6.16). Underground wiki resources [P]; gemstones as rare [I]; amounts and 0.08 rare chance ours [I]. OPEN-LEADS L120.",
+    "notes": "One roll per cavern kill (three for Elite). Reload: loot reload / content reload."
+  },
+  "uncommon": [36, 37, 39, 49, 50],
+  "rare": [56, 58, 59],
+  "rareChance": 0.08,
+  "uncommonMin": 1,
+  "uncommonMax": 3
+}

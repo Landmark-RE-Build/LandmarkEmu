@@ -60,6 +60,8 @@ namespace LandmarkEmulator.WorldServer.Game
             ["lua"] = "lua <Table:Function|Table.Function> [a b c]",
             ["spire"] = "spire",
             ["creatures"] = "creatures",
+            ["loot"] = "loot reload",
+            ["content"] = "content reload",
             ["treepools"] = "treepools [fell <n>|now]",
             ["pinatafor"] = "pinatafor <item> [item ...]",
             ["attackinfo"] = "attackinfo [ability id ...]",

@@ -1,0 +1,19 @@
+{
+  "_meta": {
+    "provenance": "Migrated from LootChests.OpenChest resource pool + Adventure Essence chance. Soft-nudge item mix toward forum loot-chat [P forum xf:606924]: ores/gems/wood + Monster/Adventure essence + Lightstone 231 + Minor Yield 1101 + Lumens + Bottled Moonlight 1110 (forum 'Midnight'). Stack ranges bumped so cave chests feel above mob bags [I amounts]. Dig-noise sand/rock piles left out.",
+    "notes": "Surface / cavern treasure chests (LootChests). Reload: loot reload / content reload."
+  },
+  "resourcePool": [34, 35, 36, 37, 39, 51, 56, 57, 58, 71, 72, 73, 2000, 2001, 2002, 3682, 3683, 1587, 1588, 1589, 1590, 1591, 1592, 1593],
+  "resourceRolls": 3,
+  "shallowMin": 6,
+  "shallowMax": 14,
+  "deepMin": 10,
+  "deepMax": 22,
+  "extras": [
+    { "item": 231, "chance": 0.35, "min": 1, "max": 4 },
+    { "item": 1101, "chance": 0.12, "min": 1, "max": 1 },
+    { "item": 1110, "chance": 0.08, "min": 1, "max": 2 },
+    { "item": 1579, "chance": 0.45, "min": 1, "max": 3 },
+    { "item": 3683, "chance": 0.2, "min": 1, "max": 1 }
+  ]
+}

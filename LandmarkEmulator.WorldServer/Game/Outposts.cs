@@ -779,17 +779,25 @@ namespace LandmarkEmulator.WorldServer.Game
             List<WorldSession> viewers = Viewers(o);
             HitEffects.PlayOn(o.Chest.Guid, ChestOpen, viewers);
             Vector3 at = new(o.Chest.Position.X, o.Chest.Position.Y, o.Chest.Position.Z);
+            ContentTables.ChestTable table = ContentTables.LostChestTable();
+            uint[] resources = table.ResourcePool is { Length: > 0 } ? table.ResourcePool
+                : new uint[] { 34, 35, 36, 37, 39, 51, 56, 57, 58, 2000, 2001, 2002, 46 };
+            int rolls = table.ResourceRolls > 0 ? table.ResourceRolls : 4;
+            uint rMin = table.ResourceMin != 0 ? table.ResourceMin : 10u;
+            uint rMax = table.ResourceMax != 0 ? table.ResourceMax : 30u;
+            if (rMin > rMax)
+                (rMin, rMax) = (rMax, rMin);
             foreach (WorldSession p in PlayerManager.Snapshot().Where(p => p.ZoneId == o.Zone && Vector3.Distance(p.Position, at) <= ChestShareRange))
             {
                 var loot = new List<(uint, uint)>();
-                uint[] resources = { 34, 35, 36, 37, 39, 51, 56, 57, 58, 2000, 2001, 2002, 46 };
-                for (int i = 0; i < 4; i++)
-                    loot.Add((resources[random.Next(resources.Length)], (uint)random.Next(10, 31)));
-                if (random.NextDouble() < 0.3 && RecipeBook.RandomUnknownRecipeItem(p, random) is uint recipe and not 0)
+                for (int i = 0; i < rolls; i++)
+                    loot.Add((resources[random.Next(resources.Length)], (uint)random.Next((int)rMin, (int)rMax + 1)));
+                if (random.NextDouble() < table.RecipeChance
+                    && RecipeBook.RandomUnknownRecipeItem(p, random) is uint recipe and not 0)
                     loot.Add((recipe, 1));
-                if (random.NextDouble() < 0.25)
-                    loot.Add((511, 1));          // High Yield Dynamite
-                loot.Add((Gathering.AdventureEssence, (uint)random.Next(1, 3)));
+                if (random.NextDouble() < table.DynamiteChance)
+                    loot.Add((table.DynamiteItem != 0 ? table.DynamiteItem : 511u, 1));
+                ContentTables.AddChanceExtras(loot, table.Extras, random);
                 // Essences on each player's session curve (P4776, TASKS 6.17).
                 Pacing.PaceEssences(loot, p, random);
                 LootPinatas.SpawnBag(p, at + new Vector3(0f, 0.6f, 0f), loot);
@@ -861,18 +869,24 @@ namespace LandmarkEmulator.WorldServer.Game
                 }
                 LockOut(session, o);
                 // Loot (wiki "Lost Crystals": a good chance of 1 or 2 recipes, plus Cozy Campfires, essences and
-                // Lumens), the discovery fanfare, then the offer of another cavern.
+                // Lumens), the discovery fanfare, then the offer of another cavern. Rates: ContentTables lost-crystal.json.
+                ContentTables.CrystalTable xt = ContentTables.CrystalLootTable();
                 var loot = new List<(uint, uint)>();
-                int recipes = random.NextDouble() < 0.6 ? 1 + (random.NextDouble() < 0.3 ? 1 : 0) : 0;
+                int recipes = random.NextDouble() < xt.RecipeChance
+                    ? 1 + (random.NextDouble() < xt.SecondRecipeChance ? 1 : 0) : 0;
                 for (int i = 0; i < recipes; i++)
                     if (RecipeBook.RandomUnknownRecipeItem(session, random) is uint recipe and not 0)
                         loot.Add((recipe, 1));
-                if (random.NextDouble() < 0.5)
-                    loot.Add((3894, 1));            // Cozy Campfire
-                uint[] essences = { 1587, 1588, 1589, 1590, 1591, 1592, 1593 };
-                loot.Add((essences[random.Next(essences.Length)], (uint)random.Next(1, 4)));
-                loot.Add((Gathering.AdventureEssence, (uint)random.Next(2, 5)));
-                loot.Add((1579, (uint)random.Next(2, 6)));   // Lumens
+                if (random.NextDouble() < xt.CampfireChance)
+                    loot.Add((xt.CampfireItem, 1));
+                uint[] essences = xt.AffinityEssences is { Length: > 0 } ? xt.AffinityEssences
+                    : new uint[] { 1587, 1588, 1589, 1590, 1591, 1592, 1593 };
+                uint aMin = Math.Min(xt.AffinityMin, xt.AffinityMax), aMax = Math.Max(xt.AffinityMin, xt.AffinityMax);
+                loot.Add((essences[random.Next(essences.Length)], (uint)random.Next((int)aMin, (int)aMax + 1)));
+                uint advMin = Math.Min(xt.AdventureMin, xt.AdventureMax), advMax = Math.Max(xt.AdventureMin, xt.AdventureMax);
+                loot.Add((Gathering.AdventureEssence, (uint)random.Next((int)advMin, (int)advMax + 1)));
+                uint lMin = Math.Min(xt.LumenMin, xt.LumenMax), lMax = Math.Max(xt.LumenMin, xt.LumenMax);
+                loot.Add((1579, (uint)random.Next((int)lMin, (int)lMax + 1)));
                 if (RareDrops.Hat(random) is uint hat and not 0)
                     loot.Add((hat, 1));                       // P6505: hat unlockers from outposts
                 if (RareDrops.OutpostSeasonal(random) is uint outfit and not 0)

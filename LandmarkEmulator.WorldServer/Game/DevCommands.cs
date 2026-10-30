@@ -678,6 +678,24 @@ namespace LandmarkEmulator.WorldServer.Game
                                 }
                             }
                             break;
+                        case "loot":
+                        case "content":
+                            // loot reload | content reload: reload ContentTables (baked + /data/content) without a world restart.
+                            {
+                                string sub = parts.Length > 1 ? parts[1].Trim() : "";
+                                if (!string.Equals(sub, "reload", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    Reply(commandSource, replies, "usage: " + UsageOf(parts[0]));
+                                    break;
+                                }
+                                string err = ContentTables.Reload();
+                                string msg = err == null
+                                    ? $"ContentTables reloaded (override {ContentTables.OverrideRoot()})."
+                                    : $"ContentTables reload failed — kept previous tables: {err}";
+                                Reply(commandSource, replies, msg);
+                                log.Info(msg);
+                            }
+                            break;
                         case "slay":
                             // slay [radius]: the nearest creature dies as if this player killed it (loot bag, goals).
                             foreach (WorldSession session in targets)

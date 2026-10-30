@@ -1,0 +1,21 @@
+{
+  "_meta": {
+    "provenance": "Migrated from Outposts.OpenChest. Soft-nudge toward outpost loot-chat [P forum xf:606925]: mats + Adventure/Monster/affinity essence + Lightstone + potions + Lumens; richer stacks than cave treasure [I]. Recipe / High Yield Dynamite chances kept from prior C# [I].",
+    "notes": "Lost Chest at Chaos Cavern outposts. Reload: loot reload / content reload."
+  },
+  "resourcePool": [34, 35, 36, 37, 39, 46, 51, 56, 57, 58, 71, 72, 73, 2000, 2001, 2002, 3682, 3683, 1587, 1588, 1589, 1590, 1591, 1592, 1593],
+  "resourceRolls": 4,
+  "resourceMin": 12,
+  "resourceMax": 36,
+  "recipeChance": 0.3,
+  "dynamiteChance": 0.25,
+  "dynamiteItem": 511,
+  "extras": [
+    { "item": 231, "chance": 0.55, "min": 2, "max": 8 },
+    { "item": 1101, "chance": 0.2, "min": 1, "max": 2 },
+    { "item": 1110, "chance": 0.12, "min": 1, "max": 2 },
+    { "item": 1579, "chance": 0.6, "min": 1, "max": 4 },
+    { "item": 3682, "chance": 0.4, "min": 1, "max": 3 },
+    { "item": 3683, "chance": 1.0, "min": 1, "max": 3 }
+  ]
+}

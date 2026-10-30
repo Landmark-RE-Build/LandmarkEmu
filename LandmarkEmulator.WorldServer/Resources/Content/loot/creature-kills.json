@@ -1,0 +1,80 @@
+{
+  "_meta": {
+    "provenance": "Defaults migrated from Creatures.Kind.Loot + kill extras (CampfireChance / KillLumenChance / KillRecipeChance / FungusRareChance). Soft-nudge on default_humanoid + highfall_catapult toward Courage bag flavor [P capture 5IewoKPQE2BqKg6Q] + forum kill bags [P xf:603072]; amounts still [I]/ours. Quiver/weapons stay out.",
+    "notes": "keys → RollLoot; killExtras → world (non-story) kill rolls. Reload: loot reload / content reload."
+  },
+  "kinds": {
+    "none": [],
+    "fiery_fungus": [
+      { "item": 921, "min": 1, "max": 3 },
+      { "item": 922, "min": 0, "max": 1 },
+      { "item": 44, "min": 2, "max": 6 },
+      { "item": 46, "min": 1, "max": 4 },
+      { "item": 1589, "min": 0, "max": 1 }
+    ],
+    "abomination": [
+      { "item": 3682, "min": 1, "max": 2 },
+      { "item": 1588, "min": 0, "max": 1 },
+      { "item": 3683, "min": 0, "max": 1 }
+    ],
+    "cavern_chomper": [
+      { "item": 3682, "min": 1, "max": 3 },
+      { "item": 1588, "min": 0, "max": 1 },
+      { "item": 3683, "min": 0, "max": 1 }
+    ],
+    "cavern_slaug": [
+      { "item": 3682, "min": 1, "max": 2 },
+      { "item": 3683, "min": 0, "max": 1 }
+    ],
+    "kobold_runt": [
+      { "item": 34, "min": 1, "max": 3 },
+      { "item": 35, "min": 1, "max": 3 }
+    ],
+    "kobold_melee": [
+      { "item": 36, "min": 1, "max": 3 },
+      { "item": 34, "min": 1, "max": 2 }
+    ],
+    "kobold_caster": [
+      { "item": 37, "min": 1, "max": 2 },
+      { "item": 51, "min": 0, "max": 1 }
+    ],
+    "skeleton": [
+      { "item": 46, "min": 1, "max": 3 },
+      { "item": 37, "min": 0, "max": 1 }
+    ],
+    "slaug": [
+      { "item": 35, "min": 1, "max": 3 },
+      { "item": 51, "min": 0, "max": 1 }
+    ],
+    "ogre": [
+      { "item": 36, "min": 2, "max": 5 },
+      { "item": 39, "min": 1, "max": 2 }
+    ],
+    "spirit_wolf": [
+      { "item": 34, "min": 0, "max": 1 }
+    ],
+    "deer": [
+      { "item": 34, "min": 0, "max": 1 }
+    ],
+    "default_humanoid": [
+      { "item": 3682, "min": 0, "max": 2 },
+      { "item": 3683, "min": 0, "max": 1 },
+      { "item": 34, "min": 0, "max": 1 }
+    ],
+    "highfall_catapult": [
+      { "item": 3682, "min": 0, "max": 1 },
+      { "item": 3683, "min": 0, "max": 1 },
+      { "item": 1589, "min": 0, "max": 1 },
+      { "item": 34, "min": 0, "max": 1 }
+    ]
+  },
+  "killExtras": {
+    "campfireItem": 3894,
+    "campfireChance": 0.05,
+    "lumenChance": 0.15,
+    "lumenMin": 1,
+    "lumenMax": 3,
+    "recipeChance": 0.01,
+    "fungusRareChance": 0.03
+  }
+}
