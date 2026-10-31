@@ -50,7 +50,10 @@ What each part of `LandmarkEmulator.WorldServer` does, which packets it uses (la
 - `Network/Handlers/ActionBarHandler.cs`: hotbar slot set/clear, saved in `character_action_slot`. The session keeps
   a copy of the bars as the client has them (`WorldSession.actionSlots`, from SendSelf and every confirmed change):
   a right-clicked bag tool (0.695 sends only the equip) is put on the first free slot by the server
-  (`InventoryHandler.IsRightClickEquip` -> `WorldSession.PlaceOnActionBar`), as the 0.589 client did by itself.
+  (`InventoryHandler.IsRightClickEquip` -> `WorldSession.PlaceOnActionBar`), as the 0.589 client did by itself:
+  bar 0 first (the client never sends which bar is shown), nothing when a slot already holds it — by guid, or a
+  definition slot of a non-stacking item, which the client shows as that item (FUN_14344daa0)
+  (client-to-server-shifts.md §3).
 - Item definitions are the client's item list as a live server sent it: the captured packet
   `Resources/PacketDumps/44-CommandBase`, sent at world entry (protocol.md §5).
 - Items are instances: a trade, a mail attachment or a chest hands over the same item, so it keeps its wear (condition;
@@ -112,8 +115,17 @@ What each part of `LandmarkEmulator.WorldServer` does, which packets it uses (la
     refuses what it can't pay itself, and kept by the server (CastFail): Cloud Burst 50 Energy / 5 s, Charged Leap
     100 / 5 s, Explosive Leap 80 / 10 s, Electric Charge 75 / 10 s, Immediate Delivery 40 Energy a second / 10 s;
     Shift's sprint and the glide cost nothing [I].
+  - **Dash Soles and Roll Wraps** (`Game/BootAbilities.cs`, OPEN-LEADS L168): no movement effect moves a player
+    sideways, so the dash and the roll are root-motion animations. Each cast id is one direction (the boots' input
+    groups 82 / 153: forward, back, left, right and the diagonals; Shift alone = back); its CastSuccess carries the
+    player network's evade in that direction (`Action|Action|Evade_Roll`, AbilityIndex in the order Front, Right, Left,
+    Back, FR, FL, BR, BL): Roll Wraps the Roll set (selections 415 / 465-467 / 474-477, AbilityIndex 0-7), Dash Soles the
+    "Translations only" slide (593-600, AbilityIndex 20-27); the players within 80 m get the same selection. Which rows
+    live used is server data [I]; the directions, switch ranges and clips are the client's [P].
   - Jump heights stay 3.0, the client's default, because the client keeps the last jump height. The packet layouts
-    are proven; which parameter rows live used and whether 2016 kept the 2014 numbers are ours.
+    are proven; which parameter rows live used and whether 2016 kept the 2014 numbers are ours. No 2016 source gives a
+    sprint percentage, jump height, leap distance or glide speed (all forum threads, patch notes and the wiki's boot
+    pages searched; trace/0695/phaseE2-combat.md L168), so the 2014 post's numbers stay.
   - Setting `MovementEffects` (Docker `MOVEMENT_EFFECTS`, default true = live; off answers every movement cast at once
     with no effects, costs or cooldowns); dev `movementeffects on|off` (new caster info only).
 - **Character stats** (`Game/CharacterStats.cs`; L162): the movement tuning live sent every player, from the live login
@@ -122,6 +134,14 @@ What each part of `LandmarkEmulator.WorldServer` does, which packets it uses (la
   the eight times inside LightweightToFullPc (the stats the client table marks SEND_TO_REMOTE_CLIENT), which the client
   copies into each character's animation, so their start / stop blends are no longer instant. No extra packet. Setting
   `LiveCharacterStats` (Docker `LIVE_CHARACTER_STATS`, default true = live); dev `charstats on|off`.
+- **Off hand** (`WorldSession.BuildSecondarySlot`, OPEN-LEADS L192 (i)): a main-hand item with a second model — the
+  shield of Flame Bound Bastion / Armament of Unrelenting Vengeance / Avenging Champion's Exaltation / Blight-Warden's
+  Pain, the quiver of the bows, the left gun / dagger / katana / bottle of the pairs — shows it in slot 11 "Off Hand"
+  (the client's SecondaryWeaponSlotName). The item definition carries the model (secondaryModelName), but the client's
+  in-world slot handler attaches only the model in the packet, so the server sends a second slot packet (item guid 0)
+  and empties slot 11 when the main hand changes to an item without one. The actor's Usage names the bone for that
+  slot (OffHandWeapon, Shield, BackWeapon). Viewers meeting the player, the zone-in and the Parlor's attachment lists
+  include it.
 - **Travel:** cast 186 (My Sites) teleports to the player's own build site, 185 (Spire) to the Spire, 187 (friends
   list right-click → Teleport to Friend) next to the friend, never below the ground there. All run after the
   4-second cast animation. Teleport to Friend has no cooldown, as live from 5 May 2015 (the 2014 alpha had 30
@@ -130,7 +150,10 @@ What each part of `LandmarkEmulator.WorldServer` does, which packets it uses (la
   refuses a repeat and prints 562080 "This ability is on cooldown for another %d minutes and %d seconds." itself, as
   the client does (OPEN-LEADS L182); a cast that still arrives inside it gets CastFail and the same text from the
   server. With 0, 187's +0x70 is 0 (the 1098 capture it was derived from carried 60 s, a client-side cooldown live
-  2016 did not have).
+  2016 did not have). Travel to Spire and Travel to My Site have no cooldown either (OPEN-LEADS L188): the Stone of
+  Recall they replaced (21 Mar 2016 notes) lost its cooldown on 5 May 2015 and no later source names one; their old
+  60 s was the Cozy Campfire's caster info (ability 1098), copied as the template. `TravelCooldownSeconds`
+  (`TRAVEL_COOLDOWN_SECONDS`, default 0) adds one per cast (185 and 186 each), sent in their caster info the same way.
   A friend who is offline (on no world) gets the client's own text 560709 "[player] is not online at this." as a
   system line with the friend's name (`Game/TargetNotOnline.cs`; the same line answers a trade invitation or Inspect
   aimed at a player who left). `TargetNotOnlinePacket` (`TARGET_NOT_ONLINE_PACKET`, default false) sends the client's
@@ -185,8 +208,25 @@ What each part of `LandmarkEmulator.WorldServer` does, which packets it uses (la
   - They are server entities, generated per 64 m region from a seed. The forest type depends on the biome; slopes,
     the sea and build sites are skipped.
   - Each region is sent within 160 m and removed beyond 224 m.
-  - Chopping (axes 1020, 176): 5 hits (8 for large trees), 2–4 wood per hit (Plain, Burled for large, Striped for
-    volcanic). Tree Fiber and Sap are a chance.
+  - Axes target trees only (since 2026-10-31): the axes' caster info carries target rule 20 "Target is Harvestable
+    Tree" and every tree its profile (200 + 3 × size + wood: ProfileDefinitions 200-214 "Tree: size: wood"), so the
+    client outlines, shows the axe cursor and swings only at trees; a swing that names anything else fells nothing (not
+    the tree beside it) and plays no chop. Before, the rule was 0 ("anything") and the axe swung at the Spire and props.
+  - Chopping (axes 1020, 176, the Pickaxes' chop 173): 2–4 wood per hit, the biome's wood (Burled in Old Growth, Striped on volcanic ground,
+    else Plain). Tree Fiber is a chance per hit. Sap and finds: under the health model a chance on every swing, scaled to
+    the swing's damage (80 gives the old 5-hit tree's rate; live rolled Discovery per swing on trees), under `hits` with
+    the felling hit. The Hotfoot speed burst comes with the felling hit.
+  - **Tree health** (`Game/Gathering.Health.cs`; setting `TreeHealth`, Docker `TREE_HEALTH`): `health` (default, live)
+    gives each tree the client's Health row for its size (Resources.txt: Very Small 350, Small 750, Medium 1500, Large
+    2250, Very Large 3000; the size is read from the model's name and footprint, which is ours: live's tree → size table
+    was server data). Each swing takes the axe's Harvesting Damage (stat 12: 80 for the Adventurer's Axe as on live, 1.5 ×
+    for the Goliath; +25 % with the Potion of Furious Harvesting; half with a broken axe). With the Adventurer's Axe a
+    tree takes 5 (very small) to 38 (very large) swings; the default tree lists grow small to large trees (10 to 29).
+    The player who targets or chops a tree sees its health bar: the client shows it for its harvest target (target slot
+    9) while the tree is injured and alive, so trees are sent neutral, a node's target request is answered with slot 9,
+    and the first swing at a tree that isn't the swinger's harvest target puts it there (17 bytes). The health goes to
+    that player only (about 110 bytes a swing) and stays above the client's 0 % until the tree falls. `hits` = the older
+    5 swings (8 for large trees), no bar.
   - What happens to a felled tree is the respawn model (below); felled trees are saved.
 - **Placement sets** (`Game/ProceduralPlacement.cs`, when switched on): on Desert, Tropical, Old Growth and Tundra ground the trees come
   from the client's own placement rules (gameData `ProceduralPlacementSets`, `…SetEntities`, `…SetsSetEntities`,
@@ -318,6 +358,20 @@ part in it after one reply per design.
 
 ## Claims / build sites (`Game/Claims.cs`)
 
+- **The Spire area** (`Game/Spire.cs`; setting `SpireArea`, Docker `SPIRE_AREA`, default on; trace/0695/spire-claims.md):
+  the client's own GlobalAreas 3, a 90 m sphere round each Spire's Hub, as live after the 6 Oct 2014 hotfix (P1829-P1832:
+  the area suppresses procedural props, no mining or harvesting, no claims). The Hub's spawn names it (StaticAreaId 3, a
+  unique area guid, a one-space name), so the client refuses a site there itself — cursor red, "Claims.InvalidClaimLocation"
+  — by its exclusion-sphere test: the site box overlaps the sphere's column (|dx|, |dz| < 105 m + 90 m) and its middle is
+  closer than 90 m + its half diagonal (173.6 m) (`Claims.InExclusionSphere`, the graveyards' test too). A player with
+  FreeBuild, and a site expansion, skip the client's test, so the server refuses the same in `CanPlace`. No trees or plants
+  grow in it, and mining and building in it are refused (text 560944). Off: only the platform (and 10 m round it for mining).
+- **Trees under a new site** (trace/0695/claim-trees.md): placing (or moving, or a Pioneer grant of) a site takes the trees
+  and plants standing in its box out, as on live (`Gathering.SitePlaced`): felled, under the min / max model a free spot
+  whose kind respawns elsewhere below its minimum; every player who has the region is told. Trees never grow or respawn in
+  a site's box, whoever may build there (before 2026-10-31 the test was Build permission, so open sites grew trees). When a
+  site goes, its spots come back through respawns or the next start.
+
 - **Placing a site:**
   1. "Place this build site" in Site Management (ClaimsPacketStartClaimPlacement), or right-click an old Build Site
      Flag item (it is no longer needed or used up: 14 Jul 2016, P6081-P6085).
@@ -375,6 +429,12 @@ part in it after one reply per design.
 - **Props:**
   - Placed from the build palette or by using a prop item, and paid for with the prop's recipe components.
   - Moved with the gizmo (Save), picked up, deleted. They are persisted and shared with nearby players.
+  - **A prop stays in its build site.** The 0.695 placement cursor is valid only while the drop point is in the same
+    site (3-D box, height included) as the prop's position when the session opened (FUN_142fbd5f0 / FUN_142fc1950). So
+    the prop waiting for a new placement spawns inside the player's site (20 m below them, raised to 1 m above the box
+    floor near the bottom, or above the player with no room below; `Props.PlacementSpawnPoint`), and a Save that would
+    move a placed prop into another site is refused. Before 2026-10-26 a player in the bottom 20 m of their site's box
+    got a prop that could not be put down anywhere.
   - **Placing from the bag opens Build Mode** (`Game/BuildModeHolster.cs`; setting `PlaceOpensBuildMode` /
     `PLACE_OPENS_BUILD_MODE`, default `true` at the user's request — **live did not do this**, `false` = live). When a
     prop item's placement starts (the bag's right-click → InventoryPacketActivateItem → `Props.BeginPlacement`), the
@@ -429,7 +489,11 @@ part in it after one reply per design.
   through interaction flagging → `InteractRequest` → `CraftWindowEnable`. The client never closes a station window by
   distance; the server does (RecipePacketZoneCraftingWindow 0x42/0x24 `{u32 sub, u32, bool 0}`, the client then sends
   CraftWindowEnableRequest 6 itself) when its player is more than 8 m from the station or the station prop is gone,
-  twice a second (`CraftingWindowCloseAway` / `CRAFTING_WINDOW_CLOSE_AWAY`, default true; dev `closecraft`). Recipe
+  twice a second (`CraftingWindowCloseAway` / `CRAFTING_WINDOW_CLOSE_AWAY`, default true: live closed it, Update Notes
+  02.20.14 "The crafting window will now close automatically when you move away from the crafting station."; dev
+  `closecraft`). A craft starts only within the same range of the same station: the station is looked up among placed
+  props and the Spire's own props (until 2026-10-31 only placed props: every craft at a Spire Replicator was refused as
+  "too far"), within max(8 m, the distance it was clicked from + 3 m). Recipe
   cooldowns (PlayerRecipeDataUpdate 0x42/0x1E) are not sent: every recipe's `COOLDOWN_TIME` is 0 in the client's own
   Recipes.txt.
 - **Crafting** checks and consumes the components and gives the output. Recipes are learned from recipe items.
@@ -879,7 +943,13 @@ the generic "Basic Attack" / "Power Attack" and its affinity's main state.
   CastSuccess without Force (+0x48), so it plays without restarting the window; the weapon casts' cast time is sized
   to the latest strike + 0.35 s motion + 0.15 s for the answer's trip (WeaponAttacks.StrikeWindowSeconds). With the
   old 0.4 s cast time and a forced second success the strike was stopped 50-130 ms in ("janky" swings).
-- **Ours, not the client's**: durations, chances, damage shares (the ability data was server-side).
+- **Which clip each stage plays** (`WeaponAttacks.AttackAnimation`): basic stage n plays the class's AttackIndex n, except
+  the sword class 1010's index 1, Biped_Core_Adventurer_Sword1H_DashAttack_01 (a lunge forward, Translation 0.525): both
+  sword Basic Attacks only swing in front (Assault, Sanctify), the dash is Overrun's, so the sword's combo is 0, 2, 0 …
+  (OPEN-LEADS L194) [P clips and texts, I live's choice].
+- **Ours, not the client's**: durations, chances, damage shares, the channels' longest holds and tick counts, the Recon
+  volley's reach / arc / shots (the ability data was server-side: AbilityEx.txt is empty, no capture has a weapon cast;
+  trace/0695/phaseE2-combat.md L194).
 - Dev: `wield <item>`, `weaponattack basic|power|special [n]`, `status DirtyFighting`, `states` (also Energy now / maximum),
   `struck [damage] [count]` (the nearest creature hits you through the defences and armour passives), `combatgear`,
   `revive`, `god on|off`. Checked in the client with scripted weapon-kit and charge runs (presses and releases through
@@ -1269,7 +1339,14 @@ Full write-up with sources: research/trace/0695/agent-graveyards.md.
   ReadyToRevive after the channel; StopRevive (0x43 {u64 dead, u64 reviver, bool}) if the reviver dies, leaves or walks
   off. The revived / reviver lines are the client's CombatSpam row 8 texts (564592, 564593); when an entity comes back
   to life the client prints that row itself from the recorded reviver (vtable +0x488 → FUN_142e20a10 → FUN_142f43730). 0.589 has no accept prompt
-  (UI.DoYouAcceptRevive / UI.BeingRevivedBy exist only as text mappings) and no point cost.
+  (UI.DoYouAcceptRevive / UI.BeingRevivedBy exist only as text mappings) and no point cost. The reviver kneels over
+  the body: AnimationSelection 840 {AbilityIndex 1, Interacting 1} = the network's `Idle_Pass|Interaction` child 1
+  "ReviveAlly", ended by 841 (done) or 837 "Cancel" (broken off, declined), to the reviver and the players within 80 m
+  (OPEN-LEADS L192 (h); the client plays nothing for StartRevive itself) [P clips, I that live's ability used them].
+- **Drinks and dynamite** (`Game/Consumables.cs`, L192 (f)): the healing potions and the three brews play
+  UsePotion (287, Biped_Core_Utility_UsePotion_01, the network's only drinking clip; empty hands only, like every emote
+  clip); High Yield Dynamite plays the throw (Class 7 Enter 41 / Release 42, Biped_Core_Harvesting_Throw_F01) towards
+  the blast, for the player and the others within 80 m (it was the pick swing before) [P clips, I live's choice].
 - **What the live server sent** (packet registry cPlayerUpdatePacketId*): 0x39 KnockedOut to everyone when a player
   goes down (now sent: u64 victim, two character-info blocks, two stat blocks, a damage report, u32; read exactly by the
   client, which adds a kill-feed line), 0x44 ReadyToRevive to the dead player when someone revives them (now sent on
@@ -1285,5 +1362,11 @@ Full write-up with sources: research/trace/0695/agent-graveyards.md.
   LocalProxiedCharacter / FirstPersonLocalProxiedCharacter have a knocked-out handler. Still open: whether
   SetupActorGroup (which loads the character's actor data) fails on bit 7 by design or because the live server sent
   data we don't (a downed-appearance actor), so treat "unfinished" as likely, not proven.
+- **0.695 reading (2026-10-26, trace/0695/phaseE2-social.md):** ProxiedCharacter::SetupActorGroup (0.695 FUN_142ec6e20,
+  the same logic as 0.589's FUN_142e280f0) reads no state bit; the 2026-10-12 test that lost the entity sent the
+  whole-word UpdateCharacterState 0x0F, which also wipes the bits the client keeps itself. The body's pose on every
+  client comes from bit 7 alone (the animation network's State_Dead, set every frame from FUN_142ea9ef0 by
+  FUN_142eb1950), so the server now sets it on the others' copies with UpdateCharacterStateDelta (Game/DeadBodies,
+  DEAD_BODIES_VISIBLE; never on the dead player's own client). Two-client check: docs/observer-sync.md item 10.
 - After a teleport the other players on the landscape now get the player's new position at once
   (PlayerManager.ShowPosition); before, someone who stood still after travelling stayed at the old spot on other screens.

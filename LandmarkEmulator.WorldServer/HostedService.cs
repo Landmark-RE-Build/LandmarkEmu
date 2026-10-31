@@ -113,6 +113,7 @@ namespace LandmarkEmulator.WorldServer
             Game.Terrain.EnvironmentServer.Instance.BuildLodCopies();   // coarse copies of the edits, in the background
             Game.Terrain.VoxelTemplate.Folder = System.IO.Path.Combine(worldConfig.GameDirectory ?? "", "CommonData", "Voxel", "templates");
             Game.LandmarksOfLandmark.Load(System.IO.Path.Combine(System.AppContext.BaseDirectory, "TerrainEdits"));
+            Game.Spire.AreaEnabled = worldConfig.SpireArea;
             Game.Spire.Load(worldConfig.GameDirectory, System.IO.Path.Combine(System.AppContext.BaseDirectory, "TerrainEdits"));
             // Tunable content tables (loot / rates) before creatures drop bags; host overrides under /data/content.
             Game.ContentTables.Init();
@@ -127,6 +128,8 @@ namespace LandmarkEmulator.WorldServer
             Game.Graveyards.LoadStamps(System.IO.Path.Combine(System.AppContext.BaseDirectory, "TerrainEdits"));
             // The slate slabs under new Pioneer sites (L180): which are done, and the ones a restart interrupted.
             Game.Pioneer.LoadSlabs(System.IO.Path.Combine(System.AppContext.BaseDirectory, "TerrainEdits"));
+            // The placed Player Studio designs into their cells' building layer (Voxel Vision's "Templates").
+            Game.TemplateInstances.PushAll();
             // The home continent's underground portal crystals onto their cavern graveyards' stamped ground (L130).
             Game.WarpNetwork.SettleOnGraveyards();
             // The /membership command (TASKS 3.12), registered before anyone zones in.

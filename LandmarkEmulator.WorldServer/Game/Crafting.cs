@@ -24,7 +24,8 @@ namespace LandmarkEmulator.WorldServer.Game
     /// packet, the window-open response and the Lua window toggle), so a window stayed open as its player walked away,
     /// and the next craft failed with "You are too far from the station." The server closes it when the player is more
     /// than <see cref="MaxStationDistance"/> from the station or the station prop is gone (checked twice a second;
-    /// setting CraftingWindowCloseAway, default true [I]: live's behaviour is not documented).</para>
+    /// setting CraftingWindowCloseAway, default true = live: Update Notes 02.20.14, "The crafting window will now close
+    /// automatically when you move away from the crafting station." (design/wiki/pages/Update Notes 02.20.14.wiki) [P]).</para>
     /// <para>Recipe cooldowns (PlayerRecipeDataUpdatePacket 0x42/0x1E; the crafting list's CooldownRemaining /
     /// CooldownTotal, FUN_143613ab0: recipe +0x44 minus the time since the player's last craft) need nothing: every
     /// recipe's COOLDOWN_TIME is 0 in the client's own Resources/Recipes.txt (0.695: 2,363 rows; 0.589: 2,331) [P].</para>
@@ -84,7 +85,7 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>Closes the player's station window (the client answers with CraftWindowEnableRequest 6).</summary>
-        public static void CloseWindow(WorldSession session)
+        public static void CloseWindow(WorldSession session, string why = null)
         {
             uint station;
             lock (sync)
@@ -92,11 +93,12 @@ namespace LandmarkEmulator.WorldServer.Game
                 if (!openStations.Remove(session, out var open))
                     return;
                 openRepairWindows.Remove(session);
+                openReach.Remove(session);
                 station = open.Station;
             }
             session.EnqueueMessage(ZoneMessageOpcode.RecipeBase, CraftingWindowBody(station, false));
             ResetCursor(session);
-            log.Info($"{session.CharacterName}: station {station} window closed by the server.");
+            log.Info($"{session.CharacterName}: station {station} window closed by the server{(why != null ? " (" + why + ")" : "")}.");
         }
 
         /// <summary>
@@ -120,12 +122,53 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             foreach (var (session, prop, openedAt) in open)
             {
-                System.Numerics.Vector3? station = prop != 0 ? Props.PositionOf(prop) : openedAt;
-                if (station is System.Numerics.Vector3 at && System.Numerics.Vector3.Distance(at, session.Position) <= MaxStationDistance)
+                System.Numerics.Vector3? station = prop != 0 ? StationPosition(prop) ?? openedAt : openedAt;
+                float limit;
+                lock (sync)
+                    limit = Math.Max(MaxStationDistance, (openReach.TryGetValue(session, out float reach) ? reach : 0f) + ReachMargin);
+                float distance = station is System.Numerics.Vector3 at ? System.Numerics.Vector3.Distance(at, session.Position) : float.NaN;
+                if (distance <= limit)
                     continue;
-                CloseWindow(session);
+                CloseWindow(session, float.IsNaN(distance) ? "its station is gone" : $"{distance:0.0} m from it, limit {limit:0.0} m");
             }
         }
+
+        /// <summary>
+        /// Where a station prop stands: a placed prop (<see cref="Props.PositionOf"/>) or one of a Spire's own stations
+        /// (<see cref="Spire.PositionOf"/>: its Replicators and Repair Station are template props, not placed ones); null
+        /// when it is gone. Until 2026-10-21 only placed props were looked up, so every Spire station window was closed
+        /// as "gone" on the next tick, half a second after it opened.
+        /// </summary>
+        private static System.Numerics.Vector3? StationPosition(ulong prop) => Props.PositionOf(prop) ?? Spire.PositionOf(prop);
+
+        /// <summary>
+        /// Is the player too far from their open station to craft? The walk-away close's own station and range: the station's
+        /// position among placed props or the Spire's (<see cref="StationPosition"/>), within max(8 m, its reach when opened
+        /// + 3 m).
+        /// </summary>
+        internal static bool StationTooFar(WorldSession session, ulong propGuid, uint recipeId = 0)
+        {
+            float limit;
+            lock (sync)
+                limit = Math.Max(MaxStationDistance, (openReach.TryGetValue(session, out float reach) ? reach : 0f) + ReachMargin);
+            if (StationPosition(propGuid) is not System.Numerics.Vector3 stationPosition)
+                return true;
+            float distance = System.Numerics.Vector3.Distance(stationPosition, session.Position);
+            if (distance <= limit)
+                return false;
+            log.Info($"{session.CharacterName}: recipe {recipeId} refused, {distance:0.0} m from station 0x{propGuid:X} (limit {limit:0.0} m).");
+            return true;
+        }
+
+        /// <summary>
+        /// Players' distance from the station prop's pivot when they opened it: a big station's pivot can be further than
+        /// <see cref="MaxStationDistance"/> from where it can be clicked, so the window closes only once the player is
+        /// <see cref="ReachMargin"/> further away than that.
+        /// </summary>
+        private static readonly Dictionary<WorldSession, float> openReach = new();
+
+        /// <summary>How much further than at the open a player may walk before the window closes, metres.</summary>
+        private const float ReachMargin = 3f;
 
         /// <summary>
         /// Remembers which station a player opened, and its prop (0 for a dev-opened window, which skips the
@@ -133,10 +176,16 @@ namespace LandmarkEmulator.WorldServer.Game
         /// </summary>
         public static void StationOpened(WorldSession session, uint station, ulong propGuid)
         {
+            float? reach = propGuid != 0 && StationPosition(propGuid) is System.Numerics.Vector3 at
+                ? System.Numerics.Vector3.Distance(at, session.Position) : null;
             lock (sync)
             {
                 openStations[session] = (station, propGuid);
-                if (GameTableManager.Instance.CraftingStations.GetEntry(station)?.CraftingStationTypeId == RepairStationType)
+                if (reach is float r)
+                    openReach[session] = r;
+                else
+                    openReach.Remove(session);
+                if (GameTableManager.Instance.CraftingStations?.GetEntry(station)?.CraftingStationTypeId == RepairStationType)
                     openRepairWindows[session] = session.Position;
             }
         }
@@ -173,6 +222,7 @@ namespace LandmarkEmulator.WorldServer.Game
             {
                 openStations.Remove(session);
                 openRepairWindows.Remove(session);
+                openReach.Remove(session);
             }
             ResetCursor(session);
         }
@@ -211,8 +261,11 @@ namespace LandmarkEmulator.WorldServer.Game
                 openStations.TryGetValue(session, out open);
             }
             uint station = open.Station;
-            if (open.PropGuid != 0 && (Props.PositionOf(open.PropGuid) is not System.Numerics.Vector3 stationPosition
-                    || System.Numerics.Vector3.Distance(stationPosition, session.Position) > MaxStationDistance))
+            // The same station and range as the walk-away close (CloseWindowsAway): the Spire's own stations are template
+            // props, not placed ones, so Props.PositionOf alone missed them and every craft at a Spire Replicator was
+            // refused as too far (player report 2026-10-31; trace/0695/craft-a-client.md, craft-b-server.md); and a big
+            // station's pivot can lie further than 8 m from where it is clicked.
+            if (open.PropGuid != 0 && StationTooFar(session, open.PropGuid, recipeId))
                 return "You are too far from the station.";
             if (!recipe.CanCraftWithoutStation && !GameTableManager.Instance.CraftingStationRecipeMappings.Entries
                     .Any(m => m.CraftingStationId == station && m.RecipeId == recipeId))
@@ -373,6 +426,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     jobs.Remove(job);
                 openStations.Remove(session);
                 openRepairWindows.Remove(session);
+                openReach.Remove(session);
             }
             if (mine.Count == 0)
                 return;
@@ -417,6 +471,8 @@ namespace LandmarkEmulator.WorldServer.Game
                     jobs.Remove(job);
                 foreach (WorldSession gone in openStations.Keys.Where(s => s.Disconnected).ToList())
                     openStations.Remove(gone);
+                foreach (WorldSession gone in openReach.Keys.Where(s => s.Disconnected).ToList())
+                    openReach.Remove(gone);
             }
             CloseWindowsAway();
             foreach (Job job in due)

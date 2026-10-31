@@ -1,5 +1,7 @@
 # Login server → gateway → back ends
 
+> 0.695 rebase (2026-10-26): addresses below are 0.589 unless marked 0.695; their 0.695 partners and changes: trace/0695/address-map-589-695.md, trace/0695/rebase-695.md
+
 Wire formats: LandmarkEmu/docs/protocol.md §1-3, §6 (already traced and running in the emulator). This file covers
 the service boundaries, from the client (0.589). Status: partial.
 

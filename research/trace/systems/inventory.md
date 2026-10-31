@@ -1,5 +1,7 @@
 # System: inventory & items (module 5 of REBUILD-PLAN) — deep pass started 2026-10-13
 
+> 0.695 rebase (2026-10-26): addresses below are 0.589 unless marked 0.695; their 0.695 partners and changes: trace/0695/address-map-589-695.md, trace/0695/rebase-695.md
+
 Archive: tag `inventory-v1`, `archive/inventory-v1/` (Inventory/*, ItemUses, Durability, Salvaging, Consumables,
 DesignItems, Vaults, Chests). Map-level notes: systems/items.md. Unreachable C→S subs (verdicts.tsv): SalvageItem
 0x13 (+0x14), ItemActionBarAssign 0x6, EquipItemGroup 0xA, SplitStack 0xC, ToggleAutoResupply 0xD, EquippedRemove.

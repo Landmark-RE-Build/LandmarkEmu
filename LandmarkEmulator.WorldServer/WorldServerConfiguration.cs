@@ -12,7 +12,7 @@ namespace LandmarkEmulator.WorldServer
     /// ProceduralPlacement (false; Docker PROCEDURAL_PLACEMENT), ProceduralPlacementDecor (false;
     /// PROCEDURAL_PLACEMENT_DECOR), ProceduralPlacementMasks (true; PROCEDURAL_PLACEMENT_MASKS) - Game/Gathering.Load;
     /// ProceduralRespawn ("minmax"; PROCEDURAL_RESPAWN), ProceduralRespawnMinShare (0.67; PROCEDURAL_RESPAWN_MIN_SHARE) -
-    /// Game/Gathering.Respawn; ShortTeleportDistance (60), ShortTeleportWaitScreen (false) - Game/Teleport (a client-hang
+    /// Game/Gathering.Respawn; TreeHealth ("health"; TREE_HEALTH) - Game/Gathering.Health; ShortTeleportDistance (60), ShortTeleportWaitScreen (false) - Game/Teleport (a client-hang
     /// workaround, L116, not an owner setting); ItemDefinitionChunkSize (100; ITEM_DEFINITION_CHUNK_SIZE; 0 = one packet as
     /// the live dump) - Game/Inventory/ItemDefinitionManager (keeps the client's window responding while it takes the list);
     /// AdminMonitorPush (false) - Game/AdminMonitor; WebPagesPort (19001;
@@ -69,6 +69,15 @@ namespace LandmarkEmulator.WorldServer
         /// server still blocks). Docker: BLOCK_STANCE_VISIBLE.
         /// </summary>
         public bool BlockStanceVisible { get; set; } = true;
+
+        /// <summary>
+        /// A dead player's body lies down on the other players' clients (Game/DeadBodies, OPEN-LEADS L196 OL-2): the client
+        /// plays its death pose only from entity state bit 7 (the animation network's State_Dead, set every frame from
+        /// FUN_142ea9ef0), so the others are sent UpdateCharacterStateDelta {set bit 7} at the death and to newcomers, and
+        /// {clear bit 7} when the player is alive again. true = live (the client's mechanism; live had no other); false
+        /// sends nothing (the body stands on the others' screens, as before 2026-10-26). Docker: DEAD_BODIES_VISIBLE.
+        /// </summary>
+        public bool DeadBodiesVisible { get; set; } = true;
 
         /// <summary>
         /// A launch the client reports (PlayerUpdate SafeEject 0x26/0x4C: a flinger, launcher or thrust pad threw the player
@@ -154,8 +163,8 @@ namespace LandmarkEmulator.WorldServer
         /// This world's name in the server list: a client text id (0 = keep the stored one; a new row then gets 62147). The
         /// client has the live server names: 560911 Courage, 560912 Liberation, 560913 Satisfaction (EU), 560914
         /// Understanding (EU), 560915 Rebellion, 560916 Serenity, 560917 Determination, 560918 Confidence, 560919
-        /// Adventure, 560920 Gratitude, 560921 Prosperity, 560922 Success, 560923 Triumph, 560924 Victory, 560925
-        /// Opportunity, 560926 Inspiration; 62147 is "Dev Server". Default 560916 Serenity. A live name is also the name
+        /// Adventure, 560920 Gratitude, 560921 Prosperity, 560922 Success, 560923 Triumph, 560925 Opportunity, 560926
+        /// Inspiration; 62147 is "Dev Server" (560924, "Victory" in 0.589, reads "Victory Node" in 0.695: not a name). Default 560916 Serenity. A live name is also the name
         /// shown in game (<see cref="ClientWorldNameText"/>) and picks the Landmarks of Landmark set
         /// (<see cref="LandmarksOfLandmarkWorld"/> auto). Docker: WORLD_NAME_ID.
         /// </summary>
@@ -269,6 +278,14 @@ namespace LandmarkEmulator.WorldServer
         public bool SurfaceGraveyards { get; set; } = true;
 
         /// <summary>
+        /// The Spire area (Game/Spire.cs): the client's own 90 m sphere round each Spire (GlobalAreas 3), as live after the
+        /// 6 Oct 2014 hotfix — no build sites in it (the client's cursor and the server), no mining, harvesting or building,
+        /// no trees or plants. Off = only the platform (no trees on it, no mining or building within 10 m of it) and build
+        /// sites allowed. Read at start-up. Docker: SPIRE_AREA.
+        /// </summary>
+        public bool SpireArea { get; set; } = true;
+
+        /// <summary>
         /// Build the Chaos Caverns' graveyards into the terrain (Game/Graveyards.Landscape.cs): the client's own
         /// graveyard_launch template (a raised plinth, gravestones, glowing mushrooms, four gargoyles) stamped once at each
         /// of the 81 graveyard placements of a landscape's Underground cave file, turned as the placement says, in the
@@ -335,7 +352,10 @@ namespace LandmarkEmulator.WorldServer
 
         /// <summary>
         /// The slab's material, a VoxelMaterials ARRAY_INDEX. The templates store ARRAY_INDEX 53, which in the 0.589 and
-        /// 0.695 tables is "Raw Amaranthine" (an ore), not a slate: a stale index from an older table [I]. Default 26 =
+        /// 0.695 tables is "Raw Amaranthine" (an ore), not a slate: a stale index from an older table [I]; the oldest
+        /// material table the client still ships, CommonData/Voxel/VoxelMaterials1.xml (55 VoxelFarm materials), has id 53
+        /// "Biome_Everfrost_Snow02", no slate either, and VoxelMaterialRemaps.txt maps neither 53 nor 427 (OPEN-LEADS L180,
+        /// trace/0695/phaseE2-social.md). Default 26 =
         /// plain Worked Slate, the free slate the client's starter shapes use (starter_pillars = 41 / 46 / 26) [I: the
         /// patch note says "slate"]. 0 = the template's own stored material. Docker: PIONEER_SLAB_MATERIAL.
         /// </summary>
@@ -377,6 +397,16 @@ namespace LandmarkEmulator.WorldServer
         /// <see cref="CommerceAddress"/> set, the commerce service's own value counts. Docker: PLAYER_STUDIO_STAFF_REVIEW.
         /// </summary>
         public bool PlayerStudioStaffReview { get; set; } = true;
+
+        /// <summary>
+        /// A reviewer whose rejections staff overturned this many times (a product they voted down that staff then listed)
+        /// is offered no more reviews; 0 = never held back. 1 = live as the wiki describes it (Player Studio: a reviewer whose
+        /// rejection Daybreak staff disagreed with "will stop getting items to review" [W]; the count is ours [I]) —
+        /// Internal/Commerce/StudioRules.MayStillReview, OPEN-LEADS L185. In-process commerce only: with
+        /// <see cref="CommerceAddress"/> set, the commerce service's own value counts. Docker: PLAYER_STUDIO_REVIEWER_OVERRULES
+        /// (world and commerce alike).
+        /// </summary>
+        public uint PlayerStudioReviewerOverrules { get; set; } = 1;
 
         /// <summary>
         /// The Player Studio creator's share of what a buyer pays for their design, in percent (Game/Commerce.TakeDesign;
@@ -657,6 +687,15 @@ namespace LandmarkEmulator.WorldServer
         public int FriendTeleportCooldownSeconds { get; set; }
 
         /// <summary>
+        /// Seconds a character must wait between two trips with Travel to Spire (ability 185) and, separately, Travel to My
+        /// Site (186) (Game/Abilities.TravelCooldownSeconds); 0 (default) = none, as live 2016: the Stone of Recall these
+        /// replaced (21 Mar 2016 notes) lost its cooldown on 5 May 2015, and no later source names one (OPEN-LEADS L188).
+        /// 1800 / 3600 = the 2014 alpha's 30 minutes / one hour. Sent in both casts' caster info (+0x70), so the client
+        /// refuses a repeat itself; the server refuses too. Docker: TRAVEL_COOLDOWN_SECONDS.
+        /// </summary>
+        public int TravelCooldownSeconds { get; set; }
+
+        /// <summary>
         /// An accepted friend request makes the friendship mutual (Game/Friends.HandleResponse, rules in
         /// Internal/Social/FriendAccept.cs): the asker's list gets the one who accepted and theirs gets the asker, both
         /// told at once with FriendAdd. On (default) = live (wiki "Friends List": people "you either sent friend requests
@@ -684,6 +723,26 @@ namespace LandmarkEmulator.WorldServer
         /// Off = live (the placement runs outside build mode). Docker: PLACE_OPENS_BUILD_MODE.
         /// </summary>
         public bool PlaceOpensBuildMode { get; set; } = true;
+
+        /// <summary>
+        /// Emotes, stances, /playdead and the client's /sit put the held tool or weapon away (to the bag) and bring it
+        /// back when the player walks off, or at /stand (Game/EmoteHolster). With anything in hand the 0.695 client plays
+        /// no emote at all (its animation network has emotes only for empty hands). Off by default = live (the client never
+        /// puts an item away for an emote; players put the tool away themselves). On: the client first plays the tool's
+        /// put-away clip (StandPoses WeaponSwitchCombo, ~1.1 s in which no emote shows), and handing the tool back plays
+        /// the take-out clip, which ends an emote still running (trace/0695/emotes-client.md; the user chose live
+        /// 2026-10-21). Docker: EMOTES_PUT_AWAY_HELD_ITEM.
+        /// </summary>
+        public bool EmotesPutAwayHeldItem { get; set; }
+
+        /// <summary>
+        /// /yell is the yell emote (the Call clip, "You yell loudly.", Game/Emotes): registered with the zone's command list,
+        /// which replaces the client's own /yell alias of /shout (one client command table). On (default) = live: the client's
+        /// own emote word text "yell" (570042) and its four yell lines, and the 2016 wiki's emote table (OPEN-LEADS L192 (c));
+        /// off = /yell stays the client's shout (/shout always is). Takes effect at the next zone-in (the command list).
+        /// Docker: YELL_IS_EMOTE.
+        /// </summary>
+        public bool YellIsEmote { get; set; } = true;
 
         /// <summary>
         /// Speed of the world's day/night clock in game seconds per real second (Game/WorldClock). 8 = live: one day

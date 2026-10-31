@@ -1,5 +1,7 @@
 # Client definition managers (every game-data system the exe loads)
 
+> 0.695 rebase (2026-10-26): addresses below are 0.589 unless marked 0.695; their 0.695 partners and changes: trace/0695/address-map-589-695.md, trace/0695/rebase-695.md
+
 From log strings "<Manager>::LoadDefinitions / LoadData / Initialize" (re/tools/q.py str). Function = the loader.
 
 - ------------------------------------\n::LoadData( \"%s\" ):: FUN_143c8b1c0

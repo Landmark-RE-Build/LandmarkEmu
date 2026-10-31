@@ -159,6 +159,14 @@ namespace LandmarkEmulator.WorldServer.Game
                 // Opened by it, or its open still unanswered (the answer may come before the close is due).
                 if (scheduleClose && (openedByPlacement.Contains(session) || openPending.ContainsKey(session)))
                     closeDue[session] = DateTime.UtcNow + CloseDelay;
+                // Settled: the build mode the placement opened stays open on purpose and is the player's from now on.
+                // Left marked, a later bag placement's cancel (Escape) closed it under a player who had been building in
+                // it for minutes (trace/0695/phaseE4-logic.md F3).
+                if (!scheduleClose)
+                {
+                    openedByPlacement.Remove(session);
+                    openPending.Remove(session);
+                }
             }
         }
 

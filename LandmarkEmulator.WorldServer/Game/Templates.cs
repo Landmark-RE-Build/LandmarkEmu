@@ -651,6 +651,13 @@ namespace LandmarkEmulator.WorldServer.Game
             writer.Write(0u);
         }
 
+        /// <summary>
+        /// TemplateBasicData of a design by its owner and guid (a placed Player Studio design's details, 0xF0/0x13,
+        /// <see cref="TemplateInstances.SendDetails"/>); only the guid when the owner no longer has it.
+        /// </summary>
+        public static void WriteBasicDataOf(GamePacketWriter writer, ulong owner, ulong guid)
+            => WriteBasicData(writer, Find(owner, guid) ?? new TemplateModel { Id = guid, Name = "", CreatedAt = DateTime.UtcNow });
+
         /// <summary>PropData list (PropCount; the client sends it back when the design is placed, FUN_1430b9d50).</summary>
         private static void WritePropList(GamePacketWriter writer, TemplateModel design)
         {
@@ -861,6 +868,10 @@ namespace LandmarkEmulator.WorldServer.Game
                     break;
                 case RenameRequestSub:
                     Rename(session, body);
+                    break;
+                case TemplateInstances.DetailsRequestSub when body.Length >= 8:
+                    // Voxel Vision asks about a placed Player Studio design it found in a site's cells (FUN_1431138e0).
+                    TemplateInstances.SendDetails(session, BitConverter.ToUInt64(body, 0));
                     break;
                 case ExportToItemSub when body.Length >= 8:
                     DesignItems.Export(session, BitConverter.ToUInt64(body, 0));

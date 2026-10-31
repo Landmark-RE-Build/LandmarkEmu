@@ -70,8 +70,14 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <summary>The live world names (client texts 560911 Courage ... 560926 Inspiration; WorldServerConfiguration.WorldNameId).</summary>
         public const uint FirstLiveWorldName = 560911, LastLiveWorldName = 560926;
 
+        /// <summary>
+        /// 560924, "Victory" in 0.589, reads "Victory Node" in 0.695 (the text was reused for the site-game prop, PropDefs
+        /// 3010): a world given it would show as "Victory Node", so it is no longer a world name (phaseE3-text.md F4).
+        /// </summary>
+        public const uint ReusedWorldName = 560924;
+
         /// <summary>Is this text id one of the live worlds' names?</summary>
-        public static bool IsLiveWorldName(uint text) => text >= FirstLiveWorldName && text <= LastLiveWorldName;
+        public static bool IsLiveWorldName(uint text) => text >= FirstLiveWorldName && text <= LastLiveWorldName && text != ReusedWorldName;
 
         private static uint Configured(Func<WorldServerConfiguration, uint> read, uint fallback)
         {

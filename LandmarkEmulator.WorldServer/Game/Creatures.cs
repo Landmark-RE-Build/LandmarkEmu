@@ -1489,6 +1489,11 @@ namespace LandmarkEmulator.WorldServer.Game
                 return false;
             session.EnqueueMessage(new PlayerUpdateLightweightToFullNpc { TransientId = c.TransientId, Disposition = DispositionOf(c) });
             session.FullNpcs[guid] = c.TransientId;
+            // Its Life again: the full data first clears every resource of the entity on the client (FUN_142d532f0 →
+            // FUN_143b8aef0) [P], which took away the Life SendSpawn gave it, so requirement 21 "NPC Combatant" failed and
+            // the creature had no name or health bar until a hit or the leash heal sent Life again (player report
+            // 2026-10-31: bars only on creatures they had aggro'd and run from; trace/0695/healthbar-c-npc.md).
+            SendLife(session, c);
             // [I] Weapon / NPC anim state once more after the full data: the selection only takes when the client's actor
             // has its animation network (FUN_142dfc010 asks the actor for it, vtable +0x468), which a just-spawned entity
             // may not have yet; the client asks for full data a frame or two later (FUN_142ee8540). Live re-sends 502 then
@@ -2265,9 +2270,8 @@ namespace LandmarkEmulator.WorldServer.Game
         };
 
         /// <summary>
-        /// Shows a creature to a player. (Name/health indicator: not shown yet. It needs requirement 21 "NPC Combatant";
-        /// sending max health as stat 1 (PlayerUpdate 0x53 {u64 guid, list {u32 stat, i8 kind, u32 base, u32 mod}}) and
-        /// the hit points with the spawn made no visible difference, so the failing term is elsewhere — see MODLOG.)
+        /// Shows a creature to a player, with its Life (<see cref="SendLife"/>: the name and health bar need it). The full
+        /// data the client asks for next clears it, so <see cref="SendFull"/> sends it once more.
         /// </summary>
         private static void SendSpawn(WorldSession session, Creature c)
         {
@@ -3610,6 +3614,8 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             if (dies)
                 Kill(c, null);
+            else if (damage > 0)
+                SendHitpoints(c, damage);   // viewers' health bars follow (as a hit does)
         }
 
         /// <summary>A story creature heals a share of its maximum health (a Damage Node with "Heal Instead"), up to its maximum.</summary>
@@ -3619,8 +3625,14 @@ namespace LandmarkEmulator.WorldServer.Game
             if (c == null || c.State == State.Dead)
                 return;
             uint amount = (uint)Math.Ceiling(c.Kind.MaxHealth * percent / 100f);
+            uint before;
             lock (sync)
+            {
+                before = c.Health;
                 c.Health = (uint)Math.Min(c.Kind.MaxHealth, (long)c.Health + amount);
+            }
+            if (c.Health != before)
+                SendHitpoints(c, 0);
         }
 
         /// <summary>A story creature plays an AnimationSelection (Story Node emote or stance), facing where it looks.</summary>
@@ -3962,6 +3974,12 @@ namespace LandmarkEmulator.WorldServer.Game
                 kind = DevKind(kindName);
             if (kind == null || count <= 0)
                 return 0;
+            // Only what is missing: the pocket's earlier creatures respawn and stay, so a second seeding (every
+            // `npc reload`, once per target) used to add `count` more each time (trace/0695/phaseE4-logic.md F8).
+            lock (sync)
+                count -= regions.Values.SelectMany(r => r).Count(c => c.Zone == zone && c.Kind == kind && Flat(c.Home, centre) <= maxRadius);
+            if (count <= 0)
+                return 0;
             var rng = new Random(Shared.StableHash.Combine((int)centre.X, (int)centre.Z, (int)zone ^ kind.Model.GetHashCode()));
             int placed = 0;
             for (int attempt = 0; attempt < count * 12 && placed < count; attempt++)
@@ -3980,22 +3998,27 @@ namespace LandmarkEmulator.WorldServer.Game
                 var global = TerrainEdits.ToGlobal(at);
                 if (!Claims.MayEdit(0, global.X, global.Y, global.Z, zone))
                     continue;
-                Place(zone, at, kind);
-                placed++;
+                if (Place(zone, at, kind))
+                    placed++;
             }
             return placed;
         }
 
-        private static void Place(uint zone, Vector3 at, Kind kind)
+        private static bool Place(uint zone, Vector3 at, Kind kind)
         {
             long key = Pack(zone, (int)MathF.Floor(at.X / RegionSize), (int)MathF.Floor(at.Z / RegionSize));
             Creature c;
             lock (sync)
             {
                 Creature[] existing = Region(zone, (int)MathF.Floor(at.X / RegionSize), (int)MathF.Floor(at.Z / RegionSize));
+                // A free guid index (200-255), as story creatures take theirs: 200 + the region's count named an index
+                // still in use once a creature of the region had been removed (two creatures, one guid; F8).
+                int free = Enumerable.Range(200, 56).FirstOrDefault(i => existing.All(m => (m.Guid & 0xFF) != (ulong)i));
+                if (free == 0)
+                    return false;
                 c = new Creature
                 {
-                    Guid = GuidBase | ((ulong)key << 8) | (uint)(200 + existing.Length),
+                    Guid = GuidBase | ((ulong)key << 8) | (uint)free,
                     RegionKey = key,
                     Zone = zone,
                     TransientId = PlayerManager.AllocateTransientId(),
@@ -4009,6 +4032,7 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             foreach (WorldSession s in ViewersOf(c))
                 SendSpawn(s, c);
+            return true;
         }
 
         private static float Flat(Vector3 a, Vector3 b) => MathF.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Z - b.Z) * (a.Z - b.Z));

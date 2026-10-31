@@ -178,6 +178,7 @@ namespace LandmarkEmulator.WorldServer.Game
             Edit("MovementEffects", SettingApply.Now, "true") with { Note = "Read at each cast (MovementEffects.Enabled; a dev command override wins)." },
             Edit("MeleeTargeters", SettingApply.Now, "true") with { Note = "Read at each swing (WeaponCombat.MeleeTargeters; a dev command override wins)." },
             Edit("BlockStanceVisible", SettingApply.Now, "true") with { Note = "Read at each stance (BlockStance.Visible)." },
+            Edit("DeadBodiesVisible", SettingApply.Now, "true") with { Note = "Read at each death (DeadBodies.Visible)." },
             Edit("SafeEjectReset", SettingApply.Now, "true") with { Note = "Read at each landing (SafeEject.Reset)." },
             Edit("LiveCharacterStats", SettingApply.NextLogin, "true") with { Note = "Sent when a player enters the world (CharacterStats.Enabled)." },
             Edit("PropStreamRange", SettingApply.Now) with { Min = 0, Max = 100000,
@@ -201,10 +202,12 @@ namespace LandmarkEmulator.WorldServer.Game
             Edit("SitePathing", SettingApply.Restart, "true") with { Note = "Read at first use (Pathing.SitesEnabled)." },
             Edit("CreatureWeapons", SettingApply.Now, "true") with { Note = "Read each time a creature is sent to a player (CreatureWeapons.Enabled): creatures already seen keep theirs." },
             Edit("SurfaceGraveyards", SettingApply.Restart, "true"),
+            Edit("SpireArea", SettingApply.Restart, "true"),
             Edit("CavernGraveyardStamps", SettingApply.Restart, "true"),
             Edit("CavernArrivalRescue", SettingApply.Now, "true") with { Note = "Read at each cavern trip (CavernArrivalGuard.Enabled)." },
             Edit("ProceduralRespawn", SettingApply.Restart, "minmax") with { Choices = new[] { "minmax", "inplace" }, RawType = typeof(string), RawDefault = "minmax" },
             Edit("ProceduralRespawnMinShare", SettingApply.Restart) with { Min = 0, Max = 1, RawType = typeof(double), RawDefault = "0.67" },
+            Edit("TreeHealth", SettingApply.Restart, "health") with { Choices = new[] { "health", "hits" }, RawType = typeof(string), RawDefault = "health" },
             Edit("ProceduralPlacement", SettingApply.Restart) with { RawType = typeof(bool), RawDefault = "false" },
             Edit("ProceduralPlacementDecor", SettingApply.Restart) with { RawType = typeof(bool), RawDefault = "false" },
             Edit("ProceduralPlacementMasks", SettingApply.Restart) with { RawType = typeof(bool), RawDefault = "true" },
@@ -233,6 +236,7 @@ namespace LandmarkEmulator.WorldServer.Game
             Edit("PlayerStudioReviewerMinSpend", SettingApply.Now, "1000") with { Min = 0, Max = 10000000 },
             Edit("PlayerStudioReviewsPerDay", SettingApply.Now, "2") with { Min = 0, Max = 10000, Note = CommerceNote },
             Edit("PlayerStudioStaffReview", SettingApply.Now, "true") with { Note = CommerceNote },
+            Edit("PlayerStudioReviewerOverrules", SettingApply.Now, "1") with { Min = 0, Max = 1000, Note = CommerceNote },
             Edit("DesignsFollowAccount", SettingApply.NextLogin, "true") with {
                 Note = "Read at each world entry (Templates.AdoptAccountDesigns): the designs of the account's deleted characters move then." },
             Edit("PlayerStudioDesignsFreeStorage", SettingApply.Now, "true") with {
@@ -266,10 +270,16 @@ namespace LandmarkEmulator.WorldServer.Game
             Edit("BuildMenuPropName", SettingApply.Now) with { Note = "No source shows live doing it; on is this server's choice." },
             Edit("ChestAccountCap", SettingApply.Now, "0") with { Min = 0, Max = 100000 },
             Edit("FriendTeleportCooldownSeconds", SettingApply.Now, "0") with { Min = 0, Max = 86400 },
+            Edit("TravelCooldownSeconds", SettingApply.Now, "0") with { Min = 0, Max = 86400,
+                Note = "Spire / My Site: the client takes a new value with its next caster info (relog)." },
             Edit("FriendRequestsMutual", SettingApply.Now, "true") with { Note = SocialNote + " Read at each accepted request (Friends.HandleResponse); "
                 + "friends already made stay as they are." },
             Edit("StoryPosePersists", SettingApply.Now, "true"),
             Edit("PlaceOpensBuildMode", SettingApply.Now, "false") with { Note = "On is this server's choice (asked for by the user); live never opened Build Mode for it. Cancel closes it; a successful place leaves it open." },
+            Edit("EmotesPutAwayHeldItem", SettingApply.Now, "false") with { Note = "Off = live: the client never puts a held item away for "
+                + "an emote, so live's emotes needed empty hands. On plays the tool's put-away clip first (trace/0695/emotes-client.md)." },
+            Edit("YellIsEmote", SettingApply.Now, "true") with { Note = "The command list goes out at zone-in: a player sees the change "
+                + "after a re-zone or relog. Off leaves /yell to the client's /shout alias." },
             Edit("DayCycleSpeed", SettingApply.Restart, "8") with { Min = 0.01, Max = 10000, Note = "Read at start-up (WorldClock.DefaultCycleSpeed)." },
             Edit("FinderReturnHome", SettingApply.Now),
             Edit("CavernTripsOtherWorlds", SettingApply.Now, "true"),

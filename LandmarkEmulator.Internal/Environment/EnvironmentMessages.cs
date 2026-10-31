@@ -68,6 +68,11 @@ namespace LandmarkEmulator.Internal.Environment
         public const uint SphereSub = 0x10010, DestroyAreaSub = 0x10011, HealAreaSub = 0x10012, ClearCellSub = 0x10013,
             RegenerationDelaySub = 0x10014, MarkPermanentSub = 0x10015, CompactSub = 0x10016, SampleVersionSub = 0x10017,
             MemoryReportSub = 0x10018, DescribeSub = 0x10019, RefreshLodSub = 0x1001A;
+        /// <summary>
+        /// Zone → env: a landscape's placed Player Studio designs, all of them (IEnvironmentServer.SetTemplateInstances):
+        /// u32 n × {u64 instance guid, u64 placer, box 6 × f64 global dm}, bool announce. Answer: the cells whose layer 1 changed.
+        /// </summary>
+        public const uint TemplateInstancesSub = 0x1001B;
         public const uint EnsureVeinsSub = 0x10020, DisturbVeinsSub = 0x10021, ClearVeinsSub = 0x10022, VeinsNearSub = 0x10023;
 
         // ---- ours, VoxelConstruction family ----------------------------------------------------------------------------

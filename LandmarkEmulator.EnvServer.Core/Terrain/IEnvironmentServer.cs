@@ -190,6 +190,14 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         /// <summary>Marks cells as part of the world (stamped structures): the heal leaves them alone.</summary>
         void MarkPermanent(IEnumerable<ulong> cells, uint zone);
 
+        /// <summary>
+        /// A landscape's placed Player Studio designs, all of them (<see cref="TemplateInstanceLookup"/>; the world's
+        /// Game.TemplateInstances): layer 1 of their cells carries them to the client for Voxel Vision. Returns the cells
+        /// whose building layer got a new version (the caller sends them again); <paramref name="announce"/> false (start-up,
+        /// a reconnect) sets them without new versions.
+        /// </summary>
+        List<ulong> SetTemplateInstances(uint zone, IReadOnlyList<TemplateInstanceLookup.Instance> instances, bool announce = true);
+
         // ---- exported-template stamps (8 Construction Template): ruins, the Spire base ------------------------------
 
         /// <summary>

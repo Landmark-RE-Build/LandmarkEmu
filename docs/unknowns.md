@@ -9,7 +9,8 @@ the values that changed on the way. What is still open:
 - slots whose client reader was not found (ClientBeginZoning `SlotA0` / `SlotB4`, AreaDefinition / AreaShapeDefinition
   slots, the equipment record's strings, a few achievement / objective / reward-bundle slots; listed in each section);
 - values only live's servers had (other landscapes' zone details, the server list's per-world claim count);
-- the bool after each SendSelf item record (live 1 on two items) and `CastKeySeed`, which the server does not check.
+- the bool after each SendSelf item record (live 1 on two items). (`CastKeySeed`: a random seed per session since
+  2026-10-26, L189; the cast hash it makes is checked and only logged.)
 
 The original triage follows. Per-character data copied from the live player is wrong for our characters and gets
 replaced; global settings captured from the live server are correct as they are and only need naming. The packet

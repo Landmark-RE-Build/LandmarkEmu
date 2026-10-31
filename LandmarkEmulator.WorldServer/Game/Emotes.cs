@@ -43,9 +43,14 @@ namespace LandmarkEmulator.WorldServer.Game
         /// Hug (33) — exactly the Emote_Index values of the EmoteSingle rows 287, 450, 449, 451, 452-456 and 817 (no rows
         /// for Give / Thanks). So cough 449, flex 451, sneeze 452, welcome 453, yawn 454, beckon 455 (Come_Here), stretch
         /// 456 and hug 817 have their own clips [P]; each also has its four chat lines (texts 572091-572122, 575933-575936).
-        /// "yell" (the Call clip 450 and lines 572095 / 572100 / 572107 / 572114) is not registered: the client's own chat
-        /// commands take /yell as a shout (chat command table FUN_14336e150 "shout" 0x36 and its alias). Index 1 (Crafting)
-        /// is the crafting loop, not a word.
+        /// "yell" plays the Call clip 450 with its lines 572100 / 572095 / 572114 / 572107 (OPEN-LEADS L192 (c)): the client
+        /// has "yell" as an emote word text of its own (570042, next to those lines) and the 2016 wiki's emote table lists
+        /// "/yell — You yell loudly." [P text, W]. The client also has /yell as an alias of its /shout chat command (chat
+        /// manager set-up FUN_1433595d0 → FUN_14336e150(…, "yell", 0x36)); a zone command of the same name replaces it, because
+        /// both go into one command table (FUN_142dd7560 removes the entry with the same name hash before adding the new
+        /// one; the zone list handler FUN_1433bad50 → FUN_142dd7560, DynamicCommands.log "Command from server") [P]. So live's
+        /// /yell was the emote and /shout the shout [I strong]. Setting YellIsEmote (Docker YELL_IS_EMOTE, default true =
+        /// live); off leaves /yell to the client's shout. Index 1 (Crafting) is the crafting loop, not a word.
         /// </summary>
         private static readonly Dictionary<string, uint> emotes = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -53,7 +58,7 @@ namespace LandmarkEmulator.WorldServer.Game
             ["groan"] = 234, ["giggle"] = 235, ["shoo"] = 222, ["laugh"] = 237, ["point"] = 238, ["shrug"] = 239,
             ["sob"] = 240, ["talk"] = 241, ["taunt"] = 242, ["wave"] = 217, ["no"] = 244, ["nod"] = 245,
             ["cough"] = 449, ["flex"] = 451, ["sneeze"] = 452, ["welcome"] = 453, ["yawn"] = 454, ["beckon"] = 455,
-            ["stretch"] = 456, ["hug"] = 817,
+            ["stretch"] = 456, ["hug"] = 817, ["yell"] = 450,
             // "talking" (wiki "You talk continuously"; client word 559193): 252 = TalkLong (Emote_Index 15) with EmoteLoop 1,
             // the loop; "stop" (client word 559194): 253, EmoteLoop 0, which ends it.
             ["talking"] = 252, ["stop"] = 253,
@@ -72,8 +77,9 @@ namespace LandmarkEmulator.WorldServer.Game
         /// AFK_States), wiki "You lie down." / texts 571884-571887.
         /// A stance (and the client's own /sit) shows only while the character holds nothing: a held tool or weapon's
         /// actor sets WeaponIdle 1, and the network's StandPoses|Idle_Stand_2 switch then plays the weapon / tool idle,
-        /// which has no Stance_Index poses (client rule, live behaviour; docs/protocol.md "Sitting"). Nothing is
-        /// holstered for it, as on live.
+        /// which has no Stance_Index poses (client rule, live behaviour; docs/protocol.md "Sitting"). The same holds for
+        /// every emote. The server can put the held item away for them (<see cref="EmoteHolster"/>, setting
+        /// EmotesPutAwayHeldItem, off by default = live, where nothing was put away).
         /// </summary>
         private static readonly HashSet<uint> stances = new() { 246, 224, 248, 250, 251, Lie, PlayDead };
         private const uint Stand = 223, Lie = 480;
@@ -160,6 +166,7 @@ namespace LandmarkEmulator.WorldServer.Game
             ["beckon"] = new(572105, 572122, 572119, 572112),
             ["stretch"] = new(572106, 572099, 572120, 572113),
             ["hug"] = new(575934, 575933, 575936, 575935),
+            ["yell"] = new(572100, 572095, 572114, 572107),   // "You yell loudly." / "You yell to [*target*]." / "[*speaker*] yells loudly" / "… to [*target*]."
             ["talking"] = new(560193, 0, 560194, 559407),
             ["dance"] = new(560191, 559404, 560192, 559405),
             ["kneel"] = new(560179, 559392, 560180, 559393),
@@ -200,8 +207,23 @@ namespace LandmarkEmulator.WorldServer.Game
             public byte[] Body => SelectionBody(Subject.PlayerGuid, Selection, clearSit: !Mood);
         }
 
-        /// <summary>Stances and moods by player guid (<see cref="Pose"/>), under <see cref="poseSync"/>.</summary>
-        private static readonly Dictionary<ulong, Pose> poses = new(), moods = new();
+        /// <summary>Stances, moods and looping emotes by player guid (<see cref="Pose"/>), under <see cref="poseSync"/>.</summary>
+        private static readonly Dictionary<ulong, Pose> poses = new(), moods = new(), loops = new();
+
+        /// <summary>
+        /// The looping emotes (AnimationSelection "EmoteLoop" rows 236, 243, 252 "talking", 265: EmoteLoop 1) [P data]. A
+        /// loop is a lasting actor variable like a mood (OPEN-LEADS L192 (b)): in the 0.695 player network the locomotion
+        /// state machine Move|…|Locomotion (node 206) enters its emoting locomotion from any state on "EmoteLoop &gt; 0.5 and
+        /// WeaponIdle &lt; 0.5" (transition 1408) and leaves it only on "EmoteLoop &lt; 0.5" (with ForwardSpeed &gt; 9, 1415, or
+        /// the EndSplit request, 1416); the idle turns the same (1525 TurnEmote → 1476 on EmoteLoop &lt; 0.5) [P, decoded
+        /// state machines]. So walking does not end a loop on any client; only "stop" (253, EmoteLoop 0) or a single-shot
+        /// emote (every EmoteSingle row sets EmoteLoop 0) does. It is remembered like a mood: shown to players who meet the
+        /// player later, never ended by walking.
+        /// </summary>
+        private static readonly HashSet<uint> loopSelections = new() { 236, 243, 252, 265 };
+
+        /// <summary>A looping emote selection (<see cref="loopSelections"/>).</summary>
+        internal static bool IsLoop(uint selection) => loopSelections.Contains(selection);
         private static readonly object poseSync = new();
 
         /// <summary>How often a moving player in a stance or mood looks for players who came within range of them.</summary>
@@ -237,7 +259,7 @@ namespace LandmarkEmulator.WorldServer.Game
         {
             // Every movement packet of every player comes here: no lock while nobody is in a stance or mood (a racy read
             // of the counts only delays a catch-up to the next packet).
-            if (poses.Count == 0 && moods.Count == 0)
+            if (poses.Count == 0 && moods.Count == 0 && loops.Count == 0)
                 return;
             bool walkedOut = false;
             List<byte[]> show = null;
@@ -245,9 +267,9 @@ namespace LandmarkEmulator.WorldServer.Game
             DateTime now = DateTime.UtcNow;
             lock (poseSync)
             {
-                if (poses.Count == 0 && moods.Count == 0)
+                if (poses.Count == 0 && moods.Count == 0 && loops.Count == 0)
                     return;
-                foreach (Pose pose in poses.Values.Concat(moods.Values))
+                foreach (Pose pose in poses.Values.Concat(moods.Values).Concat(loops.Values))
                 {
                     if (pose.Subject == session)
                     {
@@ -333,6 +355,21 @@ namespace LandmarkEmulator.WorldServer.Game
         internal static int ShowMood(WorldSession session, uint selection, IEnumerable<WorldSession> zone)
             => Show(moods, mood: true, session, selection, ends: selection == Calm, zone);
 
+        /// <summary>
+        /// Shows a looping emote ("talking"), or "stop", on a player the way a mood is shown (<see cref="ShowMood"/>, no
+        /// clear-sit): the loop lasts until "stop" or a single-shot emote, walking included (<see cref="loopSelections"/>),
+        /// so it is remembered for players who meet the player later; "stop" forgets it and reaches everyone shown it.
+        /// </summary>
+        internal static int ShowLoop(WorldSession session, uint selection, IEnumerable<WorldSession> zone)
+            => Show(loops, mood: true, session, selection, ends: selection == StopLoop, zone);
+
+        /// <summary>The selection of a player's current looping emote (0 = none).</summary>
+        internal static uint LoopOf(ulong player)
+        {
+            lock (poseSync)
+                return loops.TryGetValue(player, out Pose pose) ? pose.Selection : 0;
+        }
+
         private static int Show(Dictionary<ulong, Pose> table, bool mood, WorldSession session, uint selection, bool ends,
             IEnumerable<WorldSession> zone)
         {
@@ -375,7 +412,7 @@ namespace LandmarkEmulator.WorldServer.Game
         {
             if (viewer == subject)
                 return;
-            byte[] stance = null, mood = null;
+            byte[] stance = null, mood = null, loop = null;
             lock (poseSync)
             {
                 if (poses.TryGetValue(subject.PlayerGuid, out Pose pose) && !pose.Ending)
@@ -388,18 +425,26 @@ namespace LandmarkEmulator.WorldServer.Game
                     m.Told.Add(viewer.PlayerGuid);
                     mood = m.Body;
                 }
+                if (loops.TryGetValue(subject.PlayerGuid, out Pose l))
+                {
+                    l.Told.Add(viewer.PlayerGuid);
+                    loop = l.Body;
+                }
             }
             if (stance != null)
                 viewer.EnqueueMessage(ZoneMessageOpcode.PlayerUpdateRequestAnimationSelectionWire, stance);
             if (mood != null)
                 viewer.EnqueueMessage(ZoneMessageOpcode.PlayerUpdateRequestAnimationSelectionWire, mood);
+            if (loop != null)
+                viewer.EnqueueMessage(ZoneMessageOpcode.PlayerUpdateRequestAnimationSelectionWire, loop);
         }
 
         /// <summary>Left the world: their stance and mood are gone, and their client no longer holds anyone else's.</summary>
         public static void Forget(WorldSession session)
         {
+            EmoteHolster.Forget(session);
             lock (poseSync)
-                foreach (Dictionary<ulong, Pose> table in new[] { poses, moods })
+                foreach (Dictionary<ulong, Pose> table in new[] { poses, moods, loops })
                 {
                     if (table.TryGetValue(session.PlayerGuid, out Pose own) && own.Subject == session)
                         table.Remove(session.PlayerGuid);
@@ -442,7 +487,7 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>
-        /// "emote n" plays emote clip n (Emote_Index 0-33: the EmoteSingle AnimationSelection row whose Emote_Index is n;
+        /// "emoteclip n" plays emote clip n (Emote_Index 0-33: the EmoteSingle AnimationSelection row whose Emote_Index is n;
         /// 26 Give and 28 Thanks have none). The "EmoteLoop" rows (236, 243 wave, 252, 265) repeat until selection 253
         /// (EmoteLoop 0); 252 is "talking", 253 "stop".
         /// </summary>
@@ -451,6 +496,9 @@ namespace LandmarkEmulator.WorldServer.Game
             225, 247, 228, 229, 230, 232, 231, 233, 234, 235, 222, 237, 238, 239, 240, 241, 242, 217, 244, 245, 0, 260,
             287, 450, 449, 451, 0, 452, 0, 453, 454, 455, 456, 817
         };
+
+        /// <summary>The single-shot emote selections (EmoteSingle rows: EmoteLoop 0), which end a running loop.</summary>
+        private static readonly HashSet<uint> singleShots = new(emoteByIndex.Where(s => s != 0 && !loopSelections.Contains(s)));
 
         /// <summary>
         /// The server commands the client accepts as "/name" (CommandBase 0x44 dynamic command list: u16 sub, u32 n, n ×
@@ -472,16 +520,33 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>
-        /// The names of the zone's CommandListPacket (source 1): "emotelist", "emote", the emote words and "playdead". The
-        /// duel commands are world commands, added one by one after the list (DynamicCommands).
+        /// The names of the zone's CommandListPacket (source 1): "emotelist", "emoteclip", the emote words ("yell" while
+        /// <see cref="YellIsEmote"/>) and "playdead". The duel commands are world commands, added one by one after the
+        /// list (DynamicCommands).
+        /// <para>
+        /// Not "emote" (OPEN-LEADS L192 (d)): /emote, /em and /me are the client's own free-text emote command (chat
+        /// manager set-up FUN_1433595d0: FUN_14336e150(…, "emote" / "em" / "me", 0x37), the Emote chat channel; wiki Commands List
+        /// 2016 "/emote &lt;text&gt; — Allows you to send any emote that you type") [P, W], and a zone command of that name
+        /// would replace it (one command table, FUN_142dd7560) [P]. The server's "play clip n" command is "emoteclip".
+        /// </para>
         /// </summary>
         public static List<string> ZoneCommandNames()
         {
-            var names = new List<string> { "emotelist", "emote" };
-            names.AddRange(emotes.Keys);
+            var names = new List<string> { "emotelist", EmoteClipCommand };
+            names.AddRange(emotes.Keys.Where(w => YellIsEmote || !w.Equals(YellWord, StringComparison.OrdinalIgnoreCase)));
             names.Add(PlayDeadWord);
             return names;
         }
+
+        /// <summary>The server's "play emote clip n" command ("emote" is the client's own free-text emote).</summary>
+        public const string EmoteClipCommand = "emoteclip";
+
+        /// <summary>The yell emote word (the Call clip).</summary>
+        public const string YellWord = "yell";
+
+        /// <summary>Setting YellIsEmote: /yell is the yell emote (true = live) or the client's shout alias.</summary>
+        public static bool YellIsEmote
+            => Shared.Configuration.ConfigurationManager<WorldServerConfiguration>.Instance.Config?.YellIsEmote ?? true;
 
         /// <summary>The duel commands (world commands since 2026-10-16, <see cref="DynamicCommands"/>).</summary>
         public static readonly string[] DuelCommands = { "duel", "duelaccept", "dueldecline", "duelleave" };
@@ -523,20 +588,44 @@ namespace LandmarkEmulator.WorldServer.Game
             else if (name.Equals("duelleave", StringComparison.OrdinalIgnoreCase))
                 WorldChannelServices.WorldChannel.EncounterLeave(session, "left");
             else if (name.Equals("emotelist", StringComparison.OrdinalIgnoreCase))
-                Chat.System(session, "Emotes: /" + string.Join(", /", emotes.Keys.Append(PlayDeadWord))
-                    + ". Also /emote 0-33 for every emote clip.");
+                Chat.System(session, "Emotes: /" + string.Join(", /", ZoneCommandNames().Where(n => n != "emotelist" && n != EmoteClipCommand))
+                    + ". Also /" + EmoteClipCommand + " 0-33 for every emote clip.");
             else if (name.Equals(PlayDeadWord, StringComparison.OrdinalIgnoreCase))
-                PlayDeadNow(session);
-            else if (name.Equals("emote", StringComparison.OrdinalIgnoreCase))
+                EmoteHolster.Then(session, EmoteHolster.PutAwayFor(session, untilStand: false), () => PlayDeadNow(session));
+            else if (name.Equals(EmoteClipCommand, StringComparison.OrdinalIgnoreCase))
             {
                 if (int.TryParse(args, out int index) && index >= 0 && index < emoteByIndex.Length && emoteByIndex[index] != 0)
-                    PlayAnim(session, emoteByIndex[index]);
+                    EmoteHolster.Then(session, EmoteHolster.PutAwayFor(session), () => PlayAnim(session, emoteByIndex[index]));
                 else
-                    Chat.System(session, "Usage: /emote 0-33");
+                    Chat.System(session, "Usage: /" + EmoteClipCommand + " 0-33");
             }
-            else if (emotes.ContainsKey(name))
-                Emote(session, name, PlayerManager.InZone(session.ZoneId));
+            else if (emotes.ContainsKey(name) && (YellIsEmote || !name.Equals(YellWord, StringComparison.OrdinalIgnoreCase)))
+                EmoteWord(session, name);
         }
+
+        /// <summary>
+        /// An emote word typed by the player. A held tool or weapon hides every emote and stance (the client's animation
+        /// network plays them only with empty hands), so it is put away first and the word runs a moment later
+        /// (<see cref="EmoteHolster"/>, setting EmotesPutAwayHeldItem). /stand and /stop bring it back; moods leave it
+        /// alone (they show whenever the hands are empty).
+        /// </summary>
+        private static void EmoteWord(WorldSession session, string word)
+        {
+            uint selection = emotes[word];
+            if (selection == Stand || selection == StopLoop || IsMood(selection))
+            {
+                Emote(session, word, PlayerManager.InZone(session.ZoneId));
+                if (!IsMood(selection))
+                    EmoteHolster.Stood(session);
+                return;
+            }
+            bool? untilStand = stances.Contains(selection) ? walkStances.Contains(selection) : null;
+            bool delayed = EmoteHolster.PutAwayFor(session, untilStand);
+            EmoteHolster.Then(session, delayed, () => Emote(session, word, PlayerManager.InZone(session.ZoneId)));
+        }
+
+        /// <summary>"stop" (EmoteLoop 0): ends the looping emote ("talking").</summary>
+        private const uint StopLoop = 253;
 
         /// <summary>
         /// An emote word: its animation (<see cref="Play"/>), its chat lines (<see cref="ShowLines"/>) and the secret emote
@@ -622,6 +711,8 @@ namespace LandmarkEmulator.WorldServer.Game
                     shown++;
                 }
             log.Info($"{session.CharacterName}: emote text {text} shown to {shown} player(s).");
+            // The client has already set its sit; with the held item put away it shows (EmoteHolster).
+            EmoteHolster.PutAwayFor(session, untilStand: false);
         }
 
         /// <summary>
@@ -764,6 +855,15 @@ namespace LandmarkEmulator.WorldServer.Game
                 ShowMood(session, selection, zone);
                 return;
             }
+            if (IsLoop(selection) || selection == StopLoop)
+            {
+                ShowLoop(session, selection, zone);
+                return;
+            }
+            // A single-shot emote sets EmoteLoop 0 on the client (every EmoteSingle row), which ends a running loop:
+            // forget it, and tell the viewers shown it who are out of range now (the others see the new emote).
+            if (singleShots.Contains(selection) && LoopOf(session.PlayerGuid) != 0)
+                ShowLoop(session, StopLoop, zone);
             IEnumerable<WorldSession> viewers = zone.Where(p => p == session ? includeSelf
                 : !p.Disconnected && Vector3.Distance(p.Position, session.Position) <= ViewRange);
             if (includeSelf && !zone.Contains(session))

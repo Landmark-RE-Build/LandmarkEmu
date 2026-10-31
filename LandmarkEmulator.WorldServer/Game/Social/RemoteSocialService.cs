@@ -259,15 +259,27 @@ namespace LandmarkEmulator.WorldServer.Game.Social
                     Ignores.Replace(ignores.CharacterGuid, ignores.Ignored);
                     break;
                 case SocialStateForZone state:
+                {
+                    bool tagChanged;
                     lock (sync)
                     {
                         friendOf[state.CharacterGuid] = state.FriendOf.ToArray();
+                        string before = guildOf.TryGetValue(state.CharacterGuid, out var had) ? had.Name ?? "" : "";
                         if (state.GuildId != 0)
                             guildOf[state.CharacterGuid] = (state.GuildId, state.GuildName, state.GuildRankPermissions);
                         else
                             guildOf.Remove(state.CharacterGuid);
+                        tagChanged = before != (state.GuildId != 0 ? state.GuildName ?? "" : "");
+                    }
+                    // The guild tag under the name follows the guild (GuildTags, OPEN-LEADS L196 OL-1): the first state after
+                    // world entry too, so players who met the character before the service answered get its tag.
+                    if (tagChanged)
+                    {
+                        ulong character = state.CharacterGuid;
+                        worldQueue.Enqueue(() => GuildTags.Changed(character));
                     }
                     break;
+                }
                 case GuildJoined joined:
                     worldQueue.Enqueue(() =>
                     {

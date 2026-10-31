@@ -141,10 +141,13 @@ Live's review rules (Update Notes 18 Jun 2014 "How Does an Item Get Accepted?", 
 | How many | at most two review chances a day | reviews in the last 24 hours | `PLAYER_STUDIO_REVIEWS_PER_DAY` (2; 0 = no limit; world and commerce service) |
 | Anonymous | the creator's name is not shown to reviewers (wiki) | the review copy's TemplateData has an empty CreatorName | — |
 | Rejected | a rejected item went to a Customer Service queue, where staff upheld or overrode the players' verdict | the product stays waiting with its rejections at the threshold: no longer offered to peers, listed on the admin page (/admin → "Player Studio: staff review", with the peers' reasons; Approve / Reject = `psreview`); the owner gets the "CS Review" mail (kind 0x40), then the result mail when staff decide | `PLAYER_STUDIO_STAFF_REVIEW` (true; false = rejected at once) |
+| Overruled reviewers | a reviewer who rejected on anything but the two rules (offensive, copyright), where staff then held a different opinion, "will stop getting items to review" (wiki) | a rejection is overruled when the product is listed with fewer approvals than `PLAYER_STUDIO_APPROVALS` (staff listed it, not the peers); a reviewer with that many overruled rejections is offered no review and their votes are refused (`Internal/Commerce/StudioRules.MayStillReview`; the world counts them off the tick, kept 10 minutes, dropped at every staff approval; the commerce service counts them in `product_review` per realm) | `PLAYER_STUDIO_REVIEWER_OVERRULES` (1; 0 = never held back; world and commerce service) |
 
-Not built: live's reviewer opt-out and the extra review chances it announced but never described, and
-taking review away from reviewers whose rejections staff overturn (wiki); the "Peer Review" mail (kind 0x80) on
-submission.
+The numbers of approvals and rejections live needed are not recorded anywhere we can read (client: no text, packet
+or table names them; the 18 Jun 2014 notes, the 26 Jun / 2 Jul 2014 notes, the wiki and every scraped forum thread
+give only the rules above; OPEN-LEADS L185, trace/0695/phaseE2-social.md), so 3 / 3 stays ours. Not built: live's
+reviewer opt-out and the extra review chances it announced but never described; the "Peer Review" mail (kind 0x80)
+on submission.
 
 ## Result mail
 

@@ -21,7 +21,8 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
     /// </para>
     /// <para>
     /// Every field carries the client's own default (its constructor FUN_142bcdf40): 0, except +0xb8 = 100, +0x248 = 2,
-    /// +0x250 / +0x254 = 0xFFFFFFFF (DAT_14511a190, "unset"), +0x26c / +0x270 = -1.0. So the creature keeps the model,
+    /// +0x250 / +0x254 = 0xFFFFFFFF (DAT_14511a190 (0.589; 0.695 DAT_1451f31c8), "unset"), +0x26c / +0x270 = -1.0. So
+    /// the creature keeps the model,
     /// name and position its lightweight spawn gave it. What live put in the other fields for creatures is not known
     /// (no capture; L85).
     /// </para>

@@ -1,5 +1,7 @@
 # Gateway as its own service (Phase B item 2) — agent #13, 2026-10-15
 
+> 0.695 rebase (2026-10-26): this file mixes builds; its 20 0.589 address citations map to 0.695 in trace/0695/address-map-589-695.md (changes: trace/0695/rebase-695.md)
+
 The gateway is the client's only connection to a world: one process per world that owns the SOE / UDP session, the
 gateway login, the per-build header translation and the channel routing, so a zone (or any other back end) can restart
 while the client stays connected. This file: client evidence (addresses **0.695 / 0.589**), what the emulator does

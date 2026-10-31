@@ -1232,6 +1232,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
 
 ### L95. Spawner row 40 "Spawn With Weapons Equipped" (577229; P6511)
 - **2026-10-27 (feature/creature-weapons): capture-calibrated actors + quiver.** Courage `5IewoKPQE2BqKg6Q` EquipmentBase dumps → `NetworkCaptures/_research/combat-loot-probe/model-weapons.tsv`: live NPC bows = HorseBow (+ Halas quiver), staffs = Dwarf staff, plain 1H/2H = Blade1H/Blade2H Dwarf, dagger/Ogre 2H as named. Shared type defaults / Scalewind bows&staffs swapped off kobold [I]; affinity/epic kept where uncontradicted. Quiver recipe **(A)** proven: outer 2 + attach 11 + bool 1 after bow (`agent-creature-quiver.md`). Still open: per-prop uniqueness (capture is model+Wield only), NPC shields (none in dump), quiver art variants beyond Halas.
+- **CLOSED 2026-10-26 (pe2-combat, best evidence; 9226d91):** weapon type per creature is client data [P], the actor is server-only (every pack / table / capture searched, phaseE2-combat.md L95); the off hand is solved: item definitions carry a second model (tail +0x80/+0xb0, FUN_142e43c70 "secondaryModelName") that the client attaches only in its previews, in SecondaryWeaponSlotName "Off Hand" = slot 11, and the in-world slot handler FUN_142e42da0 attaches only the packet's model [P] — so creatures now get a shield (Swordshield icons), the second dagger (Daggers) or the item's quiver (player bows) in slot 11. Bows / shields on creature bodies: in-game look only.
 - **2026-10-18 (cweap 4aee43f): best guess built and ON by default.** Weapon type is client data [P]: each creature prop's palette icon names it (Barren_Sword_Fire, Edbonguard_Daggers_Earth, Giant_Club_Earth, Nothing; dev post 15 Mar 2016 "icons indicate the type of creature, and its weapon and damage types"). The actor is ours [I]/[W]. Still unproven: the exact actor and tint per creature, shields (off hand slot 11 not traced), how bows look on creature bodies. Try next: 2016 videos / screenshots of creatures (the 15 Mar 2016 post images, Chaos Caverns / Outposts streams), a capture of a live NPC full-data attachment list.
 - **2026-10-18 (agent assets, dce93ea / merge 827fb93): sending side built** — Game/CreatureWeapons.cs puts a weapon model in a creature's main hand (slot packet after the full NPC data, again on Equip / Unequip), CREATURE_WEAPONS default false (the table is name-matched [I]: Scalewind Ranged → kobold bow, Caster → kobold staff); dev `creatureweapon <guid|near> <Wield_*.adr|off> [tint]`. [P anim data] the Barren skeleton set replaces the 1H-sword attacks. Still open: live's weapon per creature (Barren, Highfall, Ebonguard, NovaTech, Stoneskin, bosses) — server data; try next: forum / video stills of creatures' weapons (trace/0695/agent-assets.md).
 - **2026-10-17 (agent storyhide, trace/0695/agent-storyhide.md):** lead 1 — both carriers proven (full NPC attachment list +0x28 / EquipmentSetCharacterEquipmentSlot → FUN_142ebd620); missing is the per-creature weapon data (server-only on live; every Barren shares model 1457). Lead 5 — Npc / Giant / Chomper animation networks have WeaponIdle conditions, so Equipped / Sheathed may show on non-bipeds [I weak]: test `storyweapons <guid> 1` on a Darkfang Specter. L20-e (prop +0x490) is a mover enable flag.
@@ -1912,23 +1913,27 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
 - **Try next:** the client's swim receiver for a full-state path on entity add; forum reports of swimmers shown standing.
 
 ### L168. Live's movement-effect rows for sprint / boots / glide (follow-up of L160)
+- **CLOSED 2026-10-26 (pe2-combat, best evidence; de3e79e):** semantics proven and built; 2016 magnitudes are server-only (every forum thread, patch note and boot wiki page searched) — the 2014 post's numbers stay [P 2014, I 2016]. Dash Soles / Roll Wraps found: each cast id is a direction (groups 82 / 153 modifiers 1 F / 2 B / 7 L / 8 R; no modifier = back) and the network's Evade_Roll switches on AbilityIndex (0-7 Roll, 10-17 Sidestep, 20-27 Translations_only, order F R L B FR FL BR BL) [P]; built: CastSuccess AnimationId = Roll set (415/465-467/474-477) for Roll Wraps, the slide (593-600) for Dash Soles [I which set], also to watchers. Runtime check: does the root motion move the player.
 - **Need:** live's AbilityParameterDefinitions rows and durations per ability, hold / channel semantics (TRIGGER_ON 2 →
   CancelCast [I]), Dash Soles / Roll Wraps movement, Leaper's take-off damage (row 429?).
 - **Built so far:** Game/MovementEffects.cs with shapes from the 14 Oct 2014 dev post [I].
 - **Try next:** forum / video measurements of sprint speed and jump heights; the boots' wiki pages; a capture.
 
 ### L169. PurchaseBundleWithInGameCurrency 0xD0: meaning of Lua args 1 / 3 and the 0x4B result fields
+- **CLOSED 2026-10-26 (pe2-packets, best evidence):** the caller was live's web store page: the in-game browser's JS bridge SOEInGame.EvalLUA (BrowserCefChildProcess64.exe, store*.landmarkthegame.com / eqnlandmark.com hosts only; Landmark64 FUN_143b5bb70 ProcessEvalLuaMessage) ran the InGamePurchaseStoreScreen natives, so the argument order lived in Daybreak's page JS (no archive.org captures of store.landmarkthegame.com, L137). The 0x4B result is dropped by the client [P]. Server accepts both orders (StoreBundles.HandlePurchase); no change. (trace/0695/phaseE2-packets.md)
 - **Need:** which argument is the bundle and which the quantity (arg 2 is checked but not sent); what the 0x4B u32s mean.
 - **Searched:** luabind_695, b695 UI natives, lua_all, as3 / as3_695, decompile callers (no shipped caller).
 - **Try next:** other client builds' scripts; runtime capture if a caller turns up.
 
 ### L170. Did live melee use server-started targeters (PlayerUpdate 0x27/9)? (from L140)
+- **CLOSED 2026-10-26 (pe2-combat, best evidence):** mechanism and both follow-ups proven and built (no attackable test in the Sweep, our creatures have bodies, MaxTargets 0; bit 45 + Block effect = BlockStance) [P]; only live's per-weapon sweep numbers and the Block arc / height remain, server-only ability data (tables stripped, no capture) — ours = the server cone's Range / Size and the clip's AttackTime [I].
 - **2026-10-18 FOUND [P] + BUILT (2fc0c49 / merge d11cead):** CasterInfoReply +0x118 targeter list (entry: u32 id, u32 type ^0xA142E048, u32 origin, u32 follow, f32 delay, u32 max targets, f32 duration, f32 start / end angle, f32 re-hit s, f32 radius, shapes); melee Cone swings send a Sweep; FindTarget 0x27/0x24 {u64 hit, u64 cast guid, u32 cast hash, u32 targeter, 16 × 0} checked against the server cone; ClientTargeterEnd 0x27/0x23 closes; no report → server resolves after the window (MELEE_TARGETERS=true). Block = attacker's 'was I blocked' check, not sent. Open: our creatures passing the client's attackable check, live's bit-45 / block component, sweep numbers.
 - **Need:** whether ClientTargeterEnd / FindTarget were reachable on live (only after the server starts a targeter).
 - **Searched:** the client's ability table is stripped (agent-l140.md).
 - **Try next:** forum / video descriptions of melee targeting; patch notes on 'targeting'.
 
 ### L171. BaseBroadcastPacket 0x4F: an operator "system broadcast" (agent-s2c-sweep.md §5 S2C-a)
+- **CLOSED 2026-10-18 (7a12d42; verified 2026-10-26 pe2-packets) [P]:** layout i16 kind, name block {u32×3, first, last}, StringFixed<256> message, u32 text id (FUN_142c17410 / FUN_142cd9130); no *BroadcastFormat keys in 0.695, so "System Broadcast: %s". No client sender, no live mention: sent only on operator request (Game/Broadcasts.cs, dev "broadcast", admin page); ShutdownBroadcasts default false = live.
 - **Need:** the exact body of 0x4F and whether live ever sent it; if wanted, an operator broadcast from the web admin
   (live default: not sent; a toggle per the live-default rule).
 - **Known [P]:** handler FUN_142cd9130 prints "System Broadcast: %s" / "Broadcast from %s: %s" (System / Zone / World
@@ -1941,6 +1946,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
   ask the user whether an ops broadcast is wanted.
 
 ### L172. PacketClientPendingKickFromServer 0x65: countdown kick warning (agent-s2c-sweep.md §5 S2C-b)
+- **CLOSED 2026-10-18 (7a12d42; verified 2026-10-26 pe2-packets) [P]:** {StringFixed<128> message, u32 seconds} (case 0x2b, FUN_142c4a0d0); KickedFromServerTimedMessage missing from CodeStringMappings so the line is empty. No live trigger in any source: sent with the admin kick (Game/Kicks.cs) and at ≤ 30 s of a shutdown.
 - **Need:** whether and when live sent it (admin kick, shutdown, idle kick) and its body (the seconds).
 - **Known [P]:** zone dispatcher case 0x2b → ShowSystemMessage `KickedFromServerTimedMessage` with a seconds
   countdown. No live trigger found. Related: L68 (0x4C shutdown is only a chat line).
@@ -1959,6 +1965,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
   sounds, live used it; then the body layout (pkt.py) and a live-default toggle.
 
 ### L174. Guild invitations list, News row removal, full guild data (agent-s2c-sweep.md §5 S2C-d)
+- **CLOSED 2026-10-18 (da8feb2; verified 2026-10-26 pe2-packets) [P]:** 0x14 at every world entry (client queues the invite popup itself for type-1 invitations), empty 0x12 for a player in no guild, 0x1B when the News cap drops rows; zone Guilds.cs and SocialServer GuildService.cs the same.
 - **Need:** whether live sent GuildInvitationsPacket 0x83/0x14 (pending invites, e.g. to players who were offline),
   GuildRemoveLogUpdatePacket 0x83/0x1B (removing a News row) and GuildDataFullPacket 0x83/0x12, and what the 0.695
   guild window shows for each.
@@ -1969,6 +1976,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
   logout; GuildUpdateAppData against the server's AppDataFieldSub.
 
 ### L175. PacketTargetClientNotOnline 0x1A: which live path sent it (agent-s2c-sweep.md §5 S2C-e; follows L67 d)
+- **CLOSED 2026-10-26 (pe2-packets, best evidence; built d69050d):** {u64, StringFixed<32>} (FUN_142c4af20); the client's PlayerNotOnline fills [*player*] with the local player (FUN_142fdd650 → FUN_142fdd4b0), and 0x19 has no client sender, so live's triggers were server-internal routing with no record (forum / wiki searched). Server: same text via ShowSystemMessage with the target's name; TargetNotOnlinePacket (default false) sends 0x1A.
 - **Need:** the live path that produced it (the world wrapping a client message for a target,
   ClientToTargetClientsZoneWrapped 0x19), so the server knows when to send it.
 - **Known [P]:** {StringFixed<32> name}, zone case 6, chat line PlayerNotOnline = text 560709 (L67 d,
@@ -1979,6 +1987,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
   social back end is down.
 
 ### L176. InstancedGamePlayerRemovalPacket 0x10D/0x14: side effects our removal may miss (agent-s2c-sweep.md §5 S2C-f)
+- **CLOSED 2026-10-18 (e0c161c; verified 2026-10-26 pe2-packets) [P]:** FUN_1434e8cd0 = the shared reset FUN_1434e2330 + leave camera mode 0x20 (FUN_142d4eaa0); the server now sends the removal after its sequence and ends observers' watch when a game goes.
 - **Need:** whether our removal sequence (Membership(false) + State 0 + ObserverRegistration 0, InstancedGames.cs:1045)
   leaves chat channel 0x11 or observer camera mode 0x20 set on the client, which live's removal packet resets.
 - **Known [P]:** case 0x12 → FUN_1434e8cd0 → FUN_1434e2330 clears game / observer (+0x38 / +0x40), runs
@@ -1988,6 +1997,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
   channels, camera); or send 0x10D/0x14 after our sequence and compare.
 
 ### L177. Recipe cooldowns and closing the crafting window (agent-s2c-sweep.md §5 S2C-g)
+- **CLOSED 2026-10-26 (pe2-packets; built 471aa71) [P]:** server closes a station window its player left (0x42/0x24 bool 0; the client has no distance close), default CraftingWindowCloseAway=true is live: Update Notes 02.20.14 "The crafting window will now close automatically when you move away from the crafting station." No recipe cooldowns (COOLDOWN_TIME 0 in all 2,363 rows). Citation added in local/pe2-packets 43987ab.
 - **Need:** whether live sent PlayerRecipeDataUpdatePacket 0x42/0x1E (data names CooldownRemaining / CooldownTotal:
   recipe cooldowns) and RecipePacketZoneCraftingWindow 0x42/0x24 to close the station window when the player walked
   away.
@@ -2019,6 +2029,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
   pad's leg.
 
 ### L180. New-player site slate slab (audit-wiki-gaps.md gap 12)
+- **PARTLY CLOSED 2026-10-26 (phaseE2-social, best evidence; phaseE3-stale.md §3):** the claim*.otd slabs are server-side assets (no client code loads them); no material table makes index 53 a slate (0.589/0.695 VoxelMaterials, VoxelMaterials1.xml id 53 = Biome_Everfrost_Snow02, no remap), so live's slate, template and height were server data. Built as claim3x3 / material 26 behind PIONEER_SLAB / PIONEER_SLAB_MATERIAL. Visual check of live's slab: new lead (archive image / video, Wayback blocked). Still open: what live's slab looked like (template, height) — new lead L210.
 - **Built 2026-10-18 (leadsfix 40ebd6d):** claim3x3 template (525x5x524, 763,000 solid voxels) stamped solid-only under new Pioneer surface sites, material PIONEER_SLAB_MATERIAL (26), top layer on the ground voxel, 40 m Starting Location corner left as ground; PIONEER_SLAB claim3x3|claim1x1|off; dev `pioneerslab`. **Still open:** which template live used and its exact height. Try next: wiki image Landmark-pioneer-landscape.jpg, Verlin EQL's Pioneer video, an older VoxelMaterials table (was index 53 ever a slate?).
 - **Need:** the shape, material and placement of the "slate slab" on new players' automatically placed sites.
 - **Known:** update notes 30 Jun 2016 (design/forum/patches/2016-06-29-57596): "Corrected some issues with the slate
@@ -2030,6 +2041,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
   Location on new Pioneer sites.
 
 ### L181. Voice chat (Vivox, Voice 0xB9): what live sent, and a clean "unavailable" answer (audit-wiki-gaps.md gap 13)
+- **PARTLY CLOSED 2026-10-26 (phaseE2-social, best evidence; phaseE3-stale.md §3):** live's Vivox account names, URL and channel URIs were server-only (the client takes URIs and display names verbatim, parses nothing; only a debug host "enlp.vivox.com" is built in). Live behaviour recorded from the 2014-15 notes (off by default; Proximity 20 m, guild channel named after the guild, party channel; push-to-talk). Server sends no 0xB9 = the client's clean voice-off state. Self-hosted voice: new lead. Still open: a voice service for self-hosted servers — new lead L211.
 - **Layout documented 2026-10-18 (leadsfix ac7d358):** VoiceLogin / JoinChannel field roles and channel types in VoiceHandler comments and docs/protocol.md; the server sends no 0xB9 (the clean "unavailable" state). **Still open:** live's Vivox account naming, URL and channel URIs; self-hosted voice.
 - **Need:** the 0xB9 layouts, what live sent (Vivox account / channel URIs for the Local and Guild channels), and
   whether the client survives a "voice unavailable" answer.
@@ -2074,6 +2086,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
   tradeable-after time.
 
 ### L185. Player Studio: live's approval / rejection counts, reviewer rules, staff queue (audit-wiki-gaps.md gap 10)
+- **PARTLY CLOSED 2026-10-26 (phaseE2-social, best evidence; built b0c86c6; phaseE3-stale.md §3):** the counts were server data (no client text / packet / table, no dev post, wiki "enough players"); 3 / 3 stays ours (PLAYER_STUDIO_APPROVALS / _REJECTIONS). The wiki's last rule is built: reviewers whose rejections staff overturned get no more reviews (PLAYER_STUDIO_REVIEWER_OVERRULES, default 1). Archived Player Studio FAQ: new lead (Wayback blocked). Still open: the archived Player Studio FAQ (live's counts) — new lead L209.
 - **Reasons built 2026-10-18 (leadsfix 1104357):** the staff queue shows the peers' verdict codes ("Rejected for: …"; type names [I] from the 18 Jun 2014 notes). **Still open:** live's approval / rejection counts (ours 3 / 3) and subtype names. Try next: archived Player Studio FAQ pages.
 - **Need:** how many peer approvals / rejections decided a product on live, who could review, and how the staff queue
   after a rejection worked.
@@ -2107,6 +2120,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
   (L179) with the pad's records.
 
 ### L188. Spire / My Site travel cooldown (abilities 185 / 186) (leadsfix 2026-10-18, follows L182)
+- **CLOSED 2026-10-26 (pe2-combat, best evidence; 813ca1a):** the old 60 s was the Cozy Campfire capture (ability 1098) the travel bodies were copied from, not travel data [P]; live dropped the Stone of Recall's cooldown on 5 May 2015 and the 21 Mar 2016 Teleport menu replaced it, no later source names one [P notes, I 2016]. Default now 0; setting TravelCooldownSeconds (TRAVEL_COOLDOWN_SECONDS) sends a value in 185 / 186's caster info +0x70 and the server checks it.
 - **Need:** live 2016's cooldown, if any, on Travel to Spire (185) and Travel to My Site (186).
 - **Known [P]:** both still use the 1098 capture's caster info: +0x70 = 60 s with +0xa4 = 1, so the client enforces a
   60 s cooldown itself (same path as L182: record +0x14c, CastSuccess starts the timer). Whether live 2016 sent that
@@ -2115,6 +2129,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
   pages); then a setting per ability (live default once a source exists).
 
 ### L189. SendSelf CastKeySeed (+0x753f0) (ss4 2026-10-18)
+- **CLOSED 2026-10-26 (pe2-packets, best evidence):** the seed makes the CastAttempt cast hash ((counter +0x753f4 & 0xff) ^ seed) * 0x502c3f11 (FUN_142e0f810; hash +0x20, counter +0x28), the cast identity every answer echoes [P]. Live's seed policy / check was server-only (one capture, 0x5BB9EB0B). Server: random non-zero seed per session, hash checked and mismatches only logged (local/pe2-packets 43987ab).
 - **Need:** whether live randomised the seed per login, and what the server did with the per-cast key it feeds.
 - **Known [P]:** FUN_142e0f810 ("send cast to zone") mixes it into a per-cast value (→ FUN_142e04a90); the only live
   capture sent 0x5BB9EB0B. The server sends 0 and never checks the cast key.
@@ -2123,6 +2138,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
   capture (other session) to compare the seed.
 
 ### L190. CurrentAdventureId (+0x114) and PlayerUpdate 0x36 SetCurrentAdventure (ss4 2026-10-18)
+- **CLOSED 2026-10-26 (pe2-packets, best evidence):** layout {u64 player, u32 adventure, list<u32>, list<u32>, list<bool>} [P]; stored at pcdata +0x114/+0x118/+0x130/+0x148 and handed to the quest manager's (+0x268b0) hook FUN_142f2dd50, an empty function in 0.695 and 0.589; no reader, Lua, AS3 or table; AdventureAdd / SetPhase only as id names. EQN adventure system with no Landmark use; server sends 0 / nothing (matches the capture).
 - **Need:** the meaning of SetCurrentAdventure's payload and the +0x118 / +0x130 / +0x148 arrays.
 - **Known [P]:** only PlayerUpdate 0x36 (dispatcher FUN_142cdfa60 case 0x35, reader FUN_142c2b4b0) writes them; no
   client reader of the stored values found. Live sent 0.
@@ -2141,6 +2157,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
   no-op on current LaunchPad.
 
 ### L192. Emote / animation details not provable without a live capture (animaudit 2026-10-18)
+- **CLOSED 2026-10-26 (pe2-combat; 9226d91, 813ca1a, de3e79e):** (a) ChatPacketFromStringId is the client's only [*speaker*]/[*target*] path — matches [P]; (b) EmoteLoop lasts through walking (locomotion SM 206: 1408 in, 1415/1416 out only on EmoteLoop < 0.5) [P] — loops now remembered like moods; (c) zone commands replace the client's chat commands (FUN_142dd7560), the client's own word 570042 + lines → /yell is the emote (setting YellIsEmote, default on) [I strong]; (d) /emote /em /me are the client's free-text emote (FUN_14336e150 0x37) — our "emote" hid it, now /emoteclip [P]; (e) the caster plays CastSuccess +0x3c / CastContinue +0x48 — matches [P]; (f) UsePotion 287 and the Class 7 throw 41/42 are the network's only clips — built [P clips, I choice]; (g) re-zone keeps the player entity (FUN_142d60340) — consistent [P]; (h) revive = 840 ReviveAlly / 841 / 837 — built; no selection exists for a build pose (new lead N2); (i) off hand slot 11 built (F2).
 - **Need:** (a) the live packet for emote chat lines (we send them like /playdead's); (b) whether /talking ends on move
   (then remember it like a stance); (c) /yell vs the client's shout command; (d) "/emote" free-text vs our "/emote <n>";
   (e) whether the six-shooter shooter's own client animates its shots; (f) which clip live played for potions (UsePotion
@@ -2149,12 +2166,14 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
 - **Try next:** client tests for (b) (c) (d) (e) (g); 2016 videos for (f) (h); decompile for (c) (d).
 
 ### L193. Hotbar placement on the active bar (invequip 2026-10-18)
+- **CLOSED 2026-10-26 (pe2-building, phaseE2-building.md L193):** the client never sends the active bar. Ui.SetActiveActionBar → FUN_14344eaa0 only stores +0x78. Hotkey use and every 0x9A request name their own bar, and 0x2D/6 is unused. So bar 0 first is the only rule a server could apply, and it matches the client routine for every player who never switched bars. A2 cannot happen: the server never refuses a main-hand right-click equip. A3: a definition slot counts when the item does not stack (FUN_14344daa0, +0xe4 == 1); the server now checks that (a9f8d95). Tool 7 = ToolLocation, the client's tool reset when the held item changes (FUN_143458f20). (a9f8d95 is on HEAD as d400254; phaseE3-stale §3.)
 - **2026-10-21 (auditshift, docs/client-to-server-shifts.md Shift-A1..A3):** 0.589 preferred the bar on screen (action bar manager +0x78); 0.695 never sends the active bar (Ui.SetActiveActionBar FUN_1435c8290 sends nothing). Also open: whether live placed the slot when the equip was refused, and whether a default (type 1) slot holding the item counted as "already on the bar". Next: a runtime capture of 0.695 switching bars.
 - **Need:** which bar live placed a right-clicked tool on (the client never tells the server the active bar; ours
   starts at bar 0), and what ToolBase "switched build tool to Location (7)" right after an equip means.
 - **Try next:** client's active-bar index in the ActionManager data source / Lua; the ToolBase sender after equips.
 
 ### L194. Weapon channel limits, charged follow-ups, Recon volley numbers (weaponinput 2026-10-18)
+- **CLOSED 2026-10-26 (pe2-combat, best evidence; de3e79e):** channel holds / ticks, charged follow-ups and the Recon volley's numbers are server-only (AbilityEx empty, no weapon cast captured; texts / wiki / 2016 notes give shapes and costs only) — ours stay, documented. The follow-up clip found: SwordUser AttackIndex 1 = Sword1H_DashAttack_01 (switch 4942) [P], the user's "charge"; both sword Basic Attacks only swing in front, the dash is Overrun's → the sword's basic combo now skips index 1.
 - **Need:** live's longest hold / per-hit numbers for the channel attacks (ours: 3-5 hits, the 2 s block), whether a
   charged Basic's follow-up (1045, 1057, 825, 822, 826, 816, 1164) was charged too (inferred from the longer follow-up
   windows only), the Recon volley's reach / arc / shot count / spacing / 6 Energy cost (ours), and which animation index
@@ -2165,6 +2184,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
   index conditions for the combo step.
 
 ### L195. Why very deep cavern arrivals get no collision (cavefall 2026-10-18)
+- **2026-10-26 (pe2-building, phaseE2-building.md L195):** FUN_143324910 releases physics as soon as the player's own cell has voxel data and the player's voxel is air. It never checks the floor cell or a collision mesh, and the view is not limited in height (FUN_143f9ad40, FUN_142b1ced0). So the fall is collision built too late (or never) for the floor. Why that depends on ~1,600 m below the ground is not found yet (cell classification FUN_143fe72f0 / FUN_143fe98f0; cave tiles have only 4-5 LODs). Runtime capture plan in the report; the depth filter and fall guard stay.
 - **Need:** the client-side reason a player arriving >~1,600 m below the ground (graveyard 38 on 406: 2,028 m below a
   1,423 m mountain) falls through, although the plinth cell is stored and the client holds physics until the player's
   cell and the one above are loaded (FUN_143324910). Fix in place is a depth filter + fall guard (ours).
@@ -2172,6 +2192,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
   client's VoxelFarm view distance), client logs VoxelFarm.log / CellRequests during such a trip.
 
 ### L196. Observer-sync leftovers (auditobserver 2026-10-21; details docs/observer-sync.md OL-1..OL-6)
+- **PARTLY CLOSED 2026-10-26 (phaseE2-social; built b0c86c6; phaseE3-stale.md §3):** OL-1 tag = guild alias = guild name (Guild.Rename sends the name as alias; SetTag is search keywords) → 0xDF + full character + GuildData alias (Social/GuildTags). OL-2 State_Dead follows state bit 7 every frame (FUN_142eb1950 → FUN_142ea9ef0) → Delta bit 7 to others / newcomers, cleared on revive (DeadBodies, DEAD_BODIES_VISIBLE; two-client check pending). OL-3 full character without temporary buffs. OL-4 preview setup kept and sent first. OL-5 / OL-6 match (no client channel). Combat states: best evidence, kept. Still open: OL-2's two-client check (TESTING-NEEDED) and the dead player's own death pose — new lead L208.
 - **Need:** (1) guild tag under names — live showed it (hotfix P1525); client packet 0xDF {u64, string} →
   FUN_142cdf330 → entity +0x21a8, full-character string 3, DisplayPlayerGuildNames option; what live put in it is
   unknown; (2) a dead player's body on other screens (remote knocked-out handler FUN_142ead890 is empty); (3) calculated
@@ -2180,6 +2201,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
 - **Try next:** see docs/observer-sync.md per item; 2016 videos for (1) (2) (5).
 
 ### L197. Request-variant leftovers (auditcallers 2026-10-21; docs/request-variants.md)
+- **CLOSED 2026-10-26 (phaseE2-social):** transfer only from the rank right under the leader (FUN_142ef91f0 checks the next rank is the leader rank), so ours = live [P]; RankSetDescription sends exactly SetDescription's packet and has no caller [P]; contest feedback mail: characters are global (shared lmemu_character) [P]; vendor ListItem = (bag slot, count) per UI/TestMod/TestGrid.lua [P], BySlot has no caller and rows carry no slot (booths decorative since P4378); right-click rows: server-only, kept (best evidence).
 - **Need:** the old leader's rank after a leadership transfer [I] (ours: the new leader's former rank); which
   right-click rows live showed per target [I]; Guild.RankSetDescription (FUN_1435b8b10) sends the same packet as
   Guild.SetDescription with nothing naming the rank; LuaClaimVendor.SetItemPriceBySlot "slot" meaning; feedback mail to
@@ -2187,6 +2209,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
 - **Try next:** live captures / dev posts for the guild items; a 0.695 window calling RankSetDescription.
 
 ### L198. Allocator slots on many-core PCs beyond DirectThreadCount (castleprefab 2026-10-21)
+- **CLOSED 2026-10-26 (pe2-building, phaseE2-building.md L198; docs 8b88c5e):** the two pools size themselves from GetSystemInfo (FUN_142b4e800). An affinity mask or a job object does not change that (measured: 12 under affinity 0x3 and under a 0x3 job). No key or cvar sets it. Only Windows' processor count / groupsize, BIOS SMT / E-cores, or the designed client patch (user decision) help. Pool workers claim at their first job (30/53 measured). Each design preview gets a new thread, joined and released by FUN_143f93c90 when done. MaxVoxelsForPreview is never read in 0.695. Server: the stream hold.
 - **Need:** a way (without modifying the client) to keep threads within the 64 allocator slots on 16+ thread CPUs:
   the Resource::Manager Decompression (FUN_143a8d560) and TaskManagerJob (FUN_143a98090) pools start one thread per
   logical processor, uncapped; the design preview thread (FUN_143f99120) starts late and likely gets none. Also open:
@@ -2200,9 +2223,11 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
   folds min-corner shift into the packet on flipped axes and skips that +1 there (yaw90: packet−area =
   `(−sizeZ,+1,+1)`; blanket −1 put flipped axis one low vs area/preview). Server: `PasteOriginAdjust = -1` only where
   `shift[i]==0`; `Dot` matches preview `Σ s_j·row_j`. Confirmed in-game 2026-10-25.
+- **2026-10-26 (pe2-building, phaseE2-building.md L199):** the cursor's margins and rounding are traced (FUN_1436cd920 + FUN_143c1a8a0: request origin = area corner + 1). The server used the paste matrix column-wise and aligned grid points instead of cubes, so 90° / 270° turns were half-turned and flipped axes one voxel low. It is fixed to the client's own turn (FUN_143c6eb20, a9f8d95), and every turn now lands at one offset from the preview. Left: one unturned in-game paste decides whether that offset is 0 or (1, 1, 1). **Correction (phaseE3-stale §3 / N-S2):** the paste-turn half of a9f8d95 is not on HEAD; the org's #12 (b3fccd0) replaced that paste matrix code. Its cube alignment (FUN_143c6eb20: grid size + 1 − s, cubes size − s) is new lead L219; NL-2 / NL-3 are L206 / L207.
 - **Was:** turn-dependent manual nudges; size-margin guess (out — identity `area−copy 0,0,0`).
 
 ### L200. Client calls the server could make for the slot problem (2026-10-21; trace/0695/client-commands-for-slots.md)
+- **CLOSED 2026-10-26 (pe2-building, phaseE2-building.md L200; docs 8b88c5e):** claim-wide LOD only widens the finest clipmap ring to the claim (FUN_142ae6c50 → FUN_142b1ced0). Render distance / TerrainQuality don't touch terrain cells: the clipmap radii are a fixed preset (0x14499d2c0) and its setter FUN_142d51820 is unreferenced. UseCachedMeshes has no reader. No CEF / voice thread held a slot (slotmap 10-21). SetMTR(0) frees at most one slot, too few for 16+ threads. No client call is used; the server's part is the stream hold.
 - **Known [P]:** no reachable client call resizes the Decompression / TaskManagerJob pools; DirectThreadCount is read
   once at start-up; ~632 of ~694 console variables are developer-only and hidden in retail (FUN_142bfbdc0(1) in
   FUN_142ce9580); no server packet pushes graphics settings. GameSettings.SetMTR(0) stops the render worker thread
@@ -2210,6 +2235,406 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
 - **Try next:** slotmap.py before / after SetMTR(0) on a full table; who reads the claim-wide LOD flag; whether render
   distance limits terrain cell loading; whether cached meshes skip contouring; whether CEF / voice threads use the game
   allocator.
+
+### L201. The client's ~1.1 s emote blind spot after a held item is removed (EmoteHolster 2026-10-21)
+- **PARTLY CLOSED 2026-10-26 (pe2-combat; phaseE3-stale.md §3):** StandPoses (node 10128) runs 15157 Idle_Stand_2 → WeaponSwitchCombo on WeaponEnd (msg 75) with Class / WeaponIdle < 0.5 (0.6 s blend) then 15153 back on WeaponIdle < 0.5 (0.5 s) = 1.1 s, the measured edge [P transitions / durations, decoder re/out/pe2_combat/sm.py]; no emote state is active meanwhile, so the request is lost. Animation time, not frames. Server keeps the fixed 1.5 s lead (setting off by default). Stance-in-window detail → new lead (phaseE2-combat.md N1). Still open: why a stance sent inside the window never shows — new lead L203.
+- **Known [P]:** after EquipmentUnsetCharacterEquipmentSlot (handler FUN_142e43550) the client takes a
+  RequestAnimationSelection (case 100 → FUN_142dfc010 → FUN_143d95d40 return true) for ~1.1 s but never shows it, a
+  stance (Stance_Index, a lasting variable) included; a second selection in that time returns false, is queued
+  (FUN_142e977b0) and dropped after ~70 ms of retries. 0.8-1.1 s: not shown; 1.2 s and later: shown (user's PC,
+  re/test/emote_trace.js + dev emotelead). The server waits 1.5 s (EmoteHolster.PutAwayLead).
+- **Need:** what runs during that second — a Weapon1 → Stand blend in PlayerAnimationNetwork64 (node 10129 switch
+  WeaponIdle) or the character's animation set / network being rebuilt for the new attachments — so the wait can be
+  tied to the client's own state instead of a fixed time; whether it is frame-rate or PC dependent.
+- **Try next:** the transition / blend durations out of node 10129's NodeDef in the .mrn; hook FUN_142e43550's vtable
+  +0x498 call and time the network's WeaponIdle control parameter read.
+
+### L202. Claims 0xF9 sub 0xE3 in the dev world's opcode_stats (phaseE2-packets.md)
+- **RESOLVED 2026-10-26 (pe2-packets) [P]:** PlayerEnteredClaim 0x63 renumbered by our own gateway translation (ClientWire695, 723cc6c, internal 0x80 | sub) before the 0xE3 handler existed (3211881); raw "F9 00 E3 4A" = claim 74. No 0.695 builder sends 0xE3 (Claims sub is one byte, FUN_142d9e650; all 71 base-0xF9 builders use constant subs). Comment fixed in local/pe2-packets 43987ab.
+
+### L203. Why a stance sent inside the 1.1 s put-away window never shows (phaseE2-combat.md N1, from L201)
+- **Need:** stance rows (223, 224, 246, 248, 480, 844) have no request message, only Stance_Index (a lasting
+  variable), yet a stance sent 0.8-1.1 s after EquipmentUnset never showed, even after StandPoses was back in
+  Idle_Stand_2 (emotes-client.md §4). Either the client resets runtime variables when the attachments change (the
+  actor's AnimationEnumerations re-applied after the unequip), or the Stances state machine (node 14236) needs an entry
+  transition that only fires on a change.
+- **Searched:** StandPoses / WeaponSwitchCombo (decoded), FUN_143d95d40 (variables are set, then the message),
+  AnimationSelection rows.
+- **Try next:** `re/out/pe2_combat/sm.py <mrn> 14236` (and the StanceSwitch children) for their conditions; the
+  attachment path after vtable +0x498 for a call that re-applies enumerated runtime variables; a Frida read of the
+  network's Stance_Index control parameter 1.0 s after an unset with a kneel sent at 0.9 s (low priority: the setting is
+  off by default).
+
+### L204. What watchers' clients show of a builder (phaseE2-combat.md N2, from L192 (h))
+- **Need:** whether a remote builder is animated at all on live (State_Building / the build messages 48-58 are never
+  sent by name in the client code, and no AnimationSelection row sends them), e.g. from the WorldEditing 0x10C cursor
+  stream or VoxelConstruction ResponseObserved handlers.
+- **Searched:** AnimationSelection (no build-message rows), the decompile for the message / State_Building names (none).
+- **Try next:** the 0.695 handlers of WorldEditing 0x10C and ResponseObserved (do they reach the remote character's
+  network, e.g. via a hashed control-parameter set); a two-client look at a builder.
+
+### L205. What makes the floor of a cavern far below the ground late or missing on the client (phaseE2-building.md NL-1, from L195)
+- **Need:** which client step leaves the floor cell without collision when the arrival is more than ~1,600 m below the
+  ground (classification, generation queue or contour).
+- **Searched:** as in L195 above.
+- **Try next:** the runtime capture in L195. Then the code path that turns the classes from FUN_143fe98f0 /
+  FUN_143fa63a0 into generation jobs (the callers of FUN_143fea1d0: FUN_143f90130, FUN_143f95700, FUN_143ff9460,
+  FUN_143ffcaf0…).
+
+### L206. The paste cursor's offset +0x2b0 and the request (phaseE2-building.md NL-2, from L199)
+- **Need:** whether the cursor voxel P (+0x98 / +0xa0) that FUN_1436cd920 starts from includes the cursor offset
+  +0x2b0: the Translate nudges (FUN_1436d11d0) and the one-time drop by the clipboard's lowest solid row
+  (FUN_1436d0a00, from FUN_143b92dc0 → clipboard +0x120). If it doesn't, a copy with empty bottom rows (or a nudged
+  paste) lands above or beside its preview by that many voxels.
+- **Searched:** FUN_1436d0a00, FUN_1436d11d0, FUN_1436d0580, the cursor functions 0x1436c0000-0x1436dffff for writes
+  of +0x98 / +0xa0 (only FUN_1436d6f50 and two resets; the per-frame raycast that sets P is in a base cursor class not
+  found yet).
+- **Try next:** the base class of VoxelPasteCursor (RTTI) and its vtable +0x120 / +0x2b8 functions, or the same
+  in-game paste as L199 with a copy whose bottom row is empty.
+
+### L207. Turned pastes and designs: in-game check (phaseE2-building.md NL-3, from L199)
+- **Need:** an in-game check that a 90° / 270° turned asymmetric paste (and a placed design turned 90°) lands turned
+  the way the preview showed.
+- **Searched:** none (new code).
+- **Try next:** the TESTING-NEEDED entry "Placement vs preview", which the coordinator should extend with "asymmetric
+  shape turned 90°". This file could not be edited here (rule 5).
+- **2026-10-26 (phaseE3-stale §3):** the code under test is now the org's #12 (b3fccd0), not a9f8d95; see L219.
+
+### L208. The dead player's own death pose (state bit 7 on the local entity) (phaseE2-social.md N1, from L196)
+- **Need:** whether the 0.695 client survives UpdateCharacterStateDelta {set bit 7} on its **own** entity (live must
+  have set it: the local network's State_Dead comes from the same bit, and ReadyToRevive is ignored unless the dead
+  entity passes IsKnockedOut — trace/systems/abilities-combat.md); today the dead player stands on their own screen.
+- **Searched:** the 0.589 test (2026-10-14) crashed at 0x142e13533 in 0.589 FUN_142e130e0 — the block gated by state
+  bit 40 / +0x1461 & 0x40 and +0x947 (0.695 FUN_142eb1950 ≈ lines 584-605, the distance test against the local
+  player) — so the crash may come from that test's mask, not bit 7 [I]; the 0.695 local transition in FUN_142eb6a10
+  (+0x1452 & 2 branch: FUN_1431cae00, vtable +0xf8 → +0xf9, FUN_142d67090, FUN_142d4e890, vtable +0x478,
+  FUN_142ec9f70) is not traced to the end.
+- **Try next:** runtime capture (below); then send the Delta to the dead client too (DeadBodies).
+- **2026-10-26 (phaseE3-stale §3):** still open: DeadBodies (b0c86c6) sends no bit-7 delta to the dead client itself.
+
+### L209. Archived Player Studio FAQ (L185 counts) (phaseE2-social.md N2)
+- **Need:** live's approval / rejection counts, if the FAQ states them.
+- **Searched:** everything in L185; Wayback CDX lists landmarkthegame.com/player-studio-faq 20150610094924 and
+  /player-studio 20140706212019, but page fetches (id_ and normal, curl) returned the bot block page all session;
+  Common Crawl 2014-2016 indexes: no captures where they answered (several 502 / 504).
+- **Try next:** fetch those two snapshots once Wayback answers again (one page, slow, as forumscrape.py --slow);
+  help.daybreakgames.com Player Studio articles in the CDX index.
+
+### L210. Live's slate slab, seen (L180 template and height) (phaseE2-social.md N3)
+- **Need:** which slab (3x3 plus vs 1x1) and its height on a 2016 Pioneer site.
+- **Searched:** as L180; Wayback blocked this session.
+- **Try next:** the wiki image Landmark-pioneer-landscape.jpg and Verlin EQL's Pioneer video (youtube Lj7o-3o93Kg),
+  2016 Pioneer screenshots on the archived forums.
+
+### L211. A voice service for self-hosted servers (L181) (phaseE2-social.md N4)
+- **Need:** a Vivox-compatible endpoint the 2016 SDK (vivoxsdk_x64.dll, "%s/api2/", SIP) can log into, and the
+  server-side account / channel-URI scheme to hand out with VoiceLogin / VoiceJoinChannel.
+- **Searched:** the client (protocol decoded; no URI parsing; only "enlp.vivox.com" debug host); no open-source Vivox
+  server is known.
+- **Try next:** whether a current Vivox (Unity) developer account accepts the 2016 SDK's connector / login requests;
+  then a VOICE_* setting set (off by default, as there is no service) that sends VoiceLogin + Proximity / Guild /
+  Group channels as live did.
+
+### L212. trace/families_695 cite 0.589 case-function addresses (phaseE2-rebase.md L-R1)
+- **CLOSED 2026-10-26 (E3 housekeeping; phaseE3-stale.md F2):** the case-function lines were regenerated with 0.695 addresses at 07:52 (trace.py, NL1 parts 1-3); the rest is done: the orphan 0.589-numbered trace/families_695/0084_GuildDisband.md is deleted, the 34 "resolved by hand" lines now give each 0.589 address its 0.695 partner (trace.py maps re/out/manual_opcodes.tsv through functions.tsv in 0.695 mode), and the header names re/out/coverage_695.md.
+- **Need:** trace/families_695/*.md (generated 2026-10-26 "from 0.695") list dispatcher case functions with 0.589
+  addresses (e.g. 0026_PlayerUpdate.md PlayCompositeEffect: FUN_142bce750 FUN_142bb2f10 FUN_142be4330 — 0.589;
+  0.695 partners FUN_142c4c780 …). Readers following them land in the wrong build.
+- **Searched:** trace/families_695/0026_PlayerUpdate.md by hand; not in this task's file set.
+- **Try next:** add `trace/families_695` to `FILES` in re/tools/rebase695.py and re-run; or regenerate the family
+  files with the 0.695 addresses (the address map has every pair).
+
+### L213. coverage-695.md "Emulator" column is stale for built packets (phaseE2-rebase.md L-R2)
+- **CLOSED 2026-10-26 (E3 housekeeping; phaseE3-stale.md F1):** §10's Emulator column re-checked against HEAD 8219f7c (175 rows to handled / sent, the four heuristic false hits left alone), column header, §1 counts and §5 (now historical) updated; see the note under coverage-695.md's title.
+- **Need:** rows still say "not sent / not handled" for packets the server now handles: 0x26/0x1B CustomizationChange
+  (Barbershop.cs), 0x2D/0x1E ShowActivationFailure (ItemUses.cs), 0xF0/0x1D-0x1F (DesignMaterials.cs), 0xF9/0x63
+  PlayerEnteredClaim (Claims.cs), 0x10C/8 PlayEffect (StoryTools.cs, VoxelDestruction.cs).
+- **Searched:** the rows above while checking the server for each verdict.
+- **Try next:** re-run the generator of coverage-695.md (re/tools/coverage.py with the 0.695 inputs) against the
+  current client-0.695 head.
+
+### L214. Fold the 0.695 input fixes into trace.py / uimap.py, refresh coverage_695 statuses (phaseE2-families.md NL1)
+- **2026-10-26 (phaseE4-seen.md F4 / F5):** more scanner misreadings: the wrong byte is read as the sub for Activity and Groups, SkillAdminPacketEcho gets the wrong opcode, CountryCodes 0x15 reads "handled" when it reaches the commerce default branch. opcode_stats.tsv mixes three numbering eras (0.589, the old gateway translation, native 0.695), so its "default branch" table can never empty: start a fresh counter (L233).
+- **PARTLY CLOSED 2026-10-26 (E3 housekeeping; phaseE3-stale.md §3):** parts 1-3 were folded into trace.py / uimap.py at 07:51 and the outputs regenerated. Part 4: re/tools/coverage.py now reads `if (sub == X)` / `sub != X` / `.Body[0] == X` tests, constants with a comment before the separator, fully qualified handler attributes, raw routes (WorldEditing 0x10C), sub constants passed to Build / Send / Begin, class-qualified constant names, and stack opcodes at vftable +8 / +0x10; re/out/coverage_695.md, trace/families_695, REACHABLE-GAPS-695.md and ui_server_map_695.md are regenerated (0 UI gaps). Still open: the two 0.695 classes coverage_695.md lacks (PlayerUpdatePacketMobMovement, SetSpawnerActivationEffect), classes whose sub is written by their own serializer (Groups 0x2B reads as sub 1 for all 15), raw-byte senders (SendRaw, e.g. WorldEditing PlayEffect 0x10C/8), and part 5 (luabind_695 gives UnFollowCreator the placeholder vtable FUN_14324ff60, so it shows as 0x37).
+- **Need:** trace/families_695 (and anything reading it) to show real 0.695 evidence: (1) trace.py must not read the
+  0.589 re/out/messages.tsv in 0.695 mode as-is — keep the coverage_695 opcode and map case functions through
+  trace/0695/functions.tsv (or build a messages_695.tsv from re/out/agent_coverage_e/sd_695.tsv); (2) UI corpus =
+  re/as3 overlaid by re/as3_695 per window; (3) re/out/ui_server_map_695.md rebuilt on that corpus with
+  luabind_695 / coverage_695 and without the 70-character cut; (4) re/out/coverage_695.md statuses are from before the
+  2026-10-17 native renumbering ("sub NOT handled" for 0x45/0x37, 0x40, 0x32, 0x10D/0x16, 0xF9/0x45-0x46, 0x117/1 …,
+  all handled today) and it misses two 0.695 classes (PlayerUpdatePacketMobMovement, SetSpawnerActivationEffect) and
+  the opcode of 32 S→C classes; (5) luabind_695 attributes a vtable a native only returns as a placeholder
+  (FUN_14324ff60 → UnFollowCreator). trace/UI-AUDIT.md inherits (4) (e.g. RequestAllCellsForClaim "handled", NL2).
+- **Searched:** re/tools/trace.py:20-30, 185-215, 322-336; re/tools/uimap.py; re/out/messages.tsv,
+  ui_server_map_695.md, coverage_695.md; both installs' UI folders.
+- **Try next:** apply the replacements in re/out/pe2_families/trace695.py / uimap695.py to the tools (they are plain
+  string patches), regenerate trace/families_695 + FAMILIES_695.md, re-run coverage.py-for-695 against today's server,
+  then `python re/tools/famdiff.py --raw` should equal the corrected run.
+
+### L215. VoxelVision "all cells for claim" request 0xF0/0x12 is not answered (phaseE2-families.md NL2)
+- **CLOSED 2026-10-26 (8219f7c):** answered: 0xF0/0x12 GetInstanceDetailsRequest → 0x13 EnvironmentInstanceDetailsResponse (Game/TemplateInstances.cs:126-218; Templates.cs:872), and Voxel Vision shows placed Player Studio designs in the client's terrain (VoxelTemplateLookup after layer 1's block data); wire checked in phaseE3-wire-b.md §2.
+- **Need:** what the server must send for TemplatePacketClientGetInstanceDetailsRequest (0xF0/0x12, Lua
+  VoxelOwnership.RequestAllCellsForClaim FUN_1435ff2e0 → builder FUN_1431138e0, used by VoxelVisionWidget). The client
+  reads the reply TemplatePacketEnvironmentInstanceDetailsResponse 0xF0/0x13 in FUN_14310bbf0 case 0x11 (reader
+  FUN_143105fe0: u16, u8, u64, then FUN_1430ff920 + TemplateBasicData FUN_1430ff530 (0.695 shape, §B4), cells
+  FUN_143101860, a PropData list FUN_142fa7fb0) and hands it to FUN_14310b940. The server has no case for sub 0x12
+  (Game/Templates.cs:850-871 handles 1, 4, 6, 0xA, 0x1B, 0x1D, 0x1F) and never sends 0x13; the gap is the same in
+  0.589 (not a 0.695 change) and trace/UI-AUDIT.md lists the call as "handled" from the stale catalogue status.
+- **Searched:** re/out/pe2_families/families_695/00F0_Template.md, coverage-695.md:2164-2165, luabind_695.tsv,
+  LandmarkEmu (grep RequestAllCellsForClaim / InstanceDetails / sub 0x12 in Game/Templates.cs, Network/Handlers),
+  0.695 hudstate.lua:4196-4202 / events.lua:672 (how VoxelVision opens), trace/UI-AUDIT.md §VoxelVisionWidget,
+  OPEN-LEADS.md / TASKS.md (no entry).
+- **Try next:** trace FUN_14310b940 (what it fills: VoxelOwnership data sources / Lua events) and the cell reader
+  FUN_143101860; then answer 0x12 with the claim's template-instance cells in the 0.695 body (Templates.cs WriteBasicData
+  :612 already writes TemplateBasicData in the 0.695 shape). Check whether VoxelVision is reachable in retail (how
+  GameEvents.OnOpenVoxelVision is raised).
+
+### L216. Observer camera bounds (phaseE3-ui.md U-1)
+- **Need:** whether ControllerInstancedGameObserver clamps the free-fly camera (to the site or a radius), to know if
+  PropStreamRange around the frozen avatar can ever be too small.
+- **Searched:** activate / deactivate FUN_143062060 / FUN_143062170 and the action registration (part_0082
+  37660-40100).
+- **Try next:** the update function FUN_1430618d0 (reads camera +0x90, speed +0xb0) for a clamp against a claim box
+  (FUN_142d99550) or distance.
+
+### L217. TeamMembers for observers (phaseE3-ui.md U-2)
+- **Need:** whether live sent InstancedGame TeamMembers (sub 0x15) to observers, so their client colours / names
+  players by team.
+- **Searched:** SendTeamMembers (players only); client users of the map FUN_142ea9630 / FUN_142ea8f90 / FUN_1434e7280.
+- **Try next:** the nameplate colour path for a non-member viewer (FUN_1434e7280 callers) and whether the observer
+  HUD's status-change feed (widget 56) reads the team map.
+
+### L218. Where ClaimsPacketSetSupplementalData's 25 indices would be read (phaseE3-stale.md N-S1; low priority, unreachable sender)
+- **Need:** the S→C or claim-entry field that a 0-24 supplemental index addresses (the claim record carries only 5
+  "supplemental" strings, Claims.cs:1097-1101), to name what the admin tool would have set.
+- **Searched:** decompile grep "Supplemental" (only the class's ctor / dtor / three senders and the id table
+  FUN_1434bc510); text tables; LandmarkEmu.
+- **Try next:** the serializer slot of the ClaimsPacketSetSupplementalData vtable (find the vtable that holds
+  FUN_142db2270), then the claim-entry offsets near +0x48..+0xa8 for a 25-element array.
+
+### L219. Does the org's paste fix (#12, b3fccd0) cover a9f8d95's cube alignment? (phaseE3-stale.md N-S2)
+- **Need:** check whether HEAD's Building.PasteBase puts the turned *cubes* on the origin, as the client's
+  FUN_143c6eb20 does (grid size+1-s, cubes size-s). If it aligns the grid points instead, flipped axes would sit one
+  voxel low, as a9f8d95 described.
+- **Searched:** git log / show of a9f8d95, d400254 and b3fccd0; the test `Paste_TurnedLikeThePreview` is not on HEAD.
+- **Try next:** port a9f8d95's 48-turn test onto HEAD and run it (no code change), then the in-game check of NL-3.
+
+### L220. Guild rank-change message variant (phaseE3-wire-b.md NL-E3b-1)
+- **Need:** what +0x81 (and +0x80, +0x84, string +0x68) of GuildChangeMemberRankPacket mean, so the promote / demote
+  line reads right after F1's fix.
+- **Searched:** FUN_142ef15e0 (+0x81 selects placeholder 0xd/0xe or 0xb/0xc), FUN_142ef91f0 (client sends 0, 0,
+  DAT_14544268c).
+- **Try next:** read PTR_s_Placeholder_14520f1e0 entries 0xb-0xe and the CodeStringMappings they name; DAT_14544268c's
+  initializer.
+
+### L221. Virtual calls below the roots are not walked (phaseE3-deep.md L-D1)
+- **CLOSED 2026-10-26 (phaseE4-vtables.md):** walked: every vtable slot list read from the exe, manager globals typed, ~8,000 virtual call sites resolved, plus an upper-bound walk from every game-side vtable slot (1,271 changed functions, all read). No MISMATCH or GAP; re/tools/rtti.py no longer stops at 64 slots (rtti.tsv / rtti_695.tsv rebuilt, up to 241). Method limits are L234-L236.
+- **Need:** the walk follows direct FUN_ references only; manager methods called through a vtable
+  (`(**(code **)(*plVar + 0x48))(…)`) from a packet handler, and everything below them, are not reached.
+- **Searched:** index.pkl callees (direct references only); re/out/rtti_695.tsv has every 0.695 vtable with its slot
+  list, but the object class at a call site is not known statically.
+- **Try next:** resolve calls on singleton managers: find the store of `Class::vftable` into the object a `DAT_`
+  global points to (constructor + registration), map `DAT_x → class`, then `vtable slot = offset / 8` from
+  rtti_695.tsv; re-run walk.py with those edges added and diff the new uncited nodes the same way.
+
+### L222. Constants held in data, not code (phaseE3-deep.md L-D2)
+- **CLOSED 2026-10-26 (phaseE4-constants.md F1):** 14,444 initialised and 4,435 start-up-set data constants of all 233,295 function pairs read from both exes: no tuning value changed between 0.589 and 0.695, and every client value the server hard-codes matches 0.695 (F2). Data read only by 0.695-new functions is L238.
+- **Need:** a tuning value read from .rdata (float limits such as distances / speeds, e.g. the vehicle and placement
+  functions above whose only change is the DAT address) can change between builds without any code change; the
+  decompile comparison sees only the address.
+- **Searched:** the "moved float constant" functions in §2 (vehicles, FUN_142fbd5f0's 0x3f800000 literal is code).
+- **Try next:** read the 4-16 bytes at each paired DAT address from both executables (read-only, e.g. with
+  re/tools or pefile on copies) for the functions reached in this walk and list the values that differ.
+
+### L223. Did live announce the combat tiers? (phaseE3-text.md E3-T1, F2)
+- **Need:** proof that live sent GlobalAnnounce with 576045-576058.
+- **Searched:** design/forum (no "has become a Monster Slayer / Barren Banisher..." quote); the client tables (no
+  reference).
+- **Try next:** forum_raw and wiki talk pages for "has become a"; Reddit / YouTube transcripts of 2016 combat goal
+  grinds.
+
+### L224. The Feb 2017 build's Locale file (phaseE3-text.md E3-T2, F3)
+- **Need:** whether the final en_us_data.dat (CRC 10E110DF, docs/launchpad.md:108) restored 562150 / 564968 in full.
+- **Searched:** <0.699 copy> holds only UI\, no Locale.
+- **Try next:** a genuine final-build copy when one turns up; diff its text table with textdiff.py.
+
+### L225. What the time panel shows a Let's Decorate! builder (phaseE3-text.md E3-T3, F1)
+- **Need:** whether the 0.695 TimePanel greys out for builders without 0x10, or whether its Lua call simply does
+  nothing.
+- **Searched:** TimePanel.as (calls only) and FUN_142dd15d0.
+- **Try next:** the BuildModeTimeWidget data source (GetData "SceneTime" provider) for an "enabled" field; the in-game
+  check under F1.
+
+### L226. SendSelf +0x10 (u64) and +0x18 (string): what are they? (phaseE3-wire-a.md N1)
+- **Need:** the meaning of the first u64 (model `Guid`) and the string (model `AccountName`). Live: +0x10 =
+  0x2D4ADFB8 (≠ the character guid 0x4B561BAE72200691 at +0x30), +0x18 = "Freldam" (= the character's first name).
+  Server: both u64 = Character.Id, string = Account.Username — so the client may show or use the login name where live
+  had the character / display name.
+- **Searched:** the SendSelf dispatcher (FUN_142d1ccf0 case 2: logs +0x30 and +0xa8 only); "Player GUID" (game
+  +0x32500, not SendSelf); a scan of every function that loads the player (`… + 0xf18)` / DAT_145431a20) and then reads
+  +0x10 / +0x18 / +0x20 of it (11 / 7 / 7 hits, e.g. FUN_142cbada0, FUN_143637f60, FUN_1435e5500 — the ones opened were
+  other objects or the teardown); the Lua bindings GetName / GetPlayerName / SetChatLanguage (none read it);
+  docs/sendself.md, docs/unknowns.md, OPEN-LEADS (no entry).
+- **Try next:** a Frida read watch on player+0x10..+0x30 after login (who reads them), or Ghidra xrefs on
+  `[reg+0x18]` inside ClientPcData's methods 0x142fc0000-0x142fe0000. If +0x18 turns out to be shown (chat name,
+  social), send the character name as live did.
+
+### L227. Who queues composite effect id 0 (phaseE4-clientlogs.md L-E4-1, F2)
+- **Need:** the caller of the effect queue (FUN_143d576a0 / FUN_143d57a70) that passes id 0 in steady 3-per-tick bursts after a site's walk-on banner closes and during cave re-zones (1,843 "Missing effect definition for Id #0" lines on 10-18 / 10-21). The server sends only fixed non-zero effect ids.
+- **Searched:** every server effect sender; the client's effect-queue callers (phaseE4-clientlogs.md F2).
+- **Try next:** a read-only Frida hook on the two queue functions in a test copy, logging the caller when the id is 0.
+
+### L228. Cells the build cursor waits for that the server never answers (phaseE4-clientlogs.md L-E4-2, F3)
+- **Need:** which cells the client kept pending after an edit (3 s lock, 10-21 ~17:56: 8, 1 and 5 cells) that were not in the edit request; the server answers every cell named in the request.
+- **Searched:** PendingCellCursorLock.log, the server's edit and paste answers.
+- **Try next:** reproduce with the server's debug log on and FUN_143165920's pending list hooked; check neighbouring cells.
+
+### L229. Character select loads one outfit model with "[RACE][GENDER]" in its name (phaseE4-clientlogs.md F4)
+- **Need:** which packet field gives the character-select actor an unexpanded model name (Founder chest, one Anniversary chest; 6 times on 10-21). The real model loads 4 s later, so probably nothing shows.
+- **Try next:** compare the character-list equipment block with the in-world one for those two items.
+
+### L230. Did the build mode tool ever cast ability 186? (phaseE4-logic.md L-E4-3, F9)
+- **Need:** MiscHandler writes the travel cooldown into 186's caster info, and 186 is also the build-mode tool's default ability. If the build tool casts it, a non-zero TravelCooldownSeconds would put that tool on cooldown.
+- **Try next:** a capture of the build tool's casts; or give the caster info a cooldown only in the travel context.
+
+### L231. Did the client adopt a manifest note's version as its base for a cell it edits? (phaseE4-logic.md L-E4-2)
+- **Need:** whether the 0.695 client takes a ModifiedCellManifestUpdate version as its new BaseVersion for a cell it is editing. Decides whether the NewVersion-0 fix (local/e4-version-fix f6bfd10, AcceptsBaseZero) is needed beyond the first click.
+- **Try next:** in game: Add-tool clicks in one cell with the server's debug log on (BaseVersion of each click).
+
+### L232. Restore the Game Action Queue at login (phaseE4-seen.md NL1, F1)
+- **Need:** whether live sent ListNotifications back at login and what each Data type carries. Friend requests are resent since 2026-10-26 (d4d0ec4); group invites (keyed by session, Groups.cs:100) and trade invites are not.
+- **Try next:** key group invites by guid and resend them at entry; trace the trade invite's queue entry.
+
+### L233. A fresh opcode statistics counter (phaseE4-seen.md F4 / NL3)
+- **Need:** server-data/worlds/dev/opcode_stats.tsv holds 0.589, translated and native traffic since 10-15 (e.g. 0D010D10, 0D011500, 45003600, 45003F00, Claims 0xE3); other translation artefacts (Mail 0x1004, InGamePurchase 0x1030).
+- **Try next:** keep the old file as opcode_stats-pre0695.tsv and let the server start a new one at the next deploy.
+
+### L234. Secondary vtables Ghidra names after the class (phaseE4-vtables.md L-V1)
+- **Need:** exact vtable addresses for `*V = X::vftable` stores in multiply-inherited classes; exact call chains may point at the wrong one (the upper-bound result is not affected).
+
+### L235. Exact resolution covers 8 % of virtual call sites (phaseE4-vtables.md L-V2)
+- **Need:** exact packet → method chains for the other ~89,000 sites (receivers are parameters, list or listener entries). Only needed for exact chains.
+- **Try next:** pass argument types into callees.
+
+### L236. Function-pointer calls not through a vtable or a PTR_ global (phaseE4-vtables.md L-V3)
+- **Need:** ~9,800 `(*(code *)expr)(...)` sites (fields, parameters, table entries: listeners, callbacks) are unresolved.
+
+### L237. Which global is the TintDefinitionManager? (phaseE4-constants.md E4-C1)
+- **Need:** ArtTints.cs names DAT_145431310 (0.589 DAT_145351d90) and ArtData.cs DAT_1454313b8 for the manager whose lists the ArtData 0x116 handler replaces; one is wrong.
+- **Try next:** disassemble the call into FUN_143cd0780 inside FUN_142d08480 and see which global is passed (Ghidra lost the argument).
+
+### L238. Data read only by 0.695-new functions (phaseE4-constants.md E4-C2)
+- **Need:** the 3,013 0.695-new functions have no 0.589 partner, so their data values cannot be compared. Read them only when a trace of a new system needs them.
+
+### L239. Player Studio reviewer overrules counted retroactively (phaseE4-logic.md F11)
+- **Need:** a rejection counts as overruled when its product is listed with fewer approvals than the current PlayerStudioApprovals, so raising that setting (or staff listing a resubmitted product) turns old rejections into overrules and, with the default allowance 1, bars those reviewers for good.
+- **Try next:** store a "listed by staff" flag on the product at the staff decision (character and commerce databases: a migration in each) and count only those.
+
+### L240. The friend-group store (phaseE4-seen.md NL2, F7)
+- **Need:** the exact FriendExtraInfoEntry wire and whether FriendData +0x108 is a group name; no shipped UI creates friend groups, so nothing is lost today.
+
+### L241. Which tree model is which size (healthbar-d-sources.md §2; Gathering.TreeSize)
+- **Need:** live's tree → size (Health row 18 / 16 / 14 / 15 / 21, profile 200-214) table. It was server data: the client's
+  ProfileResourceMappings loader exists but the table was never shipped, and the PropBase dump has no profile [P]. Ours:
+  the size word in the model name, else the footprint [I] (palms and cacti least certain).
+- **Try next:** archived screenshots / videos of a named tree's target frame, the wiki tree prop pages, the in-game
+  Resources Guide (P1103), the 0.695 .adr files.
+
+### L242. Harvesting Damage of axes other than the Adventurer's (healthbar-d-sources.md §3; Abilities.ToolHarvestDamage)
+- **Need:** stat 12 for the Charmed / Hotfoot / Whirlwind / Goliath axes, the crafted Logger's..Lumberjack's (1925-1928),
+  the NovaTech extractors and the Founder's Pickaxe. Only the Adventurer's 80 is on disk (SendSelf.bin) [P]; ours: 80 for
+  all, Goliath 1.5 × [I]. items.json u41_46[1] groups them (350 / 351 / 352 / 276-279) [P values, I meaning].
+- **Try next:** wiki axe item images (tooltips), 2016 forum posts quoting tooltips, any other capture with an item record.
+
+### L243. Adventurer's Pick / Axe Harvesting Speed 60 on live, 50 here (healthbar-d-sources.md §3)
+- **Found [P]:** SendSelf.bin (live 2017-02-20) gives both stat 13 = 60 (0x42700000); Abilities.toolStats, DefaultTool,
+  ToolDisplayStats and docs/unknowns.md use 50. Not changed yet: the other tools' speeds were set relative to 50 (Hewer's 55 ...),
+  so the whole table needs re-basing together. **Try next:** decide the re-basing (× 1.2) and change it in one commit.
+
+### L244. Who put a tree in target slot 9 on live (healthbar-b-harvest-target.md)
+- **Need:** live's mechanism. Slot 9 is the client's own slot for a neutral entity (SetCurrentTarget) [P]; ours sends
+  nodes neutral (LightweightToFullProp +0x90 = 1) and answers any node target request with slot 9 [I]. A featherweight
+  object (AddFeatherweightObject 0x74, FUN_142cdd710: disposition 1 and a profile) would also be neutral [P code].
+- **Try next:** a capture with tree traffic (the Courage session bins, if they turn up): which spawn packet trees used,
+  and the TargetBase replies.
+
+### L245. Hostile creatures' bars at full health (healthbar-c-npc.md; verifier note)
+- **Need:** whether live showed a bar over every hostile creature at full health. The client rule does (FUN_143449e00:
+  hostile → bar, else only when injured) [P], and our wild creatures are hostile; the player report could describe live
+  ("bars ... only on NPCs I had aggro'd then ran away from"). Also: hostile bars are drawn past the 100 m name fade.
+- **Try next:** 2016 videos / screenshots of wild creatures at full health; compare after the 2026-10-31 fix in game.
+
+### L246. Felling-hit rewards per swing under tree health (healthbar fix review 2026-10-31)
+- **Need:** Tree Sap (15 %), RollDrops finds and the Hotfoot / Velocitizer speed burst come only with the felling hit
+  (Gathering.Chop); with trees now taking 10-29 swings instead of 5 / 8 they are 2-4 × rarer per swing. design/game-rules.md
+  says live rolled discovery on every swing. **Try next:** decide per reward (every swing at a scaled chance, or per tree).
+
+### L247. Effect id 0 sent while chopping (client log 2026-10-31)
+- **Seen:** the 0.695 client logged "Failed to QueueCompositeEffectAtLocation due to missing effect definition for Id #0!"
+  about 150 times during a chopping session (17:22-17:26), so some packet in the chop path (swing, chunk pinata, tree hit
+  or fall) carries composite effect 0. **Try next:** find which sender writes a 0 effect id (grep the swing / LootPinatas /
+  Gathering senders) and send nothing or the right effect.
+
+### L248. Client feels laggy (user, 2026-10-31; parked by the user)
+- **Measured:** server side clean (gateway ackPing 8 ms, no resends or drops; world CPU ~11 %; no slow ticks logged).
+  Client: ~2 cores, 4.4 GB private; slow frames only at load (60 / 12 / 6 / 6 s; ClientConfig DirectThreadCount=10 in the
+  user's 0.695 copy, LaunchPad would set 2). PC: a wsrust (WildStar project) Rust build plus a restarting wsrust world
+  container in the same Docker VM (~2 cores), 5 GB RAM free, pagefile 34 GB.
+- **Try next:** ask what the lag looks like (frame rate, input delay, entity jumps, area streaming); retest with
+  DirectThreadCount 2 and the wsrust stack stopped.
+
+### L249. The client's selection erase rules (voxdel-a/b/c; Game/BuildingDelete.cs)
+- **Need:** exactly which voxels VoxelFarm's op 1 (FUN_143f97df0(core, 1, 1, [origin, origin + (size − 1) voxels + 0.5 dm],
+  10) → FUN_142aef6d0 → editor vtable +0x30) changes: the box edges, neighbouring vertex offsets, layer 0 / 2. The server
+  erases size voxels per axis and then sends the player its cells, so a difference shows as edge voxels changing once.
+- **Try next:** decompile the editor's +0x30, or Frida FUN_1431608c0 on a patched test copy; compare with `cellcompare on`.
+
+### L250. Props under a selection Delete / Cut on live (voxdel-d)
+- **Built [I]:** the props standing in the box that the player may remove are taken down and refunded as materials (help
+  page Tools_Large.html; P2954; P0036). Unknown: whether live's undo of the Delete brought the props back, and which box
+  (the copy's size + 1 voxels is used).
+
+### L251. AddTemporaryBlockRequest 0xF4 sub 0 unanswered (voxdel-a)
+- **Need:** what the Stamp / FillStamp cursor's AddTemporaryBlockRequest (FUN_14315fbc0) is for and whether the client
+  expects a reply. It changes nothing locally, so it is not part of the selection-delete bug.
+
+### L252. The axes' target rule and tree profiles on live (axe-a-client.md, axe-b-server.md)
+- **Built [I]:** CasterInfoReply +0x90 = 20 for 1020 / 176 / 173 / 1037 and trees sent with profile 200 + 3 × size + wood.
+  No live tool CasterInfo or tree spawn with +0x1a0 is on disk. Unchecked side effects of a profile: FUN_142ec55e0 compares
+  it with three client config values (hashes -0xba6a6f0, 0x688b992b, 0xdcc5202) and the HUD indicator may label trees by
+  their profile name. **Try next:** any live capture with tool caster info or tree spawns; check those config values.
+
+### L253. Replicator recipes: 765 has no components, reward sets unused (craft-b-server.md)
+- **Need:** recipe 765 (Adventurer's Grappling Hook, Replicator) has no RecipeComponents rows in 0.695, so it crafts for
+  free; 132 recipes carry a REWARD_SET_ID the server never uses (1442 → 979, 1574 → 970). What did live charge / grant?
+- **Try next:** design/wiki and forum for the Replicator and the grappling hook's cost; any capture of a Replicator craft.
+
+### L254. Station window: sub 7's station guid and the craft UI's PointOfNeed request (craft-a-client.md)
+- **Need:** RecipeBase sub 7 carries a station guid the client uses for its own distance close (radius = the entity's
+  interaction range × 1.3); the server sends 0 (its own close runs instead). The client also sends InGamePurchase 0x47
+  PointOfNeedRequest on every recipe selection, which nothing answers (PointOfNeedInfoResponse 0x4C).
+- **Try next:** the watch's reference point (pivot or bounds) before sending the guid; trace PointOfNeedInfoResponse.
+
+### L255. Interaction reach and the held-tool outline (highlight-a-client.md, highlight-b-server.md)
+- **Found [P]:** the hover highlight is red out of reach and gold in reach (box gap <= max(entity, player +0x4118)); our
+  replies (type 3, range 6, outline 1) are correct; a held tool's slot-1 outline can cover it. The user's "red even up
+  close with an axe or pick" went away after a fresh login with the axe target rule (2026-10-31).
+- **Need:** live's reach (we send 6 m; the client default is 10 m) and whether a held pick covers the highlight too.
+- **Try next:** compare 6 vs 10 m in game; test with a pick held; tool-held trace notes trace/0695/highlight-c/d (if written).
+
+### L256. The Spire area's carrier and the 360 m ring (spire-claims.md)
+- **Built [I which prop]:** GlobalAreas 3 (90 m sphere) on the Hub prop (1871). Live may have put it on the Portal
+  Crystal (575, 1.7 m away), and area 27 (r 360 m, Prevent Spawning, the same requirement source) may be a second ring on
+  another Spire prop (P1830's "suppress procedural props" over 360 m?). The Hub entity may have had profile 88
+  (Requirements 17 "TargetIsHUB"). Sites placed over a Spire before the fix are not removed (live deleted them, P1828 /
+  P1833); FreeBuild players see no client refusal (the server's one shows after placing).
+- **Try next:** captures with Spire spawns; the readers of area 27; an in-game test with FreeBuild off.
+
+### L257. Trees after a site goes, and creatures in open sites (claim-trees.md)
+- **Built [I]:** a removed site's spots refill through respawns below the minimum or at the next start (live's exact rule
+  unknown). Creatures still use Claims.MayEdit(0, …) for their spawn points (Creatures.cs), so they can spawn in sites whose
+  Default Access includes Build; trees no longer do. **Try next:** 2015-16 forum posts on deleted sites and trees; use
+  Claims.CoversPoint for creature spawns too.
 
 ## Found
 
@@ -2242,6 +2667,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
   (the logged remainder starts 73 = 's'). Reader fixed (AuthServer LoginRequest.cs).
 
 ### L5. Gateway external opcode 9 (commands for the gateway)
+- **CLOSED 2026-10-26 (phaseE3-stale.md §3):** found 2026-10-15 (moved to Found then) and built: 9e59ec8 (dynamic commands) / 01d1a37 (gateway command list, /gatewayprofiler). Only this closing line was missing.
 - **Need:** its class name and what the gateway answers.
 - **Searched:** RTTI Gateway::ExternalPackets::* (no class for 9).
 - **0.695 checked:** RTTI has the same 14 Gateway:: classes, none for opcode 9.
@@ -2253,6 +2679,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
   the client (page 24 text); the rest not found yet. (Coordinator: move to Found.)
 
 ### L6. What selects the TCP login API
+- **CLOSED 2026-10-26 (phaseE3-stale.md §3):** found 2026-10-15 (moved to Found then); built 2191f7b (CharacterLoginRequest tail LocaleId + GatewayId, a non-zero GatewayId logged). Only this closing line was missing.
 - **Need:** what makes the client use Login::ExternalLoginTcpApi instead of the UDP one.
 - **Searched:** static callers of both ctors (none), strings ("LoginUdp_10").
 - **Try next:** ClientConfig.ini / LocalConfig.ini keys read near the login setup, the 0.695 decompile, indirect
@@ -2263,6 +2690,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
   (Coordinator: move to Found.)
 
 ### L1 (13 of 14). Procedural placement mask bitmaps — found 2026-10-15
+- **CLOSED 2026-10-26 (phaseE3-stale.md §3):** the 13 masks are found (this entry); the 14th, TilingTestZZ.bmp, is closed by design in its own entry L1 under Open (2026-10-17). Only this closing line was missing.
 - **Answer:** loose files in `CommonData\ProceduralPlacementTool\Masks\` of both installs (0.589 Steam and 0.695, same
   sizes): PPP_Mask_Clumps001_Field02 / Inner02, PPP_Mask_Forest_Clearing01 / MainTrees01 / MainTrees02 / Spots01 /
   Undergrowth01 / Undergrowth02 (4096×4096), PPP_Mask_DualForests_Field01 / ForestA01 / ForestA02 / ForestB01
@@ -2273,6 +2701,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
 - **Source:** re/out/fileindex_589.tsv, fileindex_695.tsv; trace/0695/agent-L1-L2.md (Task 2).
 
 ### L2 (schemas + packet). ProceduralPlacementEntityLists / ...EntityListEntities — found 2026-10-15
+- **CLOSED 2026-10-26 (phaseE3-stale.md §3):** schemas and packet found (this entry); the row data is closed in its own entry L2 under Open (min / max respawn model built 3c8f9c4). Only this closing line was missing.
 - **Answer:** not shipped and never loaded by the client; the names are only labels in the 0x10A
   ProceduralDataMonitorPacketUpdateResponse ctor (FUN_142bcf5d0; 0.695 FUN_142c69030). The client holds both schemas:
   EntityListEntities = ID, ENTITY_LIST_ID, ENTITY_LIST_USE_TYPE_ID, ENTITY_ID, ENTITY_GROUP_ID, MIN_SPAWNS_PER_ZONE,
@@ -2284,6 +2713,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
 - **Source:** trace/0695/agent-L1-L2.md (Task 3).
 
 ### L98. Story creature faction on the client (nameplate colour) — FOUND 2026-10-16 (trace/0695/full-npc-695.md: disposition +0x147c 0 hostile / 1 neutral / 2 ally from LightweightToFullNpc +0x90 or SetDisposition 0x26/0x14; built 0cc86a8)
+- **CLOSED 2026-10-26 (phaseE3-stale.md §3):** FOUND and built 0cc86a8, as the header says; only this closing line was missing.
 - **Need:** how live told the client a story creature's faction (Ally / Neutral / Enemy), so allies don't show red
   enemy nameplates (seen 2026-10-16: ally Slaug Stormslashers fighting Barren Flameblades on a cave site, red names).
 - **Found 2026-10-16 [P]:** hostility FUN_142ea9630 compares entity +0x1448 (the lightweight packet's FactionId: the
@@ -2372,6 +2802,8 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
   ProjectileDefinitions lookup (client FUN_142bc5360).
 
 ### L140. Client→server messages parked by the E.3 triage (re/tools/verdicts.tsv "parked", E.3)
+- **CLOSED 2026-10-26 (phaseE3-stale.md §3; phaseE3-stale.md F3):** all 58 parked rows triaged 2026-10-18 (agent-l140.md) and the build list built (6513c82); the one sub-lead, L170, is closed; claim supplemental data (ClaimsPacketSetSupplementalData 0xF9/0x3E) is closed UNREACHABLE: the +0xB0 admin-client check is FUN_142b21000 `return 0`; senders FUN_142dd1e50 / FUN_142dd1f90 are unreferenced; FUN_142dd0510 is called only from the template chain FUN_1431105c0, behind the same check. The server ignores 0x3E (Claims default branch), correctly. Where its 25 indices would land: new lead L218.
+- **2026-10-26 (phaseE2-rebase.md):** claim supplemental data (ClaimsPacketSetSupplementalData 0xF9/0x3E, senders FUN_142dd1e50 / FUN_142dd1f90) takes index 0-24 in 0.695 (0-23 in 0.589) [P]; if it is built, accept index < 0x19. (Superseded the same day by phaseE3-stale.md F3: unreachable on the retail client, see the line above.)
 - **2026-10-18 (agent-l140.md): TRIAGED all 58 parked rows** — build list (Evac to Safety teleport subs 0x1E/0x51 / 0x52 / 0x3F6 freeze the player without a TeleportToLocation answer; Combat 0x24 subs 2-4; hidden /party subs; accept-and-log rows) being built on local/evac; the rest closed as unreachable on retail 0.695 with the evidence in the report (§2-§4). Open as L170: whether live melee used server-started targeters (0x27/9).
 - **Need:** for each parked class, proof either way that live Landmark used it: group looking-for-more / auto-group
   (Lua Groups natives without a UI caller), lobby / mini-game / encounter-matchmaking invitations, repeating activities,
@@ -2399,6 +2831,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
   (FUN_14307c780 states, ownership change on a SpawnLoot update?).
 
 ### L142 — Claim server connection lost (ClaimsPacketLostClaimServerConnection)
+- **CLOSED 2026-10-26 (phaseE3-stale.md §3):** FOUND in the 2026-10-17 sweep and built d7d3018 (0xF9/0x12 sent when the Environment Server is away). Only this closing line was missing.
 - **Sweep 2026-10-17: FOUND** — 0xF9/0x12 has no body and shows text 562155 as a system and chat message; nothing is blocked (evidence: trace/0695/agent-leads-sweep.md).
 - **Need:** when live's zone told the client its claim server was gone, and what the client then blocks.
 - **Known:** live ran claims as its own service (live-architecture replica, trace/architecture/); the emulator keeps
@@ -2428,12 +2861,14 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
   the grief level (field +8 of the grief object), the Report Player flow.
 
 ### L145 — Admin console command table at 0x1447e9698 (DebugPathQueryRequest)
+- **CLOSED 2026-10-26 (phaseE3-stale.md §3):** FOUND 2026-10-17 (VoxelPathFindVisualizeCursor, vtable slot 83; the request is handled as an admin sub). Only this closing line was missing.
 - **E-leads 2026-10-17: FOUND — VoxelPathFindVisualizeCursor vtable slot 83 (tool PathFindVisualize, not in the palette); request {vec4, vec4, u8} (agent-e-leads.md).**
 - **Need:** what the pointer table holding FUN_14379b600 (AdminCommandPacketDebugPathQueryRequest 0x1E / 0x4A7) is,
   and whether the retail client can reach it (slash command, admin-player flag, or admin client only).
 - **Try next:** read the table around 0x1447e9698 (neighbouring entries, name strings), find its users.
 
 ### L146 — Items inside a claim (ClaimsPacketIdDebugAddItemClaim, ClaimRequestMoveItemToPlayer)
+- **CLOSED 2026-10-26 (phaseE3-stale.md §3):** FOUND 2026-10-17 and built 5cc61f1 (a build site's inventory = its placed props' items). Only this closing line was missing.
 - **E-leads 2026-10-17: FOUND — a claim's inventory is its placed props' items; replies 0xF9/0x0D and 0x37; 0x23 is client → server (agent-e-leads.md).**
 - **Need:** whether a Landmark claim held items (the /item claimAddItem and claimItemToInventory admin commands move
   items into / out of a claim; Claims 0xF9 / 0x60 and 0x23).
@@ -2447,6 +2882,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
 - **Try next:** archived Showcase / Marketplace pages, forum price threads, Player Studio fee posts.
 
 ### L148 — Player Studio design prices
+- **CLOSED 2026-10-26 (phaseE3-stale.md §3):** "the store gives designs free" is no longer true: cb06bde / fbf760c (a design costs the creator's price in Lumens, the creator gets a share, listing fee and per-design minimum price). The DBC → Lumen rate is L147's question.
 - **Need:** live charged a design's creator-set DBC price; the store gives designs free. The listing price field
   (Commerce) and the creator share, converted to Lumens at the store rate.
 
@@ -2507,6 +2943,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
   play (as Creatures.ResolveShots does) — no double splash.
 
 ### L157. Which ProjectileDefinitions row each player weapon fired (bows, staves, wands, rayguns)
+- **PARTLY CLOSED 2026-10-26 (phaseE3-stale.md §3):** built be4ab3f / 53bdcc1 / 785b579 (player weapons and outpost archers fire their ProjectileDefinitions rows). Still open: the ScorpionBush / kobold-spear rows, which no creature uses (could be closed as best evidence).
 - **Need:** the weapon → projectile row mapping (server data on live). Rows 85-121 are one arrow / bolt per affinity,
   22 / 27-36 / 58 staff basic attacks, 23-26 / 45-48 / 56-57 / 68-82 bow trails (agent-l138-c1.md §1).
 - **Try next:** match row names to weapon item models / affinities [I]; patch notes on Raygun arcs (25 May 2016).
@@ -2552,6 +2989,7 @@ re/decomp_all_695 exists. Move an entry to **Found** with its answer and source 
 - **Try next:** the report's §3d steps; compare a live capture of those abilities if one exists.
 
 ### L161. The "retrieve missing Adventurer's Tools" grant (ItemGroupMappings group 6, text 562716; agent-l138-c2.md §2)
+- **PARTLY CLOSED 2026-10-26 (phaseE3-stale.md §3):** the Resupply Chest grant is built (BUILT 2026-10-17 below). Still open: whether live restocked anything else from it.
 - **BUILT 2026-10-17 [P source, I rule]:** the Spire template holds prop 884 "Resupply Chest" — the chest of the 31 Mar 2015
   hotfix ("missing tools can be obtained from the chest at spires"). Using it now gives back each of the item-group-6
   starter tools (3253 pick, 3259 axe) the player has none of, with text 562716 (Spire.Resupply; harness: 2 given back,

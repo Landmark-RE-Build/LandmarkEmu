@@ -275,6 +275,8 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
             if (session.WorldReady && !Game.PlayerManager.Snapshot().Contains(session))
                 Game.PlayerManager.Enter(session);
             Game.PlayerManager.Reintroduce(session);
+            // An admin's /setmodel look on the player's own, newly built character (SendSelf has no such field).
+            Game.TemporaryAppearance.SendOwn(session);
             Game.Teleport.FinishRezone(session);
         }
 
@@ -363,8 +365,8 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
             // Saved chat bubble colours (only when not the client's defaults; Game.ChatBubbleColor).
             Game.ChatBubbleColor.SendOwn(session);
             SendTravelCasterInfo(session);
-            foreach ((uint equipSlot, var item) in session.VisibleEquipment())
-                session.EnqueueMessage(session.BuildEquipmentSlot(equipSlot, item));
+            foreach (var slotPacket in session.EquipmentSlotPackets())
+                session.EnqueueMessage(slotPacket);
             // Achievement
             // Achievement
             Game.Achievements.SendInitial(session);
@@ -497,8 +499,9 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
 
         static MiscHandler()
         {
-            // 186: the build-mode tool's default ability (asked for every second inside a claim). Not in the client's
-            // tables; answered with the 1098 layout (60 m range) until its real values are known.
+            // 186: the build-mode tool's default ability (asked for every second inside a claim) and Travel to My Site.
+            // Not in the client's tables; answered with the 1098 (Cozy Campfire) layout. Its +0x70 is the cooldown, not a
+            // range (store FUN_142e187a0 → record +0x14c, L182): CapturedCasterInfo writes the travel setting there (L188).
             string template = capturedCasterInfo[1098];
             capturedCasterInfo[186] = "BA-00-00-00" + template.Substring(11).Replace("4A-04-00-00", "BA-00-00-00");
             // 185: Travel → Spire, same layout.
@@ -549,6 +552,10 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
             byte[] body = Convert.FromHexString(hex.Replace("-", ""));
             if (ability == Game.Abilities.FriendTeleportAbility)
                 BitConverter.GetBytes((float)Game.Abilities.FriendTeleportCooldownSeconds).CopyTo(body, CasterInfoCooldownAt);
+            // Spire / My Site: the setting TravelCooldownSeconds (0 = live 2016) instead of the campfire capture's 60 s
+            // (OPEN-LEADS L188, Abilities.TravelCooldownSeconds).
+            else if (Game.Abilities.HasTravelCooldown(ability))
+                BitConverter.GetBytes((float)Game.Abilities.TravelCooldownSeconds).CopyTo(body, CasterInfoCooldownAt);
             return body;
         }
 

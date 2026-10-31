@@ -771,6 +771,14 @@ namespace LandmarkEmulator.SocialServer
                 w.Write(player.Guid);
                 w.Write(player.Name);
                 w.Write(newRank);
+                // The packet's tail (0.695 reader FUN_142ee4550: string +0x68, bool +0x80, bool +0x81, u32 +0x84): the
+                // client drops a body that stops short, so without it no member's roster moved until a relog
+                // (phaseE3-wire-b.md F1). Values as the client's own copy (FUN_142ef91f0); +0x81 picks the message
+                // variant [I].
+                w.Write("");
+                w.Write(false);
+                w.Write(false);
+                w.Write(0u);
             }));
             PushZoneState(new[] { target });
             log.Info($"{player} set {member.Name}'s guild rank to {guild.Ranks.FirstOrDefault(x => x.Id == newRank)?.Name ?? newRank.ToString()}.");
@@ -799,6 +807,14 @@ namespace LandmarkEmulator.SocialServer
                     w.Write(player.Guid);
                     w.Write(player.Name);
                     w.Write(rank);
+                    // The packet's tail (0.695 reader FUN_142ee4550: string +0x68, bool +0x80, bool +0x81, u32 +0x84):
+                    // the client drops a body that stops short, so without it no member's roster moved until a relog
+                    // (phaseE3-wire-b.md F1). Values as the client's own copy (FUN_142ef91f0); +0x81 picks the message
+                    // variant [I].
+                    w.Write("");
+                    w.Write(false);
+                    w.Write(false);
+                    w.Write(0u);
                 }));
             AddLog(guild, LogNewLeader, "", member.Name);
             SaveGuild(guild);
@@ -984,7 +1000,10 @@ namespace LandmarkEmulator.SocialServer
             {
                 w.Write(model.Id);
                 w.Write(model.Name);
-                for (int i = 0; i < 5; i++)
+                // Core +0xa8, the alias = the member's own nameplate tag (client FUN_142eedd60): the guild name, as the
+                // client's Guild.Rename sends it (zone Game/Social/GuildTags.cs, OPEN-LEADS L196 OL-1).
+                w.Write(model.Name);
+                for (int i = 0; i < 4; i++)
                     w.Write("");
                 w.Write(model.Description ?? "");
                 w.Write(model.LeaderGuid);

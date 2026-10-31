@@ -201,10 +201,22 @@ namespace LandmarkEmulator.Tests.Packets
                 Assert.Equal(178, body.Length);
                 Assert.Equal(187u, BitConverter.ToUInt32(body, 79));
                 Assert.Equal((byte)1, body[83]);
-                Assert.Equal(60f, BitConverter.ToSingle(LandmarkEmulator.WorldServer.Network.Handlers.MiscHandler.CapturedCasterInfo(185), 21));
+                // Spire / My Site follow their own setting (L188), not the friend one: 0 here.
+                Assert.Equal(0f, BitConverter.ToSingle(LandmarkEmulator.WorldServer.Network.Handlers.MiscHandler.CapturedCasterInfo(185), 21));
             }
             using (new Support.FakeWorld())
+            {
                 Assert.Equal(0f, BitConverter.ToSingle(LandmarkEmulator.WorldServer.Network.Handlers.MiscHandler.CapturedCasterInfo(187), 21));
+                // No Spire / My Site cooldown by default (live 2016; the old 60 s was the Cozy Campfire capture's).
+                Assert.Equal(0f, BitConverter.ToSingle(LandmarkEmulator.WorldServer.Network.Handlers.MiscHandler.CapturedCasterInfo(185), 21));
+                Assert.Equal(0f, BitConverter.ToSingle(LandmarkEmulator.WorldServer.Network.Handlers.MiscHandler.CapturedCasterInfo(186), 21));
+            }
+            using (new Support.FakeWorld(c => c.TravelCooldownSeconds = 600))
+            {
+                Assert.Equal(600f, BitConverter.ToSingle(LandmarkEmulator.WorldServer.Network.Handlers.MiscHandler.CapturedCasterInfo(185), 21));
+                Assert.Equal(600f, BitConverter.ToSingle(LandmarkEmulator.WorldServer.Network.Handlers.MiscHandler.CapturedCasterInfo(186), 21));
+                Assert.Equal(0f, BitConverter.ToSingle(LandmarkEmulator.WorldServer.Network.Handlers.MiscHandler.CapturedCasterInfo(187), 21));
+            }
         }
 
         /// <summary>

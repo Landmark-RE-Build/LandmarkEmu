@@ -28,7 +28,7 @@ Run from `dev_commands.txt` or the admin menu's *Any command* (see [Running dev 
 | `hitnear` | `hitnear <damage>` | Console / admins | The nearest creature takes a hit from this player. |
 | `kobold` | `kobold [dx dz]` | Console / admins | A hostile kobold next to the player. |
 | `meleetargeters` | `meleetargeters on\|off` | Console / admins | Melee weapon replies with or without their client Sweep targeter; the targeted players get their attack info again. |
-| `npc` | `npc <model> [dx dz]` | Console / admins | Spawn a creature model next to the player (visual test). |
+| `npc` | `npc <model> [dx dz]` | Console / admins | Spawn a creature model next to the player (visual test). npc reload | goto &lt;id&gt; | reset | flag &lt;id&gt; &lt;key&gt; [value]: world NPC scripting helpers. |
 | `pathing` | `pathing [on\|off]` | Console / admins | Creature navigation — the walkable floors at the player's spot and each creature within 40 m (nav kind, straight line to the player, path), logged; on / off switches it until the restart (setting CreaturePathing). |
 | `pathquery` | `pathquery dx dy dz` | Console / admins (the target must be an admin) | The PathFindVisualize tool's DebugPathQueryRequest (0x1E / 0x4A7) from the player to that offset, answered in chat (AdminCommands.DebugPathQuery; admins only, as from the client). |
 | `projectile` | `projectile <definition> [distance] [speed]` | Console / admins | Projectiles fly at the player from N / S / E / W; Delete at arrival. speed 0 = the definition's own. |

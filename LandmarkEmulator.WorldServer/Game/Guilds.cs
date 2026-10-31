@@ -474,6 +474,7 @@ namespace LandmarkEmulator.WorldServer.Game
             });
             SendGuild(session, guild);
             Notify(session, NotifyCreated, model.Name);
+            Social.GuildTags.Changed(characterId);
             Achievements.GuildJoined(session);
             log.Info($"{session.CharacterName} created guild {model.Id} '{model.Name}'.");
         }
@@ -569,6 +570,7 @@ namespace LandmarkEmulator.WorldServer.Game
             SendGuild(session, guild);
             SendToMembers(guild, BuildAddMember(guild, session.PlayerGuid, session.CharacterName, MemberRank), session);
             AddLog(guild, LogJoined, session.CharacterName, "");
+            Social.GuildTags.Changed(characterId);
             Achievements.GuildJoined(session);
             log.Info($"{session.CharacterName} joined guild {guildId}.");
         }
@@ -907,6 +909,7 @@ namespace LandmarkEmulator.WorldServer.Game
             });
             if (PlayerManager.FindByGuid(characterId) is WorldSession leaver)
                 leaver.EnqueueMessage(ZoneMessageOpcode.GuildBase, removed);
+            Social.GuildTags.Changed(characterId);
             if (!ended)
             {
                 SendToMembers(guild, removed);
@@ -955,6 +958,8 @@ namespace LandmarkEmulator.WorldServer.Game
             byte[] packet = Build(DisbandSub, w => w.Write(guildId));
             foreach (WorldSession member in online)
                 member.EnqueueMessage(ZoneMessageOpcode.GuildBase, packet);
+            foreach (WorldSession member in online)
+                Social.GuildTags.Changed(member.PlayerGuid);
             log.Info($"{session.CharacterName} disbanded guild {guildId}.");
         }
 
@@ -1056,15 +1061,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 model.RankId = rank;
                 c.MarkModified(model, nameof(model.RankId));
             });
-            SendToMembers(guild, Build(ChangeMemberRankSub, w =>
-            {
-                w.Write(guild.Model.Id);
-                w.Write(target);
-                w.Write(name);
-                w.Write(session.PlayerGuid);
-                w.Write(session.CharacterName ?? "");
-                w.Write(rank);
-            }));
+            SendToMembers(guild, BuildChangeRank(guild.Model.Id, target, name, session.PlayerGuid, session.CharacterName ?? "", rank));
             // Level 1 is the top: a smaller level is a promotion.
             bool promoted;
             lock (sync)
@@ -1108,15 +1105,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 }
             });
             foreach ((ulong who, string whoName, uint rank) in new[] { (target, name, LeaderRank), (leader, leaderName, formerRank) })
-                SendToMembers(guild, Build(ChangeMemberRankSub, w =>
-                {
-                    w.Write(guildId);
-                    w.Write(who);
-                    w.Write(whoName);
-                    w.Write(leader);
-                    w.Write(session.CharacterName ?? "");
-                    w.Write(rank);
-                }));
+                SendToMembers(guild, BuildChangeRank(guildId, who, whoName, leader, session.CharacterName ?? "", rank));
             AddLog(guild, LogNewLeader, "", name);
             ResendGuild(guild);
             log.Info($"{session.CharacterName} handed the leadership of guild {guildId} to {name}.");
@@ -1191,7 +1180,10 @@ namespace LandmarkEmulator.WorldServer.Game
             {
                 w.Write(model.Id);
                 w.Write(model.Name);
-                for (int i = 0; i < 5; i++)
+                // Core +0xa8, the alias: the player's own nameplate tag (FUN_142eedd60 → FUN_142ec2610). The client's only
+                // alias request (Guild.Rename) sends the name for it, so it is the name (Social.GuildTags, L196 OL-1).
+                w.Write(model.Name);
+                for (int i = 0; i < 4; i++)
                     w.Write("");
                 w.Write(model.Description ?? "");     // core +0x108: the window's Description (FUN_142e5c6f0)
                 w.Write(model.LeaderId);
@@ -1531,6 +1523,29 @@ namespace LandmarkEmulator.WorldServer.Game
                 w.Write(row);
             w.Write(guildId);
         });
+
+        /// <summary>
+        /// GuildChangeMemberRank 0x0A (S→C; 0.695 reader FUN_142ee4550, handler FUN_142ef15e0 moves the member in every
+        /// online roster and shows the promote / demote line): u64 guild, u64 member, string member name, u64 changer,
+        /// string changer name, u32 rank, then string (+0x68), bool (+0x80), bool (+0x81, picks the message variant [I]),
+        /// u32 (+0x84). The client drops a body that is not read to its end; until 2026-10-26 the last four fields were
+        /// missing, so no member's roster moved until a relog (trace/0695/phaseE3-wire-b.md F1). Their values are the ones
+        /// the client fills in its own copy (FUN_142ef91f0): "", false, false, 0.
+        /// </summary>
+        internal static byte[] BuildChangeRank(ulong guildId, ulong member, string memberName, ulong changer, string changerName, uint rank)
+            => Build(ChangeMemberRankSub, w =>
+            {
+                w.Write(guildId);
+                w.Write(member);
+                w.Write(memberName);
+                w.Write(changer);
+                w.Write(changerName);
+                w.Write(rank);
+                w.Write("");
+                w.Write(false);
+                w.Write(false);
+                w.Write(0u);
+            });
 
         private static byte[] Build(ushort sub, Action<GamePacketWriter> write)
         {

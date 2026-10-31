@@ -70,6 +70,13 @@ namespace LandmarkEmulator.CommerceServer
         public bool PlayerStudioStaffReview { get; set; } = true;
 
         /// <summary>
+        /// A reviewer whose rejections staff overturned this many times is offered no more reviews (wiki Player Studio: such
+        /// a reviewer "will stop getting items to review"; StudioRules.MayStillReview); 0 = never held back. Default 1
+        /// [I count]. Docker: PLAYER_STUDIO_REVIEWER_OVERRULES (world and commerce alike).
+        /// </summary>
+        public uint PlayerStudioReviewerOverrules { get; set; } = 1;
+
+        /// <summary>
         /// The Player Studio creator's share of the Lumens a buyer paid for their design, in percent (ProductService.Taken;
         /// the same rule as WorldServer.json PlayerStudioCreatorSharePercent for in-process commerce). 40 = live's
         /// 60/40 split of each sale's net revenue (Update Notes 18 Jun 2014), the creator's side being the 40 [W].

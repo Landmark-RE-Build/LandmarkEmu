@@ -59,6 +59,22 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
         /// </summary>
         public bool Afk { get; set; }
 
+        /// <summary>
+        /// Blob u32 just before the title: the temporary appearance (a Models.txt id, 0 = none). The 0.695 case-0x5B
+        /// handler (FUN_142cdfa60 case 0x5a) stores a non-zero value in entity +0x24a0 (<c>plVar24[0x494]</c>); once the
+        /// character's actor exists FUN_142eb8600 turns it into a PlayerUpdate UpdateTemporaryAppearance and applies it
+        /// (FUN_142eca100, ProxiedCharacter::SwitchToTemporaryAppearance) [P]. So a player who meets an admin already
+        /// shown as another model (/setmodel, <see cref="Game.TemporaryAppearance"/>) sees that model too.
+        /// </summary>
+        public uint TemporaryAppearance { get; set; }
+
+        /// <summary>
+        /// The guild tag under the name, the blob's third string (+0xf8): the case-0x5B handler hands it to FUN_142ec2610
+        /// (entity +0x21a8, the nameplate's PlayerNameWithGuildTag line) unconditionally, so it must be the player's
+        /// current one ("" = none). Game.Social.GuildTags (OPEN-LEADS L196 OL-1) [P].
+        /// </summary>
+        public string GuildTag { get; set; } = "";
+
         public void Write(GamePacketWriter writer)
         {
             var blob = new List<byte>();
@@ -101,10 +117,10 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
             writer.Write(0u);
             writer.Write("");
             writer.Write("");
-            writer.Write("");
+            writer.Write(GuildTag ?? "");       // +0xf8 guild tag (FUN_142ec2610)
             // Temporary appearance model (ProxiedCharacter::SwitchToTemporaryAppearance). Non-zero swaps the character
-            // to that bare model and hides its own body, so it stays 0 unless a transformation is wanted.
-            writer.Write(0u);
+            // to that bare model and hides its own body: 0 unless an admin's /setmodel is on (TemporaryAppearance).
+            writer.Write(TemporaryAppearance);
             writer.Write(Title.Id);             // +0x118 title (FUN_142c25e20), applied by FUN_142ec5330
             writer.Write(Title.Type);
             writer.Write(Title.NameId);

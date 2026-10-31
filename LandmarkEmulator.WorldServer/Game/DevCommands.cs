@@ -859,9 +859,9 @@ namespace LandmarkEmulator.WorldServer.Game
                         case "finditem":
                         {
                             // finditem <text|#id>: item definitions whose name contains the text (as this client names them), or by id.
+                            string needle = parts.Length > 1 ? parts[1].Trim() : "";
                             // Cap matches: an empty needle used to match every name (Contains("")) and flood the world tick
                             // with log lines, which froze the game and the /admin page (docs/bugs.md 2026-10-18).
-                            string needle = parts.Length > 1 ? parts[1].Trim() : "";
                             if (needle.Length == 0)
                             {
                                 Reply(commandSource, replies, "usage: finditem [text|#id] (type a name fragment or #id)");
@@ -1294,12 +1294,12 @@ namespace LandmarkEmulator.WorldServer.Game
                                 Claims.BeginPlacement(session);
                             break;
                         case "resupply":
-                            // resupply: as using the Spire's Resupply Chest (tools + Founder's Pack restore).
+                            // resupply: as using the Spire's Resupply Chest (missing starter tools, then Founder's Pack restore).
                             foreach (WorldSession session in targets)
                                 Spire.UseResupplyChest(session);
                             break;
                         case "founderchest":
-                            // founderchest: Founder's Pack restore only (same path the Resupply Chest runs after tools).
+                            // founderchest: Founder's Pack restore only (same path the Spire Resupply Chest runs after tools; prints idle replies).
                             foreach (WorldSession session in targets)
                                 Entitlements.RestoreFounderItems(session);
                             break;
@@ -2190,6 +2190,11 @@ namespace LandmarkEmulator.WorldServer.Game
                             // exportdesign <design guid>: as the Designs window's export to item (TemplateBase 0x1B).
                             foreach (WorldSession session in targets)
                                 DesignItems.Export(session, ulong.Parse(parts[1]));
+                            break;
+                        case "emotelead":
+                            // emotelead <ms>: how long after putting a held tool away an emote is played (EmoteHolster.PutAwayLead).
+                            EmoteHolster.PutAwayLead = TimeSpan.FromMilliseconds(double.Parse(parts[1]));
+                            log.Info($"Emote lead after a put-away: {EmoteHolster.PutAwayLead.TotalMilliseconds} ms.");
                             break;
                         case "regendelay":
                             // regendelay <seconds>: terrain regeneration delay (default 1200), checked again now.

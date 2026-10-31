@@ -14,6 +14,12 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
     {
         public uint TransientId { get; set; }
 
+        /// <summary>
+        /// +0x90 → entity +0x147c: 0 hostile, 1 neutral, 2 friendly (the client default, kept for placed props). Gathering
+        /// nodes are neutral, which puts them in the client's harvest target slot 9 (Gathering.Health.cs).
+        /// </summary>
+        public uint Disposition { get; set; } = 2;
+
         public void Write(GamePacketWriter writer)
         {
             writer.WriteUIntWith2BitLength((int)TransientId);
@@ -27,7 +33,7 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
             writer.Write("");
             writer.Write("");
             writer.Write("");
-            writer.Write(2u);                   // +0x90 disposition (default 2)
+            writer.Write(Disposition);          // +0x90 disposition (default 2)
             for (int i = 0; i < 2 + 3 + 3; i++) // +0x94 .. +0xb0
                 writer.Write(0u);
             writer.Write(System.BitConverter.SingleToUInt32Bits(8f));   // +0xb4 expected speed

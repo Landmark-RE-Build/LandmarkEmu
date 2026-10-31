@@ -10,7 +10,8 @@ namespace LandmarkEmulator.WorldServer.Game
 {
     /// <summary>
     /// The site game editor (the client's RulesetObjectSettings window: "Prop Settings" tab = the game's prop recipe,
-    /// "Game Settings" tab, Enable / Disable Game). Decoded from ClientInstancedGameManager (DAT_145358b90):
+    /// "Game Settings" tab, Enable / Disable Game). Decoded from ClientInstancedGameManager (DAT_145358b90 (0.589;
+    /// 0.695 DAT_145438110)):
     ///
     /// - Lua Claims.RequestGainActiveAuthorshipOfGame / RequestLoseActiveAuthorshipOfGame send InstancedGame request
     ///   type 1 / 2 {u64 game} (FUN_14343e590 / FUN_14343e840). The client handles no request reply for these: the
@@ -18,9 +19,10 @@ namespace LandmarkEmulator.WorldServer.Game
     /// - PropRecipe (sub 4, reader FUN_143427a10, handler HandleGameRecipePacket FUN_143438b30): u64 game (manager
     ///   +0x30 = the game being authored; 0 = none → GameEvents:OnCloseInstancedGameSettings), bool game enabled
     ///   (+0x8c), bool has required props (+0x8d), u32 n × item, bool open (→ OnOpenInstancedGameSettings). The list is
-    ///   rebuilt from every packet. Item (FUN_1434282f0, 0x48 bytes): u32 id, LocalizedString name {u32 text id, string
-    ///   (used when not empty)}, u32 rule index, u32 role, u32 slot, u64 prop guid, bool include (false = remove that
-    ///   guid's row), u32 team (non-zero → " - team name" after the role name), bool optional. The window's rows
+    ///   rebuilt from every packet. Item (0.695 FUN_1434d7f90; 0.589 FUN_1434282f0 without the last u32): u32 id,
+    ///   LocalizedString name {u32 text id, string (used when not empty)}, u32 rule index, u32 role, u32 slot, u64 prop
+    ///   guid, bool include (false = remove that guid's row), u32 team (non-zero → " - team name" after the role name),
+    ///   bool optional, u32 ScriptPropId (+0x44). The window's rows
     ///   (FUN_143440a30, data source RulesetObjects.PropSettings.CategoryList): a placed prop (guid ≠ 0) shows Remove /
     ///   Go To buttons, an unplaced one an Add button and "required" unless optional.
     /// - Lua InstancedGame.RequestPropRecipeList → sub 5 {u64 game}; EnableGame → sub 0x10 StartRequest {u64 game};
@@ -233,8 +235,9 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>
-        /// The editor's prop list buttons (Lua InstancedGame.AddAdditionalProp / RemoveProp, FUN_14343e9d0 /
-        /// FUN_14343eaf0, for the row's rule index / role / team / slot):
+        /// The editor's prop list buttons (Lua InstancedGame.AddAdditionalProp / RemoveProp; 0.695 FUN_1434f0f00, which
+        /// also takes the row's ScriptPropId (+0x44) and matches the row by it; 0.589 FUN_14343e9d0 / FUN_14343eaf0), for
+        /// the row's rule index / role / team / slot:
         /// - PropRequest (sub 0xA, writer FUN_143426a50): u64 game, u32 rule index, u32 role, u32 team, u32 slot. Starts
         ///   placing the role's prop (team t: the role's t-th prop) the usual way: from a matching item in the bag, else
         ///   paid like the build palette (materials, learned recipe).
@@ -338,7 +341,8 @@ namespace LandmarkEmulator.WorldServer.Game
         /// string, player adjustable, min, max; 0.695 adds NAME_STRING_ID, DATA_TYPE, STEP_SIZE, CLIENT_REQUIREMENT_ID,
         /// SORT_ORDER) with its RefIgGeneralSettingsTypes code (InstancedGames_NumberOfTeams ...) and value type (1 int,
         /// 2 float, 3 bool, 4 string — 0.695: team names, victory messages). The client shows a row only when
-        /// PLAYER_ADJUSTABLE (its definition table DAT_14535a748 +0x4d0 holds these rows; +0x14 = the flag) and, in
+        /// PLAYER_ADJUSTABLE (its definition table DAT_14535a748 (0.589; 0.695 DAT_145439cc8) +0x4d0 holds these rows;
+        /// +0x14 = the flag) and, in
         /// 0.695, only when its client requirement holds (FUN_1434f39a0 → FUN_1432f58e0; RequirementExpressions 43-49:
         /// "Game has n or more team", "Game is (not) FFA"), as the type DATA_TYPE says (1 / 2 slider, 3 check box, 4 text).
         /// </summary>

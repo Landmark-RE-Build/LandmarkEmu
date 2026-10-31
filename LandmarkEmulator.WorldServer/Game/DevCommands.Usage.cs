@@ -231,6 +231,7 @@ namespace LandmarkEmulator.WorldServer.Game
             ["calcstats"] = "calcstats",
             ["npcmode"] = "npcmode <n>",
             ["exportdesign"] = "exportdesign <design guid>",
+            ["emotelead"] = "emotelead <milliseconds>",
             ["regendelay"] = "regendelay <seconds>",
             ["caveair"] = "caveair <gx> <gy> <gz>",
             ["veintest"] = "veintest",

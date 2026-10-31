@@ -631,6 +631,21 @@ namespace LandmarkEmulator.EnvServer
                     log.Info($"Heal delay set to {TerrainEdits.RegenerationDelay} by {state.Name}.");
                     Reply(state, id, 0);
                     return -1;
+                case (EnvironmentMessages.TerrainCellFamily, EnvironmentMessages.TemplateInstancesSub):
+                {
+                    var instances = new List<TemplateInstanceLookup.Instance>();
+                    for (uint n = EnvWire.Count(r, 64); n > 0; n--)
+                    {
+                        ulong guid = r.U64(), placer = r.U64();
+                        double[] b = EnvWire.Box(r);
+                        instances.Add(new TemplateInstanceLookup.Instance(guid, placer, new VoxelBox(b[0], b[1], b[2], b[3], b[4], b[5])));
+                    }
+                    bool announce = r.Remaining <= 0 || r.Bool();
+                    List<ulong> cells = env.SetTemplateInstances(zone, instances, announce);
+                    Publish(zone, cells, EnvChangeReason.Request, state);
+                    Reply(state, id, 0, w => EnvWire.Cells(w, cells));
+                    return -1;
+                }
                 case (EnvironmentMessages.TerrainCellFamily, EnvironmentMessages.MarkPermanentSub):
                     env.MarkPermanent(EnvWire.Cells(r), zone);
                     Reply(state, id, 0);

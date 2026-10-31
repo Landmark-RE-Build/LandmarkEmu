@@ -380,8 +380,8 @@ namespace LandmarkEmulator.WorldServer.Game
             if (holds.ContainsKey(viewer) || holds.ContainsKey(subject))
                 return;   // one of them is still behind its loading screen (login or re-zone): they meet when it drops
             viewer.EnqueueMessage(subject.BuildAddLightweightPc());
-            foreach ((uint slot, var item) in subject.VisibleEquipment())
-                viewer.EnqueueMessage(subject.BuildEquipmentSlot(slot, item));
+            foreach (var slotPacket in subject.EquipmentSlotPackets())
+                viewer.EnqueueMessage(slotPacket);
             if (Titles.Shows(subject))
                 viewer.EnqueueMessage(ZoneMessageOpcode.PlayerUpdatePlayerTitleWire, Titles.UpdatePacket(subject));
             Health.IntroduceDead(viewer, subject);

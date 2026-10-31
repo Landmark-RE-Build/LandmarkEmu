@@ -278,6 +278,8 @@ namespace LandmarkEmulator.WorldServer.Game
                         var global = Terrain.TerrainEdits.ToGlobal(new Vector3(x, y, z));
                         if (spire is var (lo, hi) && global.X > lo.X && global.X < hi.X && global.Z > lo.Z && global.Z < hi.Z)
                             continue;
+                        if (Spire.BlocksSite(zone, global.X, global.Y, global.Z, SiteHalfWidthDm, SiteHalfHeightDm))
+                            continue;   // the Spire area (90 m round the Hub): no build sites, as for players
                         if (Claims.IsFree(zone, global.X, global.Z))
                             return new Vector3(x, y, z);
                     }
@@ -289,6 +291,9 @@ namespace LandmarkEmulator.WorldServer.Game
 
         /// <summary>Half a build site's width (Claims: 210 m sites), decimetres.</summary>
         private const double SiteHalfWidthDm = 1050;
+
+        /// <summary>Half a build site's height (Claims: 180 m), decimetres.</summary>
+        private const double SiteHalfHeightDm = 900;
 
         /// <summary>The cavern piece of the client's cave placements (Caves.CavernPiece: CavernMiddle01, verified open).</summary>
         private const uint CavernPiece = 104;

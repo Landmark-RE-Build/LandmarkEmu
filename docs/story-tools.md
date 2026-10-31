@@ -25,7 +25,11 @@ ActionSelectionMenu, ActionEventSelectionMenu), opened by Lua `Prop.SetupScript`
 | 0x16 RemoveAddBinding | u64 link, u64 source, u64 target, u32 event, u32 action | 11 {u64 link, u64 source, u64 target, u32, u32, u32 result} |
 
 Events and action groups are `{u32 id, u32 text id, u32 sort order}` (`FUN_142ea3b00`, `FUN_142ea3840`; the editor
-sorts by the third field). Result 0 = success; other values are shown through `FUN_142ea8330`.
+sorts by the third field). Result 0 = success. AddBinding's other results (0.695 FUN_142f46ed0 / FUN_142fee7e0; 0.589
+FUN_142ea8330): 1 permission, 2 invalid cycle, 3 duplicate Link, 4 (0.695) the event allows one Link only
+(`AdvancedScripting.UniqueBinding.BindSingle`), else unknown. RemoveAddBinding's reply only tells success from failure
+(0.695 FUN_142fef9b0: "Link successfully modified." / "Link modification failure."; its unused result table FUN_142f47140
+has 4 RemoveFailure and 5 BindSingle); a refused edit keeps the old Link (`StoryTools.ReplaceLink`).
 
 ## Definitions
 

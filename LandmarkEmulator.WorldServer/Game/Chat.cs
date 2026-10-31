@@ -217,7 +217,8 @@ namespace LandmarkEmulator.WorldServer.Game
 
         /// <summary>
         /// A chat line on the client's System channel (7, Chat.SystemFormat): the receiver hands it to the notification
-        /// manager (FUN_1432b7bc0 case 7 → *DAT_145352490 vtable +0x38) instead of a "says" line.
+        /// manager (FUN_1432b7bc0 case 7 → *DAT_145352490 (0.589; 0.695 DAT_145431a10) vtable +0x38) instead of a
+        /// "says" line.
         /// </summary>
         public static void SystemChannel(WorldSession player, string message)
         {
