@@ -1,5 +1,7 @@
 # Admin monitor pages: the page 28 / 29 replies and the server-side web admin page (agent #17)
 
+> 0.695 rebase (2026-10-26): addresses below are 0.589 unless marked 0.695; their 0.695 partners and changes: trace/0695/address-map-589-695.md, trace/0695/rebase-695.md
+
 Phase B item 7 (BUILD-PATH-0695.md). Client evidence only; addresses are **0.589 / 0.695** (re/decomp_all /
 re/decomp_all_695), the 0.695 partner taken from trace/0695/functions.tsv (every function cited here has `code = same`
 there unless marked). "Ours" = our design, not live's; "inference" = not proven by code. Nothing was run (no game,

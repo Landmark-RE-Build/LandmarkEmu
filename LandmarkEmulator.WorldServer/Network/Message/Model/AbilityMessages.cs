@@ -38,6 +38,13 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
         /// reaping SetParam 11 in radians). MinRange/MaxRange are the arc's inner and outer reach.
         /// </summary>
         public float ArcDegrees { get; set; }
+        /// <summary>
+        /// +0x90 → ability record +0x70: the RequirementExpressions id an entity must pass to be this ability's target (the
+        /// logging state's cursor, outline and swing, FUN_143730e50 → FUN_1432f5a00 with the entity as the target). Below
+        /// 1 = anything passes, so with 0 an axe locked onto the Spire, props and NPCs; an id not in the table passes
+        /// nothing (trace/0695/axe-a-client.md). Axes send 20 "Target is Harvestable Tree" (profiles 200-214,
+        /// <see cref="Game.Abilities.TreeTargetRequirement"/>).
+        /// </summary>
         public uint U90 { get; set; }
         public bool B94 { get; set; }
         public uint U9c { get; set; }

@@ -9,7 +9,7 @@ Source: `LandmarkEmulator.Database.Character/Migrations/CharacterContextModelSna
 Tables marked *world* are kept in the world's own database instead when the world has one (always under
 Docker; see [Database: World](Database-World)).
 
-Tables: [`character_action_slot`](#character_action_slot), [`character_customisation`](#character_customisation), [`character_friend`](#character_friend), [`character_ignore`](#character_ignore), [`character_inventory_filter`](#character_inventory_filter), [`character_preference`](#character_preference), [`character_item`](#character_item), [`character`](#character), [`character_objective`](#character_objective), [`claim_vendor_item`](#claim_vendor_item), [`world_area`](#world_area), [`world_prop_setting`](#world_prop_setting), [`world_prop_binding`](#world_prop_binding), [`character_palette_entry`](#character_palette_entry), [`character_unlock`](#character_unlock), [`character_recipe`](#character_recipe), [`chest_item`](#chest_item), [`claim`](#claim), [`claim_permission`](#claim_permission), [`gallery_comment`](#gallery_comment), [`guild_member`](#guild_member), [`guild`](#guild), [`mail`](#mail), [`player_studio_review`](#player_studio_review), [`player_studio_product`](#player_studio_product), [`showcase_digest_run`](#showcase_digest_run), [`showcase_follow`](#showcase_follow), [`site_template_instance`](#site_template_instance), [`template`](#template), [`world_prop`](#world_prop)
+Tables: [`character_action_slot`](#character_action_slot), [`character_customisation`](#character_customisation), [`character_friend`](#character_friend), [`character_ignore`](#character_ignore), [`character_inventory_filter`](#character_inventory_filter), [`character_preference`](#character_preference), [`character_npc_flag`](#character_npc_flag), [`character_item`](#character_item), [`character`](#character), [`character_objective`](#character_objective), [`claim_vendor_item`](#claim_vendor_item), [`world_area`](#world_area), [`world_prop_setting`](#world_prop_setting), [`world_prop_binding`](#world_prop_binding), [`character_palette_entry`](#character_palette_entry), [`character_unlock`](#character_unlock), [`character_recipe`](#character_recipe), [`chest_item`](#chest_item), [`claim`](#claim), [`claim_permission`](#claim_permission), [`gallery_comment`](#gallery_comment), [`guild_member`](#guild_member), [`guild`](#guild), [`mail`](#mail), [`player_studio_review`](#player_studio_review), [`player_studio_product`](#player_studio_product), [`showcase_digest_run`](#showcase_digest_run), [`showcase_follow`](#showcase_follow), [`site_template_instance`](#site_template_instance), [`template`](#template), [`world_prop`](#world_prop)
 
 ## character_action_slot
 
@@ -78,6 +78,17 @@ Client preference documents the client stores on the server.
 | `kind` | int(10) unsigned |  |  | PK | The packet's kind field (1: the client's &lt;Root&gt; preference document; the only one it applies). |
 | `updatedAt` | datetime |  |  |  |  |
 | `xml` | blob |  |  |  | The XML exactly as received (no terminator; the client writes and reads a length-prefixed string). |
+
+## character_npc_flag
+
+Per-character narrative flags for world NPCs (Game.Npc.WorldNpcs): quest offers, greetings, chain unlocks.
+
+| Column | Type | Null | Default | Key | Description |
+|---|---|---|---|---|---|
+| `characterId` | bigint(20) unsigned |  |  | PK |  |
+| `npcId` | varchar(64) | yes |  | PK | NPC definition id (e.g. fungus_scout), not the creature guid. |
+| `key` | varchar(64) | yes |  | PK |  |
+| `value` | int(11) |  |  |  |  |
 
 ## character_item
 

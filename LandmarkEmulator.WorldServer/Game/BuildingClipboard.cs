@@ -10,10 +10,10 @@ namespace LandmarkEmulator.WorldServer.Game
     /// Copy and paste with the Select tool (Ctrl+C / Ctrl+V), both through VoxelConstruction sub 2
     /// ClientSelectionAreaRequest (writer FUN_1430b96a0 for paste; constructor FUN_1430b3990):
     /// <code>
-    /// u8 layer (FF), u32 action (0 copy, 4 paste), u64 level-2 cell id, u32 x, y, z origin (voxels in that cell),
+    /// u8 layer (FF), u32 action (0 copy, 1 cut, 2 delete, 3 save design, 4 paste / place design), u64 level-2 cell id, u32 x, y, z origin (voxels in that cell),
     /// u32 sx, sy, sz size (voxels), PropData list, 4 × 4 i32 rotation matrix (paste; identity = no turn),
     /// material map {u32 n × (u16 material, u32 voxels)}, u64, string, u64,
-    /// cell-version list {u32 n × (u64 cell, u64 version)} (every cell the box touches),
+    /// cell-version list {u32 n × (u64 cell, u32 layer-1 version before, u32 after)} (every cell the box touches),
     /// block list {u32 n × (u64 key, u64, u32 type, u32 len + packed block, u32 if type is 2 or 3)}, u32, u8, string, u8
     /// </code>
     /// A copy carries one block per cell of the box (key = a level-2 cell id holding the cell's place from the box's
@@ -25,7 +25,8 @@ namespace LandmarkEmulator.WorldServer.Game
     /// FUN_1436d6ac0), and checks the player holds that many of each material before it places (FUN_1436d6b20).
     /// A paste sends no voxels at all — only where the box goes and how it is turned — so the server places its own
     /// copy: solid voxels overwrite the target (empty ones leave it as it is), under the same permission and material
-    /// rules as any build, as one undoable edit, and every player (the paster included) gets the changed cells.
+    /// rules as any build, as one undoable edit, and every player (the paster included) gets the changed cells. Cut and
+    /// the Delete key erase the box (BuildingDelete.cs).
     /// </summary>
     public static partial class Building
     {
@@ -89,8 +90,8 @@ namespace LandmarkEmulator.WorldServer.Game
             /// Paste mode (request +0x148, constructor default 1; the paste writer FUN_1430b96a0 copies the paste cursor's
             /// +0x2c8: 2 Paste Air, 3 Paste Interior Air, 1 when Remove voxels is set) and the Remove voxels ("Paste as
             /// Delete") flag (+0x14c, cursor +0x2c4). The paste applies the mode to interior empty space (0xFFFC: air in modes
-            /// 2 and 3, else not written; <see cref="PastedMaterial"/>); surrounding air and Remove voxels are read for the
-            /// tutorial goals only.
+            /// 2 and 3, else not written; <see cref="PastedMaterial"/>); surrounding air is not applied; Remove voxels erases the
+            /// copy's shape (<see cref="AsErase"/>).
             /// </summary>
             public uint PasteMode;
             public bool AsDelete;
@@ -125,12 +126,17 @@ namespace LandmarkEmulator.WorldServer.Game
             p += 8;
             r.Name = ReadString(body, ref p);
             p += 8;
-            uint cellCount = BitConverter.ToUInt32(body, p);   // every cell the box touches, with the client's version
+            // Every cell the box touches: {u64 cell, u32 layer-1 version before, u32 after} (CellIdAndPermanentVersion;
+            // a Cut / Delete has already erased the box on the client, so its two versions differ).
+            uint cellCount = BitConverter.ToUInt32(body, p);
             p += 4;
-            if (cellCount > MaxCellsPerEdit)
+            if ((long)cellCount * 16 > body.Length - p)
                 throw new System.IO.InvalidDataException($"{cellCount} cells");
             for (uint i = 0; i < cellCount; i++, p += 16)
                 r.Cells.Add(BitConverter.ToUInt64(body, p));
+            // Read first, refused after: the cells are pending on the client until each is answered (else ~50 s).
+            if (cellCount > MaxCellsPerEdit)
+                throw new System.IO.InvalidDataException($"{cellCount} cells");
             r.BlocksStart = p;
             r.Blocks = BitConverter.ToUInt32(body, p);
             p += 4;
@@ -206,11 +212,23 @@ namespace LandmarkEmulator.WorldServer.Game
                 // The client holds every cell the box touches as pending until each is answered; without the answers
                 // the build tools stayed locked after a refused (e.g. too big) request (2026-10-14).
                 log.Warn($"Unreadable selection request from {session.CharacterName}: {e.Message}");
-                SendResponse(session, AddTemporaryBlockSub, Failed);
-                SendCellResponses(session, request.Cells);
+                if (request.Action is CutAction or DeleteAction || request.Action > PasteAction)
+                    Refuse(session, request, Failed, null);   // its box was erased on the client: take that back
+                else
+                {
+                    SendResponse(session, AddTemporaryBlockSub, Failed);
+                    SendCellResponses(session, request.Cells);
+                }
                 return;
             }
-            if (request.LargerThanCell && request.Action is not (PasteAction or CopyAction or SaveDesignAction))
+            if (request.Action > PasteAction)
+            {
+                // Not one the client sends (FUN_14315e0a0's four callers use 0-4); refused, not taken for a copy.
+                Network.OpcodeStats.Unanswered("VoxelConstruction 0xF4 selection action", request.Action);
+                Refuse(session, request, Failed, $"{session.CharacterName}: selection action {request.Action} is unknown.");
+                return;
+            }
+            if (request.LargerThanCell && request.Action is not (PasteAction or CopyAction or SaveDesignAction or CutAction or DeleteAction))
             {
                 log.Info($"{session.CharacterName}: selection {request.SizeX}×{request.SizeY}×{request.SizeZ} (action {request.Action}) "
                     + "is larger than one cell; only copies, design saves and pastes may be.");
@@ -224,6 +242,11 @@ namespace LandmarkEmulator.WorldServer.Game
                 catch (Exception) { }
                 SendResponse(session, AddTemporaryBlockSub, Failed);
                 SendCellResponses(session, request.Cells);
+                return;
+            }
+            if (request.Action is CutAction or DeleteAction)
+            {
+                HandleDeleteOrCut(session, body, request);
                 return;
             }
             if (request.Action == PasteAction)
@@ -275,7 +298,9 @@ namespace LandmarkEmulator.WorldServer.Game
                 SendResponse(session, AddTemporaryBlockSub, 0);
                 Copy(session, body, request);
             }
-            SendCellResponses(session, request.Cells);   // a copy marks the cells pending too (edits there wait for it)
+            // A copy marks no cell pending (FUN_143161530 does for Cut / Delete only); the answers just let the client
+            // write its own copy of each cell to its cache (FUN_144016840).
+            SendCellResponses(session, request.Cells);
         }
 
         /// <summary>Does every cell the selection covers lie where the player may copy (Get Inspired)?</summary>
@@ -505,7 +530,9 @@ namespace LandmarkEmulator.WorldServer.Game
             long baseZ = (long)cellZ * BlockData.Size + request.Z + shift[2] + adjZ;
 
             Dictionary<ulong, List<TerrainEdits.VoxelValue>> byCell = TurnedVoxels(clipboard, m, baseX, baseY, baseZ, request.PasteMode);
-            if ((byCell.Count == 0 && clipboard.Props.Count == 0) || byCell.Count > (request.TemplateGuid != 0 ? MaxCellsPerDesign : MaxCellsPerEdit))
+            if (request.AsDelete)
+                byCell = AsErase(byCell);
+            if ((byCell.Count == 0 && (clipboard.Props.Count == 0 || request.AsDelete)) || byCell.Count > (request.TemplateGuid != 0 ? MaxCellsPerDesign : MaxCellsPerEdit))
             {
                 SendResponse(session, AddTemporaryBlockSub, Failed);
                 return null;
@@ -574,17 +601,20 @@ namespace LandmarkEmulator.WorldServer.Game
             if (!PayFor(session, written.Delta))
                 log.Warn($"{session.CharacterName}'s paste was written but its materials could not be taken any more.");
 
-            var record = new Edit(zone, request.TemplateGuid != 0 ? "Place design" : "Paste");
+            var record = new Edit(zone, request.AsDelete ? "Paste (Remove voxels)" : request.TemplateGuid != 0 ? "Place design" : "Paste");
             record.Cells.AddRange(written.Cells);
             int voxels = byCell.Values.Sum(v => v.Count);
-            PlaceProps(session, clipboard.Props, m, baseX, baseY, baseZ, record);
+            if (!request.AsDelete)
+                PlaceProps(session, clipboard.Props, m, baseX, baseY, baseZ, record);
+            else
+                Observe(session, zone, ObservedDelete, record, false);
             Remember(session, record);
             string designName = request.TemplateGuid != 0 ? Templates.NameOf(session, request.TemplateGuid) : "";
-            if (request.TemplateGuid != 0)
+            if (request.TemplateGuid != 0 && !request.AsDelete)
                 Achievements.DesignPlaced(session, designName);
             Achievements.Pasted(session, designName, request.PasteMode, request.AsDelete);   // tutorial goals
-            if (studioMin is { } placedMin && studioMax is { } placedMax)
-                TemplateInstances.Record(session, zone, request.TemplateGuid, placedMin, placedMax);
+            if (studioMin is { } placedMin && studioMax is { } placedMax && !request.AsDelete)
+                TemplateInstances.Record(session, zone, request.TemplateGuid, placedMin, placedMax);   // nothing placed when erasing
             SendResponse(session, AddTemporaryBlockSub, 0);
             // Every listed cell the server holds goes out (the paster's client dropped its preview of them).
             List<ulong> changed = byCell.Keys.Concat(request.Cells.Where(c => Env.Has(c, zone))).Distinct().ToList();
@@ -596,6 +626,29 @@ namespace LandmarkEmulator.WorldServer.Game
                 + $"first voxel at {baseX},{baseY},{baseZ}) "
                 + $"turned [{m[0]} {m[1]} {m[2]}; {m[4]} {m[5]} {m[6]}; {m[8]} {m[9]} {m[10]}].");
             return changed;
+        }
+
+        /// <summary>
+        /// Paste with "Remove voxels" (Voxel.SetRemoveVoxels, request +0x14c; the tutorial's "Paste as Delete into a wall"),
+        /// on-grid and off-grid: the copy's solid voxels are taken out of the target instead of written — material 0, keeping
+        /// their flags and vertex, so the hole has the copy's smooth surface — and its vertex-only voxels keep their vertex,
+        /// as the client's own rule does (CClipboardData FUN_142a7eeb0 with Remove voxels: a solid becomes material 0 with its
+        /// extra data cleared, every vertex voxel keeps its vertex); empty voxels and the props leave the target alone. Until
+        /// 2026-10-31 the server ignored the flag and pasted the voxels in.
+        /// </summary>
+        internal static Dictionary<ulong, List<TerrainEdits.VoxelValue>> AsErase(Dictionary<ulong, List<TerrainEdits.VoxelValue>> byCell)
+        {
+            var erased = new Dictionary<ulong, List<TerrainEdits.VoxelValue>>();
+            foreach ((ulong cell, List<TerrainEdits.VoxelValue> values) in byCell)
+            {
+                List<TerrainEdits.VoxelValue> kept = values
+                    .Where(v => (v.Flags & 1) != 0 ? v.Material != 0 : (v.Flags & 2) != 0)
+                    .Select(v => (v.Flags & 1) != 0 ? v with { Material = 0 } : v)
+                    .ToList();
+                if (kept.Count > 0)
+                    erased[cell] = kept;
+            }
+            return erased;
         }
 
         /// <summary>
@@ -720,7 +773,7 @@ namespace LandmarkEmulator.WorldServer.Game
         /// by the build, FUN_143f9a150 → FUN_143f9c330; every castle design is mostly that — Castle Long Room 480,372 of
         /// its 782,232 set voxels) is written as <b>air</b> (material 0) in the Paste Air (2) and Paste Interior Air (3)
         /// modes, except on the box's first slice (index 0 on any axis), and not at all in the others;</item>
-        /// <item>surrounding air (material 0) is not written (the client writes it in modes 2 and 4: not applied yet, like
+        /// <item>surrounding air (material 0) is not written (the client writes it in modes 2 and 4: not applied yet; unlike
         /// Remove voxels; TASKS 6.57).</item>
         /// </list>
         /// Until 2026-10-21 interior empty space was written raw, as material 0xFFFC. The client's mesher draws 0xFFFC as

@@ -186,6 +186,12 @@ namespace LandmarkEmulator.WorldServer.Game
 
         private static readonly Dictionary<ulong, (List<Edit> Undo, List<Edit> Redo)> history = new();
 
+        /// <summary>
+        /// Most voxel values (before and after) a player's undo history keeps; the oldest steps go first (the newest always
+        /// stays). A selection delete of a big box records up to two million (BuildingDelete).
+        /// </summary>
+        private const long MaxUndoValues = 4_000_000;
+
         /// <summary>Adds a new edit to the player's undo history (and forgets what they could redo).</summary>
         private static void Remember(WorldSession session, Edit edit)
         {
@@ -196,6 +202,12 @@ namespace LandmarkEmulator.WorldServer.Game
                 h.Undo.Add(edit);
                 if (h.Undo.Count > UndoDepth)
                     h.Undo.RemoveAt(0);
+                long values = h.Undo.Sum(e => e.Cells.Sum(c => (long)c.Before.Count + c.After.Count));
+                while (values > MaxUndoValues && h.Undo.Count > 1)
+                {
+                    values -= h.Undo[0].Cells.Sum(c => (long)c.Before.Count + c.After.Count);
+                    h.Undo.RemoveAt(0);
+                }
                 h.Redo.Clear();
             }
             SendUndoStack(session);

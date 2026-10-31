@@ -1,5 +1,7 @@
 # PlayerUpdate 0x26 subs (PlayerUpdate_Dispatch FUN_142c45fa0; case value + 1 = sub; names from ctor vtables, re/tools/ctorname.py)
 
+> 0.695 rebase (2026-10-26): addresses below are 0.589 unless marked 0.695; their 0.695 partners and changes: trace/0695/address-map-589-695.md, trace/0695/rebase-695.md
+
 | Sub | Message | Case functions |
 |---|---|---|
 | 0x1 | PlayerUpdatePacketRemovePlayerGracefully | FUN_142bb3650 FUN_142bce9c0 FUN_142bb36c0 |

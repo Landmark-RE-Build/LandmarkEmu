@@ -1881,6 +1881,25 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         }
 
         /// <summary>
+        /// The last edit of a layer that came with NewVersion 0: who made it and the version the server gave the layer then
+        /// (<see cref="Commit"/>). Keyed by the landscape's store and the layer key. Caller holds <see cref="sync"/>.
+        /// </summary>
+        private static readonly Dictionary<(Dictionary<ulong, Overlay> Store, ulong Key), (ulong Owner, uint Version)> lastZeroEdit = new();
+
+        /// <summary>
+        /// May an edit with BaseVersion 0 from <paramref name="owner"/> go into this cell's building layer? Yes when their own
+        /// NewVersion-0 edit made its current version (the client then still holds BaseVersion 0) and nobody changed the
+        /// layer since; anyone else's change gave it another version, so the edit is stale as before.
+        /// </summary>
+        public static bool AcceptsBaseZero(ulong cell, uint zone, ulong owner)
+        {
+            lock (sync)
+                return Of(zone).TryGetValue(Key(cell, BuildLayer), out Overlay overlay)
+                    && lastZeroEdit.TryGetValue((Of(zone), Key(cell, BuildLayer)), out var last)
+                    && last.Owner == owner && last.Version == overlay.Version;
+        }
+
+        /// <summary>
         /// Second half of a build edit: writes the result's values at the prepared voxels into the layer (one pass) and
         /// returns them as the undo record's "after". Solid voxels become <paramref name="owner"/>'s, the rest nobody's.
         /// </summary>
@@ -1907,11 +1926,23 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 // The client sends the version it gave the layer after this edit (CRC32 of its compressed layer,
                 // CompressBlockData); adopting it keeps the server's and the client's versions equal, so its cached copy
                 // stays valid (no re-download) and the next edit's base version can be checked.
-                // When the client sends NewVersion 0 (seen on 0.695 Add-tool clicks, 2026-10-24), do NOT increment: a
-                // solo builder is left out of Broadcast and only learns versions from their own NewVersion / a manifest
-                // note. Incrementing to 1,2,3… while they keep BaseVersion 0 made every other brush click "not applied"
-                // (stale). Leaving the version unchanged keeps Base 0 matching until a real CRC arrives.
-                overlay.Version = clientVersion != 0 ? clientVersion : overlay.Version;
+                // NewVersion 0 (seen on 0.695 Add-tool clicks, 2026-10-24): the builder keeps sending BaseVersion 0 on the
+                // next clicks, so a new version made them "not applied" (stale) — the org's #12 kept the old version for
+                // that. But the content changed, and everything keyed by version (manifest notes, the zone-in manifest,
+                // the remote service's body cache, LOD copies; a new cell left at 0 was not listed at all) then treated
+                // the cell as unchanged: other players and later logins never saw the edit (trace/0695/phaseE4-logic.md
+                // F1). So the layer gets a new non-zero version, and the editor's next BaseVersion 0 is accepted for as
+                // long as nobody else changed the cell (<see cref="AcceptsBaseZero"/>).
+                if (clientVersion != 0)
+                {
+                    overlay.Version = clientVersion;
+                    lastZeroEdit.Remove((Of(zone), Key(id, layer)));
+                }
+                else
+                {
+                    overlay.Version = overlay.Version + 1 == 0 ? 1 : overlay.Version + 1;
+                    lastZeroEdit[(Of(zone), Key(id, layer))] = (owner, overlay.Version);
+                }
                 MarkDirty(zone, Key(id, layer), overlay);
             }
             VoxelOwnership.Set(zone, id, indices, i => (result.Flags[i] & 1) != 0 && result.Materials[i] != 0, owner);
@@ -2273,6 +2304,10 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 return TerrainLod.BuildUpdate(cellId, zone == 0 ? Home : zone);
             var layers = new List<(uint Layer, uint Version, byte[] Blob)>();
             bool any = false;
+            // Placed Player Studio designs in the building layer (Voxel Vision's "Templates"): the client reads their
+            // VoxelTemplateLookup after the layer's block data (FUN_144049ef0 → FUN_14406dca0). Built before the store
+            // lock: it reads the ownership grids, which have their own.
+            byte[] instances = TemplateInstanceLookup.BlobFor(zone, cellId, (cell, placer) => VoxelOwnership.OwnedIn(zone, cell, placer));
             lock (sync)
             {
                 for (uint layer = 0; layer < LayerCount; layer++)
@@ -2295,13 +2330,36 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                     }
                     if (blocks != null)
                         any = true;
-                    layers.Add((layer, VersionOf(cellId, zone, layer), (blocks ?? Empty).ToLayerBlob()));
+                    byte[] blob = layer == BuildLayer && blocks != null && instances != null
+                        ? TerrainStore.Pack(blocks.Serialize().Concat(instances).ToArray())
+                        : (blocks ?? Empty).ToLayerBlob();
+                    layers.Add((layer, VersionOf(cellId, zone, layer), blob));
                 }
             }
             return any || always ? TerrainStore.BuildBlocksUpdate(cellId, layers) : null;
         }
 
         private static readonly BlockData Empty = new();
+
+        /// <summary>
+        /// A new version for the building layer of each listed cell that has one (its placed designs changed,
+        /// <see cref="TemplateInstanceLookup.Replace"/>), so clients holding the old copy fetch it again. Returns those cells.
+        /// </summary>
+        public static List<ulong> TouchBuildLayers(uint zone, IEnumerable<ulong> cells)
+        {
+            var touched = new List<ulong>();
+            lock (sync)
+                foreach (ulong cell in cells.Distinct())
+                {
+                    ulong key = Key(cell, BuildLayer);
+                    if (!Of(zone).TryGetValue(key, out Overlay overlay))
+                        continue;
+                    overlay.Version++;
+                    MarkDirty(zone, key, overlay);
+                    touched.Add(cell);
+                }
+            return touched;
+        }
 
         /// <summary>Manifest entries (cell, layer version) of one layer, for the zone-in modified-cell manifest.</summary>
         public static List<(ulong Cell, uint Version)> ManifestEntries(uint zone, uint layer)

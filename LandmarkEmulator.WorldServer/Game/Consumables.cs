@@ -178,6 +178,19 @@ namespace LandmarkEmulator.WorldServer.Game
         private static readonly HashSet<uint> gems = new() { 47, 48, 49, 50, 51, 56, 57, 58, 59 };
 
 
+        /// <summary>
+        /// The drinking clip (OPEN-LEADS L192 (f)): AnimationSelection 287 (EmoteSingle, Emote_Index 22), whose clip in the
+        /// 0.695 player network is Biped_Core_Utility_UsePotion_01 (StandPoses|…|Emotes_SingleShot|Nuetral|…UsePotion_01,
+        /// node 11829, and its mood twins) — the network's only potion / drinking clip [P]. Which clip live's potion
+        /// abilities named is server data (no client table ties an item ability to a selection) [I: the one that exists].
+        /// Played for the player (no turn: RequestAnimationSelection) and the players within Emotes.ViewRange. As every
+        /// emote clip it shows only with empty hands (StandPoses|Idle_Stand_2 child 0) [P].
+        /// </summary>
+        public const uint UsePotionAnimation = 287;
+
+        /// <summary>The drinks: the three healing potions and the three brews (Highstep Brew, Bottled Moonlight, Spirit of the Wolf).</summary>
+        private static readonly HashSet<uint> Drinks = new() { 443, 444, 445, 210, 211, 212 };
+
         /// <summary>Is this ability one of the usable items handled here?</summary>
         public static bool Handles(uint ability) => effects.ContainsKey(ability);
 
@@ -192,6 +205,8 @@ namespace LandmarkEmulator.WorldServer.Game
             Use use = effect.Apply(session, item, target);
             if (use == Use.Consume)
                 session.TakeItem(item.ItemDefinitionId, 1);
+            if (use == Use.Consume && Drinks.Contains(ability))
+                Emotes.PlayAnim(session, UsePotionAnimation);
             log.Info($"{session.CharacterName} used {effect.Name} ({use}).");
             return use != Use.Refuse;
         }
@@ -297,6 +312,9 @@ namespace LandmarkEmulator.WorldServer.Game
             return names[(int)Math.Round(((angle % 360) + 360) % 360 / 45) % 8];
         }
 
+        /// <summary>The throw's Enter selection (Class 7 ThrowUser, AttackIndex 0); its Release is the next id, 42.</summary>
+        public const uint ThrowEnterAnimation = 41;
+
         /// <summary>Dynamite crater radius (decimetres, as pick dig radii: the Adventurer's pick digs 10) and throw reach (m).</summary>
         private const double BlastRadius = 40;
         private const float BlastReach = 30f;
@@ -319,7 +337,11 @@ namespace LandmarkEmulator.WorldServer.Game
                 Chat.System(session, "Nothing there to blow up.");
                 return Use.Refuse;
             }
-            Emotes.ShowSwing(session, 226, target);
+            // The throw (OPEN-LEADS L192 (f)): AnimationSelection 41 Enter / 42 Release, Class 7, which the 0.695 player
+            // network's Action|Action|Enter|Landmark and …|Release|Landmark switches (on Class) play as child 7,
+            // Biped_Core_Harvesting_Throw_F01 — its only throw clip [P]; it was the pick swing (226/227) before. To the
+            // thrower too: no cast answer animates a consumable on its own client.
+            Emotes.ShowSwing(session, ThrowEnterAnimation, target, includeSelf: true);
             return Use.Consume;
         }
 

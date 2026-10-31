@@ -1,5 +1,7 @@
 # Internal messages between the services (TASKS L8)
 
+> 0.695 rebase (2026-10-26): this file mixes builds; its 1 0.589 address citations map to 0.695 in trace/0695/address-map-589-695.md (changes: trace/0695/rebase-695.md)
+
 Written 2026-10-16 from trace/0695/architecture-leads.md L8 and the ids the LandmarkEmu services use today
 (LandmarkEmulator.Internal). Two kinds of ids live side by side:
 

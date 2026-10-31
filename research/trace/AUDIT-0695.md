@@ -1,5 +1,7 @@
 # Phase E audit — everything decompiled, checked against the server (BUILD-PATH-0695.md §4 Phase E)
 
+> 0.695 rebase (2026-10-26): this file mixes builds; its 1 0.589 address citation maps to 0.695 in trace/0695/address-map-589-695.md (changes: trace/0695/rebase-695.md)
+
 Started 2026-10-17, when trace/0695/TASKS.md had only user decisions (3.12, 6.59, 6.60), the conditional B.6 and the
 running 6.61 left. For each area: what was checked, how, the result, and what it added to TASKS / the code.
 

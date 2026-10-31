@@ -30,7 +30,7 @@ namespace LandmarkEmulator.WorldServer.Game
     /// (FUN_1432cb590, rows FUN_1432cd010).</item>
     /// <item>C→S 2 SetPrice {u32 -1, u64 listing, u32 price} → S→C 3 SetPriceResponse {u32, u64 listing, u32 price,
     /// u32 item, u32 currency item, u32 result}.</item>
-    /// <item>C→S 4 ListItem {u32 a, u32 price, u32 b} → S→C 5 ListItemResponse {u32 item, u32 fee, u32 count, u32 result,
+    /// <item>C→S 4 ListItem {u32 bag slot, u32 price, u32 count} (TestGrid.lua, see ListItemSub) → S→C 5 ListItemResponse {u32 item, u32 fee, u32 count, u32 result,
     /// u32 currency item}.</item>
     /// <item>C→S 6 StopObserving (window closed).</item>
     /// <item>C→S 7 PurchaseItem {u64 listing, u32 quantity} → S→C 8 PurchaseItemResponse {u64 listing, u32 item,
@@ -204,6 +204,11 @@ namespace LandmarkEmulator.WorldServer.Game
                 }
                 case SetPriceSub when reader.BytesRemaining >= 16:
                 {
+                    // {u32 slot, u64 listing, u32 price}: SetItemPriceByGuid (FUN_1435ef300 → FUN_14337ba70) sends slot -1
+                    // and the listing; SetItemPriceBySlot (FUN_1435ef390 → FUN_14337bae0) the slot and listing 0. No 0.589
+                    // or 0.695 window (TestGrid.lua included) calls BySlot, and the vendor list's rows carry no slot
+                    // (FUN_143379e40: listing guid, Name, Description, ItemID, Icon, Quantity, Price, ListingFeePaid), so a
+                    // slot-only request finds no listing (result 3) [P callers; the slot's meaning was server-side].
                     reader.ReadUInt();
                     ulong listing = reader.ReadULong();
                     uint price = reader.ReadUInt();
@@ -221,8 +226,11 @@ namespace LandmarkEmulator.WorldServer.Game
                 }
                 case ListItemSub when reader.BytesRemaining >= 12:
                 {
-                    // ClaimVendorScreen.ListItem(a, b, price) (FUN_14353ced0 → FUN_1432ce850): no 0.589 screen calls
-                    // it, so the meaning of a / b is taken as bag slot / count (logged to confirm when one does).
+                    // ClaimVendorScreen.ListItem(a, b, price) (0.589 FUN_14353ced0 → FUN_1432ce850; 0.695 LuaClaimVendor
+                    // FUN_1435eeeb0 → FUN_14337b640 {vendor, a, price, b}): a = the bag slot, b = the count [P: the 0.695
+                    // install's developer test window UI/TestMod/TestGrid.lua drops an inventory item on the vendor grid
+                    // with "LuaClaimVendor:ListItem( data.Slot, data.Quantity, 0 )"; price 0 opens the client's "How much
+                    // would you like to list this item for?" dialog, which calls ListItem again with the price].
                     uint a = reader.ReadUInt(), price = reader.ReadUInt(), b = reader.ReadUInt();
                     log.Info($"{session.CharacterName}: vendor ListItem 0x{vendor:X} ({a}, {b}) at {price}.");
                     CharacterItemModel item = session.Inventory.At(Inventory.Inventory.BagContainer, a);

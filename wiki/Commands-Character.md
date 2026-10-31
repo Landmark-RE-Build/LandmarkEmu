@@ -23,6 +23,7 @@ Run from `dev_commands.txt` or the admin menu's *Any command* (see [Running dev 
 | `cancelbuff` | `cancelbuff <buff name>` | Console / admins | As the buff bar's cancel button for that buff. |
 | `charstats` | `charstats [on\|off]` | Console / admins | The live character stats; "on" also sends them to the targeted players now. |
 | `clearunlocks` | `clearunlocks <kind>…` | Console / admins | Forget the player's unlocks of those kinds (Unlocks.*; test). |
+| `emotelead` | `emotelead <ms>` | Console / admins | How long after putting a held tool away an emote is played (EmoteHolster.PutAwayLead). |
 | `fte` | `fte <id>` | Console / admins | Show a first-time event (if not seen yet); fte clear: forget every seen event. |
 | `god` | `god on\|off` | Console / admins | The player takes no damage (tests with hostile creatures). |
 | `grief` | `grief level <n> \| points <n> \| damage <n> \| award <damage> \| show \| reset` | Console / admins | Level / points / damage set the state (GriefBase 2 / 1), award &lt;damage&gt; counts that much damage to an ally as a friendly-fire hit would (even with GRIEF_AWARDS off), show makes the client print the points it holds (GriefBase 1 with -1, -1), reset clears everything. |

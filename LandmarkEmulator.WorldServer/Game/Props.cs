@@ -536,6 +536,27 @@ namespace LandmarkEmulator.WorldServer.Game
         private const float PlacementSpawnDepth = 20f;
 
         /// <summary>
+        /// Where a prop waiting for its placement session is spawned: <see cref="PlacementSpawnDepth"/> below the player,
+        /// but inside the height of the player's build site (<paramref name="site"/>, local metres). The 0.695 cursor is
+        /// valid only while the drop point is in the same site as the prop's position when the session opened
+        /// (FUN_142fbd5f0 / FUN_142fc1950 compare FUN_142dbbf20 of tool +0x200, recorded by FUN_142fb19b0, with the
+        /// cursor's; a 3-D box test), so a prop spawned below the site's box could never be put down: a player in the
+        /// bottom 20 m of their site's box got a cursor that stayed red (trace/0695/phaseE3-deep.md F1). With less than
+        /// 3 m of room below, the prop goes above the player instead, still in the site.
+        /// </summary>
+        internal static Vector3 PlacementSpawnPoint(Vector3 feet, (float MinY, float MaxY)? site)
+        {
+            float y = feet.Y - PlacementSpawnDepth;
+            if (site is (float min, float max) && y < min + 1f)
+            {
+                y = min + 1f;
+                if (feet.Y - y < 3f)
+                    y = Math.Max(feet.Y, Math.Min(feet.Y + PlacementSpawnDepth, max - 1f));
+            }
+            return new Vector3(feet.X, y, feet.Z);
+        }
+
+        /// <summary>
         /// Places a temporary prop by using an item (the Cozy Campfire): it goes straight into the world near the aim
         /// point, isn't saved (the item's effect removes it again) and is returned as (guid, position).
         /// </summary>
@@ -605,7 +626,8 @@ namespace LandmarkEmulator.WorldServer.Game
             // FUN_142f215a0) only after it has asked for and received the prop's full data, and until then the prop is
             // an ordinary solid entity — at the player's feet it pushed them up (2026-10-14). The session then moves it
             // with the cursor and Save sends the real transform, so where it first appears doesn't matter.
-            PlacedProp prop = Create(owner, propId, modelId, definition?.NameStringId ?? 0, owner.Position - new Vector3(0f, PlacementSpawnDepth, 0f));
+            PlacedProp prop = Create(owner, propId, modelId, definition?.NameStringId ?? 0,
+                PlacementSpawnPoint(owner.Position, Claims.SiteHeightAt(owner.ZoneId, owner.Position)));
             prop.AwaitingPlacement = true;
             prop.PaidByItem = paidByItem;
             prop.PaidByItemGuid = paidByItemGuid;
@@ -1215,9 +1237,13 @@ namespace LandmarkEmulator.WorldServer.Game
 
             var position = new Vector4(vectors[0].X, vectors[0].Y, vectors[0].Z, 1f);
             var target = new Vector3(position.X, position.Y, position.Z);
+            // A placed prop stays in its build site: the 0.695 cursor is invalid once the drop point's site differs from
+            // the one the session started in (FUN_142fbd5f0), so the client never sends a move into another site.
+            bool leavesItsSite = prop.Placed && Claims.ClaimAt(prop.Zone, new Vector3(prop.Spawn.Position.X, prop.Spawn.Position.Y,
+                prop.Spawn.Position.Z)) != Claims.ClaimAt(prop.Zone, target);
             if ((isOwner ? !MayPlaceAt(owner, target, prop.Zone)
                 : Claims.ClaimAt(prop.Zone, target) == null || !MayDecorateAt(owner, target, prop.Zone))
-                || !PackAllows(prop, target))
+                || !PackAllows(prop, target) || leavesItsSite)
             {
                 // SaveReply failure (FUN_142f1c7b0): "That object can not be placed there."; the gizmo stays open so
                 // the player can move it back onto their site or cancel.
@@ -1938,6 +1964,43 @@ namespace LandmarkEmulator.WorldServer.Game
                 returned?.AddRange(back);
             }
             return inside.Count;
+        }
+
+        /// <summary>
+        /// The Selection tool's Delete key and Cut (Building.HandleDeleteOrCut): every placed prop standing in the box that
+        /// the player may remove (<see cref="MayRemove"/>) comes back to them as materials ("DELETE will remove both props and
+        /// voxels ... Resources for all deleted items are returned to you", "Cut props are refunded": the client's help page
+        /// Tools_Large.html; P2954; P0036 props must be refunded, not lost); a chest comes back as itself, as a recycle gives it.
+        /// Left standing, as a pick-up leaves them: a chest that holds items, a reward chest that has paid out (PickUp error
+        /// 0xE; it would come back as a fresh full chest), a vendor with stock, props on a site in Play Mode. A mover pack goes
+        /// whole, refunded once. Returns how many props were taken down.
+        /// </summary>
+        public static int DisassembleInBox(WorldSession player, Vector3 min, Vector3 max, uint zone)
+        {
+            List<PlacedProp> inside;
+            lock (sync)
+                inside = props.Where(p => p.Placed && p.Zone == zone
+                    && p.Spawn.Position.X >= min.X && p.Spawn.Position.X <= max.X
+                    && p.Spawn.Position.Y >= min.Y && p.Spawn.Position.Y <= max.Y
+                    && p.Spawn.Position.Z >= min.Z && p.Spawn.Position.Z <= max.Z).ToList();
+            var packs = new HashSet<ulong>();
+            int taken = 0;
+            foreach (PlacedProp prop in inside)
+            {
+                if (!MayRemove(player, prop) || Chests.HasItems(prop.Spawn.Guid) || RewardChests.HasPaidOut(prop.Spawn.Guid, prop.PropId)
+                    || prop.PropId == Vendors.VendorProp && Vendors.HasStock(prop.Spawn.Guid))
+                    continue;
+                Vector3 at = new(prop.Spawn.Position.X, prop.Spawn.Position.Y, prop.Spawn.Position.Z);
+                if (Claims.ClaimAt(prop.Zone, at) is ulong site && Claims.IsPlaying(site))
+                    continue;
+                if (prop.PackGroup != 0 && !packs.Add(prop.PackGroup))
+                    continue;   // gone with the first part of its pack
+                RemoveOtherParts(prop);
+                List<(uint Item, uint Count)> back = Remove(prop, player, Chests.Slots(prop.PropId) == 0 ? Refund.AsMaterials : Refund.AsPlaced);
+                log.Info($"{player.CharacterName}: selection delete took down prop {prop.PropId} ({string.Join(", ", back.Select(b => $"{b.Count} x {b.Item}"))}).");
+                taken++;
+            }
+            return taken;
         }
 
         /// <summary>Takes a prop out of the world (and the database); <paramref name="refundTo"/> gets its item back.</summary>

@@ -1,6 +1,7 @@
 ﻿using System;
 using LandmarkEmulator.Shared.Network;
 using LandmarkEmulator.Shared.Network.Message;
+using LandmarkEmulator.WorldServer.Network.Message.Model.Shared;
 
 namespace LandmarkEmulator.WorldServer.Network.Message.Model
 {
@@ -38,6 +39,14 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
         public uint Container { get; set; }
         /// <summary>Wear, written as the last field (client item +0x148, a float; FUN_142f2ff70).</summary>
         public float Wear { get; set; }
+        /// <summary>
+        /// The item's two ItemRandom blocks, as its ItemAdd record has them (quality, tool stats). The client copies them
+        /// over the item (FUN_142fcf620 → FUN_143b780f0) and re-derives the cost multiplier from the quality, so zeros
+        /// turned every updated stack into quality 0 and wiped a tool's stats (trace/0695/craft-a-client.md §5.1). Null =
+        /// empty blocks.
+        /// </summary>
+        public InventoryItem.DefinitionData.RandomData Random { get; set; }
+        public InventoryItem.DefinitionData.RandomData Random2 { get; set; }
 
         public void Write(GamePacketWriter writer)
         {
@@ -48,15 +57,10 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
             writer.Write(RentalExpirationTime);
             writer.Write(Slot);
             writer.Write(Container);
-            // Two blocks (FUN_142b87690): five u32s, then two lists (empty). The client only applies the update when
-            // the packet is consumed exactly, so these must be complete.
-            for (int block = 0; block < 2; block++)
-            {
-                for (int i = 0; i < 5; i++)
-                    writer.Write(0u);
-                writer.Write(0u);
-                writer.Write(0u);
-            }
+            // Two blocks (FUN_142b87690): five u32s, then the stat and catalyst lists. The client only applies the update
+            // when the packet is consumed exactly, so these must be complete.
+            (Random ?? new InventoryItem.DefinitionData.RandomData()).Write(writer);
+            (Random2 ?? new InventoryItem.DefinitionData.RandomData()).Write(writer);
             writer.Write(0u);
             writer.Write(BitConverter.SingleToUInt32Bits(Wear));
         }

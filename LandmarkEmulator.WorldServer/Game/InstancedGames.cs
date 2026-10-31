@@ -1480,8 +1480,10 @@ namespace LandmarkEmulator.WorldServer.Game
             w.Write(cp.Guid);
             WriteEventTail(w, "", taker?.Session.CharacterName ?? "");
             byte[] data = output.ToArray();
-            foreach (Player p in game.Players.Where(p => !p.Arriving).ToList())
-                p.Session.EnqueueMessage(ZoneMessageOpcode.InstancedGameBase, data);
+            // Players and watchers: an observer's HUD (game state 9) loads the kill / status feed too (phaseE3-ui.md F1).
+            List<WorldSession> viewers = game.Players.Where(p => !p.Arriving).Select(p => p.Session).Concat(Watchers(game)).Distinct().ToList();
+            foreach (WorldSession viewer in viewers)
+                viewer.EnqueueMessage(ZoneMessageOpcode.InstancedGameBase, data);
             Broadcast(game, $"{(game.Rules.TeamCount > 0 ? TeamName(game, side) : taker?.Session.CharacterName ?? "Someone")} took {cp.Name}.");
             log.Info($"{Title(game)}: {cp.Name} taken by side {side}.");
             StoryFire(cp.Guid, ControlPointCapturedEvent, taker?.Session);
@@ -2185,8 +2187,10 @@ namespace LandmarkEmulator.WorldServer.Game
             w.Write(victim.Session.PlayerGuid);
             WriteEventTail(w, victim.Session.CharacterName ?? "", by?.Session.CharacterName ?? "");
             byte[] data = output.ToArray();
-            foreach (Player p in game.Players.ToList())
-                p.Session.EnqueueMessage(ZoneMessageOpcode.InstancedGameBase, data);
+            // Watchers too: in observer mode the 0.695 client switches to its observing HUD (game state 9), which loads the
+            // kill-feed and status-feed widgets and shows every Event it gets (trace/0695/phaseE3-ui.md F1).
+            foreach (WorldSession viewer in game.Players.Select(p => p.Session).Concat(Watchers(game)).Distinct().ToList())
+                viewer.EnqueueMessage(ZoneMessageOpcode.InstancedGameBase, data);
         }
 
         /// <summary>

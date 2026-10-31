@@ -78,7 +78,32 @@ namespace LandmarkEmulator.Tests.Rules
                 Assert.False(Map("closeDue").ContainsKey(s));
                 BuildModeHolster.Update();
                 Assert.Empty(FakeWorld.Outgoing(s));
-                Assert.True(OpenedByPlacement(s));                    // still the placement's build mode
+                // Kept open on purpose: from now on the player's build mode, not the placement's (phaseE4-logic.md F3).
+                Assert.False(OpenedByPlacement(s));
+            }
+            finally
+            {
+                BuildModeHolster.Forget(s);
+            }
+        }
+
+        [Fact]
+        public void AfterASettledPlacement_ALaterCancel_LeavesBuildModeOpen()
+        {
+            WorldSession s = world.Session(++nextGuid, "Builder");
+            ulong first = ++nextGuid, second = ++nextGuid;
+            try
+            {
+                BuildModeHolster.OpenForPlacement(s, Prop(first));
+                BuildModeHolster.BuildMode(s, true);
+                BuildModeHolster.PlacementSettled(first);              // placed; the player keeps building
+                FakeWorld.Outgoing(s);
+                BuildModeHolster.OpenForPlacement(s, Prop(second));    // another bag item while in build mode
+                FakeWorld.Outgoing(s);
+                BuildModeHolster.PlacementEnded(second);               // Escape
+                Assert.False(Map("closeDue").ContainsKey(s));
+                BuildModeHolster.Update();
+                Assert.Empty(FakeWorld.Outgoing(s));                   // no close code
             }
             finally
             {

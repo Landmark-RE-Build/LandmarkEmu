@@ -101,7 +101,7 @@ Ignore / Stop Ignoring by the list (`RightClickMenus.Buttons`).
 
 Status: **fixed** (this audit, commit below), **ok** (every variant read correctly, checked in the code named),
 **same** (every sender writes the same layout; only values differ), **n/h** (the server does not handle the message at
-all — not a variant problem; see trace/0695/coverage-695.md), **open** (see Open leads).
+all — not a variant problem; see trace/0695/coverage-695.md), **open** (none left; see Former open leads).
 
 ### Social: who is named, and how
 
@@ -115,7 +115,7 @@ all — not a variant problem; see trace/0695/coverage-695.md), **open** (see Op
 | GuildInvitePacket 0x83/4 {u64 guild, u64 invitee, string name} | Guild window (GuildWrapper.Invite(guild, "", name)) and /guildinvite (FUN_1433abd90): guid 0 + name; Guild.Invite one-argument path (menus): current guild, guid, "" | Internal/Social/GuildInvites.cs | ok (aded215) |
 | GuildKickPacket 0x83/0x0C {u64 guild, u64 member, string name} | Guild.Kick (roster menu, FUN_1435b7ce0): guid, ""; /guildkick and /guildremove (CommandGuildKickPlayer, FUN_1433abf90): 0 + typed name | Internal/Social/GuildKicks.cs (both servers) | **fixed** 2869412 |
 | GuildChangeMemberRankPacket 0x83/0x0A | Guild.PromoteMember / DemoteMember (FUN_142ef91f0): the next rank's name; Guild.ChangeMemberRank (FUN_1435b74d0; no shipped UI calls it): rank name + comment from Lua; **Guild.TransferGuildLeadershipConfirm** (FUN_1435b9cd0 → FUN_142efadc0): the kept promote packet naming the leader rank; /guild_debug (FUN_1433a8940, debug) | named rank, else one step; into the leader rank by the leader = transfer (Internal/Social/GuildRankChanges.cs) | **fixed** de11c3d (transfer) |
-| GuildDescriptionUpdatePacket 0x83/0x0F {u64 guild, string, string, string text} | Guild.SetDescription (FUN_1435b64e0) and Guild.RankSetDescription (FUN_1435b8b10): both put the text in the third string and nothing else that tells them apart | the last non-empty string = the guild description | same (a rank description cannot be told apart; see Open leads) |
+| GuildDescriptionUpdatePacket 0x83/0x0F {u64 guild, string, string, string text} | Guild.SetDescription (FUN_1435b64e0) and Guild.RankSetDescription (FUN_1435b8b10): both put the text in the third string and nothing else that tells them apart | the last non-empty string = the guild description | same (a rank description cannot be told apart; see Former open leads) |
 | GuildMotdUpdatePacket 0x83/0x0B, GuildQuitPacket 0x83/0x0D | Guild.SetMotd / /guildmotd (FUN_1433ac210): text in the first string; Guild.Quit / /guildquit (FUN_1433ac190): the guild | as filled | same |
 | GuildRequestMutePlayerPacket 0x83/0x10 | Guild.MutePlayer and /guild_debug: one builder (FUN_142ef9b80) | Game/Guilds.cs Mute | same |
 | Other GuildBase requests (Create, Disband, InviteReply, InviteRevoke, Petition*, Rename, UpdateRank, AppDataField) | one Lua native each, plus /guild_debug (FUN_1433a1e10 → FUN_1433a8940) for the admin | — | same |
@@ -137,7 +137,7 @@ all — not a variant problem; see trace/0695/coverage-695.md), **open** (see Op
 | InventoryPacketRequestTransferItem 0x2D/0x16 | ClientInventory.TransferItem (owner type 1, container + slot), TransferItemWithOwner (owner type per argument: 1 = container, 3 / 5 = owner guid), FUN_142f24db0 | ItemLocation.Read (owner guid for types 2/3/5), Chests.Transfer | ok |
 | InventoryPacketToggleAutoResupply | CoinStoreScreen.TurnOn / TurnOffAutoResupply: {u64 item, bool} | InventoryHandler | same |
 | PacketMailConsumeAttachmentRequest | Mail.RetrieveAttachment / RetrieveAllAttachments / PayCashOnDelivery: {u64 mail, u64 attachment} | Game/Mail.cs TakeAttachments | same |
-| PacketClaimVendorSetPriceRequest 0x112/2 {u32 slot, u64 listing, u32 price} | LuaClaimVendor.SetItemPriceByGuid: slot -1 + listing; ...BySlot: slot + listing 0 | listing only (Game/Vendors.cs) | open (no 0.695 window calls either; vendors are off by default) |
+| PacketClaimVendorSetPriceRequest 0x112/2 {u32 slot, u64 listing, u32 price} | LuaClaimVendor.SetItemPriceByGuid: slot -1 + listing; ...BySlot: slot + listing 0 | listing only (Game/Vendors.cs) | same (BySlot has no caller and no row carries a slot; see Former open leads) |
 
 ### Build sites, props, tools
 
@@ -199,17 +199,24 @@ Lua natives above).
 | 1a3b78f | Item tooltip requests 0x0F / 0x10 | read as a transfer location; chest items, inspected gear and mail attachments got no tooltip |
 | de11c3d | GuildChangeMemberRankPacket | the confirmed "Transfer Guild Leadership" was refused |
 
-## Open leads
+## Former open leads (closed 2026-10-26, trace/0695/phaseE2-social.md)
 
-- **Leadership transfer, the old leader's rank** [I]: the client only says the leader loses the leadership rank. The
-  server gives them the new leader's former rank. A live capture or developer post would settle it.
-- **Right-click rows per target** [I]: which rows live listed for which target is server-side; ours leave out only the
-  rows that cannot apply.
-- **Guild.RankSetDescription** sends the same GuildDescriptionUpdatePacket as Guild.SetDescription with nothing that
-  names the rank (FUN_1435b8b10 fills only the third string), so the server takes it as the guild description. Not
-  found yet: a 0.695 UI caller of RankSetDescription (GuildEditRanksWindow in re/as3 is the 0.589 window), or a field
-  that tells them apart.
-- **LuaClaimVendor.SetItemPriceBySlot** {slot, listing 0, price}: the slot's meaning (row of the vendor list?) is not
-  proven and no window calls it; the server reads the listing only.
-- **Feedback mail to a contest winner**: ToGuid is WinnerFeedbackReceipientGuid, which may name a character of another
-  world; the recipient's name is looked up in this world's character database (not found → "user not found").
+- **Leadership transfer, the old leader's rank — matches.** The client offers the transfer only when the promoted
+  member's next rank up is the leader rank (FUN_142ef91f0: the rank above the target, FUN_143c4ed20 → rank +0x110,
+  equals the guild's leader rank record), so the new leader always comes from the rank right under the leader; the
+  client even keeps that former rank id at guild manager +0xec for the confirm (written, never read) [P]. "The new
+  leader's former rank" (ours) and "the rank under the leader" are therefore the same rank.
+- **Right-click rows per target — closed on best evidence.** RadialMenuButtons.txt has no condition column; the
+  response lists rows with a per-row "selectable" byte, so live could grey rows out or leave them away — server-side,
+  recorded nowhere (client, data, wiki, forum, patch notes searched). Ours leaves out rows that cannot apply.
+- **Guild.RankSetDescription — matches.** FUN_1435b8b10 checks the rank exists (argument 2) and then fills only the
+  third string of GuildDescriptionUpdatePacket, exactly as Guild.SetDescription does [P]; no 0.589 or 0.695 window or
+  script calls it (as3, as3_695, UI/Default, Resources/Scripts searched). The packet cannot carry a rank description,
+  so the guild description is the only reading.
+- **LuaClaimVendor.SetItemPriceBySlot — closed on best evidence.** No window calls it (the 0.695 developer test window
+  UI/TestMod/TestGrid.lua proves ListItem's arguments: "LuaClaimVendor:ListItem( data.Slot, data.Quantity, 0 )", bag
+  slot and count), and the vendor list's rows carry no slot (FUN_143379e40), so a slot-only SetPrice finds no listing
+  (result 3). Live made vendor booths decorative on 1 Apr 2016 (P4378); VENDOR_SHOPS stays off.
+- **Feedback mail to a contest winner on another world — matches.** Characters are global: every Docker world shares
+  `lmemu_character` (docs/docker.md), so CharacterNameOf finds a character of any world, and the mailbox is the social
+  service's, across worlds.

@@ -96,8 +96,8 @@ namespace LandmarkEmulator.Tests.Rules
             string before = TerrainState();
             FakeWorld.Outgoing(session);
 
-            int hits = Get<int>(tree, "MaxHits");
-            for (int i = 0; i < hits; i++)
+            // Until it falls: 5 swings under TreeHealth=hits, its health / the axe's damage under TreeHealth=health.
+            for (int i = 0; i < 100 && Get<bool>(tree, "Standing"); i++)
                 Assert.True(Gathering.Chop(session, Get<ulong>(tree, "Guid"), at));
 
             Assert.False(Get<bool>(tree, "Standing"));

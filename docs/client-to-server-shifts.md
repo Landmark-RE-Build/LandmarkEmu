@@ -71,19 +71,31 @@ before restoring the combat HUD; the Claim camera permission check (`Claim.NoCam
 client; Chat fade opacity and the "Social" options page; GuildWindow's rank edit button; the in-game HUD state 8 / 9
 is no longer used (B).
 
-## 3. Open leads
+## 3. Leads (closed 2026-10-26, trace/0695/phaseE2-building.md L193)
 
-- **A1 Which bar a right-clicked tool goes to.** The 0.589 routine preferred the bar being shown (action bar manager
-  +0x78), else the first free slot of any bar. The 0.695 client does not tell the server which bar is shown
-  (`Ui.SetActiveActionBar` FUN_1435c8290 sends nothing, and no hotbar or tool packet carries a bar id found yet), so
-  the server fills bar 0 first. Searched: the ActionManager 0x9A builders, ToolPacketActivate, Lua Ui.* hotbar
-  bindings. Next: a runtime capture of the 0.695 client switching bars, and the live capture archive.
-- **A2 Equip refused.** 0.589 placed the slot whatever happened to the tool activation; the server places it only
-  when its equip succeeded. Whether live put a refused tool on the bar is not known yet (no capture of a refused
-  right-click).
-- **A3 Definition slots.** The 0.589 routine treated only an item-guid slot (type 2) as "already on the bar"; the
-  server also skips the right-click when a type-1 (item definition) slot holds the item, because the 0.695 client binds
-  such a slot to that item (FUN_14344daa0). Live behaviour for the starting bar's default tools is not captured.
+- **A1 Which bar a right-clicked tool goes to: bar 0 first.** The 0.589 routine (FUN_1433a0b80, the dead 0.695 copy
+  FUN_14344e300) walks bars 0.. and slots 0.. and keeps the first empty slot, preferring the first empty slot on the
+  active bar (action bar manager +0x78). The 0.695 client never tells the server that index [P]: `Ui.SetActiveActionBar`
+  (FUN_1435c8290 → FUN_14345a7e0 → FUN_14344eaa0) only stores +0x78; its other readers are the hotkey use
+  (FUN_14344e200 → FUN_14344c420: item / ability / tool / Lua `GameEvents:ActionBarHotKeyPress`, no bar in any packet)
+  and the dead routine; every 0x9A request names its own bar and slot, InventoryPacketItemActionBarAssign (0x2D sub 6,
+  Lua `Ui.AssignToItemActionBar`) is called by no 0.695 script or SWF. So live's server could only pick from what it
+  held, and bar 0 is also the bar every client shows until the player switches (ActionBar.lua OnWindowLoaded:
+  SelectedBar 0). The server's order equals the client routine's for every player who has not switched bars.
+- **A2 Equip refused.** In 0.589 the right-click did not equip at all: it sent ToolPacketActivate and put the item on
+  the bar (FUN_1433aa0c0); the player then wielded it from the bar. In 0.695 the right-click is the equip, and the
+  server places the slot when its equip succeeds. A main-hand bag item's equip is not refused by the server (the only
+  refusal, the unique-equip rule, needs another worn copy in a different gear slot, which the one main-hand slot can't
+  have), so the case does not arise.
+- **A3 Definition slots.** The client's bar builder FUN_14344daa0 shows a type-1 (item definition) slot as a guid slot
+  of the player's copy of that item (equipped first, then the bag, FUN_142f389f0) when the definition's stack size
+  (+0xe4) is 1, and the placing routine compares those guids, so a non-stacking item behind a definition slot is
+  "already on the bar" [P]. The server matches that, stack size included (RightClickHotbarRuleTests).
+- **Tool 7 after an equip.** The ToolBase "switched build tool to Location (7)" right after an equip is the client
+  leaving any build tool: ClientActionManager's held-item callback (vtable slot 10, FUN_143458f20) marks the slots
+  holding the new item "InProgress" (FUN_14344ed30) and switches to the `ToolLocation` tool (FUN_14361b1a0, ToolTypes
+  7 "Location Tool", no palette entry) when it may activate, through FUN_143464780("Location") → FUN_143468840, which
+  sends ToolPacketActivate {0, 0, 7} [P]. Building.Tools treats it as no build tool.
 
 ## 4. Running the scan again
 

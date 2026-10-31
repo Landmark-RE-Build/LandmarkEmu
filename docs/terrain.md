@@ -209,6 +209,19 @@ The layer blob is the client block codec (`A1 B2 C3 D4`, big-endian size, zlib) 
   the cause found for all three freezes, and client-made vertex-only voxels have gone back to clients from the server
   since 2026-10-14 without trouble.)
 
+### Placed designs after the block data (`TemplateInstanceLookup.cs`)
+
+A layer blob may carry more than SerializeBlockData: when bytes are left in the decompressed layer, the client reads
+VoxelFarm's **VoxelTemplateLookup** from them (CellBlocks decompress FUN_144049ef0 → FUN_14406dca0), the list of
+placed design instances whose voxels lie in the cell. Voxel Vision's "Templates" list comes from layer 1's lookup.
+Layout: varint n + n bytes = u8 (skipped), u32 count, count × {u64 instance guid, u8 voxel flag bits 2-3 (0), u16 box
+min, u16 box max (voxel indices in the cell), signed varint k: k < 0 = a bit set over the box follows (one bit per voxel,
+((z − minZ)·dimX + (x − minX))·dimY + (y − minY), MSB first), then |k| − 1 varint node weights}. The server writes one
+entry per placed Player Studio design with a voxel in the cell (its placer's voxels inside its box, from the ownership
+grid; k = −1, no weights). The client never adds instances itself; for each one it doesn't know it asks
+GetInstanceDetailsRequest 0xF0/0x12 and gets 0xF0/0x13 (`Game.TemplateInstances.SendDetails`). Format and client
+addresses: `TemplateInstanceLookup` and `Game/TemplateInstances.cs` comments.
+
 ### How the client draws a dig (`TerrainEdits.Sphere` / `SurfaceVertices`)
 
 Traced 2026-10-18 after "pickaxe digging looks too blocky" (0.695 addresses):
@@ -307,8 +320,9 @@ doorway of a placed design became an occlusion quad: from inside, every terrain 
 flora (not occlusion-tested) still drew — "nothing outside is visible" (user report 2026-10-21). At every start
 `TerrainEdits.RepairInteriorAir` turns stored layer-1 0xFFFC voxels into air (the look they had) at a new cell
 version, so clients refetch the cells and the coarse copies are rebuilt; `TerrainEdits.Write` and the coarse copies
-(`TerrainLod.Downsample`) never store it either. Surrounding air (modes 2 and 4) and Remove voxels are still not
-applied by the server's paste (TASKS 6.57). Tests: `Rules/DesignInteriorAirTests`.
+(`TerrainLod.Downsample`) never store it either. Surrounding air (modes 2 and 4) is still not applied by the server's paste (TASKS 6.57); since 2026-10-31 a paste
+with "Remove voxels" (request +0x14c) takes the copy's solid voxels out of the target instead of writing them
+(`Building.AsErase`; props are not placed). Tests: `Rules/DesignInteriorAirTests`, `Rules/SelectionDeleteTests`.
 
 **Paste origin vs preview (L199, 2026-10-24/25).** Frida on `FUN_1436cd920` (`tools/paste`): identity packets sit
 one voxel above the area/preview corner on every axis (server origin − `areaVoxels` = `(1,1,1)`). Cursor size at
@@ -316,6 +330,32 @@ one voxel above the area/preview corner on every axis (server origin − `areaVo
 min-corner shift into the packet on flipped axes and skips that +1 there (yaw90: packet − area =
 `(−sizeZ, +1, +1)`); a blanket −1 then put the flipped axis one low. `Building.Paste` applies
 `PasteOriginAdjust = -1` only on axes with `shift[i] == 0`.
+
+### Selection Delete key and Cut (`BuildingDelete.cs`)
+
+The Selection tool's **Delete key** and **Ctrl+X** do not send an ApplyDiffRequest. Lua `VoxelClipboard.Delete` / `Cut`
+(FUN_1435dd210 / FUN_1435dd150) → the selection cursor → FUN_143161530(box, action) erases the box in the client's own
+layer 1 at once, marks every cell it touches pending, and sends **ClientSelectionAreaRequest** (0xF4 sub 2) with
+**action 2** (Delete; no blocks) or **1** (Cut; with the copied blocks), each cell listed as
+`{u64 cell, u32 layer-1 version before, u32 after}`. All actions: 0 Copy, 1 Cut, 2 Delete, 3 Save Design, 4 Paste /
+Place Design (sub 5 is the off-grid paste) [P, trace/0695/voxdel-a-client-delete.md].
+
+The server erases the box itself: every voxel of it (size voxels per axis from the origin) becomes air in layer 1 under
+the build rules (build permission over the whole box; placed voxels refunded; one undo step "Delete" / "Cut"; others see
+the delete effect). Voxels no layer stores that lie more than 2 m above the baked ground are left out (air already; the
+digs' margin). The props standing in it that the player may remove come back as materials, a chest as itself (the
+client's help page: "DELETE will remove both props and voxels", "Cut props are refunded"; a full chest, a paid-out reward
+chest, a stocked vendor and Play Mode sites stay). The cells are answered, then **the player gets the server's copy of
+every listed cell** and everyone else the changed ones, so both copies stay the same whatever the client's own erase
+drew (its edge rules are VoxelFarm's op 1, not traced, L249). A refused Delete / Cut (permission, more than 1,000,000
+voxels, unreadable) and any unknown action answers the cells and re-sends them (above 1,024 listed cells only those
+within 256 m), which takes the client's erase back. The undo history keeps at most 4,000,000 voxel values per player.
+
+Until 2026-10-31 the server took actions 1 and 2 for a Copy: nothing was erased and the cells were answered ok, so the
+client kept an erase the server never made. The next paste (it sends the changed cells to the paster too), the next
+brush edit in the cell (its base version, the client's post-erase CRC, no longer matched: refused as stale and the
+server's cell re-sent, which also dropped the new voxels), undo or a refetch brought the voxels back, and other players
+never saw the delete (player report 2026-10-31; trace/0695/voxdel-*.md). Tests: `Rules/SelectionDeleteTests`.
 
 ### Tool switch and the edit effect others see (`Building.Tools.cs`)
 
@@ -867,6 +907,18 @@ Process Pending: N" → "Finish SCENE: Total Process Time"), meshed by five `Con
   client-side options (a CPU-count cap in LaunchPad, msconfig processors, E-cores off) are in
   trace/0695/allocator-slots-options.md and allocator-slots-fix-design.md. To compare, a player can switch the
   setting off and count the `Avg contour` lines and the ClientSceneProcessing.log `Finish SCENE` times per load.
+- **What else was ruled out (2026-10-26, trace/0695/phaseE2-building.md L198 / L200).** The two uncapped pools take
+  their size straight from FUN_142b4e800 = `GetSystemInfo().dwNumberOfProcessors` (FUN_143a8d560 / FUN_143a98090);
+  no config key, cvar or packet changes it. Starting the game with a CPU affinity mask or inside a job object limited to
+  2 CPUs does not lower that count (measured on the 12-thread PC: 12 both times), so LaunchPad can't fix it by affinity.
+  Only Windows' own processor count (msconfig / `bcdedit numproc`, `groupsize`) or BIOS SMT / E-cores change it.
+  Nothing the server can send helps much: the clipmap's radii are a fixed preset (table 0x14499d2c0, runtime setter
+  FUN_142d51820 unreferenced), so render distance and TerrainQuality don't change the terrain cells; UseCachedMeshes
+  (+0x229) has no reader; claim-wide LOD (+0x5e4, read by FUN_142ae6c50) only widens the finest ring to the claim box
+  (FUN_142b1ced0), more meshing inside claims, not more threads; `GameSettings.SetMTR(0)` ends one render worker
+  (at most one slot). Each design preview runs on a new PreviewGenerationThread (FUN_143f93a50), joined and released by
+  the scene update FUN_143f93c90 when it ends, so every preview has to win a slot again; MaxVoxelsForPreview is never
+  read in 0.695 (only its registration references the variable). The server's part stays the stream hold above.
 
 **History (Daybreak forums, archived):** the live game had this bug. A developer's feedback thread on long load times
 (23 May 2016) collected reports of loads stuck at 50%, mostly on 6- and 8-core CPUs with hyper-threading (i7-5820K,

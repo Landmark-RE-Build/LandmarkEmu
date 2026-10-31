@@ -82,6 +82,11 @@ namespace LandmarkEmulator.WorldServer.Game
                 // after the first swing.
                 reply.Ua0 = 0;
             }
+            // An axe (and the chop of the Pickaxes and the NovaTech tools) targets trees only: the client checks this rule
+            // before it outlines, shows the axe cursor or swings (FUN_143730e50). Trees carry their profile for it
+            // (Gathering.SetLife). The ability record is cached per session, so a change reaches a client at its next login.
+            if (LoggingAbilities.Contains(ability.AbilityId) || ability.AbilityId == ExtractorChop)
+                reply.U90 = TreeTargetRequirement;
             if (ReapingAbilities.Contains(ability.AbilityId))
             {
                 // A held sickle draws its plant-harvest wedge (ActionStateReaping → PlantHarvestDecal) from this
@@ -101,11 +106,30 @@ namespace LandmarkEmulator.WorldServer.Game
         private const float SickleReach = 5f;
 
         /// <summary>
+        /// The cast hash the 0.695 client puts in a CastAttempt (0x27 / 1, +0x20) for its cast counter (+0x28): FUN_142e0f810
+        /// ("send cast to zone") takes the counter at player +0x753f4 (then increments it) and computes
+        /// ((counter &amp; 0xff) ^ CastKeySeed) * 0x502c3f11, the seed being SendSelf +0x753f0 [P]. The pair {caster guid,
+        /// cast hash} is the cast's identity: every answer (CastSuccess, CastFail, AbilityEnd, the targeter messages)
+        /// echoes it, and the client matches its pending cast by it. Seed handling: <see cref="WorldSession.CastKeySeed"/>
+        /// (OPEN-LEADS L189).
+        /// </summary>
+        public static uint CastKey(uint seed, uint counter) => unchecked(((counter & 0xff) ^ seed) * 0x502c3f11u);
+
+        /// <summary>
+        /// Whether a cast's hash is the one this session's client computes. A mismatch is only logged: the answers echo the
+        /// client's own hash either way, so the cast still works (live's handling of a wrong key is not recorded).
+        /// </summary>
+        public static bool CastKeyMatches(uint seed, uint counter, uint hash) => CastKey(seed, counter) == hash;
+
+        /// <summary>
         /// A cast from the client. Item abilities are allowed when the player has an item that gives them: tools
         /// must be held, usable items (potions, gadgets, dynamite, campfire) go to Consumables.
         /// </summary>
         public static void HandleCast(WorldSession session, AbilityCastAttempt attempt)
         {
+            if (!CastKeyMatches(session.CastKeySeed, attempt.Sequence, attempt.CastHash))
+                log.Debug($"{session.CharacterName}: cast {attempt.AbilityId} hash 0x{attempt.CastHash:X8} is not this session's key for "
+                    + $"counter {attempt.Sequence} (0x{CastKey(session.CastKeySeed, attempt.Sequence):X8}); answered as usual.");
             // Any cast shows the client is not stuck in a channel it let go of (MovementEffects.Release).
             MovementEffects.NoteCast(session);
             log.Debug($"Cast {attempt.AbilityId} by {session.CharacterName} at <{attempt.TargetX:F2}, {attempt.TargetY:F2}, "
@@ -223,8 +247,19 @@ namespace LandmarkEmulator.WorldServer.Game
                 {
                     // MovementEffects: Energy and cooldown, the channels (held until the key is let go), the charged
                     // leaps (answered at release: a CastSuccess now would end the charge) and the instant ones.
+                    // Dash Soles / Roll Wraps: the evade animation in the cast's direction (BootAbilities.EvadeSelection,
+                    // L168) in the answer, and to the players near.
+                    uint evade = MovementEffects.Enabled ? BootAbilities.EvadeSelection(attempt.AbilityId) : 0;
                     if (!MovementEffects.HandleCast(session, attempt))
-                        Answer(session, attempt);
+                    {
+                        if (evade != 0)
+                        {
+                            Answer(session, attempt, animation: new WeaponAttacks.Animation(evade, 0, 0));
+                            Emotes.Play(session, evade, null, includeSelf: false, PlayerManager.InZone(session.ZoneId));
+                        }
+                        else
+                            Answer(session, attempt);
+                    }
                     return;
                 }
                 // Still answer: the client waits for every cast it sent ("cast pending") and refuses all further
@@ -299,8 +334,6 @@ namespace LandmarkEmulator.WorldServer.Game
             var swingAt = new System.Numerics.Vector3(attempt.TargetX, attempt.TargetY, attempt.TargetZ);
             if (used && (MiningAbilities.Contains(attempt.AbilityId) || IsPulverizer(attempt.AbilityId)))
                 Emotes.ShowSwing(session, 226, swingAt);
-            else if (used && LoggingAbilities.Contains(attempt.AbilityId))
-                Emotes.ShowSwing(session, 254, swingAt);
             else if (used && ReapingAbilities.Contains(attempt.AbilityId))
                 Emotes.ShowSwing(session, 256, swingAt);
 
@@ -309,8 +342,15 @@ namespace LandmarkEmulator.WorldServer.Game
             // For axes and sickles the cast's target point is the player's own position; where the swing (the sickle's
             // cone) is aimed comes as the ring point, so a node is looked for there.
             var aimedAt = attempt.RingPoint ?? new System.Numerics.Vector3(attempt.TargetX, attempt.TargetY, attempt.TargetZ);
+            // The chop plays (for the swinger and the others) only when a tree was hit: it used to play on anything the axe
+            // swung at (the Spire, props), and the client plays the swing from this answer (trace/0695/axe-b-server.md).
+            bool missed = false;
             if (used && LoggingAbilities.Contains(attempt.AbilityId))
-                Gathering.Chop(session, TargetGuid(attempt, session), aimedAt, source.ItemDefinitionId);   // the axe's own perks (P4131)
+            {
+                missed = !Gathering.Chop(session, ChopTargetGuid(attempt, session), aimedAt, source.ItemDefinitionId);   // the axe's own perks (P4131)
+                if (!missed)
+                    Emotes.ShowSwing(session, 254, swingAt);
+            }
             if (used && ReapingAbilities.Contains(attempt.AbilityId))
                 Gathering.Reap(session, TargetGuid(attempt, session), aimedAt, source.ItemDefinitionId);
             if (used && ExtractorAbilities.Contains(attempt.AbilityId))
@@ -324,7 +364,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 Emotes.ShowSwing(session, 226, at);
             }
 
-            Answer(session, attempt, swung: used && IsHarvestAbility(attempt.AbilityId));
+            Answer(session, attempt, swung: used && IsHarvestAbility(attempt.AbilityId) && !missed);
         }
 
         /// <summary>
@@ -459,7 +499,8 @@ namespace LandmarkEmulator.WorldServer.Game
         /// </summary>
         private static readonly List<(DateTime Due, Action Do)> timers = new();
 
-        private static void Later(TimeSpan delay, Action action)
+        /// <summary>Runs <paramref name="action"/> on the world tick once <paramref name="delay"/> has passed (<see cref="Update"/>).</summary>
+        internal static void Later(TimeSpan delay, Action action)
         {
             lock (timers)
                 timers.Add((DateTime.UtcNow + delay, action));
@@ -499,6 +540,17 @@ namespace LandmarkEmulator.WorldServer.Game
         /// </summary>
         private static void Travel(WorldSession session, AbilityCastAttempt attempt)
         {
+            if (TravelCooldownLeft(session, attempt.AbilityId) is TimeSpan travelLeft)
+            {
+                // Spire / My Site on cooldown (owner setting TravelCooldownSeconds, off as live 2016): as for 187 below.
+                Refuse(session, attempt);
+                string format = Shared.GameTable.Text.TextManager.Instance.GetTextForId(FriendTeleportCooldownText)
+                    ?? "This ability is on cooldown for another %d minutes and %d seconds.";
+                Chat.System(session, ReplaceFirst(ReplaceFirst(format, "%d", ((int)travelLeft.TotalMinutes).ToString()), "%d", travelLeft.Seconds.ToString()));
+                return;
+            }
+            // The Spire / My Site cooldown starts below, where the trip is actually scheduled (a My Site cast with no site
+            // used to start it too; trace/0695/phaseE4-logic.md F9).
             if (attempt.AbilityId == 187 && FriendTeleportCooldownLeft(session) is TimeSpan left)
             {
                 // On cooldown (owner setting, off as live): CastFail ends the cast and gives the slot back.
@@ -521,6 +573,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     if (!session.Disconnected)
                         Teleport.ToZone(session, ground + new System.Numerics.Vector3(0, 1, 0), siteZone, Claims.ArrivalFacingOf(session.PlayerGuid));
                 });
+                StartTravelCooldown(session, attempt.AbilityId);
                 log.Info($"{session.CharacterName} travels to their build site {ground}.");
                 return;
             }
@@ -589,6 +642,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     if (!session.Disconnected)
                         Spire.TravelTo(session);
                 });
+                StartTravelCooldown(session, attempt.AbilityId);
                 return;
             }
             log.Debug($"{session.CharacterName} travel cast {attempt.AbilityId} has no destination yet.");
@@ -645,6 +699,49 @@ namespace LandmarkEmulator.WorldServer.Game
         {
             if (FriendTeleportCooldown > TimeSpan.Zero)
                 friendTeleportUsed[session.PlayerGuid] = DateTime.UtcNow;
+        }
+
+        /// <summary>
+        /// Travel to Spire (185) and Travel to My Site (186): their cooldown (OPEN-LEADS L188). Live's history [P developer
+        /// notes]: 26 Mar 2014 the claim and Spire teleports had separate one-hour cooldowns
+        /// (design/forum/patches/2014-03-26-26040); 1 May 2014 the own-claim teleport went to 30 minutes (2014-05-01-34656);
+        /// 2 May 2014 "adjusted the cooldowns on teleports" (2014-05-02-34889); 17 Dec 2014 the Stone of Recall (to your
+        /// claim or the surface Spire) and the Portal Shard (Spire, 10 minutes) (2014-12-15-51046); <b>5 May 2015 "The
+        /// Stone of Recall no longer has a cooldown"</b> (2015-05-05-54485, with the friend and gallery teleports); 21 Mar
+        /// 2016 the Teleport menu (these two abilities) "replaces the need for the Stone of Recall" (2016-03-21-56259). No
+        /// later note, wiki page (Spire: "At any time, players can also use a UI element to travel") or 2016 forum post names
+        /// a travel cooldown, and the 0.695 travel windows (re/as3_695 TeleportWidget / TeleportSpireWidget) show none. So
+        /// 2016 had none [I strong]: the setting TravelCooldownSeconds (Docker TRAVEL_COOLDOWN_SECONDS) is 0 by default.
+        /// <para>
+        /// The 60 s the two casts carried before came from the Cozy Campfire's caster info (ability 1098, the capture the
+        /// travel bodies were copied from: MiscHandler.CapturedCasterInfo), not from any travel data [P]. The client
+        /// enforces whatever +0x70 says by itself (record +0x14c on the cast's cooldown group, started by its CastSuccess;
+        /// see <see cref="FriendTeleportCooldownSeconds"/>), so the setting goes there too and the server checks it as the
+        /// fallback with the same text 562080.
+        /// </para>
+        /// </summary>
+        public static int TravelCooldownSeconds => Math.Max(0,
+            Shared.Configuration.ConfigurationManager<WorldServerConfiguration>.Instance.Config?.TravelCooldownSeconds ?? 0);
+
+        /// <summary>The casts <see cref="TravelCooldownSeconds"/> covers: Travel to Spire 185, Travel to My Site 186.</summary>
+        public static bool HasTravelCooldown(uint ability) => ability is 185 or 186;
+
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<(ulong, uint), DateTime> travelUsed = new();
+
+        /// <summary>Time left on the player's Spire / My Site cooldown for this cast; null when they may travel.</summary>
+        private static TimeSpan? TravelCooldownLeft(WorldSession session, uint ability)
+        {
+            int seconds = TravelCooldownSeconds;
+            if (seconds <= 0 || !HasTravelCooldown(ability) || !travelUsed.TryGetValue((session.PlayerGuid, ability), out DateTime used))
+                return null;
+            TimeSpan left = used + TimeSpan.FromSeconds(seconds) - DateTime.UtcNow;
+            return left > TimeSpan.Zero ? left : null;
+        }
+
+        private static void StartTravelCooldown(WorldSession session, uint ability)
+        {
+            if (TravelCooldownSeconds > 0 && HasTravelCooldown(ability))
+                travelUsed[(session.PlayerGuid, ability)] = DateTime.UtcNow;
         }
 
         private static string ReplaceFirst(string text, string what, string with)
@@ -775,6 +872,14 @@ namespace LandmarkEmulator.WorldServer.Game
         /// for the player (TargetBase RequestSetTarget; a sickle cast carries none but the plant under the cursor is
         /// targeted).
         /// </summary>
+        private static ulong ChopTargetGuid(AbilityCastAttempt attempt, WorldSession session)
+        {
+            // An axe cast names its tree; without one, the player's target counts only when it is a tree (else the tree
+            // nearest the aim point is looked for: a creature or prop targeted earlier must not stand in for it).
+            ulong guid = TargetGuid(attempt, session);
+            return guid == session.CurrentTarget && !Gathering.IsNode(guid) ? 0 : guid;
+        }
+
         private static ulong TargetGuid(AbilityCastAttempt attempt, WorldSession session)
         {
             // Tail +36 is often 4 (or other tiny junk) when the client has no entity under the reticle; treating that as
@@ -788,8 +893,18 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <summary>Primary swing of every pick (Adventurer's/Charmed/... 1018, Hewer's 136 → Overseer's 142, Pickaxes 169).</summary>
         public static readonly HashSet<uint> MiningAbilities = new() { 1018, 136, 138, 140, 142, 169 };
 
-        /// <summary>Primary swing of every axe (Adventurer's/Charmed/Goliath/... 1020, the crafted axes 176).</summary>
-        public static readonly HashSet<uint> LoggingAbilities = new() { 1020, 176 };
+        /// <summary>
+        /// Primary swing of every axe (Adventurer's/Charmed/Goliath/... 1020, the crafted axes 176), and the chop of the
+        /// Settler's / Explorer's / Trailblazer's Pickaxe (173, its type-2 ability next to the pick's 169; it was in no set,
+        /// so it neither chopped nor repeated while held).
+        /// </summary>
+        public static readonly HashSet<uint> LoggingAbilities = new() { 1020, 176, 173 };
+
+        /// <summary>RequirementExpressions 20 "Target is Harvestable Tree" (TargetIsProfile 200-214) [P data; I that live used it].</summary>
+        public const uint TreeTargetRequirement = 20;
+
+        /// <summary>The NovaTech Extractor / Holoseeker's chop (its logging-slot ability; 1036 is its dig).</summary>
+        private const uint ExtractorChop = 1037;
 
         /// <summary>Primary swing of every sickle (Weaver's/Adventurer's 153, Gatherer's 155, Alchemist's 156, Shaman's 157).</summary>
         public static readonly HashSet<uint> ReapingAbilities = new() { 153, 155, 156, 157 };
@@ -809,6 +924,20 @@ namespace LandmarkEmulator.WorldServer.Game
         /// so its attack numbers follow the armour as the server's damage does (Combat.GearStats).
         /// </summary>
         public static IEnumerable<(uint StatId, float Value)> CalculatedStats(WorldSession session)
+            => CalculatedStats(session, withTemporary: true);
+
+        /// <summary>
+        /// The calculated stats other players' clients get with this character (the full character's nested
+        /// UpdateCalculatedStats): the same list without the consumables' and buffs' temporary changes (OPEN-LEADS L196
+        /// OL-3). CalculatedStatDefinitions marks no stat SEND_TO_OTHERS [P, gear-stats-695.md §2], so live sent observers
+        /// no stat updates; the full character's list is applied with its side effects on any character (FUN_142e5d990:
+        /// stat 4 → the character's self-light FUN_142ec5a40, stat 5 → +0x740), so a buffed snapshot — Bottled Moonlight's
+        /// light radius — stayed on an observer who met the player during the buff, after it ended [I: no update follows].
+        /// </summary>
+        public static IEnumerable<(uint StatId, float Value)> CalculatedStatsForOthers(WorldSession session)
+            => CalculatedStats(session, withTemporary: false);
+
+        private static IEnumerable<(uint StatId, float Value)> CalculatedStats(WorldSession session, bool withTemporary)
         {
             var held = session.Inventory.Items.FirstOrDefault(i => i.Container == Inventory.Inventory.EquippedContainer
                 && ItemDefinitionManager.Get(i.ItemDefinitionId)?.Abilities.Any(a => MiningAbilities.Contains(a.AbilityId)
@@ -820,7 +949,8 @@ namespace LandmarkEmulator.WorldServer.Game
             float speed = tool != null ? StatsOf(tool.ItemDefinitionId).Speed : DefaultTool.Speed;
             int tier = held == null ? 0 : (int)Math.Round((radius - 10) + 1);
             foreach ((uint id, float value) in DefaultCalculatedStats.Player)
-                yield return (id, Buffs.Apply(session, id, Consumables.Apply(session, id, BaseStat(id, value))));
+                yield return (id, withTemporary ? Buffs.Apply(session, id, Consumables.Apply(session, id, BaseStat(id, value)))
+                    : BaseStat(id, value));
 
             // The stat before buffs: defaults, plus the held tool's harvesting stats.
             float BaseStat(uint id, float value) => id switch
@@ -890,11 +1020,19 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <summary>
         /// A gathering tool's stats as its item record shows them (ItemRandom stat list, see Inventory.FillDefinition):
         /// harvesting area (stat 3), harvest speed (13), harvest damage (12). The live Adventurer's Pick and Axe showed
-        /// 100 / 50 / 80; area scales with the dig radius (10 dm = 100), speed is the tool's, damage the live 80. Null
-        /// for items that aren't in the tool table.
+        /// 100 / 60 / 80 (SendSelf.bin; ours still 50, OPEN-LEADS L243); area scales with the dig radius (10 dm = 100), speed
+        /// is the tool's, damage
+        /// <see cref="ToolHarvestDamage"/>. Null for items that aren't in the tool table.
         /// </summary>
         public static (float Area, float Speed, float Damage)? ToolDisplayStats(uint item)
-            => toolStats.TryGetValue(item, out ToolStats t) ? ((float)(t.Radius * 10), t.Speed, 80f) : null;
+            => toolStats.TryGetValue(item, out ToolStats t) ? ((float)(t.Radius * 10), t.Speed, ToolHarvestDamage(item)) : null;
+
+        /// <summary>
+        /// A tool's Harvesting Damage (stat 12), the health an axe swing takes off a tree (Gathering.Health.cs): the live
+        /// Adventurer's 80 (SendSelf.bin) for every tool [P for the Adventurer's, I for the rest: no other tool's stats are on
+        /// disk]; the Goliath Axe 1.5 × ("more resources per swing, but swings slower", wiki; its wood is 1.5 × too) [I].
+        /// </summary>
+        public static float ToolHarvestDamage(uint tool) => tool == 3261 ? Gathering.AxeDamage * 1.5f : Gathering.AxeDamage;
 
         /// <summary>When each player's last harvest swing landed.</summary>
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<WorldSession, DateTime> lastSwing = new();

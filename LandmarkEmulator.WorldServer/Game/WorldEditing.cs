@@ -25,6 +25,18 @@ namespace LandmarkEmulator.WorldServer.Game
     /// builder's cursor is cleared for players who leave <see cref="ViewRange"/> and for everyone when the builder leaves.
     /// A packet whose guid is not the sender's own is dropped.
     /// </para>
+    /// <para>
+    /// <b>Template previews need their setup (OPEN-LEADS L196 OL-4).</b> The 0.695 receiver (FUN_1430838d0) builds a
+    /// preview's mesh only from PreviewSetup (sub 5: the template's cells, FUN_143688340 / FUN_143688e30 / FUN_143689450
+    /// / FUN_143684550 on the preview manager at +0xf8); PreviewUpdate (sub 6) only moves it, and its first call
+    /// (FUN_143687a50) looks the builder's preview up by guid and returns when there is none [P]. So a viewer that gets an
+    /// update without its setup shows nothing — a newcomer while a preview is being dragged, and, before 2026-10-26, even
+    /// the players already in range when an update replaced the unsent setup within <see cref="MinInterval"/>. The
+    /// builder's last setup is therefore kept (<see cref="Editor.Setup"/>), always sent before the update that follows it,
+    /// and sent to a newcomer before the newest update while the preview lasts; any other cursor packet ends it (the
+    /// receiver drops the preview when another kind arrives: FUN_143082aa0 ≠ 5 → FUN_143080fa0), except a Clear with
+    /// flag 1, which removes only the selection.
+    /// </para>
     /// </summary>
     public static class WorldEditing
     {
@@ -36,11 +48,15 @@ namespace LandmarkEmulator.WorldServer.Game
 
         /// <summary>Wire header: u16 opcode 0x010C, u32 sub, u32 (FUN_142c38cc0's id), then the sub's body.</summary>
         private const int HeaderLength = 10;
-        private const uint ClearSub = 0, PreviewSetupSub = 5;
+        private const uint ClearSub = 0, PreviewSetupSub = 5, PreviewUpdateSub = 6;
 
         private sealed class Editor
         {
             public byte[] Pending;
+            /// <summary>A PreviewSetup (sub 5) not yet sent; it goes out before <see cref="Pending"/>.</summary>
+            public byte[] PendingSetup;
+            /// <summary>The preview's last setup sent, while the preview lasts (newcomers get it before the update).</summary>
+            public byte[] Setup;
             public byte[] LastSent;
             public DateTime LastSentAt;
             public DateTime LastViewCheck;
@@ -59,11 +75,16 @@ namespace LandmarkEmulator.WorldServer.Game
                 log.Debug($"{session.CharacterName}: world-editing packet dropped (unreadable or not about the sender).");
                 return;
             }
+            uint sub = BitConverter.ToUInt32(raw, 2);
             lock (sync)
             {
                 if (!editors.TryGetValue(session, out Editor editor))
                     editors[session] = editor = new Editor();
                 editor.Pending = raw;
+                if (sub == PreviewSetupSub)
+                    editor.PendingSetup = raw;
+                else if (sub != PreviewUpdateSub && !(sub == ClearSub && raw.Length > HeaderLength && raw[HeaderLength] == 1))
+                    editor.PendingSetup = editor.Setup = null;   // another cursor kind ends the preview on the receivers
             }
         }
 
@@ -91,16 +112,32 @@ namespace LandmarkEmulator.WorldServer.Game
                         byte[] packet = editor.Pending;
                         editor.Pending = null;
                         bool same = editor.LastSent != null && packet.AsSpan().SequenceEqual(editor.LastSent);
+                        // A setup that an update replaced before it went out still goes first, to everyone in range.
+                        byte[] setup = editor.PendingSetup != null && editor.PendingSetup != packet ? editor.PendingSetup : null;
                         foreach (WorldSession viewer in inRange)
-                            if (!same || !editor.Viewers.Contains(viewer))
+                        {
+                            bool newcomer = !editor.Viewers.Contains(viewer);
+                            if (setup != null)
+                                sends.Add((viewer, setup));
+                            else if (newcomer && IsPreviewUpdate(packet) && editor.Setup != null)
+                                sends.Add((viewer, editor.Setup));
+                            if (!same || newcomer)
                                 sends.Add((viewer, packet));
+                        }
+                        if (editor.PendingSetup != null)
+                            editor.Setup = editor.PendingSetup;
+                        editor.PendingSetup = null;
                         editor.LastSent = packet;
                         editor.LastSentAt = now;
                     }
                     else if (editor.LastSent != null && !IsClearAll(editor.LastSent))
                         foreach (WorldSession viewer in inRange)
                             if (!editor.Viewers.Contains(viewer))
+                            {
+                                if (IsPreviewUpdate(editor.LastSent) && editor.Setup != null)
+                                    sends.Add((viewer, editor.Setup));
                                 sends.Add((viewer, editor.LastSent));
+                            }
 
                     if (editor.LastSent != null && !IsClearAll(editor.LastSent))
                         foreach (WorldSession gone in editor.Viewers)
@@ -141,6 +178,9 @@ namespace LandmarkEmulator.WorldServer.Game
 
         private static bool IsClearAll(byte[] packet)
             => BitConverter.ToUInt32(packet, 2) == ClearSub && packet.Length > HeaderLength && packet[HeaderLength] == 0;
+
+        /// <summary>A PreviewUpdate (sub 6), which shows nothing on a receiver without the preview's setup.</summary>
+        private static bool IsPreviewUpdate(byte[] packet) => BitConverter.ToUInt32(packet, 2) == PreviewUpdateSub;
 
         /// <summary>
         /// Where the builder guid sits in a 0x10C packet, from the client readers: Clear {u8 flag, u64}; Box (FUN_142fdf050)

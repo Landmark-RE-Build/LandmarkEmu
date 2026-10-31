@@ -208,6 +208,8 @@ dotnet build LandmarkEmulator.sln
 dotnet test LandmarkEmulator.sln
 ```
 
+How the code is laid out, how a request flows and how to add a packet or a setting: [CONTRIBUTING.md](CONTRIBUTING.md).
+
 | Project | |
 |---|---|
 | `LandmarkEmulator.AuthServer` | Login server: login, server list, character list and creation, the login queue |

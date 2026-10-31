@@ -473,7 +473,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 if (zone == node.Zone && HorizontalDistance(position, at) < clear)
                     return null;
             empty.Remove(key);
-            node.Hits = 0;
+            ResetDamage(node);
             node.RegrowsAt = default;
             dirty = true;
             return node;
@@ -550,7 +550,7 @@ namespace LandmarkEmulator.WorldServer.Game
                         break;
                     if (Find(key) is not Node node || !node.Standing)
                         continue;
-                    node.Hits = 0;
+                    ResetDamage(node);
                     Felled(node, now);
                     felled.Add(node);
                 }

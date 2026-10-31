@@ -2473,10 +2473,16 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
         public bool IsPlayerStudioRegistered { get; set; }
         /// <summary>Lua ShouldShowMemberNagScreen (+0x108), ignored for full members.</summary>
         public bool ShowMemberNagScreen { get; set; }
-        /// <summary>Country (+0x110), checked by ClientRequirementCheckCountry.</summary>
-        public uint CountryId { get; set; }
-        /// <summary>Client language (+0x10c): ClientRequirementCheckLanguage and localised shop country names (default 2).</summary>
-        public uint LanguageId { get; set; }
+        /// <summary>
+        /// Country (+0x110), checked by ClientRequirementCheckCountry (FUN_14370e5e0). Live sent 218 (the capture); the
+        /// store's country list (FUN_1432537e0) includes that code. Was 0 until 2026-10-26 (trace/0695/phaseE3-wire-a.md F3).
+        /// </summary>
+        public uint CountryId { get; set; } = 218;
+        /// <summary>
+        /// Client language (+0x10c): ClientRequirementCheckLanguage (FUN_14370e660) and the store's localised country names
+        /// (FUN_1432537e0, which uses 2 itself when there is no player). Live sent 2 (the capture); was 0 until 2026-10-26.
+        /// </summary>
+        public uint LanguageId { get; set; } = 2;
         /// <summary>Bit mask of preferred chat languages (+0x74a98); the client sends PlayerUpdatePreferredLanguages when one changes.</summary>
         public uint PreferredLanguages { get; set; }
         /// <summary>Stored at +0x74a9c; only ever written by the client.</summary>
@@ -2520,8 +2526,9 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
         /// <summary>
         /// +0x753f0 [P]: FUN_142e0f810 ("send cast to zone") mixes it into the value it builds for each cast,
         /// ((cast counter +0x753f4 &amp; 0xff) ^ CastKeySeed) * 0x502c3f11, kept with the request it hands to FUN_142e04a90;
-        /// that the value guards the cast request is [I]. Live sent 0x5BB9EB0B (one capture); the server sends 0 and never
-        /// checks the cast key (OPEN-LEADS: whether live varied it per login).
+        /// that value is the CastAttempt's cast hash (+0x20), which every answer echoes as the cast's identity [P]. Live sent
+        /// 0x5BB9EB0B (one capture); the server sends each session's own random seed (WorldSession.CastKeySeed) and checks
+        /// the hash, logging a mismatch only (Abilities.CastKeyMatches; OPEN-LEADS L189). 0 is the model's default.
         /// </summary>
         public uint CastKeySeed { get; set; }
         public List<Buff> Buffs { get; set; } = new();

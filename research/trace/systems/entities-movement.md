@@ -1,5 +1,7 @@
 # System: entities, movement, character state (PlayerUpdate 0x26, ClientUpdate 0x29, position updates)
 
+> 0.695 rebase (2026-10-26): addresses below are 0.589 unless marked 0.695; their 0.695 partners and changes: trace/0695/address-map-589-695.md, trace/0695/rebase-695.md
+
 Status: [~] PlayerUpdate mapped (trace/playerupdate_subs.md: sub → message, dispatcher PlayerUpdate_Dispatch
 FUN_142c45fa0, case = sub − 1); per-message server status in families/0026_PlayerUpdate.md. ClientUpdate and
 movement packets still to write up.

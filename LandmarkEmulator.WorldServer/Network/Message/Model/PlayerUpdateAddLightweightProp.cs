@@ -44,6 +44,11 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
         /// trace/0695/agent-e3-platform.md §2).
         /// </summary>
         public sbyte ControlMode { get; set; }
+        /// <summary>
+        /// +0x1a0 the entity's profile (ProfileDefinitions; entity +0x1474, FUN_142ec55e0): what TargetIsProfile tests. Trees
+        /// carry 200-214 for the axes' target rule (Gathering.SetLife); 0 for every other prop.
+        /// </summary>
+        public uint Profile { get; set; }
 
         /// <summary>
         /// The prop's enabled flag: the last byte (packet +0x490) → prop +0x4E9C via FUN_1430abea0 in the spawn handler
@@ -123,7 +128,7 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
             writer.Write(0u);
             writer.Write(0u);
             writer.Write((byte)ControlMode);     // +0x19c control mode (see ControlMode)
-            writer.Write(0u);
+            writer.Write(Profile);               // +0x1a0 profile → entity +0x1474
             writer.Write(false);
             writer.WriteBytes(new byte[] { 0, (byte)(Collidable ? 0x08 : 0), 0 });   // flag bytes (+0x298..+0x29a)
             writer.Write((byte)0);

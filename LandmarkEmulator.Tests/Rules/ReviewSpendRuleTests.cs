@@ -29,7 +29,7 @@ namespace LandmarkEmulator.Tests.Rules
         [Fact]
         public void NoSpendNeeded_AnswersAtOnce()
         {
-            using var world = new FakeWorld(c => c.PlayerStudioReviewerMinSpend = 0);
+            using var world = new FakeWorld(c => { c.PlayerStudioReviewerMinSpend = 0; c.PlayerStudioReviewerOverrules = 0; });
             WorldSession s = world.Session(0x7100_0001, "Reviewer");
             SetSpent(s.PlayerGuid, 0);
             Assert.Equal(true, MayReviewNow(s));
@@ -38,10 +38,28 @@ namespace LandmarkEmulator.Tests.Rules
         [Fact]
         public void OwnSpendEnough_AnswersAtOnce()
         {
-            using var world = new FakeWorld(c => c.PlayerStudioReviewerMinSpend = 1000);
+            using var world = new FakeWorld(c => { c.PlayerStudioReviewerMinSpend = 1000; c.PlayerStudioReviewerOverrules = 0; });
             WorldSession s = world.Session(0x7100_0002, "Spender");
             SetSpent(s.PlayerGuid, Commerce.ReviewerMinLumens);
             Assert.Equal(true, MayReviewNow(s));
+        }
+
+        /// <summary>
+        /// The overrule rule (L185, PlayerStudioReviewerOverrules) answers at once from a count already taken, and holds a
+        /// reviewer back once staff overruled that many of their rejections.
+        /// </summary>
+        [Fact]
+        public void OverruleCountKnown_AnswersAtOnce()
+        {
+            using var world = new FakeWorld(c => { c.PlayerStudioReviewerMinSpend = 0; c.PlayerStudioReviewerOverrules = 1; });
+            WorldSession clean = world.Session(0x7100_0005, "Fair"), overruled = world.Session(0x7100_0006, "Harsh");
+            var counts = (ConcurrentDictionary<ulong, (int Count, System.DateTime At)>)Private.Field(typeof(Commerce), "overruledCount");
+            counts[clean.PlayerGuid] = (0, System.DateTime.UtcNow);
+            counts[overruled.PlayerGuid] = (1, System.DateTime.UtcNow);
+            Assert.Equal(true, MayReviewNow(clean));
+            Assert.Equal(false, MayReviewNow(overruled));
+            counts.TryRemove(clean.PlayerGuid, out _);
+            counts.TryRemove(overruled.PlayerGuid, out _);
         }
 
         [Fact]

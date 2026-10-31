@@ -9,7 +9,8 @@ namespace LandmarkEmulator.WorldServer.Game
 {
     /// <summary>
     /// The tint definitions: ArtData 0x116 TintDefinitionManagerData (wire 16 01, reader FUN_142bae270: eight lists).
-    /// Its handler (FUN_142c6ec20 → FUN_143c113c0) REPLACES the client's TintDefinitionManager (DAT_145351d90) with the
+    /// Its handler (FUN_142c6ec20 → FUN_143c113c0) REPLACES the client's TintDefinitionManager (DAT_145351d90 (0.589;
+    /// 0.695 DAT_145431310)) with the
     /// packet's lists, and every tint the client draws is looked up there by alias hash (FUN_143c10110: key +0x268, type
     /// +0x26c or "ANY"): prop tints (PlayerUpdate 0x7A SetPropTint), item and character default tints. Eight empty lists
     /// therefore left the table empty (0 entries, read in the running client 2026-10-13) and no tint ever showed.

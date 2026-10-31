@@ -414,7 +414,9 @@ namespace LandmarkEmulator.WorldServer.Game
                     break;
                 default:
                     Network.OpcodeStats.Unanswered("Claims 0xF9", sub);
-                    // Once per sub at Info (the dev world saw 0xE3, which no client builder sends: Phase E E.3).
+                    // Once per sub at Info. (The six 0xE3 in the dev world's opcode_stats were PlayerEnteredClaim 0x63 as
+                    // the 15 Oct 2026 gateway translation renumbered it, 0x80 | 0x63, before this class handled it: OPEN-LEADS
+                    // L202. No 0.695 client builder sends 0xE3.)
                     if (unknownSubs.TryAdd(sub, true))
                         log.Info($"Unhandled claims request 0x{sub:X2} from {session.CharacterName}: {BitConverter.ToString(body, 0, Math.Min(body.Length, 64))}");
                     else
@@ -558,20 +560,51 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             if (!IsFree(session.ZoneId, x, y, z))
                 return ResultBufferOverlap;
+            // The Spire area (90 m round the Hub, P1832 "You can no longer place a claim in this area") and the graveyards: the
+            // client refuses both itself (code 3), except for a player with FreeBuild or a site expansion, so the server too.
+            if (Spire.BlocksSite(session.ZoneId, x, y, z, HalfSize, HalfHeight))
+                return ResultInvalidLocation;
             return Graveyards.BlocksSite(session.ZoneId, x, y, z, HalfSize, HalfHeight) ? ResultInvalidLocation : ResultConfirm;
+        }
+
+        /// <summary>
+        /// The client's test of a build site against a ClaimPlacementExclusionZoneSphere (trace/0695/spire-claims.md, verified):
+        /// the sphere's octree box is a column (FUN_1436dd1a0: ±r on x and z, unbounded in y), so a site whose box overlaps it on
+        /// x and z (|dx|, |dz| &lt; half size + r) and whose middle is closer than r + its half diagonal (FUN_1436ddd80) is
+        /// refused. Local metres for the centres, decimetres for the half sizes.
+        /// </summary>
+        internal static bool InExclusionSphere(Vector3 centre, float radius, Vector3 middle, double halfSize, double halfHeight)
+        {
+            float half = (float)(halfSize / 10), diagonal = (float)(Math.Sqrt(2 * halfSize * halfSize + halfHeight * halfHeight) / 10);
+            return Math.Abs(middle.X - centre.X) < half + radius && Math.Abs(middle.Z - centre.Z) < half + radius
+                && Vector3.Distance(middle, centre) < radius + diagonal;
+        }
+
+        /// <summary>
+        /// Is a point (global dm) inside any build site's box on a landscape, within <paramref name="marginXZ"/> dm on x / z? Pure
+        /// geometry, no permissions: trees and plants keep out of sites whoever may build there (Claims.MayEdit(0, …) let
+        /// them grow in sites whose Default Access includes Build).
+        /// </summary>
+        public static bool CoversPoint(uint zone, double x, double y, double z, double marginXZ = 0)
+        {
+            lock (sync)
+                return claims.Any(c => c.ZoneId == zone && x >= c.MinX - marginXZ && x <= c.MaxX + marginXZ && y >= c.MinY - 10
+                    && y <= c.MaxY && z >= c.MinZ - marginXZ && z <= c.MaxZ + marginXZ);
         }
 
         /// <summary>
         /// How far a site's centre may sit from the ground below it, metres (client constants, StringHashToValue.txt,
         /// same in 0.589 and 0.695): ClaimPlacement.TerrainFollowHeightOffsetMin -75 and ...Max 150. The placement tool
-        /// (0.589 FUN_1435afc20 reads them into DAT_1451b4d04 / DAT_1451b4d00) keeps its height offset (tool +0x88, moved
-        /// by Ctrl+wheel) between them (FUN_1435b0150 end; reset into the range on start, FUN_1435b0b20) and puts the
-        /// box's bottom at ground + offset − half the box height (FUN_1435b14a0: the ground from FUN_1430a8040 at the box's
+        /// (0.695 FUN_143662a00 reads them into DAT_14528f6d4 / DAT_14528f6d0; 0.589 FUN_1435afc20, DAT_1451b4d04 /
+        /// DAT_1451b4d00) keeps its height offset (tool +0x88, moved by Ctrl+wheel) between them (0.695 FUN_143662f30 end;
+        /// reset into the range on start, FUN_143663900) and puts the box's bottom at ground + offset − half the box
+        /// height
+        /// (FUN_143664280; 0.589 FUN_1435b0150 / FUN_1435b0b20 / FUN_1435b14a0: the ground from FUN_1430a8040 at the box's
         /// centre x / z, half height = ClaimSize y × 0.5), so the requested centre is ground + offset. With the 180 m box
         /// that is: at most 15 m of the box above ground when sunk, at most 60 m of air under it when floated — as the
         /// notes put it, a site may sink a little into the ground or float a little above it (21 Mar 2016, P4135), and
-        /// none may sit far from the surface underground (P4298). (Code read in 0.589; the 0.695
-        /// constants are the same, its tool code not re-read yet.)
+        /// none may sit far from the surface underground (P4298). The 0.695 tool code and its defaults (100 / -100) are the
+        /// same as 0.589's [P] (trace/0695/phaseE4-constants.md F3).
         /// </summary>
         private const float TerrainFollowHeightOffsetMin = -75f, TerrainFollowHeightOffsetMax = 150f;
 
@@ -639,6 +672,7 @@ namespace LandmarkEmulator.WorldServer.Game
             lock (sync)
                 claims.Add(claim);
             Terrain.ZoneTerrain.ClearVeinsInSite(claim.ZoneId, (claim.MinX, claim.MinY, claim.MinZ), (claim.MaxX, claim.MaxY, claim.MaxZ));
+            Gathering.SitePlaced(claim.ZoneId, (claim.MinX, claim.MinY, claim.MinZ), (claim.MaxX, claim.MaxY, claim.MaxZ));   // the trees in it go
             DatabaseManager.Instance.CharacterDatabase.SaveWorld(c => c.Claim.Add(claim))
                 .ContinueWith(t => log.Error(t.Exception, $"Failed to save claim {claim.Id}."),
                     System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
@@ -994,12 +1028,30 @@ namespace LandmarkEmulator.WorldServer.Game
             log.Info($"{session.CharacterName} set site {id} tags to \"{tags}\".");
         }
 
-        /// <summary>The site's time-of-day settings (Site Management), saved and sent to everyone who sees the site.</summary>
+        /// <summary>
+        /// The site's time-of-day settings (Site Management, the build-mode time panel), saved and sent to everyone who
+        /// sees the site. Who may: the 0.695 client sends ClaimsPacketSetClaimTime only when the player has bit 0x10 on the
+        /// site (FUN_142dd15d0: FUN_142d98cc0(claim, player, 0x10), Ultimate Power, <see cref="PermissionBuild"/>; the
+        /// 0.589 FUN_142d33d30 had no check) and applies the change on its own screen first, so the server accepts the owner
+        /// and Ultimate Power builders alike. Anyone else gets the client's Claim.SetTime.Error (577525 "You cannot change
+        /// the Time Settings on this Build Site.", a key no client code names) and the site's current time back. Until
+        /// 2026-10-26 only the owner was accepted and a builder's change was dropped silently (trace/0695/phaseE3-text.md F1).
+        /// </summary>
+        internal static bool MaySetTime(ClaimModel claim, ulong player) => (PermissionsFor(claim, player) & PermissionBuild) == PermissionBuild;
+
         private static void SetTime(WorldSession session, ulong claimId, int hour, float rate, int visitorHour, float visitorRate)
         {
-            ClaimModel claim = OwnedClaim(session, claimId);
+            ClaimModel claim = claimId != 0 ? Get(claimId)
+                : ClaimAt(session.ZoneId, session.Position) is ulong here ? Get(here) : OwnedClaim(session, 0);
             if (claim == null)
                 return;
+            if (!MaySetTime(claim, session.PlayerGuid))
+            {
+                log.Info($"{session.CharacterName} may not set the time of site {claim.Id}: refused.");
+                SystemMessages.ShowKey(session, "Claim.SetTime.Error");
+                session.EnqueueMessage(ZoneMessageOpcode.ClaimsBase, BuildInfoUpdate(claim, InfoTime));
+                return;
+            }
             // Hours as the client applies them on walking in (FUN_143d939c0): -1 = the world clock ("Game Time" / "Custom
             // Speed" in the build-mode time panel), -2 = the player's own PC clock (FUN_143d93bc0; no menu entry in 0.695,
             // Lua only), 0-23 = time stopped at that hour. Anything else is treated as the world clock.
@@ -1283,7 +1335,7 @@ namespace LandmarkEmulator.WorldServer.Game
         /// ClaimInfoUpdate (sub 5, reader FUN_142d029f0): u64 claim, u32 kind, then one fixed record the client reads
         /// fields from by kind. Kind 0x14 removes the site from the owner's own list as well (FUN_142d18090 mode 2;
         /// an AOI removal is only "left the area" and the site stays in My Sites); 0x15 applies the time block; 0x16 the
-        /// site music (+0x278). Kind 5 applies the three Default Access masks (FUN_142d9bad0) and kind 6 one player's
+        /// site music (+0x280; 0.589 +0x278). Kind 5 applies the three Default Access masks (FUN_142d9bad0) and kind 6 one player's
         /// Special Access (u64 guid + first u32: FUN_143c17b00, 0x80000000 removes it); after kinds 5-7 and 0x11 the
         /// client recomputes the access of the site it stands in (0.695 FUN_142dbecb0 → FUN_143c17590, FUN_142dd2e10;
         /// 0.589 FUN_142d1ff50 the same).
@@ -1320,7 +1372,7 @@ namespace LandmarkEmulator.WorldServer.Game
             w.Write(claim.TimeRate);
             w.Write(claim.VisitorTimeHour);
             w.Write(claim.VisitorTimeRate);
-            w.Write(MusicOf(claim));                    // +0x278: kind 0x16 applies it to the site (client +0xf4)
+            w.Write(MusicOf(claim));                    // +0x280 (0.589 +0x278): kind 0x16 applies it to the site (client +0xf4)
             w.Write(ModeOf(claim.Id));                  // kind 0x13 applies it (2 = Play Mode)
             // 0.695 (FUN_142da2840): u64 Play Mode Rules flags (+0x288; new kind 0x17 applies them to claim entry +0x380).
             w.Write(claim.AdventureFlags & AdventureFlagMask);
@@ -1789,6 +1841,20 @@ namespace LandmarkEmulator.WorldServer.Game
                     && p.Y <= c.MaxY && p.Z >= c.MinZ && p.Z <= c.MaxZ)?.Id;
         }
 
+        /// <summary>The height range (client local metres) of the build site containing a local-space point, or null.</summary>
+        public static (float MinY, float MaxY)? SiteHeightAt(uint zone, Vector3 local)
+        {
+            var p = Terrain.TerrainEdits.ToGlobal(local);
+            ClaimModel c;
+            lock (sync)
+                c = claims.FirstOrDefault(c => c.ZoneId == zone && p.X >= c.MinX && p.X <= c.MaxX && p.Y >= c.MinY
+                    && p.Y <= c.MaxY && p.Z >= c.MinZ && p.Z <= c.MaxZ);
+            if (c == null)
+                return null;
+            double originY = Terrain.TerrainStore.ZoneOrigin.Y;
+            return ((float)((c.MinY - originY) / 10), (float)((c.MaxY - originY) / 10));
+        }
+
         /// <summary>
         /// The box of the build site containing a local-space point, in client local metres (centre and the half length of
         /// its 3-D diagonal), or null. For the Escape menu's "Evac to Safety" on a site (TeleportRequests): the client's
@@ -1926,6 +1992,7 @@ namespace LandmarkEmulator.WorldServer.Game
             lock (sync)
                 claims.Add(claim);
             Terrain.ZoneTerrain.ClearVeinsInSite(claim.ZoneId, (claim.MinX, claim.MinY, claim.MinZ), (claim.MaxX, claim.MaxY, claim.MaxZ));
+            Gathering.SitePlaced(claim.ZoneId, (claim.MinX, claim.MinY, claim.MinZ), (claim.MaxX, claim.MaxY, claim.MaxZ));   // the trees in it go
             DatabaseManager.Instance.CharacterDatabase.SaveWorld(c => c.Claim.Add(claim))
                 .ContinueWith(t => log.Error(t.Exception, $"Failed to save claim {claim.Id}."),
                     System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
@@ -1960,6 +2027,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     (x - HalfSize, x + HalfSize, y - HalfHeight, y + HalfHeight, z - HalfSize, z + HalfSize);
             }
             Terrain.ZoneTerrain.ClearVeinsInSite(zone, (claim.MinX, claim.MinY, claim.MinZ), (claim.MaxX, claim.MaxY, claim.MaxZ));
+            Gathering.SitePlaced(zone, (claim.MinX, claim.MinY, claim.MinZ), (claim.MaxX, claim.MaxY, claim.MaxZ));   // the trees at the new spot go
             (double a, double b, double d, double e, double f, double g) = (claim.MinX, claim.MaxX, claim.MinY, claim.MaxY, claim.MinZ, claim.MaxZ);
             DatabaseManager.Instance.CharacterDatabase.SaveWorld(db =>
             {
@@ -1996,6 +2064,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     return;
                 claims.Add(claim);
             }
+            Gathering.SitePlaced(claim.ZoneId, (claim.MinX, claim.MinY, claim.MinZ), (claim.MaxX, claim.MaxY, claim.MaxZ));
             var add = BuildAoiUpdate(false, new[] { claim }, Array.Empty<ulong>());
             foreach (WorldSession other in PlayerManager.InZone(claim.ZoneId))
                 other.EnqueueMessage(ZoneMessageOpcode.ClaimsBase, add);

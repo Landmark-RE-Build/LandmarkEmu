@@ -4,6 +4,7 @@ using LandmarkEmulator.WorldServer.Network.Message.Model;
 using NLog;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace LandmarkEmulator.WorldServer.Network.Handlers
 {
@@ -319,10 +320,15 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
         /// adopts a target the server confirms (TargetPacketSetTarget handler FUN_14313c120 needs the success flag):
         /// 2 RequestSetTarget {u64 target, u32 slot} → 6 SetTarget {u64, u32, bool ok}; 3 RequestRemoveTarget {u32 slot}
         /// → 7 RemoveTarget {u32 slot, bool ok}; 4 RequestRemoveAllTargets. Readers FUN_143138df0 / FUN_143138d30.
+        /// The client adopts the slot the answer carries (FUN_1431e6b40), so a gathering node is put in the harvest slot 9
+        /// whatever slot was asked, with its health sent first (Game/Gathering.Health.cs: the tree's health bar).
         /// </summary>
+        private const uint MaxTargetSlots = 16;
+
         [ZoneMessageHandler(ZoneMessageOpcode.TargetBase)]
         public static void HandleTarget(WorldSession session, TargetRequest request)
         {
+            // The client's slots are small numbers (3 hostile, 8 ally, 9 harvest); others are answered but not kept.
             var reader = new GamePacketReader(request.Body);
             var output = new List<byte>();
             var writer = new GamePacketWriter(output);
@@ -332,7 +338,13 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                 {
                     ulong target = reader.ReadULong();
                     uint slot = reader.ReadUInt();
+                    if (Game.Gathering.Targeted(session, target))
+                        slot = Game.Gathering.HarvestTargetSlot;
+                    else if (slot == Game.Gathering.HarvestTargetSlot)
+                        Game.Gathering.Untargeted(session);   // slot 9 now holds a neutral creature, not the tree
                     session.CurrentTarget = target;
+                    if (slot < MaxTargetSlots)
+                        session.TargetSlots[slot] = target;
                     writer.WriteUShort(6);
                     writer.Write(target);
                     writer.Write(slot);
@@ -340,11 +352,27 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
                     break;
                 }
                 case 3 when request.Body.Length >= 4:
-                    session.CurrentTarget = 0;
+                {
+                    uint slot = reader.ReadUInt();
+                    if (slot == Game.Gathering.HarvestTargetSlot)
+                        Game.Gathering.Untargeted(session);
+                    // Only the slot's own entity stops being the current target: a felled tree leaving slot 9 hands it to
+                    // the creature still in slot 3 (or the ally in 8). The client repeats the request every frame until
+                    // the answer arrives (CheckTargets FUN_1431e57e0) [P], so a slot already gone changes nothing unless
+                    // the current target sits in no slot at all.
+                    if (session.TargetSlots.Remove(slot, out ulong removed))
+                    {
+                        if (removed == session.CurrentTarget)
+                            session.CurrentTarget = new uint[] { 3, 8, 9 }.Select(s => session.TargetSlots.GetValueOrDefault(s))
+                                .FirstOrDefault(g => g != 0);
+                    }
+                    else if (!session.TargetSlots.ContainsValue(session.CurrentTarget))
+                        session.CurrentTarget = 0;
                     writer.WriteUShort(7);
-                    writer.Write(reader.ReadUInt());
+                    writer.Write(slot);
                     writer.Write(true);
                     break;
+                }
                 default:
                     log.Debug($"Target request {request.SubOpcode} from {session.CharacterName}: {BitConverter.ToString(request.Body)}");
                     return;

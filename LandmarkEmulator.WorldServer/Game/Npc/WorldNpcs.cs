@@ -34,6 +34,8 @@ namespace LandmarkEmulator.WorldServer.Game.Npc
             public string NpcId;
             public ulong Creature;
             public DateTime Until;
+            /// <summary>The player the question was put to: only their answer counts.</summary>
+            public ulong AskedOf;
             public HashSet<ulong> Answered = new();
         }
 
@@ -42,6 +44,13 @@ namespace LandmarkEmulator.WorldServer.Game.Npc
         private static readonly Dictionary<ulong, PendingQuestion> questions = new();
         private static readonly object sync = new();
         private static ulong nextQuestion = 1; // never 0 (DisplayPropText question flag is questionId != 0)
+
+        /// <summary>
+        /// World-NPC question ids carry this bit, so they never equal a Story Tools question id (StoryTools.NewQuestion
+        /// counts from 1 too): every PropPacketDialogResponse is offered here first, and a shared number took a player's
+        /// story answer and gave them a quest they were never asked (trace/0695/phaseE4-logic.md F2).
+        /// </summary>
+        private const ulong QuestionIdBit = 1UL << 62;
         private static DateTime nextTick = DateTime.UtcNow;
 
         private sealed class PendingSpeak
@@ -186,8 +195,10 @@ namespace LandmarkEmulator.WorldServer.Game.Npc
             PendingQuestion q;
             lock (sync)
             {
-                if (!questions.TryGetValue(questionId, out q) || q.Until < DateTime.UtcNow || !q.Answered.Add(session.PlayerGuid))
+                if (!questions.TryGetValue(questionId, out q) || q.AskedOf != session.PlayerGuid)
                     return false;
+                if (q.Until < DateTime.UtcNow || !q.Answered.Add(session.PlayerGuid))
+                    return true;   // ours, but late or already answered
             }
             if (!TryGetDef(q.NpcId, out NpcDef def))
                 return true;
@@ -198,6 +209,9 @@ namespace LandmarkEmulator.WorldServer.Game.Npc
                 return true;
 
             SetFlag(session, def.Id, "met", 1);
+            // The chain lock again (it was checked when the question was asked): no quest out of order.
+            if (accepted && !string.IsNullOrEmpty(def.RequiresNpcTurnedIn) && !HasFlag(session.PlayerGuid, def.RequiresNpcTurnedIn, "turned_in"))
+                accepted = false;
             if (accepted)
             {
                 SetFlag(session, def.Id, "accepted", 1);
@@ -328,14 +342,17 @@ namespace LandmarkEmulator.WorldServer.Game.Npc
                 // Client only draws Yes / No for bubble modes 4 / 5 (FUN_142f859b0: 1 < mode - 4 skips the bubble path).
                 if (mode is not (4 or 5))
                     mode = 4;
-                questionId = nextQuestion++;
                 lock (sync)
+                {
+                    questionId = QuestionIdBit | nextQuestion++;
                     questions[questionId] = new PendingQuestion
                     {
                         NpcId = inst.Def.Id,
                         Creature = inst.Guid,
+                        AskedOf = session.PlayerGuid,
                         Until = DateTime.UtcNow.AddSeconds(Math.Max(line.Seconds, 8) + 5)
                     };
+                }
             }
             // Speaker must be a *client-side* full actor for NpcDialogResponse (L30). Server FullNpcs is set the
             // moment SendFull is queued — before LightweightToFullNpc is applied — so using the creature then

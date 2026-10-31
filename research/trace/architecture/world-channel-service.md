@@ -1,5 +1,7 @@
 # World-channel service (Phase B #4) — spec
 
+> 0.695 rebase (2026-10-26): addresses below are 0.589 unless marked 0.695; their 0.695 partners and changes: trace/0695/address-map-589-695.md, trace/0695/rebase-695.md
+
 Agent #15, 2026-10-15. Static work only: client = re/decomp_all (0.589) and re/decomp_all_695 (0.695); server =
 LandmarkEmu (file:line as of today). Nothing was run. Contract: [internal-transport.md](internal-transport.md).
 Scratch (re-runnable): re/out/agent_worldsvc/ — `sites.py` + `run_sites.py` (re/tools/channels.py per send site

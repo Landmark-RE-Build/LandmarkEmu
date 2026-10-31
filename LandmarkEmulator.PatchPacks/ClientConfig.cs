@@ -145,13 +145,30 @@ namespace LandmarkEmulator.PatchPacks
             "answer makes the game's browser reload forever, which stalls the game. A server owner changes it with " +
             "WebPagesUrl on the server.");
 
+        /// <summary>
+        /// [Marketplace] MarketplaceAssets: where the 0.695 client downloads design and build-site screenshots (the
+        /// Designs window tiles <c>template_%llu_%d_small</c>, part_0086.c:1625; Lua Templates.GetTemplateUrl FUN_1435dc0f0 and
+        /// Claims.GetClaimUrl FUN_1435e5290 for the screenshot viewers). The server's web pages serve them
+        /// (WebPages TemplateImage / SiteImage, /uploads/lm/images/...), so it gets the same address as MarketplaceUrl.
+        /// Until 2026-10-26 LaunchPad left Daybreak's dead image server here and every screenshot stayed blank
+        /// (TemplateImageCache.log "failed to download image, result: 404"; trace/0695/phaseE4-clientlogs.md F1).
+        /// </summary>
+        public static readonly ManagedSetting MarketplaceAssets = new("Marketplace", "MarketplaceAssets", false, "",
+            "http://assets-cdn.daybreakgames.com", "", 0, 0,
+            "Design and site screenshots",
+            "Where the game downloads the screenshots of designs and build sites (the Designs window, Player Studio, site " +
+            "management), served by the server's world on the same address as the in-game web pages.",
+            "LaunchPad always sets this on PLAY to the in-game web pages' address: Steam's value is Daybreak's image server, " +
+            "which is gone, so every screenshot stayed blank.");
+
         /// <summary>Every value LaunchPad writes, in the order the panel lists them.</summary>
-        public static readonly IReadOnlyList<ManagedSetting> Managed = [Server, Marketplace, Threads];
+        public static readonly IReadOnlyList<ManagedSetting> Managed = [Server, Marketplace, MarketplaceAssets, Threads];
 
         /// <summary>
         /// The text with the server and the managed values applied (what PLAY writes; pure, for the tests). Server= and
-        /// MarketplaceUrl= are always set; DirectThreadCount by <paramref name="options"/> (no options or advanced mode
-        /// off: the recommended 2, as LaunchPad always did). Only these three lines change, plus the [Marketplace] /
+        /// MarketplaceUrl= and MarketplaceAssets= (the same address) are always set; DirectThreadCount by
+        /// <paramref name="options"/> (no options or advanced mode off: the recommended 2, as LaunchPad always did). Only
+        /// these four lines change, plus the [Marketplace] /
         /// [AssetDelivery] header (after a blank line) when a file has no such section; every other line stays as it is.
         /// </summary>
         public static string Apply(string text, string login, string marketplaceUrl, ClientConfigOptions? options, out bool changed)
@@ -160,6 +177,7 @@ namespace LandmarkEmulator.PatchPacks
             changed = false;
             changed |= ini.Set(Server.Section, Server.Key, login);
             changed |= ini.Set(Marketplace.Section, Marketplace.Key, marketplaceUrl);
+            changed |= ini.Set(MarketplaceAssets.Section, MarketplaceAssets.Key, marketplaceUrl);
             if (ThreadsToWrite(options) is string threads)
                 changed |= ini.Set(Threads.Section, Threads.Key, threads);
             return changed ? ini.ToString() : text;
