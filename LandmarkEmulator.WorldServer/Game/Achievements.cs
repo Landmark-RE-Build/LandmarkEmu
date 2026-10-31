@@ -1180,11 +1180,19 @@ namespace LandmarkEmulator.WorldServer.Game
         /// (3926, "finally got enough burled wood!") has no achievement in the 0.589 data but is listed for completeness;
         /// 575535 "has obtained the unobtainable!" most likely belongs to Strip Miner [I] (trace/0695/agent-leads2-c.md L46;
         /// neither it nor Treasure Hunter is awarded in 0.589).
+        /// <para>The combat titles (since 2026-10-26, trace/0695/phaseE3-text.md F2): 576045-576058 ("[*player*] has become
+        /// a Monster Slayer!" ... "a Tempest!") follow the combat title items 3908-3914 and 3916-3922 in order, skipping
+        /// Warmaster 3915, which has its capstone line [P texts and items; I pairing by order, and that live announced
+        /// them]. 576054 says "Darkener" for the Darkwalker title (3918). Tiers.cs awards all fourteen.</para>
         /// </summary>
         private static readonly Dictionary<uint, uint> AnnouncedTitles = new()
         {
             [3900] = 575528, [3901] = 575529, [3902] = 575530, [3907] = 575531, [3915] = 575532, [3923] = 575533,
             [3926] = 575534, [3927] = 575536, [3928] = 575537, [3929] = 575546,
+            // Combat titles.
+            [3908] = 576045, [3909] = 576046, [3910] = 576047, [3911] = 576048, [3912] = 576049, [3913] = 576050,
+            [3914] = 576051, [3916] = 576052, [3917] = 576053, [3918] = 576054, [3919] = 576055, [3920] = 576056,
+            [3921] = 576057, [3922] = 576058,
         };
 
         /// <summary>

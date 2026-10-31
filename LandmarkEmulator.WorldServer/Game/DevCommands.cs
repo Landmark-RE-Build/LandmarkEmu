@@ -423,18 +423,37 @@ namespace LandmarkEmulator.WorldServer.Game
                             }
                             break;
                         case "pioneerslab":
-                            // pioneerslab: test aid (L180). Queues the slate slab under each target's own site on the Pioneer land
-                            // they stand on, as a new Pioneer site gets it (once per site: a site that has it is left alone).
+                        {
+                            // pioneerslab [again] [force]: stamps the slate slab under each target's own site on the Pioneer land
+                            // they stand on, as a new Pioneer site gets it, in the current PioneerSlab shape (default "site": the
+                            // full 210 m square, 2 m proud, the ground cut or filled to it; the Starting Location goes onto it).
+                            // Name the owner (@Name): without it every online player's site there is stamped. Only a surface
+                            // site with nothing built on it: a cavern site never gets a slab, and a site with any building in
+                            // its box is skipped, because the slab shows wherever the build has no voxel of its own (its
+                            // ground-floor rooms and doorways fill with up to 2 m of slate, ground higher than the slab is cut
+                            // away from under it); "force" stamps such a site anyway. Once per site: a site that has a slab is
+                            // left alone, unless "again" stamps it once more (how an owner gives an old, unbuilt Pioneer site the
+                            // full slab; props on its old ground stay where they are). L180 / L260.
+                            bool again = parts.Skip(1).Any(p => p.Trim().Equals("again", StringComparison.OrdinalIgnoreCase));
+                            bool force = parts.Skip(1).Any(p => p.Trim().Equals("force", StringComparison.OrdinalIgnoreCase));
                             foreach (WorldSession session in targets)
                             {
                                 Database.Character.Model.ClaimModel site = Claims.All().FirstOrDefault(c => c.OwnerGuid == session.PlayerGuid && c.ZoneId == session.ZoneId);
                                 if (site == null || Landscapes.Get(site.ZoneId) is not { Pioneer: true })
                                     log.Info($"pioneerslab {session.CharacterName}: no site of theirs on this landscape, or not a Pioneer land.");
+                                else if (!Pioneer.IsSurfaceSite(site))
+                                    log.Info($"pioneerslab {session.CharacterName}: site {site.Id} is not a surface site (a cavern site: its "
+                                        + "middle lies under the ground); cavern sites get no slab.");
                                 else
                                     log.Info($"pioneerslab {session.CharacterName}: site {site.Id} "
-                                        + (Pioneer.QueueSlab(site) ? "queued" : $"not queued (slab {Pioneer.SlabState(site.Id)}; PioneerSlab {Shared.Configuration.ConfigurationManager<WorldServerConfiguration>.Instance.Config.PioneerSlab})") + ".");
+                                        + (Pioneer.QueueSlab(site, again, force)
+                                            ? (force ? "queued (forced: stamped over any building)" : "queued (skipped when the stamp runs if anything is built in it)")
+                                            : $"not queued (slab {Pioneer.SlabState(site.Id)}"
+                                            + $"{(again ? "" : "; \"pioneerslab again\" stamps it once more")}; PioneerSlab "
+                                            + $"{Shared.Configuration.ConfigurationManager<WorldServerConfiguration>.Instance.Config.PioneerSlab})") + ".");
                             }
                             break;
+                        }
                         case "achreset":
                             // achreset <achievement id>: back to not started (tests that complete an achievement).
                             foreach (WorldSession session in targets)
@@ -571,6 +590,18 @@ namespace LandmarkEmulator.WorldServer.Game
                                 Props.StreamRange = float.Parse(arg, System.Globalization.CultureInfo.InvariantCulture);
                             foreach (WorldSession session in targets)
                                 log.Info($"{session.CharacterName} prop stream: {Props.StreamState(session)}");
+                            break;
+                        }
+                        case "treestream":
+                        {
+                            // treestream [<metres>]: with a value, the tree / plant stream range (setting TreeStreamRange,
+                            // 64-1000) until the restart, applied on each player's next stream tick; then (or alone) each
+                            // targeted player's tree stream in the log (Gathering.Stream.cs).
+                            string arg = parts.Length > 1 ? parts[1].Trim() : "";
+                            if (arg.Length > 0)
+                                Gathering.StreamRange = float.Parse(arg, System.Globalization.CultureInfo.InvariantCulture);
+                            foreach (WorldSession session in targets)
+                                log.Info($"{session.CharacterName} tree stream: {Gathering.StreamState(session)}");
                             break;
                         }
                         case "safeeject":
@@ -859,9 +890,9 @@ namespace LandmarkEmulator.WorldServer.Game
                         case "finditem":
                         {
                             // finditem <text|#id>: item definitions whose name contains the text (as this client names them), or by id.
+                            string needle = parts.Length > 1 ? parts[1].Trim() : "";
                             // Cap matches: an empty needle used to match every name (Contains("")) and flood the world tick
                             // with log lines, which froze the game and the /admin page (docs/bugs.md 2026-10-18).
-                            string needle = parts.Length > 1 ? parts[1].Trim() : "";
                             if (needle.Length == 0)
                             {
                                 Reply(commandSource, replies, "usage: finditem [text|#id] (type a name fragment or #id)");
@@ -1133,7 +1164,7 @@ namespace LandmarkEmulator.WorldServer.Game
                             break;
                         }
                         case "cellcompare":
-                            // cellcompare on|off: log how the stored cell compares with each edit's cell (Building.CompareWithClient).
+                            // cellcompare on|off: log how the stored cell compares with each edit's cell, and whether a selection Delete / Cut's client layer versions name the server's result (Building.CompareWithClient).
                             Building.CompareWithClient = parts.Length > 1 && parts[1].Trim() == "on";
                             log.Info($"Cell compare after edits: {(Building.CompareWithClient ? "on" : "off")}.");
                             break;
@@ -1294,12 +1325,12 @@ namespace LandmarkEmulator.WorldServer.Game
                                 Claims.BeginPlacement(session);
                             break;
                         case "resupply":
-                            // resupply: as using the Spire's Resupply Chest (tools + Founder's Pack restore).
+                            // resupply: as using the Spire's Resupply Chest (missing starter tools, then Founder's Pack restore).
                             foreach (WorldSession session in targets)
                                 Spire.UseResupplyChest(session);
                             break;
                         case "founderchest":
-                            // founderchest: Founder's Pack restore only (same path the Resupply Chest runs after tools).
+                            // founderchest: Founder's Pack restore only (same path the Spire Resupply Chest runs after tools; prints idle replies).
                             foreach (WorldSession session in targets)
                                 Entitlements.RestoreFounderItems(session);
                             break;
@@ -2190,6 +2221,11 @@ namespace LandmarkEmulator.WorldServer.Game
                             // exportdesign <design guid>: as the Designs window's export to item (TemplateBase 0x1B).
                             foreach (WorldSession session in targets)
                                 DesignItems.Export(session, ulong.Parse(parts[1]));
+                            break;
+                        case "emotelead":
+                            // emotelead <ms>: how long after putting a held tool away an emote is played (EmoteHolster.PutAwayLead).
+                            EmoteHolster.PutAwayLead = TimeSpan.FromMilliseconds(double.Parse(parts[1]));
+                            log.Info($"Emote lead after a put-away: {EmoteHolster.PutAwayLead.TotalMilliseconds} ms.");
                             break;
                         case "regendelay":
                             // regendelay <seconds>: terrain regeneration delay (default 1200), checked again now.

@@ -1,5 +1,7 @@
 # System: items, inventory, equipment (Inventory 0x2D/0x2, Equipment 0xCB, item definitions Command 0x1E/0x4B)
 
+> 0.695 rebase (2026-10-26): addresses below are 0.589 unless marked 0.695; their 0.695 partners and changes: trace/0695/address-map-589-695.md, trace/0695/rebase-695.md
+
 Status: [ ] started — notes only.
 
 ## Item definition record (captured, gameData/items.json; client reader FUN_142b7df20 via FUN_142b800a0)

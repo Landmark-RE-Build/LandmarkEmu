@@ -60,5 +60,56 @@ namespace LandmarkEmulator.WorldServer.Game
 
         /// <summary>The boot whose input group casts this ability, or null.</summary>
         public static Boot BootOf(uint abilityId) => byAbility.GetValueOrDefault(abilityId);
+
+        // ---- Dash Soles / Roll Wraps: the evade animation (OPEN-LEADS L168) --------------------------------------------
+        //
+        // None of the seven ClientExecutedEffect types moves the player sideways (agent-leads5.md L168), so a dash or roll
+        // is an animation with root motion. What the client has [P, 0.695]:
+        //  - the direction each cast id stands for: InputActionGroupEntries groups 82 (Dash Soles) and 153 (Roll Wraps),
+        //    INPUT_MODIFIER1/2 = RefInputProfileActions 1 MoveForward, 2 MoveBackward, 7 MouseLookStrafeLeft, 8 …Right;
+        //    no row asks for MoveBackward alone, so the entry with no modifier (809 / 1208, the one with UI_DISPLAY 1) covers
+        //    Shift alone and Shift + back: the backward evade [I];
+        //  - the player network's evade branch (PlayerAnimationNetwork64.mrn, Action|Action|Evade_Roll): switches on
+        //    ControlParameters|AbilityIndex with thresholds read from their NodeDefs — Switch4 (8098) ≥ 20 → Blend2_1 →
+        //    Translations_only (8096: 20 Teleport_Front, 21 _Right, 22 _Left, 23 _Back, 24 _Front_Right, 25 _Front_Left,
+        //    26 _Back_Right, 27 _Back_Left), else Switch3 (8047) ≥ 10 → Sidestep (8343: 10-17 Step_*), else Roll (8381: 0-7
+        //    Evade_*), in the same direction order;
+        //  - the AnimationSelection rows that ask for them (MESSAGE Roll / Roll_2, variables AbilityIndex + Translation,
+        //    the root motion's share): 415 / 465-467 / 474-477 = AbilityIndex 0-7 (Translation 0.6), 523-537 = 10-17
+        //    (0.75), 593-600 = 20-27 (0.5), with more 20-27 sets (601-608, 623-630, 634-640) at 0.43 / 0.38.
+        // Which row live's abilities named is server data (the caster info / CastSuccess AnimationId; the ability tables are
+        // stripped) [I]: Roll Wraps ("Execute an acrobatic roll in any direction", 577211) take the Roll set, Dash Soles
+        // ("Execute a sudden dash in any direction", 567463) the Translations_only set (a pure slide, no roll), each in the
+        // cast's own direction. The CastSuccess carries it (+0x3c → FUN_142d5dfa0 → FUN_143cd5e90 plays it on the
+        // caster); the players near see it through RequestAnimationSelection. Only while MovementEffects is on.
+
+        /// <summary>AbilityIndex direction order of the evade switches: Front, Right, Left, Back, FR, FL, BR, BL.</summary>
+        private enum Dir { Front = 0, Right = 1, Left = 2, Back = 3, FrontRight = 4, FrontLeft = 5, BackRight = 6, BackLeft = 7 }
+
+        /// <summary>Cast id → direction, from the input groups' modifiers (see above).</summary>
+        private static readonly Dictionary<uint, Dir> directionOf = new()
+        {
+            // Dash Soles, group 82
+            [432] = Dir.Front, [807] = Dir.FrontLeft, [808] = Dir.FrontRight, [809] = Dir.Back,
+            [810] = Dir.BackLeft, [811] = Dir.BackRight, [812] = Dir.Left, [813] = Dir.Right,
+            // Roll Wraps, group 153
+            [1211] = Dir.Front, [1212] = Dir.FrontLeft, [1213] = Dir.FrontRight, [1208] = Dir.Back,
+            [1209] = Dir.BackLeft, [1210] = Dir.BackRight, [1214] = Dir.Left, [1207] = Dir.Right,
+        };
+
+        /// <summary>Evade_Roll|Roll selections by direction (AbilityIndex 0-7, Translation 0.6).</summary>
+        private static readonly uint[] rollSelections = { 415, 465, 466, 467, 474, 475, 476, 477 };
+        /// <summary>Translations_only selections by direction (AbilityIndex 20-27, Translation 0.5): 593 = 20 … 600 = 27.</summary>
+        private static readonly uint[] dashSelections = { 593, 596, 595, 594, 597, 598, 599, 600 };
+
+        /// <summary>
+        /// The evade animation a Dash Soles / Roll Wraps cast plays (see above), or 0 for any other cast.
+        /// </summary>
+        public static uint EvadeSelection(uint abilityId)
+        {
+            if (!directionOf.TryGetValue(abilityId, out Dir dir))
+                return 0;
+            return BootOf(abilityId)?.ItemId == RollWraps ? rollSelections[(int)dir] : dashSelections[(int)dir];
+        }
     }
 }

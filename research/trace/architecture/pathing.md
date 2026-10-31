@@ -1,5 +1,7 @@
 # Pathing (creature navigation): client trace and our build
 
+> 0.695 rebase (2026-10-26): addresses below are 0.589 unless marked 0.695; their 0.695 partners and changes: trace/0695/address-map-589-695.md, trace/0695/rebase-695.md
+
 TASKS 6.61 (2026-10-17). What the client shows of live's pathing system, and what the emulator built in its place
 (LandmarkEmu `Game/Pathing.cs`, `Game/Creatures.cs` `Walk`, `Game/Sight.cs` `ColumnAir`, `CavePieces.AirSpans`).
 [P] = proven from the client or a developer post, [I] = ours / inferred.

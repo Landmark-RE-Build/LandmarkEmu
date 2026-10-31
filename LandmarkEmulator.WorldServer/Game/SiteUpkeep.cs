@@ -2,6 +2,7 @@ using LandmarkEmulator.Shared.GameTable.Text;
 using LandmarkEmulator.WorldServer.Network;
 using NLog;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace LandmarkEmulator.WorldServer.Game
@@ -158,7 +159,30 @@ namespace LandmarkEmulator.WorldServer.Game
             log.Info($"Mailed 0x{ownerGuid:X} ({ownerName}) the upkeep reminder.");
         }
 
-        private static string Text(uint id, string fallback) => TextManager.Instance.GetTextForId(id) ?? fallback;
+        private static string Text(uint id, string fallback) => Completed(id, TextManager.Instance.GetTextForId(id) ?? fallback);
+
+        /// <summary>
+        /// The two letters' endings the 0.695 text file lost: when the strings were re-cased they were cut to 255
+        /// characters (562150 ends "...and you will find thes", 564968 "...will remain in the"; the only 0.589 strings that
+        /// got shorter, checked in the raw Locale/en_us_data.dat), so the expired letter lost where the Designs are and the
+        /// retrieval steps, and the extension letter its 90-day sentence (trace/0695/phaseE3-text.md F3). Each cut text
+        /// gets the rest of its 0.589 wording back; any other text (a later fixed file, another language) is used as it is.
+        /// </summary>
+        private static readonly Dictionary<uint, (string CutEnd, string Ending)> CutLetters = new()
+        {
+            [TextExpiredBody] = ("you will find thes", "e in your Designs list.<br><br>Right-click the attachment below to retrieve "
+                + "the resources from your Build Site, and you will be able to re-place your Build Site from the saved Design as "
+                + "soon as you find a new area of land to claim for your new Build Site.  Remember, as long as you log in again "
+                + "before your upkeep timer expires (currently [*UpkeepMax*] days), your Build Site will never expire.<br><br>"
+                + "Thank you,<br>Build Site Management"),
+            [TextExtendedBody] = ("will remain in the ", "world. Each additional day you log in will extend this timer further, to a "
+                + "maximum of 90 days.<br><br>Thank you,<br>Build Site Management"),
+        };
+
+        internal static string Completed(uint id, string text)
+            => text != null && text.Length == 255 && CutLetters.TryGetValue(id, out var cut) && text.EndsWith(cut.CutEnd, StringComparison.Ordinal)
+                ? text + cut.Ending
+                : text;
 
         /// <summary>Fills the letters' [*player*] / [*Player*] and [*UpkeepMax*] fields.</summary>
         private static string Fill(string text, string player, uint days) => text

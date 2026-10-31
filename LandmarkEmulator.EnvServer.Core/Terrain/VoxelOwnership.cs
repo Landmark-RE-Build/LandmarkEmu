@@ -121,6 +121,28 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
             return result;
         }
 
+        /// <summary>
+        /// The voxels (wire order) one player owns in one cell, or null when they own none: a placed design's voxels
+        /// (<see cref="TemplateInstanceLookup.BlobFor"/>).
+        /// </summary>
+        public static HashSet<int> OwnedIn(uint zone, ulong cell, ulong owner)
+        {
+            lock (sync)
+            {
+                if (!Of(zone).TryGetValue(cell, out Grid grid))
+                    return null;
+                int slot = grid.Owners.IndexOf(owner);
+                if (slot < 0)
+                    return null;
+                byte mark = (byte)(slot + 1);
+                var indices = new HashSet<int>();
+                for (int i = 0; i < grid.Owner.Length; i++)
+                    if (grid.Owner[i] == mark)
+                        indices.Add(i);
+                return indices;
+            }
+        }
+
         /// <summary>Loads the saved grids: &lt;terrain edits folder&gt;/Ownership/&lt;zone&gt;/&lt;cell&gt;.own.</summary>
         public static void Load(string terrainEditsFolder)
         {

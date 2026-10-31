@@ -79,8 +79,12 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
             foreach (EditCell cell in request.Cells)
             {
                 // Edited from an older copy (someone else changed the cell meanwhile): not applied or charged; the zone
-                // sends the client the server's cell, which replaces its own drawing of it.
-                if (cell.HasVersions && TerrainEdits.LayerVersion(cell.Cell, zone, TerrainEdits.BuildLayer) != cell.BaseVersion)
+                // sends the client the server's cell, which replaces its own drawing of it. A base that names the content the
+                // server holds under another number (the client's own version of a layer the server wrote) is the same copy
+                // (TerrainEdits.HoldsClientCopy).
+                if (cell.HasVersions && TerrainEdits.LayerVersion(cell.Cell, zone, TerrainEdits.BuildLayer) != cell.BaseVersion
+                    && !(cell.BaseVersion == 0 && TerrainEdits.AcceptsBaseZero(cell.Cell, zone, request.Owner))
+                    && !TerrainEdits.HoldsClientCopy(cell.Cell, zone, cell.BaseVersion))
                 {
                     result.Stale.Add(cell.Cell);
                     continue;
@@ -213,6 +217,10 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         public void ClearCell(ulong cell, uint zone) => TerrainEdits.ClearCell(cell, zone);
         public IReadOnlyList<(uint Zone, List<ulong> Cells)> Regenerate() => TerrainEdits.Regenerate(sitesIn);
         public void SetRegenerationDelay(TimeSpan delay) => TerrainEdits.SetRegenerationDelay(delay);
+        public List<ulong> SetTemplateInstances(uint zone, IReadOnlyList<TemplateInstanceLookup.Instance> instances, bool announce = true)
+            => TerrainEdits.TouchBuildLayers(zone, TemplateInstanceLookup.Replace(zone, instances,
+                (cell, placer) => VoxelOwnership.OwnedIn(zone, cell, placer), announce));
+
         public void MarkPermanent(IEnumerable<ulong> cells, uint zone) => TerrainEdits.MarkPermanent(cells, zone);
 
         // ---- exported-template stamps --------------------------------------------------------------------------------

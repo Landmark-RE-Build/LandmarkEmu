@@ -56,6 +56,35 @@ namespace LandmarkEmulator.WorldServer.Game
         /// </summary>
         private const uint ResultOk = 0, ResultFailed = 1, ResultDuplicate = 3, ResultSingleBinding = 4;
 
+        /// <summary>
+        /// RemoveAddBinding (sub 0x16 → reply 11) results. The reply's own result table (0.695 FUN_142f47140; 0.589
+        /// FUN_142ea8550 had 0-4) is 0 ok, 1 permission, 2 invalid cycle, 3 duplicate, 4
+        /// GameScripting.RemoveAddBindingResultMessage.RemoveFailure, 5 (new in 0.695)
+        /// AdvancedScripting.UniqueBinding.BindSingle [P]. The 0.695 reply handler FUN_142fef9b0 itself only tests
+        /// result == 0 ("Link successfully modified." and a refresh, else "Link modification failure." and nothing
+        /// else) [P], so a refused edit must leave the old Link in place: the client keeps showing it.
+        /// </summary>
+        public const uint RemoveAddRemoveFailed = 4, RemoveAddSingleBinding = 5;
+
+        /// <summary>
+        /// Replaces a Link as one step (RemoveAddBinding): <paramref name="old"/> leaves <paramref name="links"/>, the
+        /// new Link is tried (<paramref name="add"/> returns an AddBinding result); only when it is stored is the old
+        /// one forgotten for good (<paramref name="forget"/>, the database row), otherwise it goes back. Returns the
+        /// RemoveAddBinding result: AddBinding's single-binding code 4 is 5 in this reply's table.
+        /// </summary>
+        public static uint ReplaceLink<T>(List<T> links, object gate, T old, Func<uint> add, Action<T> forget)
+        {
+            lock (gate)
+                links.Remove(old);
+            uint result = add();
+            if (result == ResultOk)
+                forget(old);
+            else
+                lock (gate)
+                    links.Add(old);
+            return result == ResultSingleBinding ? RemoveAddSingleBinding : result;
+        }
+
         /// <summary>Events that allow one Link only (Combat Node "choose", IF Gate condition; trace/0695/plan-storytools-next.md Spec 4).</summary>
         private static readonly HashSet<uint> singleBindingEvents = new() { 577162, 577629 };
 
@@ -1745,7 +1774,8 @@ namespace LandmarkEmulator.WorldServer.Game
             // "Spawn With Weapons Equipped" (row 40, P6511): every (re)spawn starts as the row says; Links change it later.
             r.Creature = Creatures.SpawnStory(site.Zone, r.Position, r.Name, r.PropId, r.CustomName,
                 PropSettings.Get(r.Guid, PropSettings.HealthPercent), PropSettings.Get(r.Guid, PropSettings.DamagePercent),
-                PropSettings.Choice(r.Guid, PropSettings.SpawnWeapons) == Creatures.AnimNpcWeaponsEquipped, site.ClaimId);
+                PropSettings.Choice(r.Guid, PropSettings.SpawnWeapons) == Creatures.AnimNpcWeaponsEquipped, site.ClaimId,
+                Props.Find(r.Guid) is { } prop ? Creatures.HeadingOf(prop.Spawn.Rotation) : null);
             // Its Damages Terrain (row 105): whether a fungus / mine leaves a crater (VoxelDestruction.CreatureBlast).
             if (r.Creature != 0)
                 Creatures.StoryDamagesTerrain(r.Creature, PropSettings.Get(r.Guid, PropSettings.DamagesTerrain) != 0);
@@ -2319,9 +2349,16 @@ namespace LandmarkEmulator.WorldServer.Game
                     WorldPropBindingModel old;
                     lock (sync)
                         old = bindings.FirstOrDefault(b => b.Id == id);
-                    if (allowed && old != null && Props.CanEdit(session, old.SourceId))
-                        Delete(new List<WorldPropBindingModel> { old });
-                    uint result = allowed ? Add(session, source, eventId, target, actionId) : ResultFailed;
+                    // Until 2026-10-26 the old Link was deleted first and stayed deleted when the new one was refused,
+                    // while the client (FUN_142fef9b0, result ≠ 0) kept showing it (trace/0695/rebase-695.md G1).
+                    uint result;
+                    if (!allowed)
+                        result = ResultFailed;
+                    else if (old == null || !Props.CanEdit(session, old.SourceId))
+                        result = RemoveAddRemoveFailed;
+                    else
+                        result = ReplaceLink(bindings, sync, old, () => Add(session, source, eventId, target, actionId),
+                            gone => Save(c => c.WorldPropBinding.RemoveRange(c.WorldPropBinding.Where(b => b.Id == gone.Id))));
                     Send(session, SubRemoveAddBinding, w =>
                     {
                         w.Write(id); w.Write(source); w.Write(target); w.Write(eventId); w.Write(actionId); w.Write(result);

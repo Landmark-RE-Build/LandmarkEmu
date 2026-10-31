@@ -58,7 +58,7 @@ namespace LandmarkEmulator.WorldServer.Game
     /// <item>Outposts need no check: they are stamped in the Chaos Caverns, hundreds of metres under the surface
     /// (Outposts.cs, OutpostSites.cs: caverns below MinTravelDepth −650 m vs ground ~1000 m) [P].</item>
     /// <item>Bandwidth: unchanged — a respawned node is one AddLightweightProp to the players who have its 64 m region
-    /// (sent within 160 m), a felled one a RemovePlayer to the same; nothing per tick.</item>
+    /// (sent within TreeStreamRange, Gathering.Stream.cs), a felled one a RemovePlayer to the same; nothing per tick.</item>
     /// </list>
     /// </para>
     /// <para>
@@ -473,7 +473,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 if (zone == node.Zone && HorizontalDistance(position, at) < clear)
                     return null;
             empty.Remove(key);
-            node.Hits = 0;
+            ResetDamage(node);
             node.RegrowsAt = default;
             dirty = true;
             return node;
@@ -550,7 +550,7 @@ namespace LandmarkEmulator.WorldServer.Game
                         break;
                     if (Find(key) is not Node node || !node.Standing)
                         continue;
-                    node.Hits = 0;
+                    ResetDamage(node);
                     Felled(node, now);
                     felled.Add(node);
                 }

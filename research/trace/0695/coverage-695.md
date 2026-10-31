@@ -6,6 +6,19 @@ trace/architecture/channels*.md. Everything below is static: client = re/decomp_
 (0.695) plus read-only disassembly of both Landmark64.exe; server = LandmarkEmu/LandmarkEmulator.WorldServer source
 (file:line as of today). Nothing was run against a client or server.
 
+**Update 2026-10-26 (E3 housekeeping, from trace/0695/phaseE3-stale.md F1).** The client side of this file is
+unchanged. The server side was written on 10-15 against a 0.589-numbered server; since 003dc1f (2026-10-17) the server
+speaks 0.695 numbering natively (ClientWire695 / ZoneOpcodeTranslator removed, 0.589 clients refused at the gateway,
+GatewaySession.cs `ClientBuilds.Is589`). The §10 "Emulator" column was re-checked against client-0.695 HEAD **8219f7c**:
+175 rows changed to handled / sent, each with the HEAD file:line that was read — 118 from phaseE3-stale's re-run of
+agent #10's scan matched on the 0.695 sub, 19 that report checked by hand, and 38 from the fixed re/tools/coverage.py
+(re/out/coverage_695.md, regenerated 2026-10-26) whose server line was read (cross-family hits of that heuristic were
+left as they were). Left unchanged on purpose: the 41 rows the 10-15 hand fixes already had right, and four false hits
+of the heuristics — 0x1E/4 EndDialog, 0x1E/6 PlayerPlaySpeech, 0x1E/7 DialogResponse (case labels of
+AdminCommands' `/clienttime` and `/profile` switches) and 0x45/0x10 StationCashProductsResponse (a result code 0x10).
+§1's counts are recomputed from the updated column; §5 is historical. Rows not re-checked keep their 10-15 text (a
+few may still under-report: see phaseE3-stale F1 / F2 and the coverage.py limits in re/out/coverage_695.md).
+
 Scratch (re/out/agent_coverage/, all scripts re-runnable): `extract.py` (every packet-class construction with its
 header constants: the base at the stack slot vtable+8, the sub at vtable+0x10, nearest assignment) → inst_589/695.tsv;
 `ctorcalls.py` (readers of constructor-built packets); `sd.py` (port of re/tools/subdispatch.py to both builds: zone
@@ -31,21 +44,25 @@ the Command (0x1E, 353 ids) and Admin (0x1F, 361 ids) id tables are identical in
 re/out/agent_packets/packetids_589/695.txt) and are not listed name by name; their 145 compiled classes are in the
 table (137 same, the rest inline, see §10).
 
-| 0.695 status | Rows | Emulator implements (handled / sent) | Not implemented |
+| 0.695 status | Rows | Emulator implements (handled / sent) at HEAD 8219f7c [10-15] | Not implemented at HEAD [10-15] |
 |---|---|---|---|
-| same (reader / writer closure equal) | 1,046 | 353 | 693 |
-| same (inline reader; family dispatcher cases equal) | 57 | 10 | 47 |
-| **header changed** (PlayerUpdate 0x26: sub u8 → u32) | 125 | **32** | 93 |
-| **renumbered** (Claims ≥0x45 +2, Mail ≥4 +1, InGamePurchase ≥0x30 +1, InstancedGame ≥0xD +1) | 46 | **33** | 13 |
-| **renumbered + body changed** | 3 | **2** | 1 |
-| **body changed** | 20 | **16** | 4 |
-| **new in 0.695** | 19 | 1 (SetPlayerBio stub) | 18 |
-| value domain only (same layout, new value the client understands) | 2 | 1 | 1 |
+| same (reader / writer closure equal) | 1,046 | 485 [353] | 561 [693] |
+| same (inline reader; family dispatcher cases equal) | 57 | 13 [10] | 44 [47] |
+| **header changed** (PlayerUpdate 0x26: sub u8 → u32) | 125 | **42** [32] | 83 [93] |
+| **renumbered** (Claims ≥0x45 +2, Mail ≥4 +1, InGamePurchase ≥0x30 +1, InstancedGame ≥0xD +1) | 46 | **40** [33] | 6 [13] |
+| **renumbered + body changed** | 3 | **3** [2] | 0 [1] |
+| **body changed** | 20 | **18** [16] | 2 [4] |
+| **new in 0.695** | 19 | 19 [1: SetPlayerBio stub] | 0 [18] |
+| value domain only (same layout, new value the client understands) | 2 | 2 [1] | 0 [1] |
 | removed in 0.695 | 0 (no packet class in re/out/rtti_gone_695.txt) | – | – |
+
+Counts at HEAD (2026-10-26): 622 of 1,318 rows implemented (10-15: 448), recomputed from the §10 Emulator column after
+the update described under the title (a row counts when its Emulator text starts "handled" / "sent"; the 32 Login /
+Gateway rows say "see Login/Gateway" and count as not implemented here, as on 10-15).
 
 Direction: 579 C→S, 732 S→C, 1 both (SetPlayerBio), 6 PlayerUpdate id rows without an S→C case (C→S or unused).
 
-**What a 0.695 client breaks on today: 83 implemented rows** — 32 PlayerUpdate rows (31 sub-opcodes; header), 35
+**Historical (10-15; none of it applies since 003dc1f, 2026-10-17, when the server went native 0.695 — phaseE2-packets, phaseE3-stale F1).** What a 0.695 client broke on then: **83 implemented rows** — 32 PlayerUpdate rows (31 sub-opcodes; header), 35
 renumbered messages (InGamePurchase 15, Mail 13, InstancedGame 6 of which GetConfigurationResponse and
 SetConfiguration also changed body, Claims 1; §5.2), 16 body changes (SendSelfToClient, DisplayPropText, 3 Template,
 4 Claims, 4 InstancedGame, EditSettingsReply, PlayerSet, and PropFromZoneToClient — wire-compatible as the server sends
@@ -143,7 +160,16 @@ by the family dispatcher case (casecmp.py) where it is inline:
     0x6A / 0x6B / 0x73, Abilities, Achievements, WorldEditing, Prop, Weapon packets wrapped for another entity
     (cmp_sent's "BasePacket 0x1E/0x20" row is this function, not a packet).
 
-## 5. Version-gating plan (one per-build opcode / serializer layer)
+## 5. Version-gating plan (one per-build opcode / serializer layer) — HISTORICAL
+
+> **Obsolete since 2026-10-17 (kept as the record of what changed; note added 2026-10-26).** This plan was carried out
+> first as a translation layer (ClientWire695 / ZoneOpcodeTranslator in the gateway, 723cc6c, 2026-10-15) and then
+> replaced: since **003dc1f** (2026-10-17) the server speaks the 0.695 client's sub numbers and the u32 PlayerUpdate sub
+> itself, the translator is removed, and the gateway refuses 0.589 builds (LandmarkEmulator.Gateway/Network/
+> GatewaySession.cs, `ClientBuilds.Is589`; docs/protocol.md §1.6). There is no per-build layer and no session
+> `ClientVersion` switch at HEAD 8219f7c: §5.1's header change, §5.2's renumbering (the "collisions" below cannot happen
+> any more), §5.3's 0.695 bodies and §5.4's values are all built natively — see the §10 Emulator column (HEAD) and
+> phaseE2-packets.md / phaseE3-stale.md F1. The file:line references below are the 10-15 server's.
 
 Build detection exists: Gateway LoginRequest.ClientBuild (LandmarkEmulator.Gateway/Network/Message/Model/
 LoginRequest.cs:19) → WorldSession.ClientBuild; ZoneOpcodeTranslator.Uses589Opcodes (Network/Message/
@@ -435,11 +461,11 @@ values are in each switch's own domain (PlayerUpdate: sub − 1; Chat: sub).
 
 ## 10. Full table, per family
 
-Columns: sub-opcode 0.589 → 0.695 ("–" = not set by a compiled constant; see §2), direction, client class, the 0.589 / 0.695 reader (S→C) or send template / builder (C→S) compared, 0.695 status with the evidence, the emulator's handling in 0.589 numbering (file:line), the change needed for 0.695. "(id table)" rows: PlayerUpdate sub-opcodes named only in the client's id table (FUN_143419ce0 / FUN_1434c7940); "(sub 0x.., no class name)": PlayerUpdate sub-opcodes known only from the dispatcher case or the server enum. Families are headed by opcode and the name of their trace/families file. "§A…/§B…" in notes = packets-695.md.
+Columns: sub-opcode 0.589 → 0.695 ("–" = not set by a compiled constant; see §2), direction, client class, the 0.589 / 0.695 reader (S→C) or send template / builder (C→S) compared, 0.695 status with the evidence, the emulator's handling (file:line; written 10-15 in 0.589 numbering, rows re-checked 2026-10-26 against HEAD 8219f7c in 0.695 numbering — see the update note under the title), the change needed for 0.695 (as of 10-15: the "use sub 0x.. for 0.695" / "u32 sub-opcode for 0.695" entries are all done since 003dc1f, 2026-10-17, when the server went native 0.695). "(id table)" rows: PlayerUpdate sub-opcodes named only in the client's id table (FUN_143419ce0 / FUN_1434c7940); "(sub 0x.., no class name)": PlayerUpdate sub-opcodes known only from the dispatcher case or the server enum. Families are headed by opcode and the name of their trace/families file. "§A…/§B…" in notes = packets-695.md.
 
 ### 0x1 Notifications / Skills admin (0x0001)
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | C→S | Notifications::ListNotificationsPacket | FUN_14332a300 FUN_143329cd0 / FUN_1433d7110 FUN_1433d6ae0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:153) | none |
 | 0x2 → 0x2 | C→S | Notifications::AddNotificationPacket | FUN_143329b20 / FUN_1433d6930 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:153) | none |
@@ -447,32 +473,32 @@ Columns: sub-opcode 0.589 → 0.695 ("–" = not set by a compiled constant; see
 
 ### 0x3 Preference
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | BasePreferencePacket | FUN_142bb4ef0 / FUN_142c4e700 | same | not sent | none |
 | 0x1 → 0x1 | C→S | PreferencePacketClientXml | FUN_142bacea0 FUN_142be4a60 / FUN_142c46a20 FUN_142c7e650 | same | not handled | none |
 
 ### 0xD PacketClientFinishedLoading
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | C→S | PacketClientFinishedLoading | FUN_142ba98a0 / FUN_142c43420 | same | handled (Network/Handlers/MiscHandler.cs:295) | none |
 
 ### 0xF PacketSendSelfToClient
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | PacketSendSelfToClient | FUN_142bb1050 / FUN_142c4abc0 | body: trailing str bio (FUN_142c19bd0 vs SendSelfToClient_Read 142b80420; TASKS §0) | sent (Network/Message/Model/SendSelfToClient.cs:15) | per-build body |
 
 ### 0x12 PacketClientZoneCoordinateInfo
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | PacketClientZoneCoordinateInfo | FUN_142b8a3b0 / FUN_142c23b80 | same | sent (Network/Handlers/MiscHandler.cs:257) | none |
 
 ### 0x13 Chat
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | S→C | PacketChat | FUN_1432aed20 FUN_1432a9b80 / FUN_14335bc40 FUN_143356a90 | same | sent (Game/Chat.cs:148; Game/Chat.cs:161; Game/Chat.cs:194) | none |
 | 0x2 → 0x2 | S→C | ChatPacketEnterArea | FUN_1432ab430 / FUN_143358340 | same | not sent | none |
@@ -493,25 +519,25 @@ Columns: sub-opcode 0.589 → 0.695 ("–" = not set by a compiled constant; see
 
 ### 0x14 PacketClientLogout
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x3 → 0x3 | C→S | PacketClientLogout | FUN_142ba9fd0 / FUN_142c43b50 | same | family handler, sub not handled (Network/Handlers/CharacterSelectHandler.cs:25) | none |
 
 ### 0x1A PacketTargetClientNotOnline
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| – → – | S→C | PacketTargetClientNotOnline | FUN_142bb13b0 / FUN_142c4af20 | same | not sent | none |
+| – → – | S→C | PacketTargetClientNotOnline | FUN_142bb13b0 / FUN_142c4af20 | same | sent (Game/TargetNotOnline.cs:70) | none |
 
 ### 0x1B ContentManagement
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | S→C | PacketMonitorState | FUN_14315be00 / FUN_143206820 | same | not sent | none |
 
 ### 0x1E Command
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x2 → 0x2 | S→C | CommandPacketWhoReply | FUN_1432d6c80 / FUN_143383a70 | same | sent (runtime opcode_stats (trace/families; agent_packets/sent_s2c.tsv)) | none |
 | 0x3 → 0x3 | S→C | CommandPacketShowDialog | FUN_1432d6700 / FUN_1433834f0 | same | sent (runtime opcode_stats (trace/families; agent_packets/sent_s2c.tsv)) | none |
@@ -527,11 +553,11 @@ Columns: sub-opcode 0.589 → 0.695 ("–" = not set by a compiled constant; see
 | 0x10 → 0x10 | C→S | CommandPacketAddFriendRequest | FUN_142ba7e40 / FUN_142c419c0 | same | handled (Network/Handlers/InteractionHandler.cs:87) | none |
 | 0x11 → 0x11 | C→S | CommandPacketAddSteamFriendRequest | FUN_142f3b7c0 / FUN_142fdb530 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
 | 0x12 → 0x12 | C→S | CommandPacketRemoveFriendRequest | FUN_143523120 / FUN_1435d4aa0 | same | handled (Network/Handlers/InteractionHandler.cs:90) | none |
-| 0x13 → 0x13 | S→C | CommandPacketConfirmFriendRequest | FUN_1432d55d0 / FUN_1433823c0 | same | not sent | none |
-| 0x14 → 0x14 | C→S | CommandPacketConfirmFriendResponse | FUN_14332a070 / FUN_1433d6e80 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x15 → 0x15 | C→S | CommandPacketSetChatBubbleColor | FUN_142ba8890 FUN_1432d65f0 / FUN_142c42410 FUN_1433833e0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
+| 0x13 → 0x13 | S→C | CommandPacketConfirmFriendRequest | FUN_1432d55d0 / FUN_1433823c0 | same | sent (Game/Friends.cs:179; runtime "out" in opcode_stats; by hand) | none |
+| 0x14 → 0x14 | C→S | CommandPacketConfirmFriendResponse | FUN_14332a070 / FUN_1433d6e80 | same | handled (Network/Handlers/InteractionHandler.cs:103 Game.Friends.ConfirmResponseSub; HEAD, coverage.py 2026-10-26 + read) | none |
+| 0x15 → 0x15 | C→S | CommandPacketSetChatBubbleColor | FUN_142ba8890 FUN_1432d65f0 / FUN_142c42410 FUN_1433833e0 | same | handled (Network/Handlers/InteractionHandler.cs:146 Game.ChatBubbleColor.Sub; HEAD, coverage.py 2026-10-26 + read) | none |
 | 0x16 → 0x16 | C→S | CommandPacketSelectPlayer | FUN_142ba86e0 / FUN_142c42260 | same | handled (Network/Handlers/InteractionHandler.cs:93) | none |
-| 0x18 → 0x18 | C→S | CommandPacketFriendsPositionRequest | FUN_1432d0b60 FUN_1432e0440 / FUN_14337d950 FUN_14338d230 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
+| 0x18 → 0x18 | C→S | CommandPacketFriendsPositionRequest | FUN_1432d0b60 FUN_1432e0440 / FUN_14337d950 FUN_14338d230 | same | handled (Network/Handlers/InteractionHandler.cs:154 Game.FriendPositions.RequestSub; HEAD, coverage.py 2026-10-26 + read) | none |
 | 0x19 → 0x19 | S→C | CommandPacketMoveAndInteract | FUN_1432d5f60 / FUN_143382d50 | same | not sent | none |
 | 0x1a → 0x1a | C→S | CommandPacketQuestAbandon | FUN_143512790 / FUN_1435c3d70 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
 | 0x1c → 0x1c | C→S | CommandPacketActivateProfileFailed | FUN_142ba7ca0 / FUN_142c41820 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
@@ -539,10 +565,10 @@ Columns: sub-opcode 0.589 → 0.695 ("–" = not set by a compiled constant; see
 | 0x1e → 0x1e | S→C | CommandPacketPlayDialogEffect | FUN_1432d6030 / FUN_143382e20 | same | not sent | none |
 | 0x20 → 0x20 | C→S | CommandPacketIgnoreRequest | FUN_1432e05e0 / FUN_14338d3d0 | same | handled (Network/Handlers/InteractionHandler.cs:101) | none |
 | 0x21 → 0x21 | C→S | CommandPacketSetActiveVehicleGuid | FUN_142f25a50 FUN_1432d6530 / FUN_142fc4d90 FUN_143383320 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x22 → 0x22 | C→S | CommandPacketChatChannelOn | FUN_143522bc0 / FUN_1435d4540 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x23 → 0x23 | C→S | CommandPacketChatChannelOff | FUN_143522a10 / FUN_1435d4390 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x24 → 0x24 | C→S | CommandPacketRequestPlayerPositions | FUN_143523470 / FUN_1435d4df0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x25 → 0x25 | S→C | CommandPacketRequestPlayerPositionsReply | FUN_1432d63c0 / FUN_1433831b0 | same | not sent | none |
+| 0x22 → 0x22 | C→S | CommandPacketChatChannelOn | FUN_143522bc0 / FUN_1435d4540 | same | handled (Network/Handlers/InteractionHandler.cs:141 Game.PublicChannels.ChannelOnSub; HEAD, coverage.py 2026-10-26 + read) | none |
+| 0x23 → 0x23 | C→S | CommandPacketChatChannelOff | FUN_143522a10 / FUN_1435d4390 | same | handled (Network/Handlers/InteractionHandler.cs:142 Game.PublicChannels.ChannelOffSub; HEAD, coverage.py 2026-10-26 + read) | none |
+| 0x24 → 0x24 | C→S | CommandPacketRequestPlayerPositions | FUN_143523470 / FUN_1435d4df0 | same | handled (Network/Handlers/InteractionHandler.cs:158 Game.PlayerPositions.RequestSub; HEAD, coverage.py 2026-10-26 + read) | none |
+| 0x25 → 0x25 | S→C | CommandPacketRequestPlayerPositionsReply | FUN_1432d63c0 / FUN_1433831b0 | same | sent (Game/PlayerPositions.cs:97) | none |
 | 0x27 → 0x27 | C→S | CommandPacketRequestRewardPreviewUpdate | FUN_142ba84f0 / FUN_142c42070 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
 | 0x28 → 0x28 | S→C | CommandPacketRequestRewardPreviewUpdateReply | FUN_1432e58a0 / FUN_143392690 | same | not sent | none |
 | 0x29 → 0x29 | S→C | CommandPacketPlaySoundIdOnTarget | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | not sent | none |
@@ -553,57 +579,57 @@ Columns: sub-opcode 0.589 → 0.695 ("–" = not set by a compiled constant; see
 | 0x2e → 0x2e | C→S | CommandPacketInteractionString | FUN_1432d5bc0 FUN_143322e60 / FUN_1433829b0 FUN_1433cfc40 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
 | 0x30 → 0x30 | S→C | CommandPacketFindReply | FUN_1432d57c0 / FUN_1433825b0 | same | sent (runtime opcode_stats (trace/families; agent_packets/sent_s2c.tsv)) | none |
 | 0x33 → 0x33 | C→S | CommandPacketChargeCollision | FUN_143275cd0 / FUN_143322b80 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x34 → 0x34 | C→S | CommandPacketHexPermissions | FUN_142bac1a0 / FUN_142c45d20 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
+| 0x34 → 0x34 | C→S | CommandPacketHexPermissions | FUN_142bac1a0 / FUN_142c45d20 | same | handled (Network/Handlers/InteractionHandler.cs:222 HexPermissionsSub; HEAD, coverage.py 2026-10-26 + read) | none |
 | 0x37 → 0x37 | C→S | HelpRequestPacket | FUN_142bac740 FUN_1432d7be0 / FUN_142c462c0 FUN_1433849d0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
 | 0x38 → 0x38 | C→S | HelpOfferPacket | FUN_142bac540 FUN_1432d7b00 / FUN_142c460c0 FUN_1433848f0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
 | 0x39 → 0x39 | C→S | CommandPacketRedeployRequest | FUN_143385940 / FUN_143432810 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
 | 0x3a → 0x3a | S→C | PacketPlayersInRadius | FUN_1432d88e0 / FUN_1433856d0 | same | not sent | none |
-| 0x3b → 0x3b | C→S | CommandPacketAFKRequest | FUN_1432e0050 / FUN_14338ce40 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x3f → 0x3f | C→S | CommandPacketRendererDump | FUN_1432cf050 / FUN_14337be40 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
+| 0x3b → 0x3b | C→S | CommandPacketAFKRequest | FUN_1432e0050 / FUN_14338ce40 | same | handled (Network/Handlers/InteractionHandler.cs:150 CommandRequest.AfkRequest; HEAD, coverage.py 2026-10-26 + read) | none |
+| 0x3f → 0x3f | C→S | CommandPacketRendererDump | FUN_1432cf050 / FUN_14337be40 | same | handled (Network/Handlers/InteractionHandler.cs:210 case 0x3F, Game.Telemetry.Record; HEAD, coverage.py 2026-10-26 + read) | none |
 | 0x40 → 0x40 | C→S | CommandPacketNameChangeRequest | FUN_143522d70 / FUN_1435d46f0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
 | 0x41 → 0x41 | C→S | CommandPacketNameValidationRequest | FUN_143522f60 / FUN_1435d48e0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
 | 0x42 → 0x42 | C→S | CommandPacketGoHome | FUN_142ba7ff0 / FUN_142c41b70 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
 | 0x43 → 0x43 | C→S | ClientCommandPacket | FUN_1432d0790 FUN_1432dfea0 / FUN_14337d580 FUN_14338cc90 | same | handled (Network/Handlers/InteractionHandler.cs:109) | none |
 | 0x44 → 0x44 | S→C | CommandListPacket | FUN_1432d5410 / FUN_143382200 | same | sent (Game/Emotes.cs:105) | none |
-| 0x45 → 0x45 | S→C | CommandPacketAddWorldCommand | FUN_1432e4df0 / FUN_143391be0 | same | not sent | none |
-| 0x46 → 0x46 | S→C | CommandPacketAddZoneCommand | FUN_1432e4ef0 / FUN_143391ce0 | same | not sent | none |
-| 0x47 → 0x47 | C→S | CommandPacketExecuteCommand | FUN_1432e0250 / FUN_14338d040 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
+| 0x45 → 0x45 | S→C | CommandPacketAddWorldCommand | FUN_1432e4df0 / FUN_143391be0 | same | sent (Game/DynamicCommands.cs:37; runtime "out" in opcode_stats; by hand) | none |
+| 0x46 → 0x46 | S→C | CommandPacketAddZoneCommand | FUN_1432e4ef0 / FUN_143391ce0 | same | sent (Game/DynamicCommands.cs:160; runtime "out" in opcode_stats; by hand) | none |
+| 0x47 → 0x47 | C→S | CommandPacketExecuteCommand | FUN_1432e0250 / FUN_14338d040 | same | handled (Network/Handlers/InteractionHandler.cs:129 CommandRequest.ExecuteCommand; HEAD, coverage.py 2026-10-26 + read) | none |
 | 0x49 → 0x49 | C→S | CommandPacketItemDefinitionRequest | FUN_143355980 / FUN_143401a40 | same | handled (Network/Handlers/InteractionHandler.cs:112) | none |
 | 0x4a → 0x4a | S→C | CommandPacketItemDefinitionReply | FUN_1432d5de0 / FUN_143382bd0 | same | not sent | none |
-| 0x4b → 0x4b | S→C | CommandPacketItemDefinitions | FUN_1432d5ea0 / FUN_143382c90 | same | not sent | none |
+| 0x4b → 0x4b | S→C | CommandPacketItemDefinitions | FUN_1432d5ea0 / FUN_143382c90 | same | sent (Game/Inventory/ItemDefinitionManager.cs:214-225; runtime "out" in opcode_stats; by hand) | none |
 | 0x4c → 0x4c | C→S | CommandPacketInteractionItem | FUN_143322ac0 / FUN_1433cf8a0 | same | handled (Network/Handlers/InteractionHandler.cs:117) | none |
 | 0x4f → 0x4f | S→C | CommandPacketInteractionTool | FUN_1432d5c90 / FUN_143382a80 | same | not sent | none |
-| 0x51 → 0x51 | C→S | CommandPacketTeleportToLocation | FUN_1432e5c90 FUN_1432e0d40 / FUN_143392a80 FUN_14338db30 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
+| 0x51 → 0x51 | C→S | CommandPacketTeleportToLocation | FUN_1432e5c90 FUN_1432e0d40 / FUN_143392a80 FUN_14338db30 | same | handled (Network/Handlers/InteractionHandler.cs:214 Game.TeleportRequests.ToLocationSub; HEAD, coverage.py 2026-10-26 + read) | none |
 | 0x52 → 0x52 | C→S | CommandPacketTeleportToLocationEx | FUN_1432e0f50 / FUN_14338dd40 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
 | 0x53 → 0x53 | S→C | CommandPacketInteractionRunClientLua | FUN_1432d5aa0 / FUN_143382890 | same | sent (Game/ClientLua.cs:30) | none |
 | 0x5a → 0x5a | C→S | CommandPacketBuilderMode | FUN_1433b4900 / FUN_143462900 | same | handled (Network/Handlers/InteractionHandler.cs:95) | none |
-| 0x5b → 0x5b | C→S | CommandPacketRandom | FUN_1432e0980 FUN_1432d62b0 / FUN_14338d770 FUN_1433830a0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x3ea → 0x3ea | C→S | PacketAddItem | FUN_1432e2ad0 / FUN_14338f8c0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x3eb → 0x3eb | C→S | PacketDeleteItem | FUN_1432e3210 / FUN_143390000 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x3ec → 0x3ec | C→S | AdminCommandPacketProfileAdd | FUN_1432dde90 / FUN_14338ac80 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x3ec → 0x3ec | C→S | AdminCommandPacketProfileDelete | FUN_1432de0d0 / FUN_14338aec0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x3ec → 0x3ec | C→S | AdminCommandPacketProfileListAll | FUN_1432de310 / FUN_14338b100 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x3ec → 0x3ec | C→S | AdminCommandPacketProfileSelect | FUN_1432de500 / FUN_14338b2f0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x3ec → 0x3ec | C→S | AdminCommandPacketProfileSetRank | FUN_1432de740 / FUN_14338b530 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x3ec → 0x3ec | C→S | AdminCommandPacketProfileSetXp | FUN_1432de8e0 / FUN_14338b6d0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x3ec → 0x3ec | C→S | AdminCommandPacketProfileShowSelected | FUN_1432dea80 / FUN_14338b870 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x3ec → 0x3ec | C→S | AdminCommandPacketSetProfileGroup | FUN_1432df1e0 / FUN_14338bfd0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x3f6 → 0x3f6 | C→S | CommandPacketTeleportManagedToLocation | FUN_1432e0b20 / FUN_14338d910 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
+| 0x5b → 0x5b | C→S | CommandPacketRandom | FUN_1432e0980 FUN_1432d62b0 / FUN_14338d770 FUN_1433830a0 | same | handled (Network/Handlers/InteractionHandler.cs:163 Game.RandomRoll.Sub; HEAD, coverage.py 2026-10-26 + read) | none |
+| 0x3ea → 0x3ea | C→S | PacketAddItem | FUN_1432e2ad0 / FUN_14338f8c0 | same | handled (Network/Handlers/InteractionHandler.cs:191 Game.AdminCommands.AddItemSub; HEAD, coverage.py 2026-10-26 + read) | none |
+| 0x3eb → 0x3eb | C→S | PacketDeleteItem | FUN_1432e3210 / FUN_143390000 | same | handled (Network/Handlers/InteractionHandler.cs:192 Game.AdminCommands.DeleteItemSub; HEAD, coverage.py 2026-10-26 + read) | none |
+| 0x3ec → 0x3ec | C→S | AdminCommandPacketProfileAdd | FUN_1432dde90 / FUN_14338ac80 | same | handled (Game/AdminCommands.cs:92) | none |
+| 0x3ec → 0x3ec | C→S | AdminCommandPacketProfileDelete | FUN_1432de0d0 / FUN_14338aec0 | same | handled (Game/AdminCommands.cs:92) | none |
+| 0x3ec → 0x3ec | C→S | AdminCommandPacketProfileListAll | FUN_1432de310 / FUN_14338b100 | same | handled (Game/AdminCommands.cs:92) | none |
+| 0x3ec → 0x3ec | C→S | AdminCommandPacketProfileSelect | FUN_1432de500 / FUN_14338b2f0 | same | handled (Game/AdminCommands.cs:92) | none |
+| 0x3ec → 0x3ec | C→S | AdminCommandPacketProfileSetRank | FUN_1432de740 / FUN_14338b530 | same | handled (Game/AdminCommands.cs:92) | none |
+| 0x3ec → 0x3ec | C→S | AdminCommandPacketProfileSetXp | FUN_1432de8e0 / FUN_14338b6d0 | same | handled (Game/AdminCommands.cs:92) | none |
+| 0x3ec → 0x3ec | C→S | AdminCommandPacketProfileShowSelected | FUN_1432dea80 / FUN_14338b870 | same | handled (Game/AdminCommands.cs:92) | none |
+| 0x3ec → 0x3ec | C→S | AdminCommandPacketSetProfileGroup | FUN_1432df1e0 / FUN_14338bfd0 | same | handled (Game/AdminCommands.cs:92) | none |
+| 0x3f6 → 0x3f6 | C→S | CommandPacketTeleportManagedToLocation | FUN_1432e0b20 / FUN_14338d910 | same | handled (Network/Handlers/InteractionHandler.cs:216 Game.TeleportRequests.ManagedToLocationSub; HEAD, coverage.py 2026-10-26 + read) | none |
 | 0x40d → 0x40d | S→C | CommandPacketUITest | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | not sent | none |
 | 0x41f → 0x41f | S→C | AdminCommandPacketAddCurrency | FUN_1432ed790 / FUN_14339a580 | same | not sent | none |
 | 0x420 → 0x420 | S→C | AdminCommandPacketSetCurrency | FUN_1432edbe0 / FUN_14339a9d0 | same | not sent | none |
 | 0x421 → 0x421 | S→C | AdminCommandPacketClearCurrency | FUN_1432ed800 / FUN_14339a5f0 | same | not sent | none |
 | 0x423 → 0x423 | S→C | AdminCommandPacketListCurrencyRequest | FUN_1432eda70 / FUN_14339a860 | same | not sent | none |
-| 0x429 → 0x429 | C→S | AdminCommandPacketGameTime | FUN_1432dd430 / FUN_14338a220 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x42a → 0x42a | C→S | AdminCommandPacketClientTime | FUN_1432dca00 FUN_1432d50f0 / FUN_1433897f0 FUN_143381ee0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x42e → 0x42e | C→S | AdminCommandPacketGotoRequest | FUN_1432dd5d0 / FUN_14338a3c0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
+| 0x429 → 0x429 | C→S | AdminCommandPacketGameTime | FUN_1432dd430 / FUN_14338a220 | same | handled (Game/AdminCommands.cs:80) | none |
+| 0x42a → 0x42a | C→S | AdminCommandPacketClientTime | FUN_1432dca00 FUN_1432d50f0 / FUN_1433897f0 FUN_143381ee0 | same | handled (Game/AdminCommands.cs:81) | none |
+| 0x42e → 0x42e | C→S | AdminCommandPacketGotoRequest | FUN_1432dd5d0 / FUN_14338a3c0 | same | handled (Game/AdminCommands.cs:75) | none |
 | 0x430 → 0x430 | S→C | AdminCommandPacketGotoWaypointRequest | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | not sent | none |
-| 0x433 → 0x433 | C→S | PacketDeleteItemById | FUN_1432e3410 / FUN_143390200 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x434 → 0x434 | C→S | PacketGetItemList | FUN_1432e37a0 / FUN_143390590 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
+| 0x433 → 0x433 | C→S | PacketDeleteItemById | FUN_1432e3410 / FUN_143390200 | same | handled (Network/Handlers/InteractionHandler.cs:193 Game.AdminCommands.DeleteItemByIdSub; HEAD, coverage.py 2026-10-26 + read) | none |
+| 0x434 → 0x434 | C→S | PacketGetItemList | FUN_1432e37a0 / FUN_143390590 | same | handled (Network/Handlers/InteractionHandler.cs:194 Game.AdminCommands.GetItemListSub; HEAD, coverage.py 2026-10-26 + read) | none |
 | 0x445 → 0x445 | S→C | AdminCommandPacketZoneFlags | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | not sent | none |
-| 0x458 → 0x458 | C→S | AdminCommandPacketHideMe | FUN_1432dd940 / FUN_14338a730 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x48a → 0x48a | C→S | PacketGetItemInfo | FUN_1432e35b0 / FUN_1433903a0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x499 → 0x499 | C→S | AdminCommandPacketAddAmmo | FUN_1432dc510 / FUN_143389300 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
+| 0x458 → 0x458 | C→S | AdminCommandPacketHideMe | FUN_1432dd940 / FUN_14338a730 | same | handled (Game/AdminCommands.cs:78) | none |
+| 0x48a → 0x48a | C→S | PacketGetItemInfo | FUN_1432e35b0 / FUN_1433903a0 | same | handled (Network/Handlers/InteractionHandler.cs:195 Game.AdminCommands.GetItemInfoSub; HEAD, coverage.py 2026-10-26 + read) | none |
+| 0x499 → 0x499 | C→S | AdminCommandPacketAddAmmo | FUN_1432dc510 / FUN_143389300 | same | handled (Game/AdminCommands.cs:86) | none |
 | 0x49a → 0x49a | S→C | Skills::BaseSkillAdminPacket | FUN_142eab1f0 / FUN_142f49e20 | same | not sent | none |
 | 0x49a → 0x49a | C→S | Skills::SkillAdminPacketAddSkillPoints | FUN_142eacd90 FUN_142eab1f0 / FUN_142f4b9c0 FUN_142f49e20 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
 | 0x49a → 0x49a | C→S | Skills::SkillAdminPacketEcho | FUN_142eacf30 FUN_142eab1f0 / FUN_142f4bb60 FUN_142f49e20 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
@@ -620,16 +646,16 @@ Columns: sub-opcode 0.589 → 0.695 ("–" = not set by a compiled constant; see
 | 0x49a → 0x49a | C→S | Skills::SkillAdminPacketResetSkillSet | FUN_142eae1f0 FUN_142eab1f0 / FUN_142f4ce20 FUN_142f49e20 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
 | 0x49a → 0x49a | C→S | Skills::SkillAdminPacketSetSkillPointRateTierValue | FUN_142eae390 FUN_142eab1f0 / FUN_142f4cfc0 FUN_142f49e20 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
 | 0x49a → 0x49a | C→S | Skills::SkillAdminPacketSpendSkillPoints | FUN_142eab1f0 / FUN_142f49e20 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x49c → 0x49c | C→S | AdminCommandPacketSpawnVehicle | – / – | same: builder: struct offsets only | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x4a7 → 0x4a7 | C→S | AdminCommandPacketDebugPathQueryRequest | FUN_1436e2f30 / FUN_14379adb0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x4a9 → 0x4a9 | C→S | AdminCommandPacketPathingDataMonitorUpdateRequest | FUN_143159be0 / FUN_143204600 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
+| 0x49c → 0x49c | C→S | AdminCommandPacketSpawnVehicle | – / – | same: builder: struct offsets only | handled (Game/AdminCommands.cs:84) | none |
+| 0x4a7 → 0x4a7 | C→S | AdminCommandPacketDebugPathQueryRequest | FUN_1436e2f30 / FUN_14379adb0 | same | handled (Network/Handlers/InteractionHandler.cs:204 Game.AdminCommands.DebugPathQuerySub; HEAD, coverage.py 2026-10-26 + read) | none |
+| 0x4a9 → 0x4a9 | C→S | AdminCommandPacketPathingDataMonitorUpdateRequest | FUN_143159be0 / FUN_143204600 | same | handled (Network/Handlers/InteractionHandler.cs:205 Game.AdminCommands.PathingDataMonitorSub; HEAD, coverage.py 2026-10-26 + read) | none |
 | 0x4ab → 0x4ab | C→S | AdminCommandPacketEnvServerDataMonitorUpdateRequest | FUN_143159a40 / FUN_143204460 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x4b5 → 0x4b5 | C→S | AdminPacketVerifyAdminTarget | FUN_1432e4bd0 FUN_1432df990 / FUN_1433919c0 FUN_14338c780 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x4cc → 0x4cc | C→S | AdminCommandPacketZonePlayerCount | FUN_1431722b0 / FUN_14321ccd0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x4cf → 0x4cf | C→S | AdminCommandPacketForceAddFriendRequest | FUN_1432dcd40 / FUN_143389b30 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x4d0 → 0x4d0 | C→S | AdminCommandPacketForceRemoveFriendRequest | FUN_1432dcef0 / FUN_143389ce0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
+| 0x4b5 → 0x4b5 | C→S | AdminPacketVerifyAdminTarget | FUN_1432e4bd0 FUN_1432df990 / FUN_1433919c0 FUN_14338c780 | same | handled (Game/AdminCommands.cs:77) | none |
+| 0x4cc → 0x4cc | C→S | AdminCommandPacketZonePlayerCount | FUN_1431722b0 / FUN_14321ccd0 | same | handled (Network/Handlers/InteractionHandler.cs:206 Game.AdminCommands.ZonePlayerCountSub; HEAD, coverage.py 2026-10-26 + read) | none |
+| 0x4cf → 0x4cf | C→S | AdminCommandPacketForceAddFriendRequest | FUN_1432dcd40 / FUN_143389b30 | same | handled (Game/AdminCommands.cs:90) | none |
+| 0x4d0 → 0x4d0 | C→S | AdminCommandPacketForceRemoveFriendRequest | FUN_1432dcef0 / FUN_143389ce0 | same | handled (Game/AdminCommands.cs:91) | none |
 | 0x4d1 → 0x4d1 | S→C | AdminCommandPacketFriendsListRequest | FUN_1432ed900 / FUN_14339a6f0 | same | not sent | none |
-| 0x4d8 → 0x4d8 | C→S | AdminCommandPacketRunspeed | FUN_1432e4b20 FUN_1432dec70 / FUN_143391910 FUN_14338ba60 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
+| 0x4d8 → 0x4d8 | C→S | AdminCommandPacketRunspeed | FUN_1432e4b20 FUN_1432dec70 / FUN_143391910 FUN_14338ba60 | same | handled (Game/AdminCommands.cs:79) | none |
 | 0x4da → 0x4da | C→S | Grief::GriefAdminPacketResetGrief | FUN_142e41e70 / FUN_142ee0c00 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
 | 0x4da → 0x4da | C→S | Grief::GriefAdminPacketSetDamageLevel | FUN_142e42010 / FUN_142ee0da0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
 | 0x4da → 0x4da | C→S | Grief::GriefAdminPacketSetGriefLevel | FUN_142e421f0 / FUN_142ee0f80 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
@@ -642,35 +668,35 @@ Columns: sub-opcode 0.589 → 0.695 ("–" = not set by a compiled constant; see
 | 0x4e8 → 0x4e8 | C→S | Currency::CurrencyAdminPacketListCurrencyDiscounts | – / – | same: builder closure same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
 | 0x4e8 → 0x4e8 | C→S | Currency::CurrencyAdminPacketRequestSetCurrencyDiscount | FUN_142db10d0 / FUN_142e4f0a0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
 | 0x4ea → 0x4ea | S→C | AdminCommandPacketSpawnProp | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | not sent | none |
-| 0x4ed → 0x4ed | C→S | AdminCommandPacketDeleteAllProps | FUN_1432dcba0 / FUN_143389990 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x4ee → 0x4ee | C→S | AdminCommandPacketWeaponSet | FUN_1432df7d0 / FUN_14338c5c0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x4ef → 0x4ef | C→S | AdminCommandPacketPlacedEffect | FUN_1432ddcd0 / FUN_14338aac0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x4f0 → 0x4f0 | C→S | AdminCommandPacketSetModel | FUN_1432deff0 / FUN_14338bde0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x4f1 → 0x4f1 | C→S | AdminCommandPacketFreeFlyHide | FUN_1432dd0a0 / FUN_143389e90 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x4f2 → 0x4f2 | C→S | PacketVaultItemById | FUN_1432e42d0 / FUN_1433910c0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x4f3 → 0x4f3 | C→S | PacketRandomItem | FUN_1432e3f30 / FUN_143390d20 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x4f4 → 0x4f4 | C→S | PacketCollectionItemById | FUN_1432e3010 / FUN_14338fe00 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x4fa → 0x4fa | C→S | PacketVaultCollectionItemById | FUN_1432e40d0 / FUN_143390ec0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x4fc → 0x4fc | C→S | AdminCommandPacketStorybricksRequestDiagnostics | FUN_143159680 / FUN_1432040a0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
+| 0x4ed → 0x4ed | C→S | AdminCommandPacketDeleteAllProps | FUN_1432dcba0 / FUN_143389990 | same | handled (Game/AdminCommands.cs:83) | none |
+| 0x4ee → 0x4ee | C→S | AdminCommandPacketWeaponSet | FUN_1432df7d0 / FUN_14338c5c0 | same | handled (Game/AdminCommands.cs:87) | none |
+| 0x4ef → 0x4ef | C→S | AdminCommandPacketPlacedEffect | FUN_1432ddcd0 / FUN_14338aac0 | same | handled (Game/AdminCommands.cs:88) | none |
+| 0x4f0 → 0x4f0 | C→S | AdminCommandPacketSetModel | FUN_1432deff0 / FUN_14338bde0 | same | handled (Game/AdminCommands.cs:85) | none |
+| 0x4f1 → 0x4f1 | C→S | AdminCommandPacketFreeFlyHide | FUN_1432dd0a0 / FUN_143389e90 | same | handled (Game/AdminCommands.cs:89) | none |
+| 0x4f2 → 0x4f2 | C→S | PacketVaultItemById | FUN_1432e42d0 / FUN_1433910c0 | same | handled (Network/Handlers/InteractionHandler.cs:196 Game.AdminCommands.VaultItemSub; HEAD, coverage.py 2026-10-26 + read) | none |
+| 0x4f3 → 0x4f3 | C→S | PacketRandomItem | FUN_1432e3f30 / FUN_143390d20 | same | handled (Network/Handlers/InteractionHandler.cs:197 Game.AdminCommands.RandomItemSub; HEAD, coverage.py 2026-10-26 + read) | none |
+| 0x4f4 → 0x4f4 | C→S | PacketCollectionItemById | FUN_1432e3010 / FUN_14338fe00 | same | handled (Network/Handlers/InteractionHandler.cs:198 Game.AdminCommands.CollectionItemSub; HEAD, coverage.py 2026-10-26 + read) | none |
+| 0x4fa → 0x4fa | C→S | PacketVaultCollectionItemById | FUN_1432e40d0 / FUN_143390ec0 | same | handled (Network/Handlers/InteractionHandler.cs:199 Game.AdminCommands.VaultCollectionItemSub; HEAD, coverage.py 2026-10-26 + read) | none |
+| 0x4fc → 0x4fc | C→S | AdminCommandPacketStorybricksRequestDiagnostics | FUN_143159680 / FUN_1432040a0 | same | handled (Network/Handlers/InteractionHandler.cs:207 Game.AdminCommands.StorybricksDiagnosticsSub; HEAD, coverage.py 2026-10-26 + read) | none |
 | 0x4fd → 0x4fd | C→S | AdminCommandPacketStorybricksRequestDataErrors | FUN_14347a0d0 / FUN_14352bf70 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
 | 0x4fe → 0x4fe | S→C | PacketWipeInventory | FUN_1432d1a60 / FUN_14337e850 | same | not sent | none |
-| 0x4ff → 0x4ff | C→S | PacketOverflowItemById | FUN_1432e3b40 / FUN_143390930 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
-| 0x500 → 0x500 | C→S | PacketBuybackItemById | FUN_1432e2c70 / FUN_14338fa60 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:33) | none |
+| 0x4ff → 0x4ff | C→S | PacketOverflowItemById | FUN_1432e3b40 / FUN_143390930 | same | handled (Network/Handlers/InteractionHandler.cs:200 Game.AdminCommands.OverflowItemSub; HEAD, coverage.py 2026-10-26 + read) | none |
+| 0x500 → 0x500 | C→S | PacketBuybackItemById | FUN_1432e2c70 / FUN_14338fa60 | same | handled (Network/Handlers/InteractionHandler.cs:201 Game.AdminCommands.BuybackItemSub; HEAD, coverage.py 2026-10-26 + read) | none |
 | 0x507 → 0x507 | S→C | PacketItemFind | FUN_1432ef6c0 / FUN_14339c4b0 | same | not sent | none |
 
 ### 0x23 PacketClientBeginZoning
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | PacketClientBeginZoning | FUN_142b89b40 / FUN_142c23310 | same | sent (Network/Message/Model/ClientBeginZoning.cs:11) | none |
 
 ### 0x24 Combat
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| 0x2 → 0x2 | C→S | CombatPacketAutoAttackTarget | FUN_14331c700 / FUN_1433c94f0 | same | not handled | none |
-| 0x3 → 0x3 | C→S | CombatPacketAutoAttackOff | FUN_14331c560 / FUN_1433c9350 | same | not handled | none |
-| 0x4 → 0x4 | C→S | CombatPacketSingleAttackTarget | FUN_14331c8b0 / FUN_1433c96a0 | same | not handled | none |
+| 0x2 → 0x2 | C→S | CombatPacketAutoAttackTarget | FUN_14331c700 / FUN_1433c94f0 | same | handled (Network/Handlers/CombatHandler.cs:34; Network/Handlers/CombatHandler.cs:37) | none |
+| 0x3 → 0x3 | C→S | CombatPacketAutoAttackOff | FUN_14331c560 / FUN_1433c9350 | same | handled (Network/Handlers/CombatHandler.cs:32) | none |
+| 0x4 → 0x4 | C→S | CombatPacketSingleAttackTarget | FUN_14331c8b0 / FUN_1433c96a0 | same | handled (Network/Handlers/CombatHandler.cs:35) | none |
 | 0x5 → 0x5 | S→C | CombatPacketAttackTargetDamage | FUN_14331be10 / FUN_1433c8c00 | same | not sent | none |
 | 0x6 → 0x6 | S→C | CombatPacketAttackAttackerMissed | FUN_14331ba70 / FUN_1433c8860 | same | not sent | none |
 | 0x7 → 0x7 | S→C | CombatPacketAttackTargetDodged | FUN_14331bf20 / FUN_1433c8d10 | same | not sent | none |
@@ -682,9 +708,9 @@ Columns: sub-opcode 0.589 → 0.695 ("–" = not set by a compiled constant; see
 
 ### 0x26 PlayerUpdate
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| – → 0x80 | C→S (S→C read, ignored) | PlayerUpdatePacketSetPlayerBio | – / – | new | stub (reads nothing, answers 10 bytes) (Network/Handlers/MiscHandler.cs:510) | implement (0.695 only) |
+| – → 0x80 | C→S (S→C read, ignored) | PlayerUpdatePacketSetPlayerBio | – / – | new | handled (Network/Handlers/MiscHandler.cs:740-741; model Network/Message/Model/PlayerUpdateSetPlayerBio.cs; by hand) | implement (0.695 only) |
 | 0x1 → 0x1 | S→C | PlayerUpdatePacketRemovePlayer | FUN_142bb3650 / FUN_142c4cd60 | header: RemovePlayer_Read 142b90ef0 vs FUN_142c2a960: header only | sent (Network/Message/Model/PlayerUpdateRemovePlayer.cs:10) | u32 sub-opcode for 0.695 |
 | 0x1 → 0x1 | S→C | PlayerUpdatePacketRemovePlayerGracefully | FUN_142bb36c0 / FUN_142c4cdd0 | header: unpaired | sent (Network/Message/Model/PlayerUpdateRemovePlayer.cs:10) | u32 sub-opcode for 0.695 |
 | 0x2 → 0x2 | S→C | cPlayerUpdatePacketIdKnockback (id table) | – / – | header: dispatcher case 0x1 changed; readers: header-only | not sent | (not implemented; u32 sub in 0.695) |
@@ -694,7 +720,7 @@ Columns: sub-opcode 0.589 → 0.695 ("–" = not set by a compiled constant; see
 | 0x6 → 0x6 | S→C | cPlayerUpdatePacketIdRemoveNotifications (id table) | – / – | header: dispatcher case 0x5 changed; checked by hand (coverage-695.md §3) | not sent | (not implemented; u32 sub in 0.695) |
 | 0x7 → 0x7 | S→C | cPlayerUpdatePacketIdNpcRelevance (id table) | – / – | header: dispatcher case 0x6 changed; readers: header-only | not sent | (not implemented; u32 sub in 0.695) |
 | 0x8 → 0x8 | S→C | PlayerUpdatePacketUpdateScale | FUN_142bb4770 / FUN_142c4df80 | header | not sent | (not implemented; u32 sub in 0.695) |
-| 0x9 → 0x9 | S→C | PlayerUpdatePacketUpdateTemporaryAppearance | FUN_142bb4970 / FUN_142c4e180 FUN_142eca100 | header | not sent | (not implemented; u32 sub in 0.695) |
+| 0x9 → 0x9 | S→C | PlayerUpdatePacketUpdateTemporaryAppearance | FUN_142bb4970 / FUN_142c4e180 FUN_142eca100 | header | sent (Game/TemporaryAppearance.cs:87) | (not implemented; u32 sub in 0.695) |
 | 0xa → 0xa | C→S | PlayerUpdatePacketRemoveTemporaryAppearance | FUN_142bb3730 FUN_1432e46b0 / FUN_142c4ce40 FUN_1433914a0 | header | handled (Network/Handlers/PlayerHandler.cs:46) | u32 sub-opcode for 0.695 |
 | 0xb → 0xb | S→C | cPlayerUpdatePacketIdPlayCompositeEffect (id table) | – / – | header: dispatcher case 0xa changed; readers: header-only | sent (Game/HitEffects.cs:106; Game/HitEffects.cs:131; Game/HitEffects.cs:95) | u32 sub-opcode for 0.695 |
 | 0xc → 0xc | S→C | PlayerUpdatePacketStopCompositeEffect | FUN_142bb4220 / FUN_142c4da30 | header | not sent | (not implemented; u32 sub in 0.695) |
@@ -705,14 +731,14 @@ Columns: sub-opcode 0.589 → 0.695 ("–" = not set by a compiled constant; see
 | 0x11 → 0x11 | S→C | PlayerUpdatePacketExpectedSpeed | FUN_142bb25d0 / FUN_142c4c030 | header | not sent | (not implemented; u32 sub in 0.695) |
 | 0x12 → 0x12 | S→C | cPlayerUpdatePacketIdScriptedAnimation (id table) | – / – | header: dispatcher case 0x11 same; readers: inline | not sent | (not implemented; u32 sub in 0.695) |
 | 0x13 → 0x13 | S→C | cPlayerUpdatePacketIdThoughtBubble (id table) | – / – | header: dispatcher case 0x12 changed; readers: header-only | not sent | (not implemented; u32 sub in 0.695) |
-| 0x14 → 0x14 | S→C | cPlayerUpdatePacketIdSetDisposition (id table) | – / – | header: dispatcher case 0x13 changed; readers: header-only | not sent | (not implemented; u32 sub in 0.695) |
+| 0x14 → 0x14 | S→C | cPlayerUpdatePacketIdSetDisposition (id table) | – / – | header: dispatcher case 0x13 changed; readers: header-only | sent (Network/Message/Model/PlayerUpdateSetDisposition.cs:49) | (not implemented; u32 sub in 0.695) |
 | 0x15 → 0x15 | S→C | cPlayerUpdatePacketLootEvent (id table) | – / – | header: dispatcher case 0x14 changed; readers: header-only | not sent | (not implemented; u32 sub in 0.695) |
 | 0x16 → 0x16 | S→C | PlayerUpdatePacketSlotCompositeEffectOverride | FUN_142bb61d0 / FUN_142c4f9d0 | header | not sent | (not implemented; u32 sub in 0.695) |
 | 0x17 → 0x17 | S→C | cPlayerUpdatePacketIdFreeze (id table) | – / – | header: dispatcher case 0x16 changed; readers: same | not sent | (not implemented; u32 sub in 0.695) |
 | 0x18 → 0x18 | C→S | PlayerUpdatePacketRequestStripEffect | FUN_142baccc0 / FUN_142c46840 | header | handled (Network/Handlers/PlayerHandler.cs:26) | u32 sub-opcode for 0.695 |
 | 0x19 → 0x19 | S→C | cPlayerUpdatePacketIdEffectPackage (id table) | – / – | header: dispatcher case 0x18 changed; readers: header-only | not sent | (not implemented; u32 sub in 0.695) |
 | 0x1a → 0x1a | C→S | PlayerUpdatePacketPreferredLanguages | – / – | header: only the PlayerUpdate header writer differs | handled (Network/Handlers/PlayerHandler.cs:34) | u32 sub-opcode for 0.695 |
-| 0x1b → 0x1b | S→C | PlayerUpdatePacketCustomizationChange | FUN_142bb1f10 / FUN_142c4b980 | body: bool moved before customization data, + u32 n × CharacterAttachmentData (FUN_142c27ad0 vs 142b8e270; §B3) | not sent | (not implemented; 0.695 body differs) |
+| 0x1b → 0x1b | S→C | PlayerUpdatePacketCustomizationChange | FUN_142bb1f10 / FUN_142c4b980 | body: bool moved before customization data, + u32 n × CharacterAttachmentData (FUN_142c27ad0 vs 142b8e270; §B3) | sent (Game/Barbershop.cs:152) | (not implemented; 0.695 body differs) |
 | 0x1c → 0x1c | S→C | PlayerUpdatePacketPlayerTitle | FUN_142bb2ff0 / FUN_142c4c860 | header: pkt layouts equal after the header | sent (Game/PlayerManager.cs:133; Game/Titles.cs:151) | u32 sub-opcode for 0.695 |
 | 0x1d → 0x1d | S→C | (sub 0x1d, no class name) | – / – | header: dispatcher case 0x1c changed; no id-table name | not sent | (not implemented; u32 sub in 0.695) |
 | 0x1e → 0x1e | S→C | (sub 0x1e, no class name) | – / – | header: dispatcher case 0x1d changed; no id-table name | not sent | (not implemented; u32 sub in 0.695) |
@@ -738,7 +764,7 @@ Columns: sub-opcode 0.589 → 0.695 ("–" = not set by a compiled constant; see
 | 0x32 → 0x32 | S→C | (sub 0x32, no class name) | – / – | header: dispatcher case 0x31 same; no id-table name | not sent | (not implemented; u32 sub in 0.695) |
 | 0x33 → 0x33 | S→C | cPlayerUpdatePacketHudMessage (id table) | – / – | header: dispatcher case 0x32 changed; readers: header-only | not sent | (not implemented; u32 sub in 0.695) |
 | 0x34 → 0x34 | S→C | PlayerUpdatePacketCustomizationData | FUN_142bb1f80 / FUN_142c4b9f0 | header: BODY:142bb1f80->142c4b9f0 | not sent | (not implemented; u32 sub in 0.695) |
-| 0x35 → 0x35 | S→C | cPlayerUpdatePacketIdMemberStatus (id table) | – / – | header: dispatcher case 0x34 changed; readers: header-only | not sent | (not implemented; u32 sub in 0.695) |
+| 0x35 → 0x35 | S→C | cPlayerUpdatePacketIdMemberStatus (id table) | – / – | header: dispatcher case 0x34 changed; readers: header-only | sent (Game/Membership.cs:350) | (not implemented; u32 sub in 0.695) |
 | 0x36 → 0x36 | S→C | cPlayerUpdatePacketIdSetCurrentAdventure (id table) | – / – | header: dispatcher case 0x35 changed; readers: header-only | not sent | (not implemented; u32 sub in 0.695) |
 | 0x37 → 0x37 | S→C | PlayerUpdatePacketStartHarvest | FUN_142bb4010 / FUN_142c4d820 | header | not sent | (not implemented; u32 sub in 0.695) |
 | 0x38 → 0x38 | S→C | PlayerUpdatePacketStopHarvest | FUN_142bb4290 / FUN_142c4daa0 | header | not sent | (not implemented; u32 sub in 0.695) |
@@ -760,24 +786,24 @@ Columns: sub-opcode 0.589 → 0.695 ("–" = not set by a compiled constant; see
 | 0x48 → 0x48 | S→C | cPlayerUpdatePacketIdStopHeal (id table) | – / – | header: dispatcher case 0x47 changed; readers: header-only | not sent | (not implemented; u32 sub in 0.695) |
 | 0x49 → 0x49 | S→C | PacketPlayerCurrencyChange | FUN_142bb0d50 / FUN_142c4a8c0 | header: BODY:142bb0d50->142c4a8c0 | sent (Network/WorldSession.cs:491) | u32 sub-opcode for 0.695 |
 | 0x4a → 0x4a | S→C | cPlayerRewardCurrency (id table) | – / – | header: dispatcher case 0x49 changed; readers: header-only | not sent | (not implemented; u32 sub in 0.695) |
-| 0x4b → 0x4b | S→C | cPlayerInGamePurchaseResult (id table) | – / – | header: dispatcher case 0x4a changed; readers: header-only | not sent | (not implemented; u32 sub in 0.695) |
-| 0x4c → 0x4c | C→S | PlayerUpdatePacketSafeEject | FUN_142de7090 / FUN_142e85070 | header | not handled | (not implemented; u32 sub in 0.695) |
-| 0x4d → 0x4d | S→C | PlayerUpdatePacketManagedObject | FUN_142b8ffa0 / FUN_142c29910 | header | not sent | (not implemented; u32 sub in 0.695) |
+| 0x4b → 0x4b | S→C | cPlayerInGamePurchaseResult (id table) | – / – | header: dispatcher case 0x4a changed; readers: header-only | sent (Game/StoreBundles.cs:277) | (not implemented; u32 sub in 0.695) |
+| 0x4c → 0x4c | C→S | PlayerUpdatePacketSafeEject | FUN_142de7090 / FUN_142e85070 | header | handled (Network/Handlers/PlayerHandler.cs:52; Network/Message/Model/PlayerUpdateRequests.cs:29) | (not implemented; u32 sub in 0.695) |
+| 0x4d → 0x4d | S→C | PlayerUpdatePacketManagedObject | FUN_142b8ffa0 / FUN_142c29910 | header | sent (Game/Props.Platforms.cs:169) | (not implemented; u32 sub in 0.695) |
 | 0x4e → 0x4e | S→C | cPlayerUpdatePacketIdMaterialTypeOverride (id table) | – / – | header: dispatcher case 0x4d changed; readers: header-only | not sent | (not implemented; u32 sub in 0.695) |
 | 0x4f → 0x4f | S→C | cPlayerUpdateDebrisLaunchPacket (id table) | – / – | header: dispatcher case 0x4e changed; readers: header-only | not sent | (not implemented; u32 sub in 0.695) |
 | 0x50 → 0x50 | S→C | PlayerUpdatePacketHideCorpse | FUN_142bb2740 / FUN_142c4c1a0 | header: pkt layouts equal after the header | not sent | (not implemented; u32 sub in 0.695) |
-| 0x51 → 0x51 | S→C | (sub 0x51, no class name) | – / – | header: dispatcher case 0x50 changed; no id-table name | not sent | (not implemented; u32 sub in 0.695) |
+| 0x51 → 0x51 | S→C | (sub 0x51, no class name) | – / – | header: dispatcher case 0x50 changed; no id-table name | sent (Game/Combat/BlockStance.cs:152; Game/Combat/BlockStance.cs:176; Game/Combat/BlockStance.cs:200 | (not implemented; u32 sub in 0.695) |
 | 0x52 → 0x52 | S→C | (sub 0x52, no class name) | – / – | header: dispatcher case 0x51 changed; no id-table name | not sent | (not implemented; u32 sub in 0.695) |
 | 0x53 → 0x53 | S→C | PlayerUpdatePacketUpdateStat | FUN_142b93270 / FUN_142c2cd60 | header | not sent | (not implemented; u32 sub in 0.695) |
 | 0x54 → 0x54 | S→C | cPlayerUpdatePacketIdAnimationRequest (id table) | – / – | header: dispatcher case 0x53 changed; readers: header-only | not sent | (not implemented; u32 sub in 0.695) |
 | 0x55 → 0x55 | S→C | cPlayerUpdateNonPriorityCharacters (id table) | – / – | header: dispatcher case 0x54 changed; readers: header-only | not sent | (not implemented; u32 sub in 0.695) |
 | 0x56 → 0x56 | S→C | cPlayerUpdatePlayWorldCompositeEffect (id table) | – / – | header: dispatcher case 0x55 changed; readers: header-only | not sent | (not implemented; u32 sub in 0.695) |
-| 0x57 → 0x57 | S→C | cPlayerUpdatePacketIdAFK (id table) | – / – | header: dispatcher case 0x56 changed; readers: header-only | not sent | (not implemented; u32 sub in 0.695) |
+| 0x57 → 0x57 | S→C | cPlayerUpdatePacketIdAFK (id table) | – / – | header: dispatcher case 0x56 changed; readers: header-only | sent (Game/Afk.cs:50; Game/Afk.cs:65) | (not implemented; u32 sub in 0.695) |
 | 0x58 → 0x58 | S→C | cPlayerUpdatePacketIdAddLightweightPc (id table) | – / – | header: dispatcher case 0x57 changed; readers: inline | sent (Network/Message/Model/PlayerUpdateAddLightweightPc.cs:13) | u32 sub-opcode for 0.695 |
 | 0x59 → 0x59 | S→C | PlayerUpdatePacketAddLightweightNpc | FUN_142b8cfc0 / FUN_142c26790 | header | sent (Network/Message/Model/PlayerUpdateAddLightweightNpc.cs:11) | u32 sub-opcode for 0.695 |
 | 0x5a → 0x5a | S→C | cPlayerUpdatePacketIdAddLightweightVehicle (id table) | – / – | header: dispatcher case 0x59 same; readers: inline | not sent | (not implemented; u32 sub in 0.695) |
 | 0x5b → 0x5b | S→C | PlayerUpdatePacketLightweightToFullPc | – / FUN_142c294b0 | header: LightweightToFullPc_Read 142b8fb40 vs FUN_142c294b0: header only; FullPcData_Read same | sent (Network/Message/Model/PlayerUpdateLightweightToFullPc.cs:18) | u32 sub-opcode for 0.695 |
-| 0x5c → 0x5c | S→C | PlayerUpdatePacketLightweightToFullNpc | FUN_142b8f230 / FUN_142c4c3d0 | header: pkt layouts equal after the header | not sent | (not implemented; u32 sub in 0.695) |
+| 0x5c → 0x5c | S→C | PlayerUpdatePacketLightweightToFullNpc | FUN_142b8f230 / FUN_142c4c3d0 | header: pkt layouts equal after the header | sent (Network/Message/Model/PlayerUpdateLightweightToFullNpc.cs:37) | (not implemented; u32 sub in 0.695) |
 | 0x5d → 0x5d | S→C | (sub 0x5d, no class name) | – / – | header: dispatcher case 0x5c changed; no id-table name | not sent | (not implemented; u32 sub in 0.695) |
 | 0x5e → 0x5e | C→S | PlayerUpdatePacketFullCharacterDataRequest | FUN_142de6ee0 / FUN_142e84ec0 | header | handled (Network/Handlers/PlayerHandler.cs:76; Network/Message/Model/PlayerUpdateFullCharacterDataRequest.cs:10) | u32 sub-opcode for 0.695 |
 | 0x5f → 0x5f | S→C | cPlayerInitiateNameChange (id table) | – / – | header: dispatcher case 0x5e changed; readers: same | not sent | (not implemented; u32 sub in 0.695) |
@@ -786,7 +812,7 @@ Columns: sub-opcode 0.589 → 0.695 ("–" = not set by a compiled constant; see
 | 0x62 → 0x62 | S→C | cPlayerUpdatePacketIdAddLightweightProp (id table) | – / – | header: dispatcher case 0x61 same; readers: inline | sent (Network/Message/Model/PlayerUpdateAddLightweightProp.cs:13) | u32 sub-opcode for 0.695 |
 | 0x63 → 0x63 | S→C | cPlayerUpdatePacketIdLightweightToFullProp (id table) | – / – | header: dispatcher case 0x62 same; readers: inline | sent (Network/Message/Model/PlayerUpdateLightweightToFullProp.cs:12) | u32 sub-opcode for 0.695 |
 | 0x64 → 0x64 | S→C | cPacketIdPlayerUpdateSourceGeometryOffset (id table) | – / – | header: dispatcher case 0x63 changed; readers: header-only | not sent | (not implemented; u32 sub in 0.695) |
-| 0x65 → 0x65 | S→C | PlayerUpdatePacketRequestAnimationSelection | FUN_142bb3940 / FUN_142c4d050 | header: pkt layouts equal after the header | not sent | (not implemented; u32 sub in 0.695) |
+| 0x65 → 0x65 | S→C | PlayerUpdatePacketRequestAnimationSelection | FUN_142bb3940 / FUN_142c4d050 | header: pkt layouts equal after the header | sent (Game/Creatures.cs:2494; Game/Creatures.cs:2499; Game/Creatures.cs:2562) | (not implemented; u32 sub in 0.695) |
 | 0x66 → 0x66 | S→C | NpcCharacterPersistStateUpdatePacket | FUN_142bb0000 / FUN_142c49b70 | header | not sent | (not implemented; u32 sub in 0.695) |
 | 0x67 → 0x67 | S→C | PlayerUpdatePacketCombatResourceEvent | FUN_142bb1ea0 / FUN_142c4b910 | header | sent (Game/Creatures.cs:1170) | u32 sub-opcode for 0.695 |
 | 0x68 → 0x68 | C→S | PlayerUpdatePacketUpdateSteamInfo | FUN_142f3b970 / FUN_142fdb6e0 | header | not handled | (not implemented; u32 sub in 0.695) |
@@ -817,7 +843,7 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x27 Abilities
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | Abilities::BacktimedAbilityPacket | FUN_142d65900 / FUN_142e03920 | same | not sent | none |
 | 0x0 → 0x0 | S→C | Abilities::BaseAbilityPacket | FUN_142d79170 FUN_142bae390 / FUN_142e17140 FUN_142c47f00 | same | not sent | none |
@@ -828,7 +854,7 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 | 0x5 → 0x5 | S→C | Abilities::AbilityPacketAbilityEnd | FUN_142d62d00 / FUN_142e00d20 | same | sent (Game/Abilities.cs:364) | none |
 | 0x6 → 0x6 | S→C | Abilities::AbilityPacketCastFail | FUN_142d63390 / FUN_142e013b0 | same | sent (Network/Message/Model/AbilityMessages.cs:259) | none |
 | 0x7 → 0x7 | S→C | Abilities::AbilityPacketCastSuccess | FUN_142d63510 / FUN_142e01530 | same | sent (Network/Message/Model/AbilityMessages.cs:288) | none |
-| 0x8 → 0x8 | S→C | Abilities::AbilityPacketCastContinue | FUN_142d63190 / FUN_142e011b0 | same | not sent | none |
+| 0x8 → 0x8 | S→C | Abilities::AbilityPacketCastContinue | FUN_142d63190 / FUN_142e011b0 | same | sent (Network/Message/Model/AbilityMessages.cs:413) | none |
 | 0x9 → 0x9 | S→C | Abilities::AbilityPacketTargeterStart | FUN_142d65540 / FUN_142e03560 | same | not sent | none |
 | 0xa → 0xa | S→C | Abilities::AbilityPacketTargeterUpdate | FUN_142d656d0 / FUN_142e036f0 | same | not sent | none |
 | 0xb → 0xb | S→C | Abilities::AbilityPacketTargeterEnd | FUN_142d65440 / FUN_142e03460 | same | not sent | none |
@@ -852,12 +878,12 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 | 0x1f → 0x1f | S→C | Abilities::AbilityPacketClearCurrentCooldown | FUN_142d67720 / FUN_142e05740 | same | not sent | none |
 | 0x21 → 0x21 | S→C | Abilities::AbilityPacketShapeStart | FUN_142d65310 / FUN_142e03330 | same | not sent | none |
 | 0x22 → 0x22 | S→C | Abilities::AbilityPacketShapeEnd | FUN_142d65210 / FUN_142e03230 | same | not sent | none |
-| 0x23 → 0x23 | C→S | Abilities::AbilityPacketClientTargeterEnd | FUN_142d64340 FUN_14349ca20 / FUN_142e02360 FUN_14354c520 | same | not handled | none |
-| 0x24 → 0x24 | C→S | Abilities::AbilityPacketClientTargeterFindTarget | FUN_14349cc60 / FUN_14354c760 | same | not handled | none |
+| 0x23 → 0x23 | C→S | Abilities::AbilityPacketClientTargeterEnd | FUN_142d64340 FUN_14349ca20 / FUN_142e02360 FUN_14354c520 | same | handled (Network/Handlers/MiscHandler.cs:644; Network/Message/Model/AbilityMessages.cs:259) | none |
+| 0x24 → 0x24 | C→S | Abilities::AbilityPacketClientTargeterFindTarget | FUN_14349cc60 / FUN_14354c760 | same | handled (Network/Handlers/MiscHandler.cs:639; Network/Message/Model/AbilityMessages.cs:235) | none |
 
 ### 0x29 ClientUpdate
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | S→C | ClientUpdatePacketHitpoints | FUN_142b83000 / FUN_142c1c7c0 | same | sent (Game/Health.cs:239; Game/Health.cs:522; Game/Health.cs:559) | none |
 | 0x2 → 0x2 | S→C | ClientUpdatePacketItemAdd | FUN_142b830c0 / FUN_142c1c880 | same | sent (Network/Message/Model/ClientUpdateItemAdd.cs:12) | none |
@@ -902,7 +928,7 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x2A MiniGamePayload
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | MiniGameGameOverPacket | FUN_1432619a0 / FUN_14330e850 | same | not sent | none |
 | 0x1 → 0x1 | C→S | BaseMiniGamePacket | FUN_142bac000 FUN_1432617d0 / FUN_142c45b80 FUN_14330e680 | same | not handled | none |
@@ -917,7 +943,7 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x2B Groups
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | C→S | Groups::GroupPacketAcceptTeleport | FUN_142d429b0 / FUN_142de0c10 | same | handled (Game/Groups.cs:100) | none |
 | 0x1 → 0x1 | C→S | Groups::GroupPacketAutoGroup | FUN_142d42bb0 FUN_142d48ed0 / FUN_142de0e10 FUN_142de7130 | same | handled (Game/Groups.cs:100) | none |
@@ -942,7 +968,7 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x2C EncounterInvitationResponse
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | BaseEncounterPacket | FUN_142b7dda0 / FUN_142c17550 | same | sent (Game/Encounters.cs:72) | none |
 | 0x3 → 0x3 | S→C | EncounterPacketEncounterComplete | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | sent (Game/Encounters.cs:28 SubComplete) | none |
@@ -955,17 +981,17 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x2D Inventory
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| – → 0x1e | S→C | InventoryPacketShowActivationFailure | – / – | new: S→C u16 0x2D, i16 0x1E, u32 text id (packets-695 §10) | not sent | implement (0.695 only) |
+| – → 0x1e | S→C | InventoryPacketShowActivationFailure | – / – | new: S→C u16 0x2D, i16 0x1E, u32 text id (packets-695 §10) | sent (Game/ItemUses.cs:118) | implement (0.695 only) |
 | 0x2 → 0x2 | C→S | InventoryPacketEquippedRemove | FUN_14331f4b0 / FUN_1433cc2a0 | same | handled (Network/Handlers/InventoryHandler.cs:98) | none |
 | 0x3 → 0x3 | C→S | InventoryPacketEquipByGuid | FUN_14331f130 / FUN_1433cbf20 | same | handled (Network/Handlers/InventoryHandler.cs:93) | none |
 | 0x6 → 0x6 | C→S | InventoryPacketItemActionBarAssign | FUN_143523970 / FUN_1435d52f0 | same | family handler, sub not handled (Network/Handlers/InventoryHandler.cs:22) | none |
-| 0x8 → 0x8 | C→S | InventoryPacketEquipByItemRecord | FUN_142f25c40 / FUN_142fc4f80 | same | family handler, sub not handled (Network/Handlers/InventoryHandler.cs:22) | none |
+| 0x8 → 0x8 | C→S | InventoryPacketEquipByItemRecord | FUN_142f25c40 / FUN_142fc4f80 | same | handled (Network/Handlers/InventoryHandler.cs:120) | none |
 | 0xa → 0xa | C→S | InventoryPacketEquipItemGroup | – / – | same: builder closure same | family handler, sub not handled (Network/Handlers/InventoryHandler.cs:22) | none |
 | 0xb → 0xb | C→S | InventoryPacketRequestDeleteItem | FUN_142e79930 / FUN_142f18560 | same | handled (Network/Handlers/InventoryHandler.cs:62) | none |
 | 0xc → 0xc | C→S | InventoryPacketRequestSplitStack | FUN_14352e3d0 / FUN_1435e00f0 | same | family handler, sub not handled (Network/Handlers/InventoryHandler.cs:22) | none |
-| 0xd → 0xd | C→S | InventoryPacketToggleAutoResupply | FUN_142e79e70 / FUN_142f18aa0 | same | family handler, sub not handled (Network/Handlers/InventoryHandler.cs:22) | none |
+| 0xd → 0xd | C→S | InventoryPacketToggleAutoResupply | FUN_142e79e70 / FUN_142f18aa0 | same | handled (Network/Handlers/InventoryHandler.cs:85) | none |
 | 0xe → 0xe | C→S | InventoryPacketRearrangeItemSlots | FUN_14352e000 / FUN_1435dfd20 | same | handled (Network/Handlers/InventoryHandler.cs:76) | none |
 | 0xf → 0xf | C→S | InventoryPacketItemInstanceTooltipRequest | FUN_14345a6f0 / FUN_14350c7f0 | same | handled (Network/Handlers/InventoryHandler.cs:44) | none |
 | 0x10 → 0x10 | C→S | InventoryPacketItemInstanceFullTooltipRequest | FUN_14345a540 / FUN_14350c640 | same | handled (Network/Handlers/InventoryHandler.cs:179; Network/Handlers/InventoryHandler.cs:45) | none |
@@ -984,20 +1010,20 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x2E PacketSendZoneDetails
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | PacketSendZoneDetails | FUN_142b8aee0 / FUN_142c246b0 | same | sent (Network/Message/Model/SendZoneDetails.cs:12; Network/Handlers/MiscHandler.cs:248) | none |
 
 ### 0x2F ReferenceData
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | S→C | ReferenceDataPacketItemClassDefinitions | FUN_142bad7d0 FUN_143ac1da0 / FUN_142c47350 FUN_143b7db80 | same | sent (Network/Message/Model/ReferenceDataItemClassDefinitions.cs:10; Network/WorldSession.cs:422) | none |
 | 0x2 → 0x2 | S→C | ReferenceDataPacketItemCategoryDefinitions | FUN_142bad7d0 FUN_143ac1da0 / FUN_142c47350 FUN_143b7db80 | same | sent (Network/Message/Model/ReferenceDataItemCategoryDefinitions.cs:10; Network/WorldSession.cs:425) | none |
 
 ### 0x30 ObjectiveClientComplete
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | S→C | ObjectiveActivatePacket | FUN_143261f30 / FUN_14330ede0 | same | not sent | none |
 | 0x2 → 0x2 | S→C | ObjectiveUpdatePacket | FUN_143262520 / FUN_14330f3d0 | same | not sent | none |
@@ -1012,7 +1038,7 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x32 SetWaypoint
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | S→C | TaskAddPacket | FUN_14333c6d0 / FUN_1433e8790 | same | not sent | none |
 | 0x2 → 0x2 | S→C | TaskUpdatePacket | FUN_14333e900 / FUN_1433ea9c0 | same | not sent | none |
@@ -1037,7 +1063,7 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x34 QuestReply
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | S→C | QuestInfoPacket | FUN_142e8ac40 / FUN_142f297e0 | same | not sent | none |
 | 0x2 → 0x2 | C→S | QuestReplyPacket | FUN_14333dbf0 / FUN_1433e9cb0 | same | not handled | none |
@@ -1057,26 +1083,26 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x35 Reward
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | RewardBasePacket | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | not sent | none |
 | 0x1 → 0x1 | S→C | RewardBundlePacket | FUN_143136da0 / FUN_1431e1f80 | same | sent (runtime opcode_stats (trace/families; agent_packets/sent_s2c.tsv)) | none |
 
 ### 0x37 PacketGameTimeSync
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | C→S | PacketGameTimeSync | FUN_14312f170 FUN_14312f260 / FUN_1431da350 FUN_1431da440 | same | handled (Network/Handlers/MiscHandler.cs:171) | none |
 
 ### 0x38 PacketDelayWrapped
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | PacketDelayWrappedPacket | FUN_142b8a550 / FUN_142c23d20 | same | not sent | none |
 
 ### 0x3E TradeInitiate
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | C→S | TradeInitiatePacket | FUN_142bad1e0 / FUN_142c46d60 | same | handled (Game/Trades.cs:69) | none |
 | 0x2 → 0x2 | S→C | TradeInvitePacket | FUN_14358ccb0 / FUN_14363fb80 | same | sent (Game/Trades.cs:101) | none |
@@ -1096,13 +1122,13 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x42 Crafting
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | C→S | Crafting::RecipeStartRequestPacket | FUN_142e94500 / FUN_142f330a0 | same | handled (Network/Handlers/CraftingHandler.cs:26) | none |
 | 0x3 → 0x3 | C→S | Crafting::RecipeCancelRequestPacket | FUN_142e92f30 / FUN_142f31ad0 | same | handled (Network/Handlers/CraftingHandler.cs:40) | none |
 | 0x6 → 0x6 | C→S | Crafting::RecipeCraftWindowEnableRequestPacket | FUN_142e930d0 / FUN_142f31c70 | same | handled (Network/Handlers/CraftingHandler.cs:46) | none |
-| 0x7 → 0x7 | S→C | Crafting::RecipeCraftWindowEnableResponsePacket | FUN_142e91340 / FUN_142f2fee0 | same | not sent | none |
-| 0x8 → 0x8 | S→C | Crafting::RecipeAddRecipeResponsePacket | FUN_142e91100 / FUN_142f2fca0 | same | not sent | none |
+| 0x7 → 0x7 | S→C | Crafting::RecipeCraftWindowEnableResponsePacket | FUN_142e91340 / FUN_142f2fee0 | same | sent (Game/CraftingStations.cs:140; runtime "out" in opcode_stats; by hand) | none |
+| 0x8 → 0x8 | S→C | Crafting::RecipeAddRecipeResponsePacket | FUN_142e91100 / FUN_142f2fca0 | same | sent (Game/RecipeBook.cs:414; runtime "out" in opcode_stats; by hand) | none |
 | 0xa → 0xa | C→S | Crafting::RecipeUpgradeRequestPacket | FUN_142e946a0 / FUN_142f33240 | same | family handler, sub not handled (Network/Handlers/CraftingHandler.cs:20) | none |
 | 0xb → 0xb | S→C | Crafting::RecipeUpgradeResponsePacket | FUN_142e91ce0 / FUN_142f30880 | same | not sent | none |
 | 0xc → 0xc | C→S | Crafting::RecipeRemoveUpgradeRequestPacket | FUN_142e93e20 / FUN_142f329c0 | same | family handler, sub not handled (Network/Handlers/CraftingHandler.cs:20) | none |
@@ -1119,30 +1145,30 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 | 0x19 → 0x19 | C→S | Crafting::RecipeSalvagingAddItemRequest | FUN_142e94170 / FUN_142f32d10 | same | handled (Network/Handlers/CraftingHandler.cs:52) | none |
 | 0x1a → 0x1a | S→C | Crafting::RecipeSalvagingAddItemResponse | FUN_142e91a90 / FUN_142f30630 | same | sent (Game/Salvaging.cs:129) | none |
 | 0x1c → 0x1c | C→S | Crafting::RecipecComponentImageSetIdsRequestPacket | FUN_1434a1340 / FUN_143550e40 | same | handled (Network/Handlers/CraftingHandler.cs:29) | none |
-| 0x1d → 0x1d | S→C | Crafting::RecipecComponentImageSetIdsResponsePacket | FUN_142e91e20 / FUN_142f309c0 | same | not sent | none |
+| 0x1d → 0x1d | S→C | Crafting::RecipecComponentImageSetIdsResponsePacket | FUN_142e91e20 / FUN_142f309c0 | same | sent (Network/Handlers/CraftingHandler.cs:31-35; runtime "out" in opcode_stats; by hand) | none |
 | 0x1e → 0x1e | S→C | Crafting::PlayerRecipeDataUpdatePacket | FUN_142e91040 / FUN_142f2fbe0 | same | not sent | none |
-| 0x1f → 0x1f | S→C | Crafting::RecipeHideRecipeResponsePacket | FUN_142e914b0 / FUN_142f30050 | same | not sent | none |
-| 0x20 → 0x20 | S→C | Crafting::RecipeUnhideRecipeResponsePacket | FUN_142e91c50 / FUN_142f307f0 | same | not sent | none |
+| 0x1f → 0x1f | S→C | Crafting::RecipeHideRecipeResponsePacket | FUN_142e914b0 / FUN_142f30050 | same | sent (Game/RecipeBook.cs:365) | none |
+| 0x20 → 0x20 | S→C | Crafting::RecipeUnhideRecipeResponsePacket | FUN_142e91c50 / FUN_142f307f0 | same | sent (Game/RecipeBook.cs:368) | none |
 | 0x21 → 0x21 | C→S | Crafting::RecipeRepairItemRequestPacket | FUN_142e93fd0 / FUN_142f32b70 | same | handled (Network/Handlers/CraftingHandler.cs:49) | none |
 | 0x22 → 0x22 | S→C | Crafting::RecipeRepairItemResponsePacket | FUN_142e91a00 / FUN_142f305a0 | same | sent (Game/Durability.cs:129) | none |
 | 0x23 → 0x23 | C→S | Crafting::RecipePacketPlayerOpenCraftingWindow | FUN_142e932c0 / FUN_142f31e60 | same | handled (Network/Handlers/CraftingHandler.cs:43) | none |
-| 0x24 → 0x24 | S→C | Crafting::RecipePacketZoneCraftingWindow | FUN_142e91540 / FUN_142f300e0 | same | not sent | none |
+| 0x24 → 0x24 | S→C | Crafting::RecipePacketZoneCraftingWindow | FUN_142e91540 / FUN_142f300e0 | same | sent (Game/Crafting.cs:99) | none |
 
 ### 0x45 InGamePurchase
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| – → 0x30 | C→S | PacketInGamePurchaseCommerceTemplateProductCreate | – / – | new | not handled; the number 0x30 is the 0.589 meaning on the server (Game/Commerce.cs:51 SubProductCreateResponse) | implement (0.695 only) |
+| – → 0x30 | C→S | PacketInGamePurchaseCommerceTemplateProductCreate | – / – | new | handled (Game/Commerce.cs:89 SubTemplateProductCreate695) | implement (0.695 only) |
 | 0x0 → 0x0 | C→S | PacketInGamePurchaseCommerceProductCreate | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | handled (Network/Handlers/InteractionHandler.cs:265) | none |
 | 0x0 → 0x0 | S→C | PacketInGamePurchaseGiftNotification | FUN_14318d020 / FUN_143237d80 | same | sent (Game/Commerce.cs:632) | none |
 | 0x0 → 0x0 | S→C | PacketInGamePurchaseNudgeOfferNotification | FUN_143183980 / FUN_14322e440 | same | sent (Game/Commerce.cs:632) | none |
 | 0x2 → 0x2 | S→C | PacketInGamePurchasePreviewOrderResponse | FUN_143183ef0 / FUN_14322e9b0 | same | not sent | none |
 | 0x4 → 0x4 | S→C | PacketInGamePurchasePlaceOrderResponse | FUN_143183b10 / FUN_14322e5d0 | same | not sent | none |
-| 0x5 → 0x5 | S→C | PacketInGamePurchaseStoreBundleBase | FUN_143184280 / FUN_14322ed40 | same | not sent | none |
+| 0x5 → 0x5 | S→C | PacketInGamePurchaseStoreBundleBase | FUN_143184280 / FUN_14322ed40 | same | sent (Game/StoreBundles.cs:101, 289; runtime "out" in opcode_stats; by hand) | none |
 | 0xb → 0xb | C→S | PacketInGamePurchaseWalletInfoRequest | FUN_14318bbd0 / FUN_143236930 | same | handled (Network/Handlers/InteractionHandler.cs:274) | none |
 | 0xc → 0xc | S→C | PacketInGamePurchaseWalletInfoResponse | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | sent (Game/Commerce.cs:204; Game/Commerce.cs:211; Network/Handlers/InteractionHandler.cs:292) | none |
-| 0xd → 0xd | C→S | PacketInGamePurchaseServerStatusRequest | FUN_14318b430 / FUN_143236190 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:265) | none |
-| 0xe → 0xe | S→C | PacketInGamePurchaseServerStatusResponse | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | not sent | none |
+| 0xd → 0xd | C→S | PacketInGamePurchaseServerStatusRequest | FUN_14318b430 / FUN_143236190 | same | handled (Game/Commerce.cs:395) | none |
+| 0xe → 0xe | S→C | PacketInGamePurchaseServerStatusResponse | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | sent (Game/Commerce.cs:402) | none |
 | 0xf → 0xf | C→S | PacketInGamePurchaseStationCashProductsRequest | FUN_14318b5d0 / FUN_143236330 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:265) | none |
 | 0x10 → 0x10 | S→C | PacketInGamePurchaseStationCashProductsResponse | FUN_14318d950 / FUN_1432386b0 | same | not sent | none |
 | 0x14 → 0x14 | S→C | PacketInGamePurchaseStateCodesResponse | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | not sent | none |
@@ -1160,17 +1186,17 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 | 0x2a → 0x2a | C→S | PacketInGamePurchaseSpiceWebAuthUrlRequest | FUN_14318bd70 / FUN_143236ad0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:265) | none |
 | 0x2b → 0x2b | S→C | PacketInGamePurchaseSpiceWebAuthUrlResponse | FUN_14318e860 / FUN_1432395c0 | same | not sent | none |
 | 0x2c → 0x2c | S→C | PacketInGamePurchaseBundlePriceUpdate | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | not sent | none |
-| 0x2e → 0x2e | S→C | PacketInGamePurchaseCommerceConfiguration | FUN_1431830a0 / FUN_14322db60 | same | not sent | none |
+| 0x2e → 0x2e | S→C | PacketInGamePurchaseCommerceConfiguration | FUN_1431830a0 / FUN_14322db60 | same | sent (Game/Commerce.cs:328) | none |
 | 0x30 → 0x31 | S→C | PacketInGamePurchaseCommerceProductCreateResponse | FUN_14318c7a0 / FUN_143237500 | renumbered | sent (Game/Commerce.cs:624) | use sub 0x31 for 0.695 |
 | 0x31 → 0x32 | C→S | PacketInGamePurchaseCommerceProductRemove | FUN_14318a320 / FUN_143234ea0 | renumbered | handled (Game/Commerce.cs:137) | use sub 0x32 for 0.695 |
 | 0x33 → 0x34 | C→S | PacketInGamePurchaseCommerceProductUpdate | FUN_14318a4d0 / FUN_143235050 | renumbered | handled (Game/Commerce.cs:140) | use sub 0x34 for 0.695 |
-| 0x34 → 0x35 | C→S | PacketInGamePurchaseCommerceFollowCreator | FUN_143189c70 / FUN_1432347f0 | renumbered | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:265) | (not implemented; 0.695 number 0x35) |
-| 0x35 → 0x36 | C→S | PacketInGamePurchaseCommerceUnFollowCreator | FUN_14318ad90 / FUN_143235af0 | renumbered | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:265) | (not implemented; 0.695 number 0x36) |
+| 0x34 → 0x35 | C→S | PacketInGamePurchaseCommerceFollowCreator | FUN_143189c70 / FUN_1432347f0 | renumbered | handled (Game/Commerce.cs:391) | (not implemented; 0.695 number 0x35) |
+| 0x35 → 0x36 | C→S | PacketInGamePurchaseCommerceUnFollowCreator | FUN_14318ad90 / FUN_143235af0 | renumbered | handled (Game/Commerce.cs:392) | (not implemented; 0.695 number 0x36) |
 | 0x36 → 0x37 | C→S | PacketInGamePurchaseCommerceRequestAccountStore | FUN_14318a810 / FUN_143235390 | renumbered | handled (Game/Commerce.cs:134) | use sub 0x37 for 0.695 |
 | 0x37 → 0x38 | C→S | PacketInGamePurchaseCommerceRecommendations | FUN_14318a670 / FUN_1432351f0 | renumbered | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:265) | (not implemented; 0.695 number 0x38) |
 | 0x38 → 0x39 | S→C | PacketInGamePurchaseCommerceAccountStore | FUN_143182f10 / FUN_14322d9d0 | renumbered | sent (Game/Commerce.cs:263) | use sub 0x39 for 0.695 |
-| 0x39 → 0x3a | S→C | PacketInGamePurchaseCommerceAddFollowing | FUN_143182fc0 / FUN_14322da80 | renumbered | not sent | (not implemented; 0.695 number 0x3a) |
-| 0x3a → 0x3b | S→C | PacketInGamePurchaseCommerceRemoveFollowing | FUN_143183390 / FUN_14322de50 | renumbered | not sent | (not implemented; 0.695 number 0x3b) |
+| 0x39 → 0x3a | S→C | PacketInGamePurchaseCommerceAddFollowing | FUN_143182fc0 / FUN_14322da80 | renumbered | sent (Game/Commerce.cs:670) | (not implemented; 0.695 number 0x3a) |
+| 0x3a → 0x3b | S→C | PacketInGamePurchaseCommerceRemoveFollowing | FUN_143183390 / FUN_14322de50 | renumbered | sent (Game/Commerce.cs:681) | (not implemented; 0.695 number 0x3b) |
 | 0x3c → 0x3d | S→C | PacketInGamePurchaseCommerceProductUpdated | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | not sent | none |
 | 0x3d → 0x3e | C→S | PacketInGamePurchaseCommerceSearch | FUN_14318a9b0 / FUN_143235530 | renumbered | handled (Game/Commerce.cs:143) | use sub 0x3e for 0.695 |
 | 0x3e → 0x3f | S→C | PacketInGamePurchaseStoreBundleSearchResults | FUN_143184530 / FUN_14322eff0 | renumbered | sent (Game/Commerce.cs:81) | use sub 0x3f for 0.695 |
@@ -1188,25 +1214,25 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x46 QuickChatSendData
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | QuickChatSendChatPacketBase | FUN_143290db0 / FUN_14333dc20 | same | sent (Network/Handlers/MiscHandler.cs:221) | none |
 
 ### 0x47 Report
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | C→S | ReportPacketReportPlayer | FUN_142babcb0 / FUN_142c45830 | same | not handled | none |
 
 ### 0x48 LiveGamerPostItem
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | C→S | LiveGamerPostItemPacket | FUN_143511660 / FUN_1435c2c40 | same | not handled | none |
 
 ### 0x4B AddAcquaintance
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | S→C | AddAcquaintancePacket | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | not sent | none |
 | 0x2 → 0x2 | S→C | RemoveAcquaintancePacket | FUN_142f269c0 / FUN_142fc5eb0 | same | not sent | none |
@@ -1214,14 +1240,14 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x4D FriendUpdateExtraInfos
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | FriendMessagePacket | FUN_14348c3a0 / FUN_14353c090 | same | sent (Game/Friends.cs:86) | none |
 | 0x1 → 0x1 | S→C | FriendListPacket | FUN_14348d770 / FUN_14353d460 | same | sent (Game/Friends.cs:55) | none |
 | 0x2 → 0x2 | S→C | FriendOnlinePacket | FUN_14348c520 / FUN_14353c210 | same | sent (Game/Friends.cs:59) | none |
 | 0x3 → 0x3 | S→C | FriendOfflinePacket | FUN_14348d8a0 / FUN_14353d590 | same | sent (Game/Friends.cs:67) | none |
 | 0x4 → 0x4 | S→C | FriendUpdateProfileInfoPacket | FUN_14348c990 / FUN_14353c680 | same | not sent | none |
-| 0x5 → 0x5 | S→C | FriendUpdatePositionsPacket | FUN_14348db70 / FUN_14353d860 | same | not sent | none |
+| 0x5 → 0x5 | S→C | FriendUpdatePositionsPacket | FUN_14348db70 / FUN_14353d860 | same | sent (Game/FriendPositions.cs:49) | none |
 | 0x6 → 0x6 | S→C | FriendAddPacket | FUN_14348d6b0 / FUN_14353d3a0 | same | sent (Game/Friends.cs:30 AddSub) | none |
 | 0x7 → 0x7 | S→C | FriendRemovePacket | FUN_14348d9d0 / FUN_14353d6c0 | same | sent (Game/Friends.cs:156) | none |
 | 0x9 → 0x9 | S→C | FriendStatusPacket | FUN_14348c850 / FUN_14353c540 | same | not sent | none |
@@ -1230,98 +1256,98 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x4F 0x4F
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| 0x0 → 0x0 | S→C | BaseBroadcastPacket | FUN_142b7dc60 / FUN_142c17410 | same | not sent | none |
+| 0x0 → 0x0 | S→C | BaseBroadcastPacket | FUN_142b7dc60 / FUN_142c17410 | same | sent (Game/Broadcasts.cs:91) | none |
 
 ### 0x53 PacketClientKickedFromServer
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | PacketClientKickedFromServer | FUN_142bb0360 / FUN_142c49ed0 | same | sent (Game/PlayerManager.cs:55) | none |
 
 ### 0x54 PacketUpdateClientSessionData
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | PacketUpdateClientSessionData | FUN_142b8b520 / FUN_142c24cf0 | same | not sent | none |
 
 ### 0x55 BugSubmission
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| 0x1 → 0x1 | C→S | BugSubmissionPacketAddBug | FUN_14306de40 / FUN_143118760 | same | family handler, sub not handled (Game/Reports.cs:27) | none |
+| 0x1 → 0x1 | C→S | BugSubmissionPacketAddBug | FUN_14306de40 / FUN_143118760 | same | handled (Game/Reports.cs:52 `sub != 1` → Save; HEAD, coverage.py 2026-10-26 + read) | none |
 
 ### 0x56 ClaimReportSubmission
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| 0x1 → 0x1 | C→S | ClaimReportSubmissionPacketAddReport | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | family handler, sub not handled (Game/Reports.cs:31) | none |
+| 0x1 → 0x1 | C→S | ClaimReportSubmissionPacketAddReport | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | handled (Game/Reports.cs:52 `sub != 1` → Save; HEAD, coverage.py 2026-10-26 + read) | none |
 
 ### 0x59 PacketWorldDisplayInfo
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | PacketWorldDisplayInfo | FUN_142bb1520 / FUN_142c4b090 | same | sent (Network/Handlers/MiscHandler.cs:258) | none |
 
 ### 0x5A PacketMOTD
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | PacketMOTD | FUN_142bb0af0 / FUN_142c4a660 | same | sent (Game/PlayerManager.cs:120) | none |
 
 ### 0x5B PacketSetLocale
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | PacketSetLocale | FUN_142be2e00 / FUN_142c7c980 | same | not sent | none |
 
 ### 0x5C PacketSetClientArea
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | PacketSetClientArea | FUN_142b8b160 / FUN_142c24930 | same | not sent | none |
 
 ### 0x5F PacketWorldShutdownNotice
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | PacketWorldShutdownNotice | FUN_142b8b650 / FUN_142c24e20 | same | sent (Game/Shutdown.cs:207) | none |
 
 ### 0x62 MiniGameFlashCommandAdmin
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1a → 0x1a | C→S | BaseMiniGameAdminPacket | FUN_143262e00 / FUN_14330fcb0 | same | not handled | none |
 | 0x2f → 0x2f | C→S | MiniGameFlashCommandAdminPacket | FUN_143262fa0 / FUN_14330fe50 | same | not handled | none |
 
 ### 0x63 PacketKeepAlive
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | C→S | PacketKeepAlive | FUN_142baaab0 / FUN_142c44630 | same | handled (Network/Handlers/MiscHandler.cs:43) | none |
 
 ### 0x64 PacketClientExitLaunchUrl
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | PacketClientExitLaunchUrl | FUN_142bb0150 / FUN_142c49cc0 | same | not sent | none |
 
 ### 0x65 PacketClientPendingKickFromServer
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| – → – | S→C | PacketClientPendingKickFromServer | FUN_142bb0560 / FUN_142c4a0d0 | same | not sent | none |
+| – → – | S→C | PacketClientPendingKickFromServer | FUN_142bb0560 / FUN_142c4a0d0 | same | sent (Game/Kicks.cs:85) | none |
 
 ### 0x66 Activity
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| 0x0 → 0x0 | S→C | PacketMembershipActivation | FUN_142bb0c50 / FUN_142c4a7c0 | same | not sent | none |
+| 0x0 → 0x0 | S→C | PacketMembershipActivation | FUN_142bb0c50 / FUN_142c4a7c0 | same | sent (Game/Membership.cs:341) | none |
 
 ### 0x67 JoinLobbyGame
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | C→S | JoinLobbyGamePacket | FUN_142b87990 FUN_14335bca0 / FUN_142c21160 FUN_143407d60 | same | not handled | none |
 | 0x2 → 0x2 | C→S | LeaveLobbyGamePacket | FUN_142b87ac0 FUN_14335be40 / FUN_142c21290 FUN_143407f00 | same | not handled | none |
@@ -1333,31 +1359,31 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x68 LobbyGameDefinition
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | LobbyGameDefinitionPacketDefinitionsResponse | FUN_142b88540 / FUN_142c21d10 | same | not sent | none |
 
 ### 0x69 PacketShowSystemMessage
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | PacketShowSystemMessage | FUN_142b8b220 / FUN_142c249f0 | same | sent (Game/SystemMessages.cs:40) | none |
 
 ### 0x6A PacketPOIChangeMessage
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | PacketPOIChangeMessage | FUN_142b8a940 / FUN_142c24110 | same | not sent | none |
 
 ### 0x6B PacketClientMetrics
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | C→S | PacketClientMetrics | FUN_142baa380 / FUN_142c43f00 | same | handled (Network/Handlers/MiscHandler.cs:124) | none |
 
 ### 0x6D FirstTimeEventTriggerRequest
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | FirstTimeEventScriptPacket | FUN_14357f000 / FUN_143632800 | same | sent (runtime opcode_stats (trace/families; agent_packets/sent_s2c.tsv)) | none |
 | – → – | S→C | FirstTimeEventStatePacket | FUN_14357f100 / FUN_143632900 | same | sent (runtime opcode_stats (trace/families; agent_packets/sent_s2c.tsv)) | none |
@@ -1367,7 +1393,7 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x6E GetAllAvailableRequisitionItemsRequest
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | C→S | GetAllAvailableRequisitionItemsRequestPacket | FUN_1431242e0 / FUN_1431cf350 | same | not handled | none |
 | 0x2 → 0x2 | S→C | GetAllAvailableRequisitionItemsResponsePacket | FUN_143124900 / FUN_1431cf970 | same | not sent | none |
@@ -1378,62 +1404,62 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x6F PacketClientLog
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | C→S | PacketClientLog | FUN_142ba9de0 / FUN_142c43960 | same | handled (Network/Handlers/MiscHandler.cs:25) | none |
 
 ### 0x72 IgnoreList
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x2 → 0x2 | S→C | IgnoreAddPacket | FUN_14348dca0 / FUN_14353d990 | same | sent (Game/Ignores.cs:145) | none |
 
 ### 0x74 KeyCodeRedemptionNotification
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | S→C | KeyCodeRedemptionNotificationPacket | FUN_142f35ea0 / FUN_142fd5c10 | same | not sent | none |
 
 ### 0x75 PacketAddClientPortraitCrc
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | C→S | PacketAddClientPortraitCrc | FUN_143140720 / FUN_1431eb140 | same | handled (Network/Handlers/MiscHandler.cs:132) | none |
 
 ### 0x77 PacketCommerceSessionRequest
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | C→S | PacketCommerceSessionRequest | FUN_142baa560 / FUN_142c440e0 | same | not handled | none |
 
 ### 0x78 PacketCommerceSessionResponse
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| 0x0 → 0x0 | S→C | PacketCommerceSessionResponse | FUN_142bb58f0 / FUN_142c4f100 | same | not sent | none |
+| 0x0 → 0x0 | S→C | PacketCommerceSessionResponse | FUN_142bb58f0 / FUN_142c4f100 | same | sent (Network/WorldSession.cs:1596) | none |
 
 ### 0x7C PacketZoneSafeTeleportRequest
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | C→S | PacketZoneSafeTeleportRequest | FUN_142bab310 / FUN_142c44e90 | same | handled (Network/Handlers/MiscHandler.cs:32) | none |
 
 ### 0x7F PlayerUpdatePosition
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | PlayerUpdatePacketUpdatePositionZoneToClient | – / FUN_142c4dd40 | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | sent (Network/Message/Model/PlayerUpdatePosition.cs:10) | none |
 
 ### 0x83 GuildCreate
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | C→S | GuildCreatePacket | FUN_1432e1230 / FUN_14338e020 | same | handled (Game/Guilds.cs:318) | none |
 | 0x2 → 0x2 | C→S | GuildDisbandPacket | FUN_142e499b0 FUN_1432e15b0 / FUN_142ee8740 FUN_14338e3a0 | same | handled (Game/Guilds.cs:344) | none |
 | 0x3 → 0x3 | C→S | GuildRenamePacket | FUN_1432e2760 FUN_142e46990 / FUN_14338f550 FUN_142ee5720 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:167) | none |
 | 0x4 → 0x4 | C→S | GuildInvitePacket | FUN_1432e1760 / FUN_14338e550 | same | handled (Game/Guilds.cs:321) | none |
 | 0x5 → 0x5 | C→S | GuildInviteReplyPacket | FUN_1432e1920 / FUN_14338e710 | same | handled (Game/Guilds.cs:326) | none |
-| 0x6 → 0x6 | C→S | GuildInviteRevokePacket | FUN_1432e1b10 / FUN_14338e900 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:167) | none |
+| 0x6 → 0x6 | C→S | GuildInviteRevokePacket | FUN_1432e1b10 / FUN_14338e900 | same | handled (Game/Guilds.cs:386) | none |
 | 0x7 → 0x7 | C→S | GuildPetitionPacket | FUN_1432e2050 / FUN_14338ee40 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:167) | none |
 | 0x8 → 0x8 | C→S | GuildPetitionReplyPacket | FUN_1432e2210 / FUN_14338f000 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:167) | none |
 | 0x9 → 0x9 | C→S | GuildPetitionRevokePacket | FUN_1432e2400 / FUN_14338f1f0 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:167) | none |
@@ -1445,21 +1471,21 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 | 0xf → 0xf | C→S | GuildDescriptionUpdatePacket | FUN_1432e13e0 FUN_142e45c60 / FUN_14338e1d0 FUN_142ee49f0 | same | handled (Game/Guilds.cs:350) | none |
 | 0x10 → 0x10 | C→S | GuildRequestMutePlayerPacket | FUN_142e4ced0 / FUN_142eebc60 | same | handled (Game/Guilds.cs:356) | none |
 | 0x11 → 0x11 | C→S | GuildUpdateAppDataFieldPacket | FUN_1432e2920 / FUN_14338f710 | same | handled (Game/Guilds.cs:353) | none |
-| 0x12 → 0x12 | S→C | GuildDataFullPacket | FUN_142e45a90 / FUN_142ee4820 | same | not sent | none |
+| 0x12 → 0x12 | S→C | GuildDataFullPacket | FUN_142e45a90 / FUN_142ee4820 | same | sent (Game/Guilds.cs:55 DataFullSub) | none |
 | 0x13 → 0x13 | S→C | GuildDataPacket | FUN_142e49860 / FUN_142ee85f0 | same | sent (Game/Guilds.cs:43 DataSub) | none |
-| 0x14 → 0x14 | S→C | GuildInvitationsPacket | FUN_142e462b0 / FUN_142ee5040 | same | not sent | none |
+| 0x14 → 0x14 | S→C | GuildInvitationsPacket | FUN_142e462b0 / FUN_142ee5040 | same | sent (Game/Guilds.cs:55 InvitationsSub) | none |
 | 0x15 → 0x15 | S→C | GuildAddMemberPacket | FUN_142e49570 / FUN_142ee8300 | same | sent (Game/Guilds.cs:43 AddMemberSub) | none |
 | 0x16 → 0x16 | S→C | GuildRemoveMemberPacket | FUN_142e468c0 / FUN_142ee5650 | same | sent (Game/Guilds.cs:43 RemoveMemberSub) | none |
 | 0x17 → 0x17 | S→C | GuildUpdateInvitationPacket | FUN_142e46b40 / FUN_142ee58d0 | same | sent (Game/Guilds.cs:43 UpdateInvitationSub) | none |
 | 0x18 → 0x18 | S→C | GuildMemberOnlineStatusPacket | FUN_142e46520 / FUN_142ee52b0 | same | sent (Game/Guilds.cs:43 OnlineStatusSub) | none |
 | 0x19 → 0x19 | S→C | GuildNotificationPacket | FUN_142e46710 / FUN_142ee54a0 | same | sent (Game/Guilds.cs:1113 NotificationSub) | none |
-| 0x1a → 0x1a | S→C | GuildAddLogUpdatePacket | FUN_142e454f0 / FUN_142ee4280 | same | not sent | none |
-| 0x1b → 0x1b | S→C | GuildRemoveLogUpdatePacket | FUN_142e467f0 / FUN_142ee5580 | same | not sent | none |
+| 0x1a → 0x1a | S→C | GuildAddLogUpdatePacket | FUN_142e454f0 / FUN_142ee4280 | same | sent (Game/Guilds.cs:1458 AddLogSub) | none |
+| 0x1b → 0x1b | S→C | GuildRemoveLogUpdatePacket | FUN_142e467f0 / FUN_142ee5580 | same | sent (Game/Guilds.cs:55 RemoveLogSub) | none |
 | 0x1c → 0x1c | S→C | GuildUpdateAppDataPacket | FUN_142e46a50 / FUN_142ee57e0 | same | not sent | none |
 
 ### 0x8A EncounterMatchmaking
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | EncounterMatchmaking::RemoveParticipantFromQueueResponsePacket | FUN_1432d8b80 / FUN_143385970 | same | not sent | none |
 | 0x2 → 0x2 | S→C | EncounterMatchmaking::ListQueuesResponsePacket | FUN_1432d7ef0 / FUN_143384ce0 | same | not sent | none |
@@ -1472,13 +1498,13 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x8B PacketClientLuaMetrics
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | C→S | PacketClientLuaMetrics | FUN_142baa1a0 / FUN_142c43d20 | same | not handled | none |
 
 ### 0x8D RepeatingActivityClearRequest
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | S→C | RepeatingActivityAddPacket | FUN_143134310 / FUN_1431df4f0 | same | not sent | none |
 | 0x2 → 0x2 | S→C | RepeatingActivityStatePacket | FUN_143133680 / FUN_1431de860 | same | not sent | none |
@@ -1493,30 +1519,30 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x8E PacketClientGameSettings
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | PacketClientGameSettings | FUN_142b89ef0 / FUN_142c236c0 | same | sent (Network/Message/Model/ClientGameSettings.cs:11; Network/WorldSession.cs:421) | none |
 
 ### 0x8F ActivityJoinError
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | S→C | ActivityProfileListPacket | FUN_142c57d80 / FUN_142cf15f0 | same | not sent | none |
 
 ### 0x91 Inspect
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| – → 0x3 | C→S | RequestInspectPlayerPacket | – / – | new | not handled | implement (0.695 only) |
+| – → 0x3 | C→S | RequestInspectPlayerPacket | – / – | new | handled (Game/Inspect.cs:43) | implement (0.695 only) |
 | 0x0 → 0x0 | S→C | BaseInspectPacket | FUN_142bb4e60 / FUN_142c4e670 | same | not sent | none |
-| 0x1 → 0x1 | S→C | StartInspectPacket | FUN_142b95dd0 / FUN_142c2f8c0 | same | not sent | none |
-| 0x2 → 0x2 | C→S | StopInspectPacket | FUN_142bad040 / FUN_142c46bc0 | same | not handled | none |
+| 0x1 → 0x1 | S→C | StartInspectPacket | FUN_142b95dd0 / FUN_142c2f8c0 | same | sent (Game/Inspect.cs:96) | none |
+| 0x2 → 0x2 | C→S | StopInspectPacket | FUN_142bad040 / FUN_142c46bc0 | same | handled (Game/Inspect.cs:46) | none |
 
 ### 0x92 AchievementTrackerUpdate
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| 0x2 → 0x2 | S→C | AchievementAddPacket | FUN_142d8c370 / FUN_142e2a340 | same | not sent | none |
+| 0x2 → 0x2 | S→C | AchievementAddPacket | FUN_142d8c370 / FUN_142e2a340 | same | sent (Game/Achievements.cs:39 AddSub) | none |
 | 0x3 → 0x3 | S→C | AchievementInitializePacket | FUN_142d8c550 / FUN_142e2a520 | same | sent (Game/Achievements.cs:38 InitializeSub) | none |
 | 0x4 → 0x4 | S→C | AchievementCompletePacket | FUN_142d8c430 / FUN_142e2a400 | same | sent (Game/Achievements.cs:38 CompleteSub) | none |
 | 0x5 → 0x5 | S→C | AchievementObjectiveAddedPacket | FUN_142d8c680 / FUN_142e2a650 | same | not sent | none |
@@ -1529,7 +1555,7 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x94 PlayerTitleRequestSelect
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | PlayerTitleAddPacket | FUN_142e89070 / FUN_142f27d20 | same | sent (runtime opcode_stats (trace/families; agent_packets/sent_s2c.tsv)) | none |
 | 0x3 → 0x3 | S→C | PlayerTitleUpdateAllPacket | FUN_142e88c10 / FUN_142f278c0 | same | sent (runtime opcode_stats (trace/families; agent_packets/sent_s2c.tsv)) | none |
@@ -1537,22 +1563,22 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x97 BeginJobCustimzation
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | S→C | BeginJobCustimzationPacket | FUN_142b7ec10 / FUN_142c183c0 | same | not sent | none |
 
 ### 0x98 PacketGeneratePortraitRequest
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| 0x1 → 0x1 | C→S | PacketGeneratePortraitRequest | FUN_142ebb060 / FUN_142f59c90 | same | family handler, sub not handled (Network/Handlers/MiscHandler.cs:128) | none |
-| 0x2 → 0x2 | C→S | PacketPortraitDataRequest | FUN_142ebb210 / FUN_142f59e40 | same | family handler, sub not handled (Network/Handlers/MiscHandler.cs:128) | none |
+| 0x1 → 0x1 | C→S | PacketGeneratePortraitRequest | FUN_142ebb060 / FUN_142f59c90 | same | handled, logged, no reply (Game/Portraits.cs:59 GenerateSub; HEAD, coverage.py 2026-10-26 + read) | none |
+| 0x2 → 0x2 | C→S | PacketPortraitDataRequest | FUN_142ebb210 / FUN_142f59e40 | same | handled (Game/Portraits.cs:52 DataRequestSub; HEAD, coverage.py 2026-10-26 + read) | none |
 | 0x3 → 0x3 | S→C | PacketPlayerImageData | FUN_142ebab00 / FUN_142f59730 | same | sent (Game/Portraits.cs:77) | none |
 | 0x4 → 0x4 | C→S | PacketSnapshotRequest | FUN_142bacae0 / FUN_142c46660 | same | family handler, sub not handled (Network/Handlers/MiscHandler.cs:128) | none |
 
 ### 0x9A ActionManager
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | ActionManagerPacketUpdateSlot | FUN_142b7d3a0 / FUN_142c16b50 | same | not sent | none |
 | 0x1 → 0x1 | C→S | ActionManagerPacketRequestClearSlot | FUN_14339dc00 / FUN_14344b380 | same | handled (Network/Handlers/ActionBarHandler.cs:26) | none |
@@ -1562,7 +1588,7 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x9C Social
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | S→C | SocialPacketProfileInfo | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | not sent | none |
 | 0x3 → 0x3 | C→S | SocialPacketUpdateLike | FUN_142ec4530 / FUN_142f63160 | same | not handled | none |
@@ -1583,7 +1609,7 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x9E CoinStoreItemDefinitionsRequest
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x2 → 0x2 | C→S | CoinStoreItemDefinitionsRequestPacket | FUN_1434b15e0 / FUN_1435610e0 | same | not handled | none |
 | 0x3 → 0x3 | S→C | CoinStoreItemDefinitionsResponsePacket | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | not sent | none |
@@ -1600,13 +1626,13 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x9F PacketInitializationParameters
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | PacketInitializationParameters | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | sent (Network/Message/Model/InitializationParameters.cs:9; Network/WorldSession.cs:420) | none |
 
 ### 0xA0 Activity
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | C→S | ActivityPacketActivityListRefreshRequest | FUN_142ba7ac0 / FUN_142c41640 | same | not handled | none |
 | 0x1 → 0x1 | C→S | ActivityPacketJoinActivityRequest | FUN_142d9a440 / FUN_142e38410 | same | not handled | none |
@@ -1616,7 +1642,7 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0xA1 PacketMountRequest
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | MountBasePacket | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | not sent | none |
 | 0x1 → 0x1 | C→S | PacketMountRequest | FUN_142baac50 / FUN_142c447d0 | same | not handled | none |
@@ -1633,38 +1659,38 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0xA2 PacketClientInitializationDetails
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | C→S | PacketClientInitializationDetails | FUN_142ba9a70 / FUN_142c435f0 | same | handled (Network/Handlers/MiscHandler.cs:165) | none |
 
 ### 0xA4 PacketClientNotifyCoinSpinAvailable
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | PacketClientNotifyCoinSpinAvailable | FUN_142bb04b0 / FUN_142c4a020 | same | not sent | none |
 
 ### 0xA5 PacketClientAreaTimer
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | C→S | PacketClientAreaTimer | FUN_142b89a80 FUN_143621690 / FUN_142c23250 FUN_1436dc6e0 | same | not handled | none |
 
 ### 0xA7 Rating
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | RatingPacketDeleteContestReply | FUN_142d026d0 / FUN_142da2520 | same | sent (runtime opcode_stats (trace/families; agent_packets/sent_s2c.tsv)) | none |
-| 0x8 → 0x8 | C→S | RatingPacketAddVote | – / – | same: builder closure same | family handler, sub not handled (Network/Handlers/MiscHandler.cs:144) | none |
+| 0x8 → 0x8 | C→S | RatingPacketAddVote | – / – | same: builder closure same | handled (Network/Handlers/MiscHandler.cs:169 `Body[0] == 0x08` → ClaimVote; HEAD, coverage.py 2026-10-26 + read) | none |
 | 0x12 → 0x12 | S→C | RatingPacketVoteReply | FUN_142d02880 / FUN_142da26d0 | same | sent (Game/Ratings.cs:49; Game/Ratings.cs:73) | none |
-| 0x18 → 0x18 | C→S | RatingPacketCanVoteRequest | FUN_142d07f50 / FUN_142da83e0 | same | family handler, sub not handled (Network/Handlers/MiscHandler.cs:144) | none |
+| 0x18 → 0x18 | C→S | RatingPacketCanVoteRequest | FUN_142d07f50 / FUN_142da83e0 | same | handled (Network/Handlers/MiscHandler.cs:171 `Body[0] == 0x18` → CanVote; HEAD, coverage.py 2026-10-26 + read) | none |
 | 0x19 → 0x19 | S→C | RatingPacketCanVoteReply | FUN_142d024b0 / FUN_142da2300 | same | sent (Game/Ratings.cs:122) | none |
 | 0x1b → 0x1b | S→C | RatingPacketCreateContestReply | FUN_142d025d0 / FUN_142da2420 | same | not sent | none |
-| 0x1d → 0x1d | C→S | RatingPacketRequestContestsRequest | FUN_14353a490 / FUN_1435ec460 | same | family handler, sub not handled (Network/Handlers/MiscHandler.cs:144) | none |
+| 0x1d → 0x1d | C→S | RatingPacketRequestContestsRequest | FUN_14353a490 / FUN_1435ec460 | same | handled (Network/Handlers/MiscHandler.cs:167 `Body[0] == 0x1D` → ContestList; HEAD, coverage.py 2026-10-26 + read) | none |
 | 0x1e → 0x1e | S→C | RatingPacketRequestContestsReply | FUN_142d09110 / FUN_142da95a0 | same | sent (Game/Contests.cs:168) | none |
 
 ### 0xA8 ClientActivityLaunch
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0xd → 0xd | S→C | ClientActivityLaunchPacketKickMemberEvent | FUN_1436586d0 / FUN_143713a60 | same | not sent | none |
 | 0x11 → 0x11 | S→C | ClientActivityLaunchPacketInviteResponse | FUN_143657080 / FUN_143712410 | same | not sent | none |
@@ -1677,13 +1703,13 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0xAA PacketClientFlashTimer
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | PacketClientFlashTimer | FUN_142bb0230 / FUN_142c49da0 | same | not sent | none |
 
 ### 0xAD PacketInviteAndStartMiniGameInvite
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | PacketInviteAndStartMiniGamePacket | FUN_142b8a660 / FUN_142c23e30 | same | not sent | none |
 | 0x1 → 0x1 | C→S | PacketInviteAndStartMiniGameInvitePacket | FUN_14333d450 / FUN_1433e9510 | same | not handled | none |
@@ -1691,13 +1717,13 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0xAE PlayerUpdate
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | C→S | PlayerUpdatePacketFlourish | FUN_142babad0 / FUN_142c45650 | same | not handled | none |
 
 ### 0xAF QuizRequest
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | C→S | QuizRequestPacket | FUN_142ec2b20 / FUN_142f61750 | same | not handled | none |
 | 0x2 → 0x2 | S→C | QuizDefinitionPacket | FUN_143120f00 / FUN_1431cbf60 | same | not sent | none |
@@ -1705,13 +1731,13 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0xB3 PacketClientMembershipVipInfo
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | PacketClientMembershipVipInfo | FUN_142bb0440 / FUN_142c49fb0 | same | not sent | none |
 
 ### 0xB5 Target
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | C→S | TargetPacketRequestAddTarget | FUN_143139090 / FUN_1431e4270 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:206) | none |
 | 0x2 → 0x2 | C→S | TargetPacketRequestSetTarget | FUN_143139600 / FUN_1431e47e0 | same | handled (Network/Handlers/InteractionHandler.cs:214) | none |
@@ -1723,13 +1749,13 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0xB7 GuideStone
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x2 → 0x2 | S→C | GuideStonePacketAddInfo | FUN_14328ed70 / FUN_14333bbe0 | same | not sent | none |
 
 ### 0xB8 Raids
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | C→S | Raids::RaidPacketDisband | FUN_142d44230 / FUN_142de2490 | same | not handled | none |
 | 0x1 → 0x1 | C→S | Raids::RaidPacketEcho | FUN_142d445b0 / FUN_142de2810 | same | not handled | none |
@@ -1747,14 +1773,14 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0xB9 VoiceLeaveChannel
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | S→C | VoiceJoinChannelPacket | FUN_1430249f0 / FUN_1430cada0 | same | not sent | none |
-| 0x6 → 0x6 | C→S | VoiceRequestCustomChannel | FUN_143025040 / FUN_1430cb3f0 | same | not handled | none |
+| 0x6 → 0x6 | C→S | VoiceRequestCustomChannel | FUN_143025040 / FUN_1430cb3f0 | same | handled (Network/Handlers/VoiceHandler.cs:47; Network/Message/Model/VoiceMessages.cs:30) | none |
 
 ### 0xBA MeleeStabFinish
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | C→S | WeaponGuidedUpdate | FUN_142b96cb0 FUN_143623db0 / FUN_142c307a0 FUN_1436dedf0 | same | not handled | none |
 | 0x1 → 0x1 | S→C | WeaponFireStateUpdate | FUN_143561930 / FUN_143615130 | same | not sent | none |
@@ -1803,13 +1829,13 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0xBB PunkBuster
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | C→S | PunkBusterPacket | FUN_143590e40 / FUN_143643c20 | same | not handled | none |
 
 ### 0xBC Skills
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | C→S | Skills::SkillPacketEcho | FUN_142eae6d0 / FUN_142f4d300 | same | not handled | none |
 | 0x1 → 0x1 | C→S | Skills::SkillPacketGetSkillPointManager | FUN_142eae870 / FUN_142f4d4a0 | same | not handled | none |
@@ -1820,7 +1846,7 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0xBD Loadouts
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | C→S | Loadouts::LoadoutPacketCreateLoadout | FUN_142e66d70 / FUN_142f05900 | same | not handled | none |
 | 0x1 → 0x1 | C→S | Loadouts::LoadoutPacketDeleteLoadout | FUN_142e66f60 / FUN_142f05af0 | same | not handled | none |
@@ -1832,7 +1858,7 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0xBE Experience
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | Experience::ExperiencePacketSetExperienceRateTier | FUN_142e365a0 / FUN_142ed5240 | same | sent (Network/Handlers/MiscHandler.cs:255) | none |
 | 0x1 → 0x1 | S→C | Experience::ExperiencePacketSetExperience | FUN_142e35af0 / FUN_142ed4790 | same | not sent | none |
@@ -1840,7 +1866,7 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0xBF Vehicle
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | VehicleBasePacket | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | not sent | none |
 | 0x1 → 0x1 | S→C | VehicleOwnerPacket | FUN_142ed32a0 FUN_142ecfcd0 / FUN_142f71ed0 FUN_142f6e900 | same | not sent | none |
@@ -1878,19 +1904,19 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0xC2 Factions
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | S→C | Factions::FactionPacketLoadFactionDefinitionManager | FUN_14336db80 FUN_143b4a040 / FUN_143419c40 FUN_143c05080 | same | not sent | none |
 
 ### 0xC3 PacketSynchronization
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | C→S | PacketSynchronization | FUN_142bab170 / FUN_142c44cf0 FUN_142c24b00 | same | handled (Network/Handlers/MiscHandler.cs:318) | none |
 
 ### 0xC6 Leaderboard
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | C→S | Leaderboard::LeaderboardPacketAdminFillLeaderboard | FUN_143256fb0 / FUN_143303e60 | same | not handled | none |
 | 0x2 → 0x2 | C→S | Leaderboard::LeaderboardPacketGetPlayerStats | FUN_143257150 / FUN_143304000 | same | not handled | none |
@@ -1898,19 +1924,19 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0xC7 PlayerUpdateManagedPosition
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | C→S | PlayerUpdateManagedPosition | – / – | same: own family 0xC7 (not PlayerUpdate); send builder 142c0bb80→142ca5960 differs in assert line / struct offset only | handled (Network/Handlers/MiscHandler.cs:95) | none |
 
 ### 0xC9 PlayerUpdate
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | C→S | PlayerUpdatePacketUpdateVehicleWeapon | FUN_142b934a0 FUN_142f87570 / FUN_142c2cf90 FUN_1430273a0 | same | not handled | none |
 
 ### 0xCA ProfileStats
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x6 → 0x6 | C→S | ProfileStatsPacketGetLeaderboard | FUN_143257300 / FUN_1433041b0 | same | not handled | none |
 | 0x8 → 0x8 | C→S | ProfileStatsPacketGetPlayerLeaderboardRow | FUN_1432574a0 / FUN_143304350 | same | not handled | none |
@@ -1919,7 +1945,7 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0xCB Equipment
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | Equipment::EquipmentPacketSetCharacterEquipment | FUN_142da3ac0 / FUN_142e41a90 | same | not sent | none |
 | 0x0 → 0x0 | S→C | Equipment::EquipmentPacketSetCharacterEquipmentSlot | FUN_142da3b70 / FUN_142e41b40 | same | not sent | none |
@@ -1927,13 +1953,13 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0xCD PacketGetRespawnLocations
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | C→S | PacketGetRespawnLocations | FUN_143385ae0 / FUN_1434329b0 | same | not handled | none |
 
 ### 0xCE WallOfDataPlayerKeyboard
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x2 → 0x2 | C→S | WallOfDataPlayerKeyboardPacket | FUN_142babe50 / FUN_142c459d0 | same | not handled | none |
 | 0x4 → 0x4 | C→S | WallOfDataUIEventPacket | FUN_1435237b0 / FUN_1435d5130 | same | not handled | none |
@@ -1942,19 +1968,19 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0xCF ThrustPadPlayerEntered
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x3 → 0x3 | C→S | ThrustPadPlayerEnteredPacket | FUN_142de7270 / FUN_142e85250 | same | not handled | none |
 
 ### 0xD0 PacketClientInGamePurchase
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| – → – | C→S | PacketClientInGamePurchase | FUN_14353a150 / FUN_1435ec120 | same | not handled | none |
+| – → – | C→S | PacketClientInGamePurchase | FUN_14353a150 / FUN_1435ec120 | same | handled (Network/Handlers/InteractionHandler.cs:421) | none |
 
 ### 0xD1 Missions
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | Missions::ClientMissionPacketSetMissionManager | FUN_142e6de90 / FUN_142f0ca20 | same | not sent | none |
 | 0x0 → 0x0 | S→C | Missions::MissionPacketAddActiveMission | FUN_142e6a910 / FUN_142f094a0 | same | not sent | none |
@@ -1969,20 +1995,20 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0xD6 PacketSecurity
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | PacketSecurity | FUN_142be2d00 / FUN_142c7c880 | same | not sent | none |
 
 ### 0xDC HudPackets
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| 0x1 → 0x1 | C→S | HudPackets::PacketRadialMenuRequest | FUN_1432e3d40 / FUN_143390b30 | same | family handler, sub not handled (Network/Handlers/MiscHandler.cs:107) | none |
+| 0x1 → 0x1 | C→S | HudPackets::PacketRadialMenuRequest | FUN_1432e3d40 / FUN_143390b30 | same | handled (Game/RightClickMenus.cs:166 `sub != 1`; HEAD, coverage.py 2026-10-26 + read) | none |
 | 0x2 → 0x2 | S→C | HudPackets::PacketRadialMenuResponse | FUN_143670ee0 / FUN_14372cdf0 | same | sent (Game/RightClickMenus.cs:81) | none |
 
 ### 0xDD SetSpeechPack
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | C→S | SetSpeechPackPacket | FUN_142f26500 / FUN_142fc59f0 | same | family handler, sub not handled (Network/Handlers/MiscHandler.cs:162) | none |
 | 0x2 → 0x2 | C→S | GetSpeechPackListPacket | FUN_142f261c0 / FUN_142fc56b0 | same | family handler, sub not handled (Network/Handlers/MiscHandler.cs:162) | none |
@@ -1990,49 +2016,49 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0xDE AcquireTimers
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | AcquireTimers::AcquireTimerPacketSetAcquireTimerManager | FUN_142d96fa0 / FUN_142e34f70 | same | not sent | none |
 
 ### 0xDF PlayerUpdate
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| – → – | S→C | PlayerUpdatePacketGuildTag | FUN_142bb2640 / FUN_142c4c0a0 | same | not sent | none |
+| – → – | S→C | PlayerUpdatePacketGuildTag | FUN_142bb2640 / FUN_142c4c0a0 | same | sent (Game/Social/GuildTags.cs:78) | none |
 
 ### 0xE0 PacketLoginQueueStatus
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| 0x0 → 0x0 | S→C | PacketLoginQueueStatus | FUN_1430c2590 / FUN_14316d6d0 | same | not sent | none |
+| 0x0 → 0x0 | S→C | PacketLoginQueueStatus | FUN_1430c2590 / FUN_14316d6d0 | same | sent (Game/TravelQueue.cs:268) | none |
 
 ### 0xE1 PacketServerPopulationInfo
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | PacketServerPopulationInfo | FUN_142bb1190 / FUN_142c4ad00 | same | not sent | none |
 
 ### 0xE3 PlayerUpdateVehicleCollision
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | C→S | PlayerUpdateVehicleCollision | FUN_142bb4ac0 FUN_1433d1200 / FUN_142c4e2d0 FUN_14347f2f0 | same | not handled | none |
 
 ### 0xE4 PlayerUpdate
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | PlayerUpdatePacketStop | FUN_142bb4160 / FUN_142c4d970 | same | not sent | none |
 
 ### 0xE5 Currency
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | Currency::CurrencyPacketSetCurrencyRateTier | FUN_142db13e0 / FUN_142e4f3b0 | same | not sent | none |
 
 ### 0xE6 Items
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | C→S | Items::ItemPacketRequestTrialItemLine | FUN_142e607c0 FUN_142e60430 / FUN_142eff350 FUN_142efefc0 | same | not handled | none |
 | 0x0 → 0x0 | S→C | Items::ItemPacketSetItemTimerManager | FUN_142e60a70 / FUN_142eff600 | same | not sent | none |
@@ -2041,39 +2067,39 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0xE7 PlayerUpdate
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | C→S | PlayerUpdatePacketAttachObject | FUN_142bb1dd0 FUN_142ee1020 / FUN_142c4b840 FUN_142f7fc80 | same | not handled | none |
 
 ### 0xE8 PlayerUpdate
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | C→S | PlayerUpdatePacketDetachObject | FUN_142bb2330 FUN_142ee11d0 / FUN_142c4bda0 FUN_142f7fe30 | same | not handled | none |
 
 ### 0xE9 PacketClientSettings
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | PacketClientSettings | FUN_142bb06d0 / FUN_142c4a240 | same | sent (Network/Handlers/MiscHandler.cs:271) | none |
 
 ### 0xEA AreaDefinitionTransferShape
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | S→C | AreaDefinitionSetDefinitionsPacket | FUN_14324b120 / FUN_1432f7fd0 | same | sent (Network/Handlers/MiscHandler.cs:205; Network/Handlers/MiscHandler.cs:278) | none |
-| 0x2 → 0x2 | C→S | AreaDefinitionTransferShapePacket | FUN_14324bb00 / FUN_1432f89b0 | same | not handled | none |
-| 0x3 → 0x3 | C→S | AreaDefinitionUpdateDefinitionPacket | FUN_14324bcc0 / FUN_1432f8b70 | same | not handled | none |
-| 0x4 → 0x4 | C→S | AreaDefinitionBasePacket | FUN_14324b950 FUN_14324bcc0 / FUN_1432f8800 FUN_1432f8b70 | same | not handled | none |
-| 0x4 → 0x4 | C→S | AreaDefinitionRemoveDefinitionPacket | FUN_14324b950 / FUN_1432f8800 | same | not handled | none |
-| 0x6 → 0x6 | S→C | AreaDefinitionRequestResponsePacket | FUN_14324bfb0 / FUN_1432f8e60 | same | not sent | none |
-| 0x7 → 0x7 | C→S | AreaDefinitionCreateTriggerAreaRequestPacket | FUN_1430f3a70 / FUN_14319eb10 | same | not handled | none |
+| 0x2 → 0x2 | C→S | AreaDefinitionTransferShapePacket | FUN_14324bb00 / FUN_1432f89b0 | same | handled (Network/Handlers/AreaDefinitionHandler.cs:28; Network/Message/Model/AreaDefinitionMessages. | none |
+| 0x3 → 0x3 | C→S | AreaDefinitionUpdateDefinitionPacket | FUN_14324bcc0 / FUN_1432f8b70 | same | handled (Network/Handlers/AreaDefinitionHandler.cs:18; Network/Message/Model/AreaDefinitionMessages. | none |
+| 0x4 → 0x4 | C→S | AreaDefinitionBasePacket | FUN_14324b950 FUN_14324bcc0 / FUN_1432f8800 FUN_1432f8b70 | same | handled (Network/Handlers/AreaDefinitionHandler.cs:23; Network/Message/Model/AreaDefinitionMessages. | none |
+| 0x4 → 0x4 | C→S | AreaDefinitionRemoveDefinitionPacket | FUN_14324b950 / FUN_1432f8800 | same | handled (Network/Handlers/AreaDefinitionHandler.cs:23; Network/Message/Model/AreaDefinitionMessages. | none |
+| 0x6 → 0x6 | S→C | AreaDefinitionRequestResponsePacket | FUN_14324bfb0 / FUN_1432f8e60 | same | sent (Game/AreaDefinitions.cs:293) | none |
+| 0x7 → 0x7 | C→S | AreaDefinitionCreateTriggerAreaRequestPacket | FUN_1430f3a70 / FUN_14319eb10 | same | handled (Network/Handlers/AreaDefinitionHandler.cs:13; Network/Message/Model/AreaDefinitionMessages. | none |
 | 0x7 → 0x7 | S→C | BaseAreaDefinitionPacket | FUN_14324c130 FUN_14324b120 / FUN_1432f8fe0 FUN_1432f7fd0 | same | not sent | none |
-| 0x8 → 0x8 | S→C | AreaDefinitionCreateTriggerAreaResponsePacket | FUN_14324aa20 / FUN_1432f78d0 | same | not sent | none |
+| 0x8 → 0x8 | S→C | AreaDefinitionCreateTriggerAreaResponsePacket | FUN_14324aa20 / FUN_1432f78d0 | same | sent (Game/AreaDefinitions.cs:308) | none |
 
 ### 0xEC TerrainCell
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | S→C | BaseTerrainClientCellPacket | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | not sent | none |
 | 0x1 → 0x1 | C→S | TerrainCellPacketClientCellRequest | FUN_14309e870 / FUN_143149190 | same | handled (Network/Handlers/TerrainHandler.cs:20; Network/Message/Model/TerrainCellClientCellRequest.cs:10) | none |
@@ -2093,9 +2119,9 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0xED Prop
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| – → 0x1d | C→S | PropPacketDialogResponse | – / – | new | not handled (family handler default branch) (Network/Handlers/PropHandler.cs:22) | implement (0.695 only) |
+| – → 0x1d | C→S | PropPacketDialogResponse | – / – | new | handled (Network/Handlers/PropHandler.cs:101) | implement (0.695 only) |
 | 0x0 → 0x0 | S→C | PropBasePacket | FUN_142bb4c10 / FUN_142c4e420 | same | sent (Game/Props.cs:1124; Game/Props.cs:1164) | none |
 | 0x1 → 0x1 | C→S | PropAccessPacket | FUN_142f0a7d0 / FUN_142fa9500 | same | handled (Network/Handlers/PropHandler.cs:28) | none |
 | 0x2 → 0x2 | S→C | PropAccessReplyPacket | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | sent (Game/Props.cs:1673; Game/Props.cs:362; Game/Props.cs:368) | none |
@@ -2103,10 +2129,10 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 | 0x3 → 0x3 | C→S | PropSavePacket | FUN_142f0b880 / FUN_142faa5b0 | same | handled (Network/Handlers/PropHandler.cs:46) | none |
 | 0x4 → 0x4 | S→C | PropSaveReplyPacket | FUN_142f0c0e0 / FUN_142faae10 | same | sent (Game/Props.cs:759; Game/Props.cs:828; Game/Props.cs:848) | none |
 | 0x5 → 0x5 | C→S | PropPickUpPacket | FUN_142f0b4f0 / FUN_142faa220 | same | handled (Network/Handlers/PropHandler.cs:49) | none |
-| 0x6 → 0x6 | S→C | PropPickUpReplyPacket | FUN_142f09c10 / FUN_142fa8940 | value: reader same; new error 0xE Prop.PropPickupErrorPartialLootC... (Prop dispatcher FUN_142fba9f0 case 6) | not sent | new value only (server may send it) |
+| 0x6 → 0x6 | S→C | PropPickUpReplyPacket | FUN_142f09c10 / FUN_142fa8940 | value: reader same; new error 0xE Prop.PropPickupErrorPartialLootC... (Prop dispatcher FUN_142fba9f0 case 6) | sent (Game/Props.cs:1796 `Write((byte)(delete ? 8 : 6))`; checked by hand, phaseE3-stale F1) | new value only (server may send it) |
 | 0x7 → 0x7 | C→S | PropDeletePacket | FUN_142f0a9d0 / FUN_142fa9700 | same | handled (Network/Handlers/PropHandler.cs:50; Network/Handlers/PropHandler.cs:52) | none |
-| 0x8 → 0x8 | S→C | PropDeleteReplyPacket | FUN_142f09c10 / FUN_142fa8940 | same | not sent | none |
-| 0x9 → 0x9 | C→S | PropPacketRequestList | FUN_142f0b0b0 / FUN_142fa9de0 | same | family handler, sub not handled (Network/Handlers/PropHandler.cs:22) | none |
+| 0x8 → 0x8 | S→C | PropDeleteReplyPacket | FUN_142f09c10 / FUN_142fa8940 | same | sent (Game/Props.cs:1796 `Write((byte)(delete ? 8 : 6))`; checked by hand, phaseE3-stale F1) | none |
+| 0x9 → 0x9 | C→S | PropPacketRequestList | FUN_142f0b0b0 / FUN_142fa9de0 | same | handled (Network/Handlers/PropHandler.cs:116) | none |
 | 0xa → 0xa | S→C | PropPacketListReply | FUN_142f0bc80 / FUN_142faa9b0 | same | sent (runtime opcode_stats (trace/families; agent_packets/sent_s2c.tsv)) | none |
 | 0xb → 0xb | S→C | PropPacketVolumeReply | FUN_142f0be10 / FUN_142faab40 | same | sent (runtime opcode_stats (trace/families; agent_packets/sent_s2c.tsv)) | none |
 | 0xc → 0xc | C→S | PropProcessorStateNotificationPacket | FUN_142f0b6e0 / FUN_142faa410 | same | handled (Network/Handlers/PropHandler.cs:86) | none |
@@ -2118,7 +2144,7 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 | 0x14 → 0x14 | C→S | PropPacketEditPropTextRequest | FUN_143549e60 / FUN_1435fc680 | same | handled (Network/Handlers/PropHandler.cs:69) | none |
 | 0x15 → 0x15 | S→C | PropPacketEditPropTextReply | FUN_142f097d0 / FUN_142fa8500 | same | sent (Game/Props.cs:1038) | none |
 | 0x16 → 0x16 | C→S | PropPacketSetTintRequest | FUN_14347fbe0 / FUN_143531a80 | same | handled (Network/Handlers/PropHandler.cs:54) | none |
-| 0x17 → 0x17 | S→C | PropPacketAvailableTintsPacketReply | FUN_142f09c10 / FUN_142fa8940 | same | not sent | none |
+| 0x17 → 0x17 | S→C | PropPacketAvailableTintsPacketReply | FUN_142f09c10 / FUN_142fa8940 | same | sent (Props.SendTintList, answering 0x18: Network/Handlers/PropHandler.cs:67-69; by hand) | none |
 | 0x18 → 0x18 | C→S | PropPacketAvailableTintsPacketRequest | FUN_14347fa40 / FUN_1435318e0 | same | handled (Network/Handlers/PropHandler.cs:57) | none |
 | 0x19 → 0x19 | C→S | PropPacketSetPropName | FUN_14354a200 / FUN_1435fca20 | same | handled (Network/Handlers/PropHandler.cs:73) | none |
 | 0x1a → 0x1a | C→S | PropPacketSetPropEnable | FUN_14354a010 / FUN_1435fc830 | same | handled (Network/Handlers/PropHandler.cs:77) | none |
@@ -2129,16 +2155,16 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0xEE Projectiles
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | Projectiles::ProjectilePacketDebug | FUN_1430e2060 / FUN_14318d160 | same | not sent | none |
-| 0x1 → 0x1 | S→C | Projectiles::ProjectilePacketCreate | FUN_1430e1d10 / FUN_14318ce10 | same | not sent | none |
+| 0x1 → 0x1 | S→C | Projectiles::ProjectilePacketCreate | FUN_1430e1d10 / FUN_14318ce10 | same | sent (Game/Projectiles.cs:65 Create, from Combat/WeaponCombat.cs:729, Creatures.cs:1244 / 1293; HEAD, coverage.py 2026-10-26 + read) | none |
 | 0x2 → 0x2 | S→C | Projectiles::ProjectilePacketUpdate | FUN_1430e2380 / FUN_14318d480 | same | not sent | none |
-| 0x3 → 0x3 | S→C | Projectiles::ProjectilePacketDelete | FUN_1430e2220 / FUN_14318d320 | same | not sent | none |
+| 0x3 → 0x3 | S→C | Projectiles::ProjectilePacketDelete | FUN_1430e2220 / FUN_14318d320 | same | sent (Game/Projectiles.cs:109) | none |
 
 ### 0xEF PlacedEffectDebug
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | S→C | PlacedEffectDebugPacket | FUN_142eed420 / FUN_142f8c110 | same | not sent | none |
 | 0x2 → 0x2 | S→C | PlacedEffectCreatePacket | FUN_142eecf60 / FUN_142f8bc50 | same | not sent | none |
@@ -2146,11 +2172,11 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0xF0 Template
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| – → 0x1f | C→S | TemplatePacketPurchaseMissingTemplateMaterials | – / – | new | not handled (family handler default branch) (Network/Handlers/InteractionHandler.cs:185) | implement (0.695 only) |
-| – → 0x1d | C→S | TemplatePacketPurchaseTemplateMaterialsDataRequest | – / – | new | not handled (family handler default branch) (Network/Handlers/InteractionHandler.cs:185) | implement (0.695 only) |
-| – → 0x1e | S→C | TemplatePacketPurchaseTemplateMaterialsDataResponse | – / – | new | not sent | implement (0.695 only) |
+| – → 0x1f | C→S | TemplatePacketPurchaseMissingTemplateMaterials | – / – | new | handled (Game/Templates.cs:882) | implement (0.695 only) |
+| – → 0x1d | C→S | TemplatePacketPurchaseTemplateMaterialsDataRequest | – / – | new | handled (Game/Templates.cs:879) | implement (0.695 only) |
+| – → 0x1e | S→C | TemplatePacketPurchaseTemplateMaterialsDataResponse | – / – | new | sent (Game/DesignMaterials.cs:111) | implement (0.695 only) |
 | 0x1 → 0x1 | C→S | TemplatePacketClientListRequest | FUN_143059f60 / FUN_143101eb0 | same | handled (Game/Templates.cs:497) | none |
 | 0x3 → 0x3 | S→C | TemplatePacketSaveTemplateResponse | FUN_14305a870 / FUN_143102bd0 | body: TemplateBasicData without PropData list (FUN_1430ff530 vs 143058180; §B4) | sent (Game/Templates.cs:421; Game/Templates.cs:83) | per-build body |
 | 0x4 → 0x4 | C→S | TemplatePacketClientVoxelDataRequest | FUN_14305a2f0 / FUN_143102240 | same | handled (Game/Templates.cs:502) | none |
@@ -2161,31 +2187,31 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 | 0xb → 0xb | S→C | TemplatePacketClientResponseRenameTemplate | FUN_1430586c0 / FUN_1430ffa70 | same | sent (Game/Templates.cs:712; Game/Templates.cs:725) | none |
 | 0xc → 0xc | S→C | TemplatePacketUpdateTemplateResponse | FUN_14305a910 / FUN_143102c70 | body: TemplateBasicData without PropData list (§B4) | sent (Game/Templates.cs:249) | per-build body |
 | 0x11 → 0x11 | S→C | TemplatePacketEnvironmentAddOwnershipResponse | FUN_143058780 / FUN_1430ffb30 | same | sent (Game/Templates.cs:62) | none |
-| 0x12 → 0x12 | C→S | TemplatePacketClientGetInstanceDetailsRequest | FUN_143059db0 / FUN_143101d00 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:185) | none |
-| 0x13 → 0x13 | S→C | TemplatePacketEnvironmentInstanceDetailsResponse | – / – | body: carries TemplateBasicData (§B4, client side only) | not sent | (not implemented; 0.695 body differs) |
+| 0x12 → 0x12 | C→S | TemplatePacketClientGetInstanceDetailsRequest | FUN_143059db0 / FUN_143101d00 | same | handled (Game/Templates.cs:872) | none |
+| 0x13 → 0x13 | S→C | TemplatePacketEnvironmentInstanceDetailsResponse | – / – | body: carries TemplateBasicData (§B4, client side only) | sent (Game/TemplateInstances.cs:126 / 218; added by 8219f7c, NL2; by hand) | (not implemented; 0.695 body differs) |
 | 0x1b → 0x1b | C→S | TemplatePacketExportToItemRequest | FUN_14305a4f0 / FUN_143102440 | same | handled (Game/Templates.cs:512) | none |
 
 ### 0xF1 PacketClientFacialAnim
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | C→S | PacketClientFacialAnim | FUN_1433f95e0 / FUN_1434a71c0 | same | not handled | none |
 
 ### 0xF2 PacketZoneProximityFacialAnim
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | PacketZoneProximityFacialAnim | FUN_142bb1620 / FUN_142c4b190 | same | not sent | none |
 
 ### 0xF3 PacketClientFacialAnimSettings
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | C→S | PacketClientFacialAnimSettings | FUN_1432e2e70 / FUN_14338fc60 | same | not handled | none |
 
 ### 0xF4 VoxelConstruction
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | C→S | VoxelConstructionPacketAddTemporaryBlockRequest | FUN_1430b26c0 / FUN_14315c7e0 | same | handled (Network/Handlers/InteractionHandler.cs:176) | none |
 | 0x1 → 0x1 | S→C | VoxelConstructionPacketApplyDiffRequest | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | sent (Game/Building.cs:304; Game/Building.cs:336; Game/Building.cs:616) | none |
@@ -2194,7 +2220,7 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 | 0x4 → 0x4 | C→S | VoxelConstructionPacketClientOwnershipRequest | FUN_14307f4a0 / FUN_143129db0 | same | handled (Game/Terrain/VoxelOwnership.cs:41 RequestSub) | none |
 | 0x5 → 0x5 | S→C | VoxelConstructionPacketOffGridPasteClientRequest | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | not sent | none |
 | 0x6 → 0x6 | S→C | VoxelConstructionPacketClipboardData | FUN_1430b0d80 / FUN_14315b440 | same | sent (Game/Building.cs:290 ClipboardDataSub) | none |
-| 0x8 → 0x8 | S→C | VoxelConstructionPacketZoneUnknownPropList | FUN_1430b3240 / FUN_14315d360 | same | not sent | none |
+| 0x8 → 0x8 | S→C | VoxelConstructionPacketZoneUnknownPropList | FUN_1430b3240 / FUN_14315d360 | same | sent (Game/BuildingClipboard.cs:861) | none |
 | 0x9 → 0x9 | S→C | VoxelConstructionPacketZoneMissingPropList | FUN_1430b31a0 / FUN_14315d2c0 | same | sent (Game/BuildingClipboard.cs:550) | none |
 | 0xa → 0xa | S→C | VoxelConstructionPacketResponseObserved | FUN_1430b11e0 / FUN_14315b8a0 | same | sent (Game/Building.cs:520) | none |
 | 0x16 → 0x16 | S→C | VoxelConstructionPacketEnvOwnershipUpToDateResponse | FUN_1430b3060 / FUN_14315d180 | same | sent (Game/Terrain/VoxelOwnership.cs:292) | none |
@@ -2205,7 +2231,7 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0xF5 Palette
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | C→S | PalettePacketCreate | FUN_142e723f0 / FUN_142f10f80 | same | family handler, sub not handled (Game/Palettes.cs:78) | none |
 | 0x2 → 0x2 | C→S | PalettePacketDelete | FUN_142e72590 / FUN_142f11120 | same | family handler, sub not handled (Game/Palettes.cs:78) | none |
@@ -2215,19 +2241,19 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0xF6 PacketCharacterSelectSessionRequest
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0xfffffffe → 0xfffffffe | C→S | PacketCharacterSelectSessionRequest | FUN_142ba96d0 / FUN_142c43250 | same | family handler, sub not handled (Network/Handlers/CharacterSelectHandler.cs:36) | none |
 
 ### 0xF7 PacketCharacterSelectSessionResponse
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | PacketCharacterSelectSessionResponse | FUN_142bb57e0 / FUN_142c4eff0 | same | sent (Network/Message/Model/CharacterSelectSession.cs:22) | none |
 
 ### 0xF8 Mail
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | C→S | PacketMailComposeRequest | FUN_143583b50 / FUN_143637350 | same | handled (Game/Mail.cs:95) | none |
 | 0x4 → 0x5 | S→C | PacketMailComposeResponse | FUN_1432c8190 / FUN_143374fc0 | renumbered | sent (Game/Mail.cs:370) | use sub 0x5 for 0.695 |
@@ -2249,12 +2275,12 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0xF9 Claims
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | C→S | ClaimPacketIdSnapshotRestoreRequest | FUN_142d051a0 / FUN_142da50e0 | same | handled (Network/Handlers/ClaimsHandler.cs:14) | none |
-| – → 0x63 | C→S | ClaimsPacketPlayerEnteredClaim | – / – | new | not handled (family handler default branch) (Network/Handlers/ClaimsHandler.cs:14) | implement (0.695 only) |
-| – → 0x45 | C→S | ClaimsPacketSetAdventureFlags | – / – | new | not handled (family handler default branch) (Network/Handlers/ClaimsHandler.cs:14) | implement (0.695 only) |
-| – → 0x46 | C→S | ClaimsPacketStartClaimPlacement | – / – | new | not handled (family handler default branch) (Network/Handlers/ClaimsHandler.cs:14) | implement (0.695 only) |
+| – → 0x63 | C→S | ClaimsPacketPlayerEnteredClaim | – / – | new | handled (Game/Claims.cs:233 PlayerEnteredClaimSub) | implement (0.695 only) |
+| – → 0x45 | C→S | ClaimsPacketSetAdventureFlags | – / – | new | handled (Game/Claims.cs:244 SetAdventureFlagsSub) | implement (0.695 only) |
+| – → 0x46 | C→S | ClaimsPacketStartClaimPlacement | – / – | new | handled (Game/Claims.cs:226 StartClaimPlacementSub) | implement (0.695 only) |
 | 0x1 → 0x1 | S→C | ClaimsPacketsIdSendAllClaimBasicInfo | FUN_142d08ce0 / FUN_142da9170 | same | sent (Game/Claims.cs:349) | none |
 | 0x2 → 0x2 | S→C | ClaimsPacketsIdUpdateClaimBasicInfo | FUN_142d08e20 / FUN_142da92b0 | same | sent (Game/Claims.cs:475) | none |
 | 0x3 → 0x3 | S→C | ClaimsPacketsIdUpdateClaimBasicInfoAndAOI | FUN_142d08ef0 / FUN_142da9380 | body: claim record: site-game trailing u32 + trailing u64 adventure flags (FUN_142da1a50 / 142d9fc20; §B5) | not sent | (not implemented; 0.695 body differs) |
@@ -2266,11 +2292,11 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 | 0x9 → 0x9 | S→C | ClaimsPacketEditClaimItemData | FUN_142d00c30 / FUN_142da0a40 | body: claim record + site-game changes (§B5) | sent (Game/Claims.cs:616) | per-build body |
 | 0xa → 0xa | S→C | ClaimsPacketUpkeepManagmentData | FUN_142d014e0 / FUN_142da12f0 | same | sent (Game/Claims.cs:560) | none |
 | 0xc → 0xc | S→C | ClaimsPacketAddUpkeepFundsResponse | FUN_142d007e0 / FUN_142da05f0 | same | not sent | none |
-| 0xd → 0xd | S→C | ClaimsPacketIdSendInventoryDetails | FUN_142d00f60 / FUN_142da0d70 | same | not sent | none |
+| 0xd → 0xd | S→C | ClaimsPacketIdSendInventoryDetails | FUN_142d00f60 / FUN_142da0d70 | same | sent (Game/ClaimInventory.cs:244) | none |
 | 0xf → 0xf | S→C | ClaimsPacketIdSendClaimsByOwner | FUN_142d08870 / FUN_142da8d00 | same | sent (Game/Claims.cs:662) | none |
 | 0x10 → 0x10 | S→C | ClaimsPacketResultResponse | FUN_142d012c0 / FUN_142da10d0 | same | sent (Game/Claims.cs:1208) | none |
 | 0x11 → 0x11 | S→C | ClaimsPacketIdRecievePropExclusionArea | FUN_142d00df0 / FUN_142da0c00 | same | sent (Game/Claims.cs:325) | none |
-| 0x12 → 0x12 | S→C | ClaimsPacketLostClaimServerConnection | FUN_142d089c0 / FUN_142da8e50 | same | not sent | none |
+| 0x12 → 0x12 | S→C | ClaimsPacketLostClaimServerConnection | FUN_142d089c0 / FUN_142da8e50 | same | sent (Game/Claims.cs:833 LostClaimServerConnectionSub) | none |
 | 0x13 → 0x13 | S→C | ClaimPacketIdSnapshotSaveConfirmRequest | FUN_142d08350 / FUN_142da87e0 | same | not sent | none |
 | 0x14 → 0x14 | S→C | ClaimPacketIdSnapshotSaveResponse | FUN_142d083c0 / FUN_142da8850 | same | not sent | none |
 | 0x15 → 0x15 | S→C | ClaimPacketIdSnapshotRestoreConfirmRequest | FUN_142d08270 / FUN_142da8700 | same | not sent | none |
@@ -2306,56 +2332,56 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 | 0x42 → 0x42 | C→S | ClaimsPacketSetMusicOverrideId | FUN_142d075e0 / FUN_142da7720 | same | handled (Game/Claims.cs:309) | none |
 | 0x43 → 0x43 | C→S | ClaimsPacketSetAdventureStatus | FUN_142d06c90 / FUN_142da6dd0 | same | handled (Game/Claims.cs:239) | none |
 | 0x44 → 0x44 | C→S | ClaimsPacketOnClientRateClaim | – / – | same: sub 0x44 below the insertion; builder is the claims handler (its closure diffs are the §B5 readers) | handled (Game/Claims.cs:319) | none |
-| 0x5e → 0x60 | C→S | ClaimsPacketIdDebugAddItemClaim | FUN_1432dfd00 / FUN_14338caf0 | renumbered | family handler, sub not handled (Network/Handlers/ClaimsHandler.cs:14) | (not implemented; 0.695 number 0x60) |
+| 0x5e → 0x60 | C→S | ClaimsPacketIdDebugAddItemClaim | FUN_1432dfd00 / FUN_14338caf0 | renumbered | handled (Game/Claims.cs:402) | (not implemented; 0.695 number 0x60) |
 | 0x5f → 0x61 | S→C | ClaimsPacketUpdatePropCategoryCount | FUN_142d08c00 / FUN_142da9090 | renumbered | sent (Game/PropLimits.cs:78) | use sub 0x61 for 0.695 |
 
 Id-table entries with no client class (no reader / writer compiled; server-to-server or unused): cClaimPacketIdInstancedGameUpdate 0x17→0x17; cClaimPacketIdSnapshotRestoreRequest 0x3a→0x3a; cClaimsPacketIdClaimConfirmMoveItemToPlayer 0xe→0xe; cClaimsPacketIdClaimMoveItemToPlayerOnZone 0x45→0x47; cClaimsPacketIdClearAllProceduralProps 0x47→0x49; cClaimsPacketIdCopyClaimScreenshotsRequest 0x50→0x52; cClaimsPacketIdDebugListClaims 0x5c→0x5e; cClaimsPacketIdDebugPackClaims 0x5d→0x5f; cClaimsPacketIdDebugPlaceClaim 0x5b→0x5d; cClaimsPacketIdFlagContestWinnerRequest 0x3f→0x3f; cClaimsPacketIdGuidToNameRequest 0x56→0x58; cClaimsPacketIdGuidToNameResponse 0x57→0x59; cClaimsPacketIdInventoryListDebugRequest 0x36→0x36; cClaimsPacketIdNameToGuidRequest 0x54→0x56; cClaimsPacketIdNameToGuidResponse 0x55→0x57; cClaimsPacketIdPlayerDeleted 0x60→0x62; cClaimsPacketIdPlayerEnteredClaim –→0x63; cClaimsPacketIdRecoverFlag 0x31→0x31; cClaimsPacketIdRequestClaimPurchase 0x52→0x54; cClaimsPacketIdRequestClaimRemoved 0x53→0x55; cClaimsPacketIdRequestPlayerUpkeepInfo 0x51→0x53; cClaimsPacketIdRequestUpkeepManagmentData 0x20→0x20; cClaimsPacketIdResetTemporaryTerrainDamage 0x46→0x48; cClaimsPacketIdRevertAllTerrain 0x34→0x34; cClaimsPacketIdRevertTerrain 0x33→0x33; cClaimsPacketIdSaveBasicInfo 0x4f→0x51; cClaimsPacketIdSellClaim 0x32→0x32; cClaimsPacketIdSendPlayerUpkeepInfo 0x4c→0x4e; cClaimsPacketIdSendPlayerUpkeepUpdatePayment 0x4d→0x4f; cClaimsPacketIdSendPlayerUpkeepUpdateReminder 0x4e→0x50; cClaimsPacketIdStartClaimPlacement –→0x46; cClaimsPacketIdStatusChange 0x5a→0x5c; cClaimsPacketIdSubmitBasicPermissionsData 0x28→0x28; cClaimsPacketIdSubmitEditClaimItemData 0x1f→0x1f; cClaimsPacketIdSubmitUpkeepManagmentData 0x21→0x21; cClaimsPacketIdUngroup 0x26→0x26; cClaimsPacketIdUpdateAdventureFlags –→0x45; cClaimsPacketIdUpkeepReminder 0xb→0xb; cClaimsPacketIdZoneAddAllClaims 0x4b→0x4d; cClaimsPacketIdZoneAddAllClaimsRequest 0x4a→0x4c; cClaimsPacketIdZoneAddClaim 0x48→0x4a; cClaimsPacketIdZoneRemoveClaim 0x49→0x4b; cClaimsPacketsIdBlockVeins 0x59→0x5b; cClaimsPacketsIdUpdateClaimBasicServerInfo 0x58→0x5a
 
 ### 0xFB LootPinata
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| 0x0 → 0x0 | S→C | BaseLootPinataPacket | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | not sent | none |
+| 0x0 → 0x0 | S→C | BaseLootPinataPacket | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | sent (Game/LootPinatas.cs:157) | none |
 | 0x1 → 0x1 | S→C | LootPinataPacketSpawnLoot | FUN_1430775a0 / FUN_143121ec0 | same | sent (Game/LootPinatas.cs:199) | none |
 | 0x2 → 0x2 | S→C | LootPinataPacketRemoveLoot | FUN_1430774e0 / FUN_143121e00 | same | sent (Game/LootPinatas.cs:212) | none |
-| 0x4 → 0x4 | S→C | LootPinataPacketNotifyOwnerlessLootClaimed | FUN_143077340 / FUN_143121c60 | same | not sent | none |
+| 0x4 → 0x4 | S→C | LootPinataPacketNotifyOwnerlessLootClaimed | FUN_143077340 / FUN_143121c60 | same | sent (Game/LootPinatas.cs:229) | none |
 | 0x5 → 0x5 | C→S | LootPinataPacketPickupLoot | FUN_143077970 / FUN_143122290 | same | handled (Game/LootPinatas.cs:36 PickupLootSub) | none |
 | 0x5 → 0x5 | S→C | LootPinataPacketPickupLootResponse | FUN_143077400 / FUN_143121d20 | same | sent (Game/LootPinatas.cs:36 PickupLootSub) | none |
-| 0x7 → 0x7 | C→S | LootPinataPacketRequestClaimOwnerlessLoot | FUN_143077b60 / FUN_143122480 | same | family handler, sub not handled (Network/Handlers/InteractionHandler.cs:255) | none |
+| 0x7 → 0x7 | C→S | LootPinataPacketRequestClaimOwnerlessLoot | FUN_143077b60 / FUN_143122480 | same | handled (Game/LootPinatas.cs:38 ClaimOwnerlessLootSub) | none |
 
 Id-table entries with no client class (no reader / writer compiled; server-to-server or unused): cLootPinataPacketIDRequestByItem 0x6→0x6; cLootPinataPacketIdPickupLootResponse 0x3→0x3
 
 ### 0xFC PacketTeleportRequestLocations
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x2 → 0x2 | C→S | PacketTeleportRequestLocations | FUN_1430c3d90 / FUN_14316eed0 | same | handled (Game/Travel.cs:27) | none |
 | 0x3 → 0x3 | S→C | PacketTeleportLocations | FUN_1430c4150 / FUN_14316f290 | same | sent (Game/Landscapes.cs:232) | none |
 | 0x4 → 0x4 | C→S | PacketTeleportRequest | FUN_1430c3bf0 / FUN_14316ed30 | same | handled (Game/Travel.cs:30) | none |
-| 0x5 → 0x5 | S→C | PacketTeleportPostQueueNotify | FUN_1430c2960 / FUN_14316daa0 | same | not sent | none |
-| 0x6 → 0x6 | C→S | PacketTeleportToQueuedLocation | FUN_1430c3f30 / FUN_14316f070 | same | family handler, sub not handled (Network/Handlers/MiscHandler.cs:120) | none |
-| 0x7 → 0x7 | C→S | PacketTeleportCancelQueue | FUN_1430c3140 / FUN_14316e280 | same | family handler, sub not handled (Network/Handlers/MiscHandler.cs:120) | none |
+| 0x5 → 0x5 | S→C | PacketTeleportPostQueueNotify | FUN_1430c2960 / FUN_14316daa0 | same | sent (Game/TravelQueue.cs:238) | none |
+| 0x6 → 0x6 | C→S | PacketTeleportToQueuedLocation | FUN_1430c3f30 / FUN_14316f070 | same | handled (Game/Travel.cs:88) | none |
+| 0x7 → 0x7 | C→S | PacketTeleportCancelQueue | FUN_1430c3140 / FUN_14316e280 | same | handled (Game/Travel.cs:89) | none |
 | 0x8 → 0x8 | C→S | PacketTeleportIntraZoneRequest | FUN_1430c32e0 / FUN_14316e420 | same | handled (Game/Travel.cs:41) | none |
-| 0x9 → 0x9 | C→S | PacketTeleportPlayEffectRequest | FUN_1430c38a0 / FUN_14316e9e0 | same | family handler, sub not handled (Network/Handlers/MiscHandler.cs:120) | none |
-| 0xa → 0xa | C→S | PacketTeleportManagedRequest | FUN_1430c3550 / FUN_14316e690 | same | family handler, sub not handled (Network/Handlers/MiscHandler.cs:120) | none |
+| 0x9 → 0x9 | C→S | PacketTeleportPlayEffectRequest | FUN_1430c38a0 / FUN_14316e9e0 | same | handled (Game/Travel.cs:80) | none |
+| 0xa → 0xa | C→S | PacketTeleportManagedRequest | FUN_1430c3550 / FUN_14316e690 | same | handled (Game/Travel.cs:84) | none |
 | 0xb → 0xb | C→S | PacketTeleportRandomUndergroundRequest | FUN_1430c3a40 / FUN_14316eb80 | same | handled (Game/Travel.cs:34) | none |
 | 0xd → 0xd | C→S | PacketTeleportNextUndergroundReply | FUN_1430c36f0 / FUN_14316e830 | same | handled (Game/Travel.cs:37) | none |
 
 ### 0xFD PropUpdateInteractionState
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | C→S | PropUpdateInteractionStatePacket | FUN_142b94680 FUN_143002320 / FUN_142c2e170 FUN_1430a7250 | same | handled (Game/PropSettings.cs:241) | none |
 
 ### 0xFE PacketPlayerStudioRegistered
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | PacketPlayerStudioRegistered | FUN_142bb0fd0 / FUN_142c4ab40 | same | sent (Game/PlayerManager.cs:95) | none |
 
 ### 0xFF Chest
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | PacketChestAddItem | FUN_142da8e70 / FUN_142e46e40 | same | sent (Game/Chests.cs:113; Game/Chests.cs:159) | none |
 | – → – | S→C | PacketChestDeleteItem | FUN_142da8f80 / FUN_142e46f50 | same | sent (Game/Chests.cs:113; Game/Chests.cs:159) | none |
@@ -2368,7 +2394,7 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x100 DebugDraw
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | S→C | PacketDebugDrawSphere | FUN_1432c5930 / FUN_143372760 | same | not sent | none |
 | 0x2 → 0x2 | S→C | PacketDebugDrawBox | FUN_1432c55f0 / FUN_143372420 | same | not sent | none |
@@ -2380,19 +2406,19 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x102 FogOfWarZoneDataRequest
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | C→S | FogOfWarZoneDataRequestPacket | FUN_14341c8e0 / FUN_1434ca580 | same | not handled | none |
 
 ### 0x103 FogOfWarZoneDataReply
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0xffffffff → 0xffffffff | S→C | FogOfWarZoneDataReplyPacket | FUN_142bafc00 / FUN_142c49770 | same | not sent | none |
 
 ### 0x104 SocialShare
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | SocialShare::BaseSocialSharePacket | FUN_142bae6f0 / FUN_142c48260 | same | not sent | none |
 | 0x1 → 0x1 | C→S | SocialShare::SocialSharePacketGetProviderStatusRequest | FUN_1430d6ab0 / FUN_143181bb0 | same | not handled | none |
@@ -2402,45 +2428,45 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x105 HeroicMovement
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| 0x1 → 0x1 | C→S | HeroicMovementPacketFireGrapplingHook | FUN_142b86630 FUN_142dc0f10 / FUN_142c1fe00 FUN_142e5ede0 | same | not handled | none |
-| 0x2 → 0x2 | C→S | HeroicMovementPacketSetHeroicMovement | FUN_142bafda0 FUN_142de6d00 / FUN_142c49910 FUN_142e84ce0 | same | not handled | none |
-| 0x3 → 0x3 | C→S | HeroicMovementPacketSwimmingUpdate | FUN_142b867d0 FUN_1434dc950 / FUN_142c1ffa0 FUN_14358c410 | same | not handled | none |
-| 0x4 → 0x4 | C→S | HeroicMovementPacketTerminateGrappleHookEffects | FUN_142dc1290 / FUN_142e5f160 | same | not handled | none |
-| 0x5 → 0x5 | C→S | HeroicMovementPacketHeroicMovement | FUN_142dc10b0 / FUN_142e5ef80 | same | not handled | none |
+| 0x1 → 0x1 | C→S | HeroicMovementPacketFireGrapplingHook | FUN_142b86630 FUN_142dc0f10 / FUN_142c1fe00 FUN_142e5ede0 | same | handled (Game/HeroicMovement.cs:148) | none |
+| 0x2 → 0x2 | C→S | HeroicMovementPacketSetHeroicMovement | FUN_142bafda0 FUN_142de6d00 / FUN_142c49910 FUN_142e84ce0 | same | handled (Game/HeroicMovement.cs:155) | none |
+| 0x3 → 0x3 | C→S | HeroicMovementPacketSwimmingUpdate | FUN_142b867d0 FUN_1434dc950 / FUN_142c1ffa0 FUN_14358c410 | same | handled (Game/HeroicMovement.cs:158) | none |
+| 0x4 → 0x4 | C→S | HeroicMovementPacketTerminateGrappleHookEffects | FUN_142dc1290 / FUN_142e5f160 | same | handled (Game/HeroicMovement.cs:152) | none |
+| 0x5 → 0x5 | C→S | HeroicMovementPacketHeroicMovement | FUN_142dc10b0 / FUN_142e5ef80 | same | handled (Game/HeroicMovement.cs:161) | none |
 
 Id-table entries with no client class (no reader / writer compiled; server-to-server or unused): cHeroicMovementPacketTypeNone 0x0→0x0
 
 ### 0x107 0x107
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| 0x1 → 0x1 | C→S | MarketplaceImagePacketUploadRequest | FUN_1431408c0 / FUN_1431eb2e0 | same | not handled | none |
+| 0x1 → 0x1 | C→S | MarketplaceImagePacketUploadRequest | FUN_1431408c0 / FUN_1431eb2e0 | same | handled (Game/Templates.cs:985 HandleImage `SubOpcode == 1`; HEAD, coverage.py 2026-10-26 + read) | none |
 
 ### 0x109 ProceduralDataMonitor
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| – → – | C→S | ProceduralDataMonitorPacketUpdateRequest | FUN_143159870 / FUN_143204290 | same | not handled | none |
+| – → – | C→S | ProceduralDataMonitorPacketUpdateRequest | FUN_143159870 / FUN_143204290 | same | handled (Game/AdminMonitor.cs:147) | none |
 
 ### 0x10A ProceduralDataMonitor
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| – → – | S→C | ProceduralDataMonitorPacketUpdateResponse | FUN_142bb4ba0 / FUN_142c4e3b0 | same | not sent | none |
+| – → – | S→C | ProceduralDataMonitorPacketUpdateResponse | FUN_142bb4ba0 / FUN_142c4e3b0 | same | sent (Game/AdminMonitor.cs:162) | none |
 
 ### 0x10B ItemReview
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | C→S | ItemReview::PacketOptInAccount | FUN_14353a2f0 / FUN_1435ec2c0 | same | not handled | none |
 
 ### 0x10C WorldEditing
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| – → 0x8 | S→C | WorldEditingPlayEffectPacket | – / – | new | not sent | implement (0.695 only) |
+| – → 0x8 | S→C | WorldEditingPlayEffectPacket | – / – | new | sent (Game/VoxelDestruction.cs:252-256 PlayEffect; by hand) | implement (0.695 only) |
 | 0x1 → 0x1 | C→S | WorldEditingBoxUpdatePacket | FUN_142fdcd10 FUN_142fdf050 / FUN_14307ca90 FUN_14307ee00 | same | handled (Game/WorldEditing.cs:162) | none |
 | 0x2 → 0x2 | C→S | WorldEditingSphereUpdatePacket | FUN_142fdc1c0 FUN_142fdd4d0 / FUN_14307bee0 FUN_14307d250 | same | handled (Game/WorldEditing.cs:163) | none |
 | 0x3 → 0x3 | C→S | WorldEditingShapeUpdatePacket | FUN_142fdc110 FUN_142fdd330 / FUN_14307be30 FUN_14307d0b0 | same | handled (Game/WorldEditing.cs:164) | none |
@@ -2451,13 +2477,13 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x10D InstancedGame
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| – → 0x18 | C→S | InstancedGameAddOrRemoveRuleRequestPacket | – / – | new | not handled (family handler default branch) (Game/InstancedGames.cs:737) | implement (0.695 only) |
-| – → 0xd | C→S | InstancedGameGetConfigurationRequestPacket | – / – | new | not handled; the number 0xd is the 0.589 meaning on the server (Game/InstancedGames.Editor.cs:308 SubGetConfiguration) | implement (0.695 only) |
-| – → 0x19 | C→S | InstancedGameMatchmakingRequest | – / – | new | not handled (family handler default branch) (Game/InstancedGames.cs:737) | implement (0.695 only) |
-| – → 0x1a | S→C | InstancedGameMatchmakingUpdate | – / – | new | not sent | implement (0.695 only) |
-| – → 0x8 | C→S | InstancedGameRequestJoinTeamPacket | – / – | new | not handled: sub 8 Request handled, but no Request type 9 (Game/InstancedGames.cs:752-789) | implement (0.695 only) |
+| – → 0x18 | C→S | InstancedGameAddOrRemoveRuleRequestPacket | – / – | new | handled (Game/InstancedGames.Rework.cs:425 `sub != SubAddOrRemoveRule`; by hand) | implement (0.695 only) |
+| – → 0xd | C→S | InstancedGameGetConfigurationRequestPacket | – / – | new | handled (Game/InstancedGames.Rework.cs:417 `sub == SubGetConfigurationRequest` (0x0D, 0.695 number); by hand) | implement (0.695 only) |
+| – → 0x19 | C→S | InstancedGameMatchmakingRequest | – / – | new | handled (Game/InstancedGames.Finder.cs:169; by hand) | implement (0.695 only) |
+| – → 0x1a | S→C | InstancedGameMatchmakingUpdate | – / – | new | sent (Game/InstancedGames.Finder.cs:609 SubMatchmakingUpdate; by hand) | implement (0.695 only) |
+| – → 0x8 | C→S | InstancedGameRequestJoinTeamPacket | – / – | new | handled (Game/InstancedGames.cs:44 SubRequest) | implement (0.695 only) |
 | 0x0 → 0x0 | S→C | BaseInstancedGamePacket | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | sent (Game/InstancedGames.Editor.cs:104; Game/InstancedGames.Editor.cs:126) | none |
 | 0x2 → 0x2 | S→C | InstancedGameAdminMonitorPacket | FUN_143427160 / FUN_1434d6be0 | same | not sent | none |
 | 0x3 → 0x3 | S→C | InstancedGameScoreboardPacket | FUN_143427ea0 / FUN_1434d7b40 | same | sent (Game/InstancedGames.cs:35 SubScoreboard) | none |
@@ -2475,16 +2501,16 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 | 0xe → 0xf | C→S | InstancedGameSetConfigurationRequestPacket | – / – | renumbered+body: same shapes as the response (writer FUN_1434d6620; §B7) | handled (Game/InstancedGames.Editor.cs:308 SubSetConfiguration) | use sub 0xf for 0.695 + body |
 | 0xf → 0x10 | C→S | InstancedGameStartRequest | FUN_14342b420 / FUN_1434db7e0 | renumbered | handled (Game/InstancedGames.Editor.cs:35 SubEnableGame) | use sub 0x10 for 0.695 |
 | 0x10 → 0x11 | C→S | InstancedGameEndRequest | FUN_14342a560 / FUN_1434da430 | renumbered | handled (Game/InstancedGames.Editor.cs:35 SubDisableGame) | use sub 0x11 for 0.695 |
-| 0x11 → 0x12 | S→C | InstancedGamePropStatePacket | FUN_14342bd10 / FUN_1434dc150 | renumbered+body: entry + trailing u64 (FUN_1434d77c0; §B6) | not sent | (not implemented; 0.695 number 0x12) + body |
-| 0x12 → 0x13 | S→C | InstancedGamePropInteractionPacket | FUN_143427900 / FUN_1434d7570 | renumbered | not sent | (not implemented; 0.695 number 0x13) |
-| 0x13 → 0x14 | S→C | InstancedGamePlayerRemovalPacket | FUN_14342bb70 / FUN_1434dbfb0 | renumbered | not sent | (not implemented; 0.695 number 0x14) |
+| 0x11 → 0x12 | S→C | InstancedGamePropStatePacket | FUN_14342bd10 / FUN_1434dc150 | renumbered+body: entry + trailing u64 (FUN_1434d77c0; §B6) | sent (Game/InstancedGames.cs:44 SubPropState) | (not implemented; 0.695 number 0x12) + body |
+| 0x12 → 0x13 | S→C | InstancedGamePropInteractionPacket | FUN_143427900 / FUN_1434d7570 | renumbered | sent (Game/InstancedGames.cs:44 SubPropInteraction) | (not implemented; 0.695 number 0x13) |
+| 0x13 → 0x14 | S→C | InstancedGamePlayerRemovalPacket | FUN_14342bb70 / FUN_1434dbfb0 | renumbered | sent (Game/InstancedGames.cs:44 SubPlayerRemoval) | (not implemented; 0.695 number 0x14) |
 | 0x14 → 0x15 | S→C | InstancedGameTeamMembersPacket | FUN_14342bf40 / FUN_1434dc380 | renumbered | sent (Game/InstancedGames.cs:35 SubTeamMembers) | use sub 0x15 for 0.695 |
 | 0x15 → 0x16 | C→S | InstancedGameObserverRegistrationPacket | FUN_143427790 FUN_14342a710 / FUN_1434d7400 FUN_1434da930 | renumbered | handled (Game/InstancedGames.cs:741) | use sub 0x16 for 0.695 |
 | 0x16 → 0x17 | S→C | InstancedGameUpdatePlayerFlagsPacket | FUN_143428230 / FUN_1434d7ed0 | renumbered | not sent | (not implemented; 0.695 number 0x17) |
 
 ### 0x111 ObjectScripting
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | S→C | ObjectScriptingPacketSupportedObjectsResponse | FUN_142ea6b60 / FUN_142f45700 | same | sent (Game/StoryTools.cs:1106) | none |
 | 0x2 → 0x2 | S→C | ObjectScriptingPacketSupportedEventsResponse | FUN_142ea4580 / FUN_142f43120 | same | sent (Game/StoryTools.cs:940) | none |
@@ -2511,7 +2537,7 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x112 PacketClaimVendorSetPriceRequest
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | S→C | PacketClaimVendorUpdateInventory | FUN_1432cc620 / FUN_143379450 | same | sent (Game/Vendors.cs:48 UpdateInventorySub) | none |
 | 0x2 → 0x2 | C→S | PacketClaimVendorSetPriceRequest | FUN_1432cc0d0 / FUN_143378f00 | same | handled (Game/Vendors.cs:171) | none |
@@ -2524,42 +2550,42 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x113 WarpNetwork
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x2 → 0x2 | S→C | WarpNetwork::WarpNetworkZoneNetworkPacket | FUN_1434504c0 / FUN_1435025c0 | same | sent (Game/WarpNetwork.cs:202) | none |
 | 0x4 → 0x4 | C→S | WarpNetwork::WarpNetworkClientRequestPacket | FUN_143450bb0 / FUN_143502cb0 | same | handled (Network/Handlers/MiscHandler.cs:115) | none |
 
 ### 0x114 PacketCorrectNpcHeights
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | PacketCorrectNpcHeights | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | not sent | none |
 
 ### 0x115 KnownProp
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | S→C | KnownPropPacketAddPropResponse | FUN_142e65310 / FUN_142f03ea0 | same: reader same; only the UI filler 14306bea0→1431167c0 differs (struct offsets) | sent (Game/RecipeBook.cs:182) | none |
 | 0x2 → 0x2 | C→S | KnownPropPacketCreatePropItemRequest | FUN_142e648b0 / FUN_142f03440 | same | not handled | none |
 
 ### 0x116 ArtData
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1 → 0x1 | S→C | ArtDataPacketTintDefinitionManagerData | FUN_142bae270 / FUN_142c47de0 | same | not sent | none |
 
 ### 0x117 Tool
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| – → – | S→C | ToolPacketUndoStackChange | FUN_1433b4760 / FUN_143462760 | same | not sent | none |
-| 0x1 → 0x1 | C→S | ToolPacketActivate | FUN_1433a5960 / FUN_143452ac0 | same | not handled | none |
+| – → – | S→C | ToolPacketUndoStackChange | FUN_1433b4760 / FUN_143462760 | same | sent (Game/Building.cs:207-221; runtime "out" in opcode_stats; by hand) | none |
+| 0x1 → 0x1 | C→S | ToolPacketActivate | FUN_1433a5960 / FUN_143452ac0 | same | handled (Game/Building.Tools.cs:74) | none |
 
 Id-table entries with no client class (no reader / writer compiled; server-to-server or unused): cToolPacketUndoStackChange 0x2→0x2
 
 ### 0x118 ContentManagement
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x1b → 0x1b | C→S | ContentManagement::ContentPacketCommandGoto | FUN_143446e80 / FUN_1434f8f80 | same | not handled | none |
 | 0x1b → 0x1b | C→S | ContentManagement::ContentPacketCommandPackageCreate | FUN_1434470c0 / FUN_1434f91c0 | same | not handled | none |
@@ -2577,13 +2603,13 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x11A 0x11A
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | BaseDesignBasedStateMachinePacketPacket | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | not sent | none |
 
 ### 0x11B Interaction
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | 0x0 → 0x0 | S→C | BaseInteractionPacket | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | not sent | none |
 | 0x1 → 0x1 | S→C | InteractionStartPacket | FUN_1433226b0 / FUN_1433cf490 | same | not sent | none |
@@ -2594,16 +2620,16 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### 0x11C CharacterCustomization
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
-| – → 0x4 | S→C | CharacterCustomizationPacketEquippedAttachmentReply | – / – | new | not sent | implement (0.695 only) |
-| – → 0x3 | C→S | CharacterCustomizationPacketEquippedAttachmentRequest | – / – | new | not handled (family handler default branch) (Game/Barbershop.cs:34) | implement (0.695 only) |
+| – → 0x4 | S→C | CharacterCustomizationPacketEquippedAttachmentReply | – / – | new | sent (Game/Barbershop.cs:130; Game/Unlockers.cs:203) | implement (0.695 only) |
+| – → 0x3 | C→S | CharacterCustomizationPacketEquippedAttachmentRequest | – / – | new | handled (Game/Barbershop.cs:45) | implement (0.695 only) |
 | 0x1 → 0x1 | C→S | CharacterCustomizationPacketPlayerSet | FUN_142ffd830 / FUN_1430a0a80 | body: C→S + two trailing u32 (base-actor id, 0): writer FUN_1430a0530 vs template FUN_142ffd830 (functions-695 B5, verified) | handled (Game/Barbershop.cs:37) | per-build body |
-| 0x2 → 0x2 | S→C | CharacterCustomizationPacketAddKnowledgeResponse | FUN_1435d77f0 / FUN_14368a5d0 | same | not sent | none |
+| 0x2 → 0x2 | S→C | CharacterCustomizationPacketAddKnowledgeResponse | FUN_1435d77f0 / FUN_14368a5d0 | same | sent (Game/Unlockers.cs:222) | none |
 
 ### Gateway
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | C→S | Gateway::ExternalPackets::PacketLoginRequest | FUN_1439924f0 / FUN_143a4a3d0 | same | see Login/Gateway | none |
 | – → – | C→S | Gateway::ExternalPackets::PacketLogout | FUN_143992380 / FUN_143a4a260 | same | see Login/Gateway | none |
@@ -2614,7 +2640,7 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### Login
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | Login::ExternalPackets::PacketCharacterCreateReply | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | see Login/Gateway | none |
 | – → – | C→S | Login::ExternalPackets::PacketCharacterCreateRequest | FUN_14399ac60 / FUN_143a52b40 | same | see Login/Gateway | none |
@@ -2638,7 +2664,7 @@ Id-table entries with no client class (no reader / writer compiled; server-to-se
 
 ### RemoteAssetDelivery
 
-| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (0.589 numbering) | Change for 0.695 |
+| Sub 589 → 695 | Dir | Class | Client 589 / 695 | 0.695 status | Emulator (HEAD 8219f7c, 0.695 numbering) | Change for 0.695 |
 |---|---|---|---|---|---|---|
 | – → – | S→C | RemoteAssetDelivery::AssetDataPacket | – / – | same (dispatcher): reader inline in the family dispatcher: dispatcher cases equal (casecmp.tsv / zonecmp.txt) | see Login/Gateway | none |
 | – → – | S→C | RemoteAssetDelivery::AssetErrorPacket | FUN_143a7f3f0 / FUN_143b372e0 | same | see Login/Gateway | none |

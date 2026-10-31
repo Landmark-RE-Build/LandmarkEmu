@@ -1,5 +1,7 @@
 # Dynamic (server-registered) slash commands
 
+> 0.695 rebase (2026-10-26): addresses below are 0.589 unless marked 0.695; their 0.695 partners and changes: trace/0695/address-map-589-695.md, trace/0695/rebase-695.md
+
 Traced 2026-10-15 in the 0.589 client.
 
 ## Registration: CommandListPacket (Command 0x1E, sub 0x44)

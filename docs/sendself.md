@@ -9,7 +9,7 @@ sources built from it. The generated field map is `research/tables/fieldmap_Send
 
 | Player offset | Block (reader) | Identified as | Evidence |
 |---|---|---|---|
-| 0x18 | string | chat language | Lua SetChatLanguage reads it |
+| 0x18 | string | the server sends the account name; live sent the character's name ("Freldam") | no reader found yet (Lua Ui.SetChatLanguage / GetChatLanguage, FUN_1435d1d70 / FUN_1435d1f80, call player vtable slots +0x18 / +0x20, not this field; phaseE3-wire-a.md F2) |
 | 0x38 | bit flags (ReadUInt2BitLength…) | flags | |
 | 0x40 | FUN_142b8c3c0 (0.695 FUN_142c25b90): 3 × u32, 2 strings | character identity: the name block (Gender, UnusedA4, Honor, first, last) | model `CharacterIdentity`, see below |
 | 0x750f0 | FUN_142b7ef60 | character model / appearance (customisations, race, gender) | same block LightweightToFullPc copies for other players |
@@ -68,8 +68,8 @@ client, [I] = inference. Values are the live capture's (Resources/PacketDumps/Se
 |---|---|---|---|
 | `LastPlayedProfileByType` (Unknown30) {ProfileType, ProfileId} | player +0x1d0 HashListMap<int,int> of the profile manager (+0x168); the reader empties it after the profile records fill it (FUN_142d2fc30), FUN_142fd33a0 sets it on a profile switch, ClientRequirementCheckLastPlayedProfileOfTypeRank (FUN_14370f8c0) reads it [P] | empty | empty (sent the current profile until 2026-10-18) |
 | `AbilityCooldowns` (Unknown31) {Key, CooldownGroup, ElapsedMs} | +0x753f8 HashList<Abilities::CooldownTracker,64> (FUN_142c35860 / FUN_142c1e470): key and record +0 = the ability's cooldown group (record +0x7c), start = timeGetTime − ElapsedMs; FUN_142fcd170 / FUN_142fcab90 / FUN_142fcb2f0, AbilityPacketClearAllCooldowns [P] | empty | empty |
-| `CastKeySeed` (Unknown32) | +0x753f0: FUN_142e0f810 builds ((cast counter & 0xff) ^ seed) × 0x502c3f11 for each cast request [P]; purpose (request key) [I] | 0x5BB9EB0B | 0 (the server never checks it; open lead) |
-| `CurrentAdventureId` (Unknown52) | +0x114: only PlayerUpdate 0x36 SetCurrentAdventure (FUN_142cdfa60 case 0x35, reader FUN_142c2b4b0) writes it; nothing reads it [P]; "adventure id" from the packet name [I] | 0 | 0 |
+| `CastKeySeed` (Unknown32) | +0x753f0: FUN_142e0f810 builds ((cast counter +0x753f4 & 0xff) ^ seed) × 0x502c3f11 for each cast request: the CastAttempt's cast hash (+0x20, the counter at +0x28), which every answer echoes as the cast's identity [P] | 0x5BB9EB0B | a random non-zero seed per session (WorldSession.CastKeySeed, L189 closed 2026-10-26); a hash that doesn't match is logged (Debug) and answered as usual |
+| `CurrentAdventureId` (Unknown52) | +0x114: only PlayerUpdate 0x36 SetCurrentAdventure (FUN_142cdfa60 case 0x35, reader FUN_142c2b4b0: u64 player, u32 adventure, list<u32> → +0x118, list<u32> → +0x130, list<bool> → +0x148) writes it, then calls the quest manager's (player +0x268b0) hook FUN_142f2dd50, an empty function in 0.695 and 0.589; nothing reads the values [P]. An EQN adventure (quest) system with no Landmark use (L190 closed 2026-10-26) | 0 | 0 |
 | `OwnedVehicleGuid` (Tail24490Id) | ClientVehicleManager +0x00 (player +0x24490): the slot VehicleOwnerPacket (0xBF 1, FUN_142f783c0) fills; Update FUN_142f79dc0 looks it up [P] | 0 | 0 |
 | `Unused244a8` (Tail24490Value) | manager +0x18: written only (FUN_142f71860, FUN_142f73830, FUN_142f75760, FUN_142f783c0) [P] | 0 | 0 |
 | `OccupiedVehicleGuid` (Tail24490B0) | manager +0x178: the slot VehicleOccupyPacket (0xBF 2, FUN_142f77eb0) fills; FUN_142f74040 / FUN_143618940 return that vehicle instead of the player [P] | 0 | 0 |

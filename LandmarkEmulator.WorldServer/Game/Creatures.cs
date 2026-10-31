@@ -526,7 +526,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 byGuid = new Dictionary<ulong, Creature>();
                 foreach ((WorldSession session, HashSet<int> caverns) in cavernsSent)
                     if (caverns.Remove(index))
-                        drops.AddRange(old.Where(c => c.State != State.Dead).Select(c => (session, c.Guid)));
+                        drops.AddRange(old.Where(OnClient).Select(c => (session, c.Guid)));
             }
             foreach ((WorldSession session, ulong guid) in drops)
                 RemoveFor(session, guid);
@@ -545,6 +545,8 @@ namespace LandmarkEmulator.WorldServer.Game
         public static void Forget(WorldSession session)
         {
             ForgetBosses(session);
+            lock (lifeShown)
+                lifeShown.Remove(session);
             lock (sync)
             {
                 sent.Remove(session);
@@ -1192,6 +1194,14 @@ namespace LandmarkEmulator.WorldServer.Game
 
         private static bool Alive(Creature c) => c.State != State.Dead;
 
+        /// <summary>
+        /// Does the creature still stand on its viewers' clients? A living one, or an exploder that went off and lingers
+        /// for <see cref="BlastLinger"/> until <see cref="Creature.RemoveAt"/> (its blast plays on the entity). Removals use
+        /// this, not <see cref="Alive"/>: a viewer who lost the region, cavern or deep-story slot during the linger never got
+        /// the removal, and kept the dead entity with its Life and health bar until a re-zone (review of 38cac522).
+        /// </summary>
+        private static bool OnClient(Creature c) => c.State != State.Dead || c.RemoveAt != default;
+
         /// <summary>Admin monitor (/admin/monitor): creatures alive per landscape, in generated regions and caverns.</summary>
         public static Dictionary<uint, int> AliveByZone()
         {
@@ -1489,6 +1499,12 @@ namespace LandmarkEmulator.WorldServer.Game
                 return false;
             session.EnqueueMessage(new PlayerUpdateLightweightToFullNpc { TransientId = c.TransientId, Disposition = DispositionOf(c) });
             session.FullNpcs[guid] = c.TransientId;
+            // Its Life again: the full data first clears every resource of the entity on the client (FUN_142d532f0 →
+            // FUN_143b8aef0) [P], which took away the Life SendSpawn gave it, so requirement 21 "NPC Combatant" failed and
+            // the creature had no name or health bar until a hit or the leash heal sent Life again (player report
+            // 2026-10-31: bars only on creatures they had aggro'd and run from; trace/0695/healthbar-c-npc.md). Within
+            // LifeRange only (SyncLife).
+            SyncLife(session, c, fresh: true);
             // [I] Weapon / NPC anim state once more after the full data: the selection only takes when the client's actor
             // has its animation network (FUN_142dfc010 asks the actor for it, vtable +0x468), which a just-spawned entity
             // may not have yet; the client asks for full data a frame or two later (FUN_142ee8540). Live re-sends 502 then
@@ -1955,6 +1971,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 RemoveFor(session, guid);
             foreach (Creature c in spawns)
                 SendSpawn(session, c);
+            SyncShownLife(session);
         }
 
         /// <summary>
@@ -1986,17 +2003,19 @@ namespace LandmarkEmulator.WorldServer.Game
                 if (!hideSurface && RegionDistance(rx, rz, p) <= DropRange)
                     continue;
                 have.Remove(key);
-                removals.AddRange(Region(keyZone, rx, rz).Where(c => c.State != State.Dead && !c.Deep).Select(c => c.Guid));
+                removals.AddRange(Region(keyZone, rx, rz).Where(c => OnClient(c) && !c.Deep).Select(c => c.Guid));
             }
             // Story creatures on cave build sites: shown by 3D distance, as the cavern groups.
             if (!deepStorySent.TryGetValue(session, out var deep))
                 deepStorySent[session] = deep = new HashSet<ulong>();
             var here = regions.Values.SelectMany(r => r).Where(c => c.Story && c.Deep && c.Zone == zone).ToDictionary(c => c.Guid);
+            // A deep exploder that went off stays listed until its removal (RemoveAt, sent by Think to ViewersOf, which reads
+            // this set): dropping it at once left every deep viewer the dead entity with its Life and bar (review of 38cac522).
             foreach (ulong guid in deep.ToList())
-                if (!here.TryGetValue(guid, out Creature c) || c.State == State.Dead || Vector3.Distance(c.Position, p) > CavernDropRange)
+                if (!here.TryGetValue(guid, out Creature c) || !OnClient(c) || Vector3.Distance(c.Position, p) > CavernDropRange)
                 {
                     deep.Remove(guid);
-                    if (c != null && c.State != State.Dead)
+                    if (c != null && OnClient(c))
                         removals.Add(guid);
                 }
             foreach (Creature c in here.Values)
@@ -2016,7 +2035,7 @@ namespace LandmarkEmulator.WorldServer.Game
             foreach (int i in caverns.Where(i => Caves.ZoneOf(i) != zone).ToList())
             {
                 caverns.Remove(i);
-                removals.AddRange(CavernGroup(i).Where(c => c.State != State.Dead).Select(c => c.Guid));
+                removals.AddRange(CavernGroup(i).Where(OnClient).Select(c => c.Guid));
             }
             foreach (int i in Caves.In(zone))
             {
@@ -2024,7 +2043,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 if (d <= CavernViewRange && caverns.Add(i))
                     spawns.AddRange(CavernGroup(i).Where(c => c.State != State.Dead));
                 else if (d > CavernDropRange && caverns.Remove(i))
-                    removals.AddRange(CavernGroup(i).Where(c => c.State != State.Dead).Select(c => c.Guid));
+                    removals.AddRange(CavernGroup(i).Where(OnClient).Select(c => c.Guid));
             }
         }
 
@@ -2265,14 +2284,14 @@ namespace LandmarkEmulator.WorldServer.Game
         };
 
         /// <summary>
-        /// Shows a creature to a player. (Name/health indicator: not shown yet. It needs requirement 21 "NPC Combatant";
-        /// sending max health as stat 1 (PlayerUpdate 0x53 {u64 guid, list {u32 stat, i8 kind, u32 base, u32 mod}}) and
-        /// the hit points with the spawn made no visible difference, so the failing term is elsewhere — see MODLOG.)
+        /// Shows a creature to a player, with its Life when they are within <see cref="LifeRange"/> (<see cref="SyncLife"/>:
+        /// the name and health bar need it). The full data the client asks for next clears it, so <see cref="SendFull"/>
+        /// sends it once more.
         /// </summary>
         private static void SendSpawn(WorldSession session, Creature c)
         {
             session.EnqueueMessage(BuildSpawn(c));
-            SendLife(session, c);
+            SyncLife(session, c, fresh: true);
             // NPC anim network state (WeaponIdle / NPC flag): live sends RequestAnimationSelection 502 on almost every
             // combat NPC at spawn (5IewoKPQE2BqKg6Q: 102× 502, 3× 353). Story Equipped still uses 352 (adds Class 1).
             SendNpcAnimState(session, c);
@@ -2341,6 +2360,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 boss = bossesShown.TryGetValue(session, out HashSet<ulong> shown) && shown.Remove(guid);
             if (boss)
                 SendBossDisplay(session, guid, false);
+            ForgetLife(session, guid);
             session.EnqueueMessage(new PlayerUpdateRemovePlayer { Guid = guid });
         }
 
@@ -2377,13 +2397,104 @@ namespace LandmarkEmulator.WorldServer.Game
         /// the entity's resource container (+0x4268). A resource's maximum comes from Resources.txt, so the Life row
         /// whose maximum is closest above the creature's (<see cref="LifeRow"/>) is used and the value scaled to it.
         /// </summary>
-        private static void SendLife(WorldSession session, Creature c)
+        /// <remarks>
+        /// Only within <see cref="LifeRange"/> (trace/0695/healthbar-range.md): the client draws a creature's health bar at
+        /// any distance once the entity has a Life record — the Npc indicator fades only the name, 25 → 100 m
+        /// (FUN_143727270), and nothing on the client drops a record by distance (PACKET_BROADCAST_RANGE is loaded at
+        /// ResourceDefinition +0x84 and never read) [P]. Creatures stream out to ~300 m (caverns 150 / 200 m), so every
+        /// streamed creature showed a bar far beyond where live's did (player report 2026-10-31); live's footage shows
+        /// full bars out to about where the names fade [P frames, I distances]. A player gets the Life when they come
+        /// within the range and loses it (ResourcesBase sub 1 with no records, <see cref="CharacterResources.ClearFor"/>)
+        /// when they move <see cref="LifeRangeSlack"/> beyond it; in between only changes are sent.
+        /// </remarks>
+        /// <param name="fresh">The client holds no record (a new entity, or its full data just wiped them).</param>
+        private static void SyncLife(WorldSession session, Creature c, bool fresh = false)
         {
             (uint row, uint max) = LifeRow(c.Kind.MaxHealth);
             if (row == 0)
                 return;
             uint value = (uint)Math.Round((double)c.Health * max / Math.Max(1u, c.Kind.MaxHealth));
-            CharacterResources.SendFor(session, c.Guid, row, CharacterResources.LifeType, value);
+            // Bosses keep theirs at any distance until the boss display's use of Life is traced (open lead).
+            bool near = LifeRange <= 0 || c.Boss;
+            lock (lifeShown)
+            {
+                if (!lifeShown.TryGetValue(session, out Dictionary<ulong, uint> held))
+                    lifeShown[session] = held = new Dictionary<ulong, uint>();
+                if (fresh)
+                    held.Remove(c.Guid);
+                bool shown = held.TryGetValue(c.Guid, out uint last);
+                if (!near)
+                {
+                    float range = Math.Max(LifeRange, MinLifeRange);
+                    float distance = Vector3.Distance(session.Position, c.Position);
+                    near = distance <= range || (shown && distance <= range + LifeRangeSlack);
+                }
+                if (near)
+                {
+                    if (shown && last == value)
+                        return;
+                    held[c.Guid] = value;
+                }
+                else if (!shown || !held.Remove(c.Guid))
+                    return;
+            }
+            if (near)
+                CharacterResources.SendFor(session, c.Guid, row, CharacterResources.LifeType, value);
+            else
+                CharacterResources.ClearFor(session, c.Guid);
+        }
+
+        /// <summary>
+        /// Setting CreatureLifeRange (WorldServer.json, Docker CREATURE_LIFE_RANGE; default 100 m, the client's own name
+        /// fade-out [I live]): how near (3D) a player must be to a creature for its name and health bar
+        /// (<see cref="SyncLife"/>). 0 = every player the creature is streamed to. Read at start-up.
+        /// </summary>
+        public static float LifeRange { get; set; } = 100f;
+
+        /// <summary>A Life is taken back only this far beyond <see cref="LifeRange"/>, so a bar does not flicker at the edge.</summary>
+        private const float LifeRangeSlack = 10f;
+
+        /// <summary>
+        /// The smallest range used (a <see cref="LifeRange"/> above 0 counts as at least this): the client's
+        /// TargetLocking.MaxLockDistance (50). Its per-frame lock check (FUN_14332d590) reads the target's Life fraction
+        /// first, and a missing Life record reads 0 = dead, so a locked creature without Life is dropped at once [P]
+        /// (review of 38cac522).
+        /// </summary>
+        private const float MinLifeRange = 50f;
+
+        /// <summary>The Life value each player's client holds per creature (no entry = no record on that client).</summary>
+        private static readonly Dictionary<WorldSession, Dictionary<ulong, uint>> lifeShown = new();
+
+        /// <summary>The creature left the player's view (its entity and records are gone on their client).</summary>
+        private static void ForgetLife(WorldSession session, ulong guid)
+        {
+            lock (lifeShown)
+                if (lifeShown.TryGetValue(session, out Dictionary<ulong, uint> held))
+                    held.Remove(guid);
+        }
+
+        /// <summary>
+        /// Once a second after streaming: every creature the player has gets its Life when they came within range, loses it
+        /// when they left, and gets a changed value (regeneration, healers) — nothing when nothing changed.
+        /// </summary>
+        private static void SyncShownLife(WorldSession session)
+        {
+            var shown = new List<Creature>();
+            lock (sync)
+            {
+                if (sent.TryGetValue(session, out HashSet<long> keys))
+                    foreach (long key in keys)
+                        if (regions.TryGetValue(key, out Creature[] region))
+                            shown.AddRange(region.Where(c => c.State != State.Dead && !c.Deep));
+                if (cavernsSent.TryGetValue(session, out HashSet<int> caverns))
+                    foreach (int index in caverns)
+                        if (cavernGroups.TryGetValue(index, out Creature[] group))
+                            shown.AddRange(group.Where(c => c.State != State.Dead));
+                if (deepStorySent.TryGetValue(session, out HashSet<ulong> deep) && deep.Count > 0)
+                    shown.AddRange(regions.Values.SelectMany(r => r).Where(c => c.Deep && c.State != State.Dead && deep.Contains(c.Guid)));
+            }
+            foreach (Creature c in shown)
+                SyncLife(session, c);
         }
 
         private static List<(uint Row, uint Max)> lifeRows;
@@ -2449,7 +2560,7 @@ namespace LandmarkEmulator.WorldServer.Game
             foreach (WorldSession s in ViewersOf(c))
             {
                 s.EnqueueMessage(ZoneMessageOpcode.PlayerUpdateUpdateHitpointsWire, body);
-                SendLife(s, c);
+                SyncLife(s, c);
             }
         }
 
@@ -2883,9 +2994,16 @@ namespace LandmarkEmulator.WorldServer.Game
         {
             var spot = Props.PlacedOf(c.Zone, new HashSet<uint> { propId })
                 .Where(p => Flat(p.Position, c.Home) <= 2f).OrderBy(p => Flat(p.Position, c.Home)).Select(p => p.Guid).FirstOrDefault();
-            if (spot == 0 || Props.Find(spot) is not { } prop)
-                return null;
-            var q = new Quaternion(prop.Spawn.Rotation.X, prop.Spawn.Rotation.Y, prop.Spawn.Rotation.Z, prop.Spawn.Rotation.W);
+            return spot == 0 || Props.Find(spot) is not { } prop ? null : HeadingOf(prop.Spawn.Rotation);
+        }
+
+        /// <summary>
+        /// The heading (yaw about +Y, radians, as <see cref="MovementBody"/> writes it) a placed prop's rotation gives a
+        /// creature: the quaternion turns +Z, the creatures' forward, into the facing. Null for a zero / straight-up turn.
+        /// </summary>
+        public static float? HeadingOf(Vector4 rotation)
+        {
+            var q = new Quaternion(rotation.X, rotation.Y, rotation.Z, rotation.W);
             if (q.LengthSquared() < 1e-6f)
                 return null;
             Vector3 forward = Vector3.Transform(Vector3.UnitZ, Quaternion.Normalize(q));
@@ -3519,8 +3637,14 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <param name="weaponsEquipped">The spawner's "Spawn With Weapons Equipped" (row 40): it appears with its weapons
         /// equipped (<see cref="AnimNpcWeaponsEquipped"/>, sent with the spawn), else sheathed.</param>
         /// <param name="site">The build site (claim id) it belongs to: its navigation uses the site's grid (OPEN-LEADS L133).</param>
+        /// <param name="yaw">
+        /// The heading it appears with, and keeps as its home heading: its creature prop's placed rotation
+        /// (<see cref="HeadingOf"/>). Since 2026-10-31 the prop is hidden while the site plays (Props.PlayModeVisibility),
+        /// so the creature stands in for it; before, every story creature faced +Z under its turned prop. Live: a creature
+        /// faces "the correct direction" at its spawn point (P4715) [I that it is the prop's].
+        /// </param>
         public static ulong SpawnStory(uint zone, Vector3 at, string spawnerName, uint propId = 0, string displayName = null,
-            float healthPercent = 100f, float damagePercent = 100f, bool weaponsEquipped = false, ulong site = 0)
+            float healthPercent = 100f, float damagePercent = 100f, bool weaponsEquipped = false, ulong site = 0, float? yaw = null)
         {
             string n = spawnerName ?? "";
             Kind kind = StoryKind(n, propId);
@@ -3560,6 +3684,8 @@ namespace LandmarkEmulator.WorldServer.Game
                     Kind = kind,
                     Home = at,
                     Position = at,
+                    Yaw = yaw ?? 0f,
+                    HomeYaw = yaw,
                     Health = kind.MaxHealth,
                     NextWander = DateTime.UtcNow.AddSeconds(5),
                     Story = true,
@@ -3610,6 +3736,8 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             if (dies)
                 Kill(c, null);
+            else if (damage > 0)
+                SendHitpoints(c, damage);   // viewers' health bars follow (as a hit does)
         }
 
         /// <summary>A story creature heals a share of its maximum health (a Damage Node with "Heal Instead"), up to its maximum.</summary>
@@ -3619,8 +3747,14 @@ namespace LandmarkEmulator.WorldServer.Game
             if (c == null || c.State == State.Dead)
                 return;
             uint amount = (uint)Math.Ceiling(c.Kind.MaxHealth * percent / 100f);
+            uint before;
             lock (sync)
+            {
+                before = c.Health;
                 c.Health = (uint)Math.Min(c.Kind.MaxHealth, (long)c.Health + amount);
+            }
+            if (c.Health != before)
+                SendHitpoints(c, 0);
         }
 
         /// <summary>A story creature plays an AnimationSelection (Story Node emote or stance), facing where it looks.</summary>
@@ -3962,6 +4096,12 @@ namespace LandmarkEmulator.WorldServer.Game
                 kind = DevKind(kindName);
             if (kind == null || count <= 0)
                 return 0;
+            // Only what is missing: the pocket's earlier creatures respawn and stay, so a second seeding (every
+            // `npc reload`, once per target) used to add `count` more each time (trace/0695/phaseE4-logic.md F8).
+            lock (sync)
+                count -= regions.Values.SelectMany(r => r).Count(c => c.Zone == zone && c.Kind == kind && Flat(c.Home, centre) <= maxRadius);
+            if (count <= 0)
+                return 0;
             var rng = new Random(Shared.StableHash.Combine((int)centre.X, (int)centre.Z, (int)zone ^ kind.Model.GetHashCode()));
             int placed = 0;
             for (int attempt = 0; attempt < count * 12 && placed < count; attempt++)
@@ -3980,22 +4120,27 @@ namespace LandmarkEmulator.WorldServer.Game
                 var global = TerrainEdits.ToGlobal(at);
                 if (!Claims.MayEdit(0, global.X, global.Y, global.Z, zone))
                     continue;
-                Place(zone, at, kind);
-                placed++;
+                if (Place(zone, at, kind))
+                    placed++;
             }
             return placed;
         }
 
-        private static void Place(uint zone, Vector3 at, Kind kind)
+        private static bool Place(uint zone, Vector3 at, Kind kind)
         {
             long key = Pack(zone, (int)MathF.Floor(at.X / RegionSize), (int)MathF.Floor(at.Z / RegionSize));
             Creature c;
             lock (sync)
             {
                 Creature[] existing = Region(zone, (int)MathF.Floor(at.X / RegionSize), (int)MathF.Floor(at.Z / RegionSize));
+                // A free guid index (200-255), as story creatures take theirs: 200 + the region's count named an index
+                // still in use once a creature of the region had been removed (two creatures, one guid; F8).
+                int free = Enumerable.Range(200, 56).FirstOrDefault(i => existing.All(m => (m.Guid & 0xFF) != (ulong)i));
+                if (free == 0)
+                    return false;
                 c = new Creature
                 {
-                    Guid = GuidBase | ((ulong)key << 8) | (uint)(200 + existing.Length),
+                    Guid = GuidBase | ((ulong)key << 8) | (uint)free,
                     RegionKey = key,
                     Zone = zone,
                     TransientId = PlayerManager.AllocateTransientId(),
@@ -4009,6 +4154,7 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             foreach (WorldSession s in ViewersOf(c))
                 SendSpawn(s, c);
+            return true;
         }
 
         private static float Flat(Vector3 a, Vector3 b) => MathF.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Z - b.Z) * (a.Z - b.Z));

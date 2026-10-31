@@ -1,5 +1,7 @@
 # Shared social service (Phase B item 1) — spec
 
+> 0.695 rebase (2026-10-26): addresses below are 0.589 unless marked 0.695; their 0.695 partners and changes: trace/0695/address-map-589-695.md, trace/0695/rebase-695.md
+
 Agent #12, 2026-10-15. Topic: friends, ignore, guilds, chat (General / tells / guild / officer / party / custom rooms),
 mail (incl. the mail ↔ zone attachment hand-over), presence (who is online, on which world / zone) across worlds.
 Follows trace/architecture/internal-transport.md (the Phase B contract). Addresses: **0.589** (re/decomp_all) unless

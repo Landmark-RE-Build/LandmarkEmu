@@ -1186,10 +1186,65 @@ namespace LandmarkEmulator.WorldServer.Game
             uint needed = ReviewerMinLumens;
             if (needed == 0 || Unlocks.Values(session.PlayerGuid, Unlocks.StoreSpent).FirstOrDefault() >= needed)
             {
+                NotOverruled(session, then);
+                return;
+            }
+            AccountSpent(session, total =>
+            {
+                if (total >= needed)
+                    NotOverruled(session, then);
+                else
+                    then(false);
+            });
+        }
+
+        /// <summary>
+        /// The overrule rule (PlayerStudioReviewerOverrules; Internal/Commerce/StudioRules.MayStillReview, OPEN-LEADS L185):
+        /// a reviewer whose rejections staff overturned that many times is offered no more reviews. In-process commerce
+        /// only — the reviews live in the commerce service's database when it is remote, and it applies the rule itself
+        /// (ProductService.Overruled). One count query off the world thread; the answer on the world thread.
+        /// </summary>
+        private static void NotOverruled(WorldSession session, Action<bool> then)
+        {
+            uint allowed = Config?.PlayerStudioReviewerOverrules ?? 1;
+            if (allowed == 0 || WorldChannel.WorldChannelServices.Commerce is not WorldChannel.LocalCommerceService)
+            {
                 then(true);
                 return;
             }
-            AccountSpent(session, total => then(total >= needed));
+            ulong reviewer = session.PlayerGuid;
+            if (overruledCount.TryGetValue(reviewer, out var cached) && DateTime.UtcNow - cached.At < OverruledTtl)
+            {
+                then(StudioRules.MayStillReview(cached.Count, allowed));
+                return;
+            }
+            uint approvalsNeeded = Math.Max(1u, Config?.PlayerStudioApprovals ?? 3);
+            InBackground(session, "reviewer overrule check", () => OverruledRejections(reviewer, approvalsNeeded), -1,
+                overruled =>
+                {
+                    if (overruled >= 0)
+                        overruledCount[reviewer] = (overruled, DateTime.UtcNow);
+                    then(overruled >= 0 && StudioRules.MayStillReview(overruled, allowed));
+                });
+        }
+
+        /// <summary>Per reviewer: their overruled rejections and when they were counted (<see cref="NotOverruled"/>).</summary>
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<ulong, (int Count, DateTime At)> overruledCount = new();
+
+        /// <summary>How long a reviewer's overrule count is kept; a staff decision drops every count (<see cref="AdminDecide"/>).</summary>
+        private static readonly TimeSpan OverruledTtl = TimeSpan.FromMinutes(10);
+
+        /// <summary>
+        /// This reviewer's rejections that staff overruled (in-process commerce): products they voted down that are listed
+        /// with fewer peer approvals than the threshold (<see cref="StudioRules.Overruled"/>).
+        /// </summary>
+        internal static int OverruledRejections(ulong reviewer, uint approvalsNeeded)
+        {
+            using var context = DatabaseManager.Instance.CharacterDatabase.NewContext();
+            return (from v in context.PlayerStudioReview
+                    join p in context.PlayerStudioProduct on v.ProductId equals p.Id
+                    where v.ReviewerGuid == reviewer && v.Verdict != VerdictApprove && p.Status == Listed && p.Approvals < approvalsNeeded
+                    select v.Id).Count();
         }
 
         /// <summary>
@@ -1421,6 +1476,8 @@ namespace LandmarkEmulator.WorldServer.Game
                     product.ListedAt = DateTime.UtcNow;
                 context.SaveChanges();
             }
+            if (approve)
+                overruledCount.Clear();   // the rejecters' overrule counts changed (the overrule rule, L185)
             Decide(product);
             return true;
         }

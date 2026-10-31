@@ -62,7 +62,9 @@ namespace LandmarkEmulator.Tests.PatchPacks
             Assert.Equal(Login, ClientConfigFile.Value(text, "", "Server"));
             Assert.Equal(Pages, ClientConfigFile.Value(text, "Marketplace", "MarketplaceUrl"));
             Assert.Equal("2", Threads(text));
-            Assert.Equal(Steam.Replace("old.example:20042", Login).Replace("https://store.example", Pages).Replace("DirectThreadCount=10", "DirectThreadCount=2"), text);
+            Assert.Equal(Pages, ClientConfigFile.Value(text, "Marketplace", "MarketplaceAssets"));
+            Assert.Equal(Steam.Replace("old.example:20042", Login).Replace("https://store.example", Pages).Replace("http://assets.example", Pages)
+                .Replace("DirectThreadCount=10", "DirectThreadCount=2"), text);
         }
 
         [Fact]
@@ -107,14 +109,16 @@ namespace LandmarkEmulator.Tests.PatchPacks
         public void MissingLines_GoIntoTheirSections()
         {
             string text = ClientConfigFile.Apply("[Libraries]\r\nGraphicsDataPath=GraphicsData\r\n", Login, Pages, null, out _);
-            Assert.Equal("Server=" + Login + "\r\n[Libraries]\r\nGraphicsDataPath=GraphicsData\r\n\r\n[Marketplace]\r\nMarketplaceUrl=" + Pages +
-                "\r\n\r\n[AssetDelivery]\r\nDirectThreadCount=2\r\n", text);
+            Assert.Equal("Server=" + Login + "\r\n[Libraries]\r\nGraphicsDataPath=GraphicsData\r\n\r\n[Marketplace]\r\nMarketplaceAssets=" + Pages +
+                "\r\nMarketplaceUrl=" + Pages + "\r\n\r\n[AssetDelivery]\r\nDirectThreadCount=2\r\n", text);
             // An existing section gets the line right below its header; keys are matched without regard to case.
             text = ClientConfigFile.Apply("[assetdelivery]\r\ndirectthreadcount=7\r\n[Marketplace]\r\n", Login, Pages, null, out _);
-            Assert.Equal("Server=" + Login + "\r\n[assetdelivery]\r\nDirectThreadCount=2\r\n[Marketplace]\r\nMarketplaceUrl=" + Pages + "\r\n", text);
+            Assert.Equal("Server=" + Login + "\r\n[assetdelivery]\r\nDirectThreadCount=2\r\n[Marketplace]\r\nMarketplaceAssets=" + Pages
+                + "\r\nMarketplaceUrl=" + Pages + "\r\n", text);
             // An empty file.
             text = ClientConfigFile.Apply("", Login, Pages, null, out _);
             Assert.Equal(Login, ClientConfigFile.Value(text, "", "Server"));
+            Assert.Equal(Pages, ClientConfigFile.Value(text, "Marketplace", "MarketplaceAssets"));
             Assert.Equal("2", Threads(text));
         }
 
@@ -202,7 +206,7 @@ namespace LandmarkEmulator.Tests.PatchPacks
             Assert.False(ClientConfigFile.Server.Editable);
             Assert.False(ClientConfigFile.Marketplace.Editable);
             Assert.NotNull(ClientConfigFile.Server.Validate("x:1"));
-            Assert.Equal(new[] { "Server", "MarketplaceUrl", "DirectThreadCount" }, ClientConfigFile.Managed.Select(m => m.Key).ToArray());
+            Assert.Equal(new[] { "Server", "MarketplaceUrl", "MarketplaceAssets", "DirectThreadCount" }, ClientConfigFile.Managed.Select(m => m.Key).ToArray());
         }
 
         [Fact]
@@ -272,7 +276,7 @@ namespace LandmarkEmulator.Tests.PatchPacks
         [MemberData(nameof(Files))]
         public void Play_ChangesOnlyTheListedLines(string file)
         {
-            var listed = new[] { "Server=", "MarketplaceUrl=", "DirectThreadCount=" };
+            var listed = new[] { "Server=", "MarketplaceUrl=", "MarketplaceAssets=", "DirectThreadCount=" };
             foreach (ClientConfigOptions options in EveryChoice())
             {
                 string text = ClientConfigFile.Apply(file, Login, Pages, options, out _);
@@ -289,7 +293,7 @@ namespace LandmarkEmulator.Tests.PatchPacks
                 // What is new: only the headers of the two sections the lines belong in, and blank lines before them.
                 Assert.All(kept, l => Assert.Contains(l, new[] { "", "[Marketplace]", "[AssetDelivery]" }));
                 Assert.All(after.Where(l => listed.Any(k => l.StartsWith(k, StringComparison.Ordinal))),
-                    l => Assert.Contains(l, new[] { "Server=" + Login, "MarketplaceUrl=" + Pages, "DirectThreadCount=2",
+                    l => Assert.Contains(l, new[] { "Server=" + Login, "MarketplaceUrl=" + Pages, "MarketplaceAssets=" + Pages, "DirectThreadCount=2",
                         "DirectThreadCount=7", "DirectThreadCount=10" }));
                 // Never the dead [Terrain] lines: their count is what the file had.
                 Assert.Equal(LinesOf(file).Count(l => l.Contains("CachedMeshes") || l.Contains("CacheMeshes")),

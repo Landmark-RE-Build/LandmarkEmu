@@ -16,8 +16,8 @@ namespace LandmarkEmulator.WorldServer.Game
     /// looks a tree up by its ProxiedCharacter guid; the axe and sickle outline them as targets and name them in the
     /// cast), so the server places them: each 64 m region gets a fixed, seeded set from its biome (the client's biome
     /// map), standing on the generated ground (<see cref="TerrainHeights"/>), above sea level, on gentle slopes and
-    /// outside build sites. Players are sent only the regions around them; a gathered node is removed for everyone in
-    /// range and grows back later.
+    /// outside build sites. Players are sent only the regions around them (TreeStreamRange, Gathering.Stream.cs); a gathered
+    /// node is removed for everyone in range and grows back later.
     /// <para>
     /// On the Desert, Tropical, Old Growth and Tundra surface biomes the trees follow the shipped procedural placement
     /// sets (<see cref="ProceduralPlacement"/>: the sets' own tree props, spacing, slope / altitude limits, ground
@@ -130,8 +130,6 @@ namespace LandmarkEmulator.WorldServer.Game
         private const float RegionSize = 64f;
         private const int CellsPerSide = 8;               // candidate spots per region side (one per 8 m)
         private const int PlantIndexBase = CellsPerSide * CellsPerSide;
-        private const float ViewRange = 160f;              // regions this close to a player are sent
-        private const float DropRange = 224f;              // and removed again past this (hysteresis)
         private const float SeaLevel = 1002f;              // local metres; the ocean biome lies below ~1000
         private const float MaxSlope = 0.7f;
         private const float Reach = 8f;                    // player to node, horizontal metres
@@ -161,8 +159,10 @@ namespace LandmarkEmulator.WorldServer.Game
             public int Biome;
             public PlayerUpdateAddLightweightProp Spawn;
             public uint Yield;          // wood item for trees, plant item for plants
-            public int MaxHits;
+            public int MaxHits;         // swings to fell / gather under TreeHealth=hits (and for plants)
             public int Hits;
+            /// <summary>A tree's Resources.txt Health row, its full health and what is left (TreeHealth=health; Gathering.Health.cs).</summary>
+            public uint LifeRow, InitialHealth, Health;
             public DateTime RegrowsAt;
             public bool Standing => RegrowsAt <= DateTime.UtcNow;
         }
@@ -239,6 +239,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 config?.GetValue("ProceduralPlacementDecor", false) ?? false,
                 config?.GetValue("ProceduralPlacementMasks", true) ?? true);
             LoadRespawnSettings(config);
+            LoadHealthSettings(config);
             if (!File.Exists(path))
                 return;
             foreach (string line in File.ReadLines(path))
@@ -268,8 +269,9 @@ namespace LandmarkEmulator.WorldServer.Game
             if (now >= nextTrim)
             {
                 nextTrim = now.AddMinutes(1);
-                TerrainHeights.Trim();   // drop idle landscapes' height grids (about 32 MB each)
+                TerrainHeights.Trim();   // drop idle landscapes' height grids (up to about 64 MB each)
             }
+            RefillRegionGeneration(now);   // the players' shared region generation time (Gathering.Stream.cs)
             foreach (WorldSession session in PlayerManager.Snapshot())
             {
                 lock (sync)
@@ -303,6 +305,7 @@ namespace LandmarkEmulator.WorldServer.Game
             {
                 sent.Remove(session);
                 lastUpdate.Remove(session);
+                harvestTargets.Remove(session);   // the client drops its targets with the entities (re-zone, logout)
             }
             // (Also called after a re-zone, PlayerManager.Reintroduce: losing the 5 s throttle then costs nothing.)
             lastWrongTool.TryRemove(session, out _);
@@ -310,7 +313,8 @@ namespace LandmarkEmulator.WorldServer.Game
 
         /// <summary>
         /// An axe swing (<see cref="Abilities.LoggingAbilities"/>). Each hit gives wood (and sometimes Tree Fiber,
-        /// "found on all trees"); the last fells the tree.
+        /// "found on all trees") and takes the axe's damage off the tree's health (TreeHealth=health; the swinger's bar
+        /// follows it, Gathering.Health.cs); the hit that empties it fells the tree.
         /// </summary>
         public static bool Chop(WorldSession session, ulong targetGuid, Vector3 target, uint tool = 0)
         {
@@ -320,7 +324,8 @@ namespace LandmarkEmulator.WorldServer.Game
                 WrongTool(session, targetGuid, NodeType.Plant, "That plant needs a sickle.");
                 return false;
             }
-            bool felled = Hit(tree, RegrowTime(tree, TreeRegrowTime));
+            uint damage = SwingDamage(session, tool);
+            bool felled = Hit(tree, damage, RegrowTime(tree, TreeRegrowTime));
             Durability.ToolUsed(session);   // every axe hit is a harvest (TASKS 6.53)
             // The Goliath Axe gives more per swing but swings slower; Harvest Bonus (stat 17) counts on trees
             // too (1 Apr 2016, P4389: harvest-bonus items gave too much from trees — reduced, not removed).
@@ -332,15 +337,25 @@ namespace LandmarkEmulator.WorldServer.Game
             LootPinatas.SpawnChunk(session, target + new Vector3(0f, 1f, 0f), tree.Yield, wood);
             if (random.NextDouble() < 0.3)
                 GiveHarvest(session, TreeFiber, (uint)random.Next(1, 3));
+            // Finds and Tree Sap: once per felled tree under TreeHealth=hits; under the health model a chance on every swing
+            // (live rolled Discovery per swing on trees, design/game-rules.md), scaled so 80 damage keeps the old 5-hit tree's
+            // rate per swing (OPEN-LEADS L246).
+            if (HasLife(tree) ? random.NextDouble() < Math.Min(1.0, damage / (double)RewardPace) : felled)
+            {
+                if (random.NextDouble() < 0.15)
+                    GiveHarvest(session, TreeSap, 1);
+                RollDrops(session, rich: true, tool, wearTool: false);
+            }
             if (!felled)
             {
-                log.Debug($"{session.CharacterName} hit tree {tree.Key:X} ({tree.Hits}/{tree.MaxHits}).");
+                if (HasLife(tree))
+                    HarvestTarget(session, tree);   // the swinger's target slot 9 holds this tree (its bar)
+                SendLifeAfterHit(session, tree);
+                log.Debug(HasLife(tree) ? $"{session.CharacterName} hit tree {tree.Key:X} ({tree.Health}/{tree.InitialHealth} health)."
+                    : $"{session.CharacterName} hit tree {tree.Key:X} ({tree.Hits}/{tree.MaxHits}).");
                 return true;
             }
-            if (random.NextDouble() < 0.15)
-                GiveHarvest(session, TreeSap, 1);
-            RollDrops(session, rich: true, tool, wearTool: false);
-            AfterUse(session, tool);
+            AfterUse(session, tool);   // the speed burst "after logging": per felled tree
             Despawn(tree);
             log.Debug($"{session.CharacterName} felled tree {tree.Key:X} (model {tree.Spawn.ModelId}).");
             return true;
@@ -355,7 +370,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 WrongTool(session, targetGuid, NodeType.Tree, "That tree needs an axe.");
                 return false;
             }
-            Hit(plant, RegrowTime(plant, PlantRegrowTime));
+            Hit(plant, 0, RegrowTime(plant, PlantRegrowTime));
             GiveHarvest(session, plant.Yield, 1);
             RollDrops(session, rich: true, tool);
             LootPinatas.SpawnChunk(session, target + new Vector3(0f, 0.5f, 0f), plant.Yield);
@@ -427,7 +442,7 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>Is this guid one of the gathering nodes (trees, plants) the server spawns?</summary>
-        public static bool IsNode(ulong guid) => guid >> 62 == 1;
+        public static bool IsNode(ulong guid) => (guid & 0xFF00_0000_0000_0000) == GuidBase;
 
         /// <summary>
         /// The node a swing hits: the entity the cast names (under the crosshair), or without one the standing node of
@@ -441,8 +456,10 @@ namespace LandmarkEmulator.WorldServer.Game
                 // Before a landscape's first population is rolled, nothing is shown there and nothing can be gathered.
                 if (!NodesReady(session.ZoneId))
                     return null;
-                if (targetGuid >> 62 == 1)
+                if (IsNode(targetGuid))
                     node = Find(targetGuid & ~GuidBase);
+                else if (targetGuid != 0)
+                    node = null;   // the swing named something else (a prop, the Spire, a creature): not the tree beside it
                 else
                     node = Nearby(session.ZoneId, target, AimTolerance).Where(n => n.Type == type && n.Standing)
                         .OrderBy(n => HorizontalDistance(Base(n), target)).FirstOrDefault();
@@ -469,15 +486,23 @@ namespace LandmarkEmulator.WorldServer.Game
                 return node.Set.Respawn(random);
         }
 
-        /// <summary>Counts a hit; true (and the node is gone until it regrows) when it was the last one.</summary>
-        private static bool Hit(Node node, TimeSpan regrow)
+        /// <summary>
+        /// Counts a hit: a tree under the health model loses <paramref name="damage"/>, anything else counts one of its
+        /// MaxHits. True (and the node is gone until it regrows) when it was the last one.
+        /// </summary>
+        private static bool Hit(Node node, uint damage, TimeSpan regrow)
         {
             lock (sync)
             {
-                node.Hits++;
-                if (node.Hits < node.MaxHits)
+                if (HasLife(node))
+                {
+                    node.Health = damage >= node.Health ? 0 : node.Health - damage;
+                    if (node.Health > 0)
+                        return false;
+                }
+                else if (++node.Hits < node.MaxHits)
                     return false;
-                node.Hits = 0;
+                ResetDamage(node);
                 if (Respawn == RespawnModel.MinMax)
                 {
                     Felled(node, DateTime.UtcNow);   // gone; maybe another of its kind elsewhere (Gathering.Respawn.cs)
@@ -491,10 +516,53 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>
+        /// A build site was placed (or moved) over this box (global dm): the trees, plants and decoration standing in it go,
+        /// as on live, where placing a site cleared them (trace/0695/claim-trees.md) and a new Pioneer site's slab had nothing
+        /// on it, no rocks or bushes either (trace/0695/pioneer-slab-live.md [P]). A tree or plant is taken out like a felled
+        /// one — under the min / max model a free spot, its kind respawning elsewhere when it drops below its minimum;
+        /// regrowing in place it stays gone (generation and respawns keep out of sites, <see cref="Allowed"/>). Decoration
+        /// (a placement set's rocks, bushes and flowers, setting ProceduralPlacementDecor) is never gathered or respawned,
+        /// so it is only hidden until a restart regenerates its region, which keeps it out of the site (<see cref="Allowed"/>);
+        /// it takes no pool's place. Every player who has the node's region is told. Until 2026-10-31 the site test ran only
+        /// when a region was first generated, so trees standing before a site was placed stayed in it until a restart; until
+        /// 2026-11-01 decoration was skipped. When the site goes, its spots come back through respawns or the next start.
+        /// </summary>
+        public static void SitePlaced(uint zone, (double X, double Y, double Z) min, (double X, double Y, double Z) max)
+        {
+            var gone = new List<Node>();
+            DateTime now = DateTime.UtcNow;
+            lock (sync)
+                foreach (Node[] nodes in regions.Values)
+                    foreach (Node node in nodes)
+                    {
+                        if (node.Zone != zone || !node.Standing)
+                            continue;
+                        Vector3 at = Base(node);
+                        var global = TerrainEdits.ToGlobal(at);
+                        // The trunk's footprint (Models.txt PATH_BLOCK_RADIUS × scale, dm) against the box on x / z.
+                        double trunk = (ModelFootprints.Of(node.Spawn.ModelId)?.Radius ?? 0.5f) * node.Spawn.Scale.X * 10;
+                        if (global.X < min.X - trunk || global.X > max.X + trunk || global.Z < min.Z - trunk || global.Z > max.Z + trunk
+                            || global.Y < min.Y - 10 || global.Y > max.Y)
+                            continue;
+                        ResetDamage(node);
+                        if (node.Type != NodeType.Decor && Respawn == RespawnModel.MinMax)
+                            Felled(node, now);
+                        else
+                            node.RegrowsAt = DateTime.MaxValue;   // not saved: gone until a restart regenerates the region
+                        gone.Add(node);
+                    }
+            foreach (Node node in gone)
+                Despawn(node);
+            if (gone.Count > 0)
+                log.Info($"A build site on landscape {zone} took {gone.Count} tree(s) / plant(s) / decoration out.");
+        }
+
+        /// <summary>
         /// Removes a felled tree or picked plant from every player who has its region on screen.
         /// </summary>
         private static void Despawn(Node node)
         {
+            ForgetTargets(node);
             long region = RegionKey(node.Zone, Base(node));
             foreach (WorldSession other in PlayerManager.Snapshot())
                 lock (sync)
@@ -556,62 +624,6 @@ namespace LandmarkEmulator.WorldServer.Game
                 }
             }
             return point;
-        }
-
-        /// <summary>Depth below the ground (m) at which surface objects are dropped, and above which they return.</summary>
-        private const float UndergroundDropDepth = 60f, UndergroundShowDepth = 40f;
-
-        /// <summary>
-        /// Interest management: sends a player the trees and plants of regions within <see cref="ViewRange"/> (skipping ones
-        /// still regrowing) and removes regions beyond <see cref="DropRange"/>.
-        /// </summary>
-        private static void Stream(WorldSession session)
-        {
-            uint zone = session.ZoneId;
-            if (DevCommands.NoStreaming || !TerrainHeights.Has(zone))
-                return;   // no baked heights for this landscape: nothing can be placed on its ground
-            if (session.StreamsOnHold)
-                return;
-            // Min / max model: the census runs on the first visit since the start (seconds, in the background); only a
-            // landscape's very first population waits for it, after a restart the saved free spots apply at once.
-            if (AwaitCensus(zone))
-                return;
-            Vector3 position = session.Position;
-            var spawns = new List<PlayerUpdateAddLightweightProp>();
-            var removals = new List<ulong>();
-            lock (sync)
-            {
-                if (!sent.TryGetValue(session, out var have))
-                    sent[session] = have = new HashSet<long>();
-                // Surface objects aren't sent to players deep underground (caves), and are dropped once they get
-                // there; the two depths differ so a player near the threshold doesn't flicker between them.
-                float depth = Terrain.TerrainHeights.DepthBelowGround(position, zone);
-                bool hideSurface = depth > UndergroundDropDepth, showSurface = depth < UndergroundShowDepth;
-                int r0x = (int)MathF.Floor((position.X - ViewRange) / RegionSize), r1x = (int)MathF.Floor((position.X + ViewRange) / RegionSize);
-                int r0z = (int)MathF.Floor((position.Z - ViewRange) / RegionSize), r1z = (int)MathF.Floor((position.Z + ViewRange) / RegionSize);
-                for (int rz = r0z; rz <= r1z; rz++)
-                    for (int rx = r0x; rx <= r1x; rx++)
-                    {
-                        long key = Pack(zone, rx, rz);
-                        if (!showSurface || have.Contains(key) || RegionDistance(rx, rz, position) > ViewRange)
-                            continue;
-                        have.Add(key);
-                        spawns.AddRange(Region(zone, rx, rz).Where(n => n.Standing).Select(n => n.Spawn));
-                    }
-                foreach (long key in have.ToList())
-                {
-                    (uint keyZone, int rx, int rz) = Unpack(key);
-                    if (keyZone == zone && !hideSurface && RegionDistance(rx, rz, position) <= DropRange)
-                        continue;
-                    have.Remove(key);
-                    if (keyZone == zone)
-                        removals.AddRange(Region(keyZone, rx, rz).Where(n => n.Standing).Select(n => n.Guid));
-                }
-            }
-            foreach (ulong guid in removals)
-                session.EnqueueMessage(new PlayerUpdateRemovePlayer { Guid = guid });
-            foreach (PlayerUpdateAddLightweightProp spawn in spawns)
-                session.EnqueueMessage(spawn);
         }
 
         /// <summary>
@@ -742,7 +754,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 if (type == NodeType.Plant && yield == 0)
                     continue;   // a set plant with no sickle item here (Flax, Jute, Silkfall)
                 ulong key = ((ulong)region << 8) | (uint)(SetIndexBase + i);
-                nodes.Add(new Node
+                var node = new Node
                 {
                     Key = key,
                     Zone = zone,
@@ -760,7 +772,9 @@ namespace LandmarkEmulator.WorldServer.Game
                         Rotation = new Vector4(p.Rotation.X, p.Rotation.Y, p.Rotation.Z, p.Rotation.W),
                         Scale = new Vector4(p.Scale, p.Scale, p.Scale, 1f)
                     }
-                });
+                };
+                SetLife(node);
+                nodes.Add(node);
             }
         }
 
@@ -819,13 +833,17 @@ namespace LandmarkEmulator.WorldServer.Game
         private static uint SetPlantItem(uint model) =>
             new[] { Amberleaf, Cotton, Earthblood, Sunblossom, Vilebloom }.FirstOrDefault(k => k.CommonModel == model)?.Item ?? 0;
 
-        /// <summary>The server's own refusals at a ground point (the Spire, build sites, graveyards).</summary>
+        /// <summary>
+        /// The server's own refusals at a ground point: the Spire (its platform, and the 90 m Spire area that suppresses
+        /// procedural props, P1830), build sites (their box, whoever may build there), graveyards.
+        /// </summary>
         private static bool Allowed(uint zone, float x, float y, float z)
         {
-            if (Spire.Covers(zone, x, z) || Graveyards.PreventsSpawning(zone, new Vector3(x, y, z)))
+            var at = new Vector3(x, y, z);
+            if (Spire.Covers(zone, x, z) || Spire.InArea(zone, at) || Graveyards.PreventsSpawning(zone, at))
                 return false;
-            var global = TerrainEdits.ToGlobal(new Vector3(x, y, z));
-            return Claims.MayEdit(0, global.X, global.Y, global.Z, zone);
+            var global = TerrainEdits.ToGlobal(at);
+            return !Claims.CoversPoint(zone, global.X, global.Y, global.Z);
         }
 
         /// <summary>
@@ -836,21 +854,18 @@ namespace LandmarkEmulator.WorldServer.Game
         {
             if (TerrainHeights.HeightAt(x, z, zone) is not float y || y < SeaLevel || TerrainHeights.Slope(x, z, 2f, zone) > MaxSlope)
                 return null;
-            if (Spire.Covers(zone, x, z) || Graveyards.PreventsSpawning(zone, new Vector3(x, y, z)))
-                return null;
-            var global = TerrainEdits.ToGlobal(new Vector3(x, y, z));
-            return Claims.MayEdit(0, global.X, global.Y, global.Z, zone) ? y : null;
+            return Allowed(zone, x, y, z) ? y : null;
         }
 
         /// <summary>
-        /// A tree or plant node: a stable key (region << 8 | index), what it yields, how many hits it takes, and the prop
-        /// packet that shows it.
+        /// A tree or plant node: a stable key (region << 8 | index), what it yields, how many hits it takes (a tree also its
+        /// health, <see cref="SetLife"/>), and the prop packet that shows it.
         /// </summary>
         private static Node Create(uint zone, long region, int index, NodeType type, uint model, Vector3 position, float yaw, float scale,
             uint yield, int maxHits, int biome, bool census)
         {
             ulong key = ((ulong)region << 8) | (uint)index;
-            return new Node
+            var node = new Node
             {
                 Key = key,
                 Zone = zone,
@@ -868,6 +883,8 @@ namespace LandmarkEmulator.WorldServer.Game
                     Scale = new Vector4(scale, scale, scale, 1f)
                 }
             };
+            SetLife(node);
+            return node;
         }
 
         /// <summary>
@@ -886,7 +903,9 @@ namespace LandmarkEmulator.WorldServer.Game
                 node = Find(guid & ~GuidBase);
             if (node == null)
                 return false;
-            session.EnqueueMessage(new PlayerUpdateLightweightToFullProp { TransientId = node.Spawn.TransientId });
+            // Neutral (disposition 1), so the client's own target rule asks for the harvest slot 9 (Gathering.Health.cs).
+            session.EnqueueMessage(new PlayerUpdateLightweightToFullProp { TransientId = node.Spawn.TransientId, Disposition = 1 });
+            SendLifeAfterFull(session, node);
             return true;
         }
 

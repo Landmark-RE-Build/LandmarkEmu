@@ -42,6 +42,9 @@ services:
       # Reviews per player per 24 h (live 2; 0 = no limit); peer-rejected products wait for staff (live true).
       PlayerStudioReviewsPerDay: ${PLAYER_STUDIO_REVIEWS_PER_DAY:-2}
       PlayerStudioStaffReview: ${PLAYER_STUDIO_STAFF_REVIEW:-true}
+      # A reviewer whose rejections staff overturned this many times gets no more reviews (wiki: live stopped offering
+      # them; 0 = never).
+      PlayerStudioReviewerOverrules: ${PLAYER_STUDIO_REVIEWER_OVERRULES:-1}
       # The creator's share (percent) of the Lumens a buyer pays for a Player Studio design (live: 60/40, creator 40).
       PlayerStudioCreatorSharePercent: ${PLAYER_STUDIO_CREATOR_SHARE:-40}
       # Showcase following: the daily in-game mail of what followed creators and tags listed (true = live, Update Notes

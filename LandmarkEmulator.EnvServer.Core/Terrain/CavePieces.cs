@@ -95,6 +95,13 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         }
 
         /// <summary>
+        /// Tests only: cave air of their own (global x, z dm, landscape, the list to append spans to; true = handled, the
+        /// placements are not read), so the Pioneer slab's cave rule can be checked against a known cave
+        /// (Tests/Rules/PioneerSiteSlabTests.cs). Never set by the servers.
+        /// </summary>
+        internal static Func<double, double, uint, List<(double Lo, double Hi)>, bool> TestAirSpans;
+
+        /// <summary>
         /// Every stretch of cave air in the vertical column at a global x/z (dm) of a landscape, appended to
         /// <paramref name="into"/> as (low, high) global heights in dm: one span per air run of each piece covering the column
         /// (unsorted, and spans of different pieces may overlap — a point is air when any piece carves it, as in
@@ -104,6 +111,8 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         /// </summary>
         public static void AirSpans(double gx, double gz, uint zone, List<(double Lo, double Hi)> into)
         {
+            if (TestAirSpans?.Invoke(gx, gz, zone, into) == true)
+                return;
             var index = ZoneIndex(zone == 0 ? TerrainStore.HomeContinent : zone);
             if (index == null || !index.TryGetValue(((int)Math.Floor(gx / Bucket), (int)Math.Floor(gz / Bucket)), out var list))
                 return;

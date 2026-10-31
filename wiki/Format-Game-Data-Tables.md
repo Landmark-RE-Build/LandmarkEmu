@@ -54,7 +54,7 @@ Many settings and packets name texts by id (the world names in `WORLD_NAME_ID`, 
 | `CommonData/Voxel/veinData/ContinentVeinData<continent>.vdt` | Which cells are surface or cavern biome, for ore veins | from offset 460: sections of `{u32 groups, groups × (u32 layer, u32 biome, u32 1, u32 n, n × u64 sorted level-2 cell ids)}` |
 | Cave pieces (`.cav`, `.cpa`) | Where the Chaos Caverns are air, graveyard and outpost spots | see `docs/terrain.md`, "Caves" |
 | `CommonData/Voxel/templates/*.otd`, `CommonData/Collision/*.cdt` | Stamps and the Spire's collision | [Format: Voxel Templates](Format-Voxel-Templates) |
-| `CommonData/Voxel/surfaceCache/*.csc` | Checking generated landscapes (tools only) | [Format: Surface Cache](Format-Surface-Cache) |
+| `CommonData/Voxel/surfaceCache/*.csc` | The Pioneer lands' ore: the server keeps ore under the lowest ground the cache allows (without the file a Pioneer land gets no surface ore); also checking generated landscapes | [Format: Surface Cache](Format-Surface-Cache) |
 
 Vein shapes: the client generates them itself and that generator is not decoded yet; the server places veins with its
 own rule meanwhile (*not live data*). More: `docs/client-reference.md`, "Client data the server reads", and

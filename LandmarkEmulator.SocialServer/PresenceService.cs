@@ -95,6 +95,7 @@ namespace LandmarkEmulator.SocialServer
             if (!known)
                 hub.SendTo(Watchers(character.Guid), ClientPackets.FriendOnline(character.Name, character.Guid));
             Bootstrap(character, announce: !known);
+            hub.Friends.Entered(character);
             log.Info($"{character} entered world {entry.WorldId} (zone {entry.ZoneId}){(known ? ", already online: no note to friends" : "")}.");
         }
 

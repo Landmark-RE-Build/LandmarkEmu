@@ -354,9 +354,16 @@ namespace LandmarkEmulator.Database.Auth
             }
             catch (Exception e)
             {
-                log.Warn($"Admin entries could not be read ({e.Message}); using the last cache or none.");
+                // The failure is cached for the same minute: without that, every Admin.IsAdmin check (the admin monitor
+                // asks for every online player every 2 s, on the world tick) tried the database again while it was down
+                // (trace/0695/phaseE4-logic.md F4).
+                log.Warn($"Admin entries could not be read ({e.Message}); using the last cache or none, trying again in a minute.");
                 lock (adminEntriesLock)
-                    return adminEntriesCache ?? ImmutableList<string>.Empty;
+                {
+                    adminEntriesCache ??= ImmutableList<string>.Empty;
+                    adminEntriesCachedAt = now;
+                    return adminEntriesCache;
+                }
             }
             lock (adminEntriesLock)
             {

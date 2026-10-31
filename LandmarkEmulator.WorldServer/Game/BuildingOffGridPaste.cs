@@ -168,13 +168,15 @@ namespace LandmarkEmulator.WorldServer.Game
             double ox = request.Position.X + t[12], oy = request.Position.Y + t[13], oz = request.Position.Z + t[14];
             Dictionary<ulong, List<TerrainEdits.VoxelValue>> byCell = OffGridVoxels(clipboard, t, ox, oy, oz,
                 out long x0, out long y0, out long z0, out long x1, out long y1, out long z1, request.PasteMode);
+            if (byCell != null && request.AsDelete)
+                byCell = AsErase(byCell);   // Remove voxels: the copy's shape taken out (Building.AsErase)
             if (byCell == null)
             {
                 log.Info($"{session.CharacterName}: off-grid paste box {x1 - x0}×{y1 - y0}×{z1 - z0} at ({x0}, {y0}, {z0}) refused (too large or outside the world).");
                 SendResponse(session, OffGridPasteSub, Failed);
                 return null;
             }
-            if ((byCell.Count == 0 && clipboard.Props.Count == 0) || byCell.Count > (request.TemplateGuid != 0 ? MaxCellsPerDesign : MaxCellsPerEdit))
+            if ((byCell.Count == 0 && (clipboard.Props.Count == 0 || request.AsDelete)) || byCell.Count > (request.TemplateGuid != 0 ? MaxCellsPerDesign : MaxCellsPerEdit))
             {
                 SendResponse(session, OffGridPasteSub, Failed);
                 return null;
@@ -210,37 +212,54 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             if (written.Result == InsufficientMaterials)
             {
+                log.Info($"{session.CharacterName}'s off-grid paste refused: not enough materials.");
                 SendResponse(session, OffGridPasteSub, InsufficientMaterials);
                 return null;
             }
             if (!PayFor(session, written.Delta))
                 log.Warn($"{session.CharacterName}'s off-grid paste was written but its materials could not be taken any more.");
 
-            var record = new Edit(zone, request.TemplateGuid != 0 ? "Place design" : "Paste");
+            var record = new Edit(zone, request.AsDelete ? "Paste (Remove voxels)" : request.TemplateGuid != 0 ? "Place design" : "Paste");
             record.Cells.AddRange(written.Cells);
-            var origin = TerrainStore.ZoneOrigin;
+            if (request.AsDelete)
+                Observe(session, zone, ObservedDelete, record, false);
+            // The props' turn: the transform's rows, as Building.PasteTurn builds it on-grid (a direction d goes to
+            // Σ d_j·row_j, the voxels' map). A mirror in the transform gives no mirrored prop here either (PasteTurn).
             var row0 = Vector3.Normalize(new Vector3(t[0], t[1], t[2]));
             var row1 = Vector3.Normalize(new Vector3(t[4], t[5], t[6]));
             var row2 = Vector3.Normalize(new Vector3(t[8], t[9], t[10]));
             Quaternion turn = Quaternion.Normalize(Quaternion.CreateFromRotationMatrix(new Matrix4x4(
                 row0.X, row0.Y, row0.Z, 0, row1.X, row1.Y, row1.Z, 0, row2.X, row2.Y, row2.Z, 0, 0, 0, 0, 1)));
-            PlaceProps(session, clipboard.Props, prop =>
-            {
-                // The prop's offset from the box corner (metres → global units), carried by the same transform.
-                double a = prop.Offset.X * 10, b = prop.Offset.Y * 10, c = prop.Offset.Z * 10;
-                double wx = ox + a * t[0] + b * t[4] + c * t[8], wy = oy + a * t[1] + b * t[5] + c * t[9], wz = oz + a * t[2] + b * t[6] + c * t[10];
-                return (new Vector3((float)((wx - origin.X) / 10), (float)((wy - origin.Y) / 10), (float)((wz - origin.Z) / 10)), turn);
-            }, record);
+            if (!request.AsDelete)
+                PlaceProps(session, clipboard.Props, prop => (OffGridPropAt(prop, t, ox, oy, oz), turn), record);
             Remember(session, record);
             string designName = request.TemplateGuid != 0 ? Templates.NameOf(session, request.TemplateGuid) : "";
-            if (request.TemplateGuid != 0)
+            if (request.TemplateGuid != 0 && !request.AsDelete)
                 Achievements.DesignPlaced(session, designName);
             Achievements.Pasted(session, designName, request.PasteMode, request.AsDelete);   // tutorial goals
+            // A placed Player Studio copy, as the on-grid paste records it (copy protection, Voxel Vision's "Templates").
+            if (request.TemplateGuid != 0 && !request.AsDelete && Templates.IsPlayerStudioCopy(session.PlayerGuid, request.TemplateGuid))
+                TemplateInstances.Record(session, zone, request.TemplateGuid, (x0 * v, y0 * v, z0 * v), ((x1 + 1) * v, (y1 + 1) * v, (z1 + 1) * v));
             SendResponse(session, OffGridPasteSub, 0);
             List<ulong> changed = byCell.Keys.Concat(request.Cells.Where(c => Env.Has(c, zone))).Distinct().ToList();
             log.Debug($"{session.CharacterName} pasted {byCell.Values.Sum(x => x.Count)} voxels off-grid into {byCell.Count} cell(s) at "
                 + $"({request.Position.X:0.##}, {request.Position.Y:0.##}, {request.Position.Z:0.##}), mode {request.PasteMode}.");
             return changed;
+        }
+
+        /// <summary>
+        /// Where an off-grid paste puts a clipboard prop (local metres): its offset from the clipboard's grid point 0
+        /// (metres → global units) carried by the same transform as the voxels, origin + offset·R
+        /// (<see cref="OffGridVoxels"/> puts grid point l at origin + l·v·R, so grid point 0 is the origin). Right since the
+        /// offsets are measured from grid point 0 (Props.InBox, 2026-11-01); before, from the selection's origin voxel, the
+        /// props landed one voxel short of their voxels along every clipboard axis.
+        /// </summary>
+        internal static Vector3 OffGridPropAt(Props.DesignProp prop, float[] t, double ox, double oy, double oz)
+        {
+            var origin = TerrainStore.ZoneOrigin;
+            double a = prop.Offset.X * 10, b = prop.Offset.Y * 10, c = prop.Offset.Z * 10;
+            double wx = ox + a * t[0] + b * t[4] + c * t[8], wy = oy + a * t[1] + b * t[5] + c * t[9], wz = oz + a * t[2] + b * t[6] + c * t[10];
+            return new Vector3((float)((wx - origin.X) / 10), (float)((wy - origin.Y) / 10), (float)((wz - origin.Z) / 10));
         }
 
         /// <summary>

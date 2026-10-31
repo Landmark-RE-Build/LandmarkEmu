@@ -10,6 +10,7 @@ using LandmarkEmulator.Shared.Network;
 using LandmarkEmulator.Shared.Network.Message;
 using LandmarkEmulator.WorldServer.Network.Message;
 using LandmarkEmulator.WorldServer.Network.Message.Model;
+using LandmarkEmulator.WorldServer.Network.Message.Model.Shared;
 using LandmarkEmulator.WorldServer.Network.Packets;
 using System;
 using System.Collections.Generic;
@@ -125,6 +126,14 @@ namespace LandmarkEmulator.WorldServer.Network
         /// speak a DisplayPropText bubble or a chat [*speaker*] line (OPEN-LEADS L96).
         /// </summary>
         public System.Collections.Concurrent.ConcurrentDictionary<ulong, uint> FullNpcs { get; } = new();
+
+        /// <summary>
+        /// The FreeBuild flag this player's client got with its SendSelf (+0x287 BypassClaimPermissions); null before
+        /// that. The client keeps it until the next login (FreeBuild is a next-login setting), and with it treats every
+        /// material as free, so the server's material rule follows this snapshot, not the live setting
+        /// (Building.FreeMaterials).
+        /// </summary>
+        public bool? FreeBuildAtLogin { get; private set; }
 
         /// <summary>The newest full (type 0) movement body this client sent (dev: a template for NPC movement).</summary>
         public byte[] LastFullMovement { get; private set; }
@@ -287,6 +296,22 @@ namespace LandmarkEmulator.WorldServer.Network
         public uint PreferredLanguages { get; set; }
 
         /// <summary>
+        /// The Models.txt id this player is shown as instead of their own body, 0 for none (an admin's /setmodel,
+        /// <see cref="Game.TemporaryAppearance"/>). Kept for this session only: a relog brings the normal look back. Sent
+        /// to clients that meet the player later in LightweightToFullPc (<see cref="BuildLightweightToFullPc"/>).
+        /// </summary>
+        public uint TemporaryAppearanceModel { get; set; }
+
+        /// <summary>
+        /// SendSelf CastKeySeed (player +0x753f0, OPEN-LEADS L189): the client builds each CastAttempt's cast hash as
+        /// ((cast counter &amp; 0xff) ^ seed) * 0x502c3f11 (FUN_142e0f810). Live sent a non-zero, random-looking value
+        /// (0x5BB9EB0B, the one capture), so each session draws its own; it stays the same for every re-zone's SendSelf,
+        /// because the client keeps its cast counter (+0x753f4) running. <see cref="Game.Abilities.CastKeyMatches"/>
+        /// checks it.
+        /// </summary>
+        public uint CastKeySeed { get; } = (uint)System.Random.Shared.Next(1, int.MaxValue) | 0x80000000u;
+
+        /// <summary>
         /// Short id other clients use for this player in movement packets.
         /// </summary>
         public uint TransientId { get; } = Game.PlayerManager.AllocateTransientId();
@@ -298,6 +323,9 @@ namespace LandmarkEmulator.WorldServer.Network
         /// </summary>
         /// <summary>The entity the client last targeted (TargetBase RequestSetTarget), 0 when none.</summary>
         public ulong CurrentTarget { get; set; }
+
+        /// <summary>The client's target slots as the server confirmed them: slot → entity (3 hostile, 8 ally, 9 harvest / neutral).</summary>
+        public Dictionary<uint, ulong> TargetSlots { get; } = new();
 
         public static readonly Vector3 RemoteFrameOffset = new(2558400f, 2000f, 2556450f);
 
@@ -383,14 +411,20 @@ namespace LandmarkEmulator.WorldServer.Network
         public void SendItem(CharacterItemModel item, bool replace)
         {
             if (replace)
+            {
+                // The item's own random blocks (quality, tool stats), as its ItemAdd had them: zeros reset them.
+                InventoryItem record = Game.Inventory.Inventory.ToPacket(item);
                 EnqueueMessage(new ClientUpdateItemUpdate
                 {
                     Guid = item.Id,
                     Count = item.Count,
                     Slot = item.Slot,
                     Container = item.Container,
-                    Wear = item.Wear
+                    Wear = item.Wear,
+                    Random = record.Definition.Random,
+                    Random2 = record.Definition.Random2
                 });
+            }
             else
                 EnqueueMessage(new ClientUpdateItemAdd { Item = Game.Inventory.Inventory.ToPacket(item) });
             if (item.ItemDefinitionId == Game.Inventory.Inventory.CurrencyItem)
@@ -429,8 +463,80 @@ namespace LandmarkEmulator.WorldServer.Network
         };
 
         /// <summary>
+        /// The off hand's attachment for a main-hand item with a second model (a sword-and-shield item's shield, a bow's
+        /// quiver, the left gun / dagger of a pair), or null for any other item (OPEN-LEADS L192 (i), L95).
+        /// <para>
+        /// Why the server sends it [P, 0.695]: the item definition carries the second model (record tail +0x80 / +0xb0,
+        /// <see cref="Game.Inventory.ItemDefinitionManager.ItemDefinition.SecondaryModelFile"/>), and the client's own
+        /// item-to-actor builders attach it in the slot named by SecondaryWeaponSlotName ("Off Hand" = 11) whenever the
+        /// item is in the PrimaryWeaponSlotName slot (FUN_142ebde20 / FUN_142cb1f60, the check FUN_143b7a520, the slot
+        /// FUN_143b7a4a0) - but those run only for the client's previews. In the world, EquipmentSetCharacterEquipmentSlot
+        /// (handler FUN_142e42da0) attaches only the one model in the packet (FUN_142ebd620, one record per slot, keyed by
+        /// the slot +0x188) and never looks at the item's definition, for the player and for others alike. So a shield or
+        /// a second gun shows in the world only when the server sends that model in slot 11 as well; before, every
+        /// sword-and-shield and dual weapon showed one hand only [I strong: no other packet carries a second model].
+        /// </para>
+        /// The item guid stays 0: for the player's own character FUN_142ea49e0 would otherwise move the item record into
+        /// slot 11 of the client's equipment model (it looks the guid up and re-slots it); an unknown guid does nothing.
+        /// </summary>
+        public EquipmentSetCharacterEquipmentSlot BuildSecondarySlot(CharacterItemModel item)
+        {
+            var definition = Game.Inventory.ItemDefinitionManager.Get(item.ItemDefinitionId);
+            if (definition == null || definition.EquipSlotId != Game.Inventory.Inventory.MainHandSlot
+                || string.IsNullOrEmpty(definition.SecondaryModelFile))
+                return null;
+            return new EquipmentSetCharacterEquipmentSlot
+            {
+                ProfileId = profileId,
+                CharacterGuid = PlayerGuid,
+                EquipSlotId = Game.Inventory.Inventory.OffHandSlot,
+                ItemGuid = 0,
+                ModelName = definition.SecondaryModelFile,
+                TintAlias = definition.SecondaryTintAlias ?? ""
+            };
+        }
+
+        /// <summary>
+        /// Every slot packet that draws this character's visible equipment (<see cref="VisibleEquipment"/>), with the
+        /// main-hand item's off-hand model after it (<see cref="BuildSecondarySlot"/>): for a viewer meeting the player and
+        /// for the player's own zone-in.
+        /// </summary>
+        public List<EquipmentSetCharacterEquipmentSlot> EquipmentSlotPackets()
+        {
+            var packets = new List<EquipmentSetCharacterEquipmentSlot>();
+            foreach ((uint slot, CharacterItemModel item) in VisibleEquipment())
+            {
+                packets.Add(BuildEquipmentSlot(slot, item));
+                if (slot == Game.Inventory.Inventory.MainHandSlot && BuildSecondarySlot(item) is { } secondary)
+                    packets.Add(secondary);
+            }
+            return packets;
+        }
+
+        /// <summary>
+        /// The off hand follows the main hand: between two <see cref="VisibleEquipment"/> snapshots, the new main-hand item's
+        /// second model (<see cref="BuildSecondarySlot"/>), or the off hand emptied when the old item had one and the new
+        /// one (or none) has not — the client keeps a slot's model until told (FUN_142ebd620); null = nothing to send.
+        /// </summary>
+        public IWritable OffHandChange(Dictionary<uint, CharacterItemModel> before, Dictionary<uint, CharacterItemModel> after)
+        {
+            uint main = Game.Inventory.Inventory.MainHandSlot;
+            before.TryGetValue(main, out CharacterItemModel oldMain);
+            after.TryGetValue(main, out CharacterItemModel newMain);
+            if (oldMain?.Id == newMain?.Id)
+                return null;
+            if (newMain != null && BuildSecondarySlot(newMain) is { } secondary)
+                return secondary;
+            if (oldMain != null && BuildSecondarySlot(oldMain) != null)
+                return new EquipmentUnsetCharacterEquipmentSlot { ProfileId = profileId, CharacterGuid = PlayerGuid,
+                    EquipSlotId = Game.Inventory.Inventory.OffHandSlot };
+            return null;
+        }
+
+        /// <summary>
         /// Tells this client and everyone else in the world what changed in this character's visible equipment
-        /// since <paramref name="before"/> (from <see cref="VisibleEquipment"/>). Only changed slots are sent.
+        /// since <paramref name="before"/> (from <see cref="VisibleEquipment"/>). Only changed slots are sent; a main-hand
+        /// change also sets or empties the off hand (<see cref="BuildSecondarySlot"/>).
         /// </summary>
         public void SendEquipmentChanges(Dictionary<uint, CharacterItemModel> before)
         {
@@ -449,6 +555,8 @@ namespace LandmarkEmulator.WorldServer.Network
                 }
             foreach (uint slot in before.Keys.Where(s => !after.ContainsKey(s)))
                 messages.Add(new EquipmentUnsetCharacterEquipmentSlot { ProfileId = profileId, CharacterGuid = PlayerGuid, EquipSlotId = slot });
+            if (OffHandChange(before, after) is IWritable offHand)
+                messages.Add(offHand);
 
             if (messages.Count == 0)
                 return;
@@ -586,9 +694,15 @@ namespace LandmarkEmulator.WorldServer.Network
                 // The client applies both unconditionally when the character turns full, over the PlayerTitle / AFK
                 // packets the introduction sent (PlayerManager.Introduce), so they must be the player's current ones.
                 Title = Game.Titles.ShownTitle(this),
-                Afk = Game.Afk.IsAway(this)
+                Afk = Game.Afk.IsAway(this),
+                // An admin's /setmodel look, which the client applies from this field once the actor exists.
+                TemporaryAppearance = TemporaryAppearanceModel,
+                GuildTag = Game.Social.GuildTags.TagOf(PlayerGuid)
             };
-            message.Stats.AddRange(Game.Abilities.CalculatedStats(this));
+            // Without temporary buffs: no calculated stat is SEND_TO_OTHERS, so an observer gets no update when a buff ends
+            // and a buffed snapshot (Bottled Moonlight's light radius → the character's self-light, FUN_142e5d990 →
+            // FUN_142ec5a40) would stay on that observer (OPEN-LEADS L196 OL-3, Abilities.CalculatedStatsForOthers).
+            message.Stats.AddRange(Game.Abilities.CalculatedStatsForOthers(this));
             // The movement acceleration times live copied to other players (once, with the character; L162).
             message.CharacterStats.AddRange(Game.CharacterStats.ForOthers());
             return message;
@@ -1066,9 +1180,13 @@ namespace LandmarkEmulator.WorldServer.Network
         /// The 0.695 copy of that routine (FUN_14344e300) is never called: re/tools/refscan.py finds no call, jump or
         /// pointer to it, and the 0.695 right-click sends only the equip (TransferItem bag → main hand), so the slot
         /// comes from the server. Same rule as the client's: nothing when a slot already holds the item (by guid, or by
-        /// definition: a type-1 default slot the client binds to that item, FUN_14344daa0), else the first empty slot,
-        /// bar by bar, slot by slot. The client preferred its active bar (+0x78); the server is not told which bar is
-        /// shown (Ui.SetActiveActionBar FUN_1435c8290 sends nothing), so bar 0 comes first. The slot is saved and sent as
+        /// definition: a type-1 slot of a non-stacking item, which the client's bar builder FUN_14344daa0 shows as a guid
+        /// slot of the player's copy — equipped first, then the bag, FUN_142f389f0 — when the definition's stack size
+        /// (+0xe4) is 1, and that guid is what the routine compares), else the first empty slot, bar by bar, slot by slot.
+        /// The client preferred its active bar (+0x78); the server is never told which bar is shown (Ui.SetActiveActionBar
+        /// FUN_1435c8290 → FUN_14344eaa0 only stores +0x78; hotkey use FUN_14344e200 / FUN_14344c420 and every 0x9A request
+        /// name their bar themselves), so bar 0 comes first — the bar every client shows until the player switches
+        /// (ActionBar.lua OnWindowLoaded: SelectedBar 0) (trace/0695/phaseE2-building.md L193). The slot is saved and sent as
         /// a slot the player set (<see cref="SetActionSlot"/>; the client applies an unrequested ActionManagerUpdateSlot
         /// at once, FUN_142cd9040 → FUN_143458f00). Returns whether the item is on a bar afterwards.
         /// </summary>
@@ -1077,6 +1195,8 @@ namespace LandmarkEmulator.WorldServer.Network
             if (item == null || Inventory?.Get(item.Id) == null)
                 return false;
             (uint Bar, uint Slot)? free = null;
+            // FUN_14344daa0 binds a definition slot to the player's item only for definitions that don't stack (+0xe4 == 1).
+            bool bindsDefinition = Game.Inventory.ItemDefinitionManager.Get(item.ItemDefinitionId)?.MaxStack is null or <= 1;
             lock (actionSlotsLock)
             {
                 if (actionSlots == null)
@@ -1085,7 +1205,7 @@ namespace LandmarkEmulator.WorldServer.Network
                     for (uint slot = 0; slot < ActionSlotsPerBar; slot++)
                     {
                         (uint type, ulong value) = actionSlots.TryGetValue((bar, slot), out var held) ? held : (ActionSlotEmpty, 0ul);
-                        if ((type == ActionSlotItem && value == item.Id) || (type == ActionSlotItemDefinition && value == item.ItemDefinitionId))
+                        if ((type == ActionSlotItem && value == item.Id) || (type == ActionSlotItemDefinition && value == item.ItemDefinitionId && bindsDefinition))
                             return true;
                         if (type == ActionSlotEmpty && free == null)
                             free = (bar, slot);
@@ -1218,6 +1338,8 @@ namespace LandmarkEmulator.WorldServer.Network
             message.FirstTimeEventsSeen = Game.FirstTimeEvents.Seen(Character.Id);
             // Grief points / damage points / level (player +0x76920; Game/Grief): the client's lock checks read the level.
             message.Grief = Game.Grief.SelfData(this);
+            // The seed of the client's per-cast hash (L189): this session's own, like live's non-zero value.
+            message.CastKeySeed = CastKeySeed;
             if (Character.PositionX != 0f || Character.PositionY != 0f || Character.PositionZ != 0f)
             {
                 // Never log in inside a tree that grew where the character was saved.
@@ -1241,6 +1363,7 @@ namespace LandmarkEmulator.WorldServer.Network
             //message.FacialAnimReceiver = true;
             // Client +0x287: claim permission checks always pass (FUN_142d15900).
             message.BypassClaimPermissions = ConfigurationManager<WorldServerConfiguration>.Instance.Config.FreeBuild;
+            FreeBuildAtLogin = message.BypassClaimPermissions;
 
             message.Model = new Shared.Network.Message.Model.Shared.CharacterModelInfo
             {
@@ -1802,6 +1925,7 @@ namespace LandmarkEmulator.WorldServer.Network
                         lastPosition = position;
                         Game.Achievements.Moved(this, position.Value);
                         Game.Emotes.Moved(this, position.Value);
+                        Game.EmoteHolster.Moved(this, position.Value);
                         // The first seconds after a cavern trip: a fall through the world is brought back (bug 2026-10-18).
                         Game.CavernArrivalGuard.Moved(this, position.Value);
                     }

@@ -1,5 +1,7 @@
 # Full system trace — plan and progress
 
+> 0.695 rebase (2026-10-26): addresses below are 0.589 unless marked 0.695; their 0.695 partners and changes: trace/0695/address-map-589-695.md, trace/0695/rebase-695.md
+
 **Directive (user, 2026-10-12):** stop feature work; fully examine and trace every system of the 0.589 client first,
 save it so it can't be lost, then keep building until the emulator has and matches all of the live servers' functions.
 

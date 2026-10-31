@@ -220,6 +220,18 @@ namespace LandmarkEmulator.WorldServer.Game
             return (first / 1000f, (last - first) / 1000f + StrikeMotionSeconds);
         }
 
+        /// <summary>
+        /// Attack indices whose clip is a dash, kept out of the basic (left-click) combo (OPEN-LEADS L194): SwordUser 1010
+        /// index 1. The 0.695 player network's Action|Action|Enter|SwordUser|Switch1 (node 4942, on AttackIndex, thresholds
+        /// 0-5 in its NodeDef) plays Biped_Core_Adventurer_Sword1H_DashAttack_01 at 1 [P] (selections 316 / 317, 317 with
+        /// Translation 0.525: it moves the character forward), which is what the user saw as "a charge" on the second click.
+        /// Both SwordUser weapons' Basic Attacks only swing in front of the player — Assault 574453 "Attack all opponents in
+        /// front of you", Sanctify 576315 "Swing your sword to damage all opponents in front of you" — while the dash is
+        /// Overrun's ("Charge a powerful spinning dash…", 574455), the Power Attack [P text]. So the combo is 0, 2, 0, …
+        /// [I: live's choice was server data].
+        /// </summary>
+        private static bool IsDashIndex(uint cls, uint index) => cls == 1010 && index == 1;
+
         /// <summary>The animation a weapon cast plays with this weapon, or null when its class has none.</summary>
         public static Animation? AttackAnimation(Inventory.ItemDefinitionManager.ItemDefinition weapon, uint ability, int stage)
         {
@@ -233,7 +245,7 @@ namespace LandmarkEmulator.WorldServer.Game
             // already in that stance (MODLOG: selection 1; the sword's 429 lunge stayed invisible as a power attack).
             bool Pair(uint i) => classAnimations.TryGetValue((cls, i), out Animation x) && x.Release != 0;
             uint First(uint fallback, params uint[] order) => order.FirstOrDefault(Pair, order.FirstOrDefault(Has, fallback));
-            uint[] basic = new uint[] { 0, 1, 2 }.Where(Has).ToArray();
+            uint[] basic = new uint[] { 0, 1, 2 }.Where(i => Has(i) && !IsDashIndex(cls, i)).ToArray();
             uint index;
             switch (KindOf(ability))
             {

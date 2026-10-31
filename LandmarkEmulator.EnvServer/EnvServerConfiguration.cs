@@ -60,6 +60,15 @@ namespace LandmarkEmulator.EnvServer
         /// <summary>Keep vertex-only voxels the client sends (WorldServer.json KeepVertexOnlyVoxels).</summary>
         public bool KeepVertexOnlyVoxels { get; set; } = true;
 
+        /// <summary>
+        /// Surface veins on the lands whose ground is known only from the surface cache (the Pioneer lands): "buried" or
+        /// "off" (WorldServer.json PioneerSurfaceVeins; OreVeins.PioneerSurfaceVeins).
+        /// </summary>
+        public string PioneerSurfaceVeins { get; set; } = "buried";
+
+        /// <summary>Surface iron on the Pioneer lands (WorldServer.json PioneerSurfaceIron; false = live).</summary>
+        public bool PioneerSurfaceIron { get; set; } = false;
+
         /// <summary>Touched every 10 s while the service's loop runs (the Docker health check reads its age); empty = none.</summary>
         public string HealthFile { get; set; } = "";
     }

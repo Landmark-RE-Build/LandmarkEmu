@@ -1881,6 +1881,56 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         }
 
         /// <summary>
+        /// The last edit of a layer that came with NewVersion 0: who made it and the version the server gave the layer then
+        /// (<see cref="Commit"/>). Keyed by the landscape's store and the layer key. Caller holds <see cref="sync"/>.
+        /// </summary>
+        private static readonly Dictionary<(Dictionary<ulong, Overlay> Store, ulong Key), (ulong Owner, uint Version)> lastZeroEdit = new();
+
+        /// <summary>
+        /// May an edit with BaseVersion 0 from <paramref name="owner"/> go into this cell's building layer? Yes when their own
+        /// NewVersion-0 edit made its current version (the client then still holds BaseVersion 0) and nobody changed the
+        /// layer since; anyone else's change gave it another version, so the edit is stale as before.
+        /// </summary>
+        public static bool AcceptsBaseZero(ulong cell, uint zone, ulong owner)
+        {
+            lock (sync)
+                return Of(zone).TryGetValue(Key(cell, BuildLayer), out Overlay overlay)
+                    && lastZeroEdit.TryGetValue((Of(zone), Key(cell, BuildLayer)), out var last)
+                    && last.Owner == owner && last.Version == overlay.Version;
+        }
+
+        /// <summary>
+        /// Does an edit's base version name the content the server holds in the cell's building layer, although it isn't
+        /// the server's version number? A layer the server writes itself (heal, undo / redo, Delete / Cut, paste:
+        /// <see cref="Write"/>) gets a counter; the client re-stamps the same content with its own version on its next
+        /// local commit — CRC32 of its compressed layer, 0 for an empty one (<see cref="ClientLayerCodec"/>) [P] — so the
+        /// builder's next edit there came with a base the server did not know and was refused as stale: in all 42 logged
+        /// refusals the server's content was exactly the client's (player report 2026-10-31: a sphere Remove left a
+        /// straight-edged section standing; trace/0695/stale-terrain.md). Base 0: the layer is empty. Any other base: the
+        /// client's version of the server's content equals it (classic zlib needed; without it only empty layers pass). A
+        /// real conflict — someone else changed the cell — still differs.
+        /// </summary>
+        public static bool HoldsClientCopy(ulong cell, uint zone, uint baseVersion)
+        {
+            if (TerrainStore.Decode(cell).Level > Level)
+                return false;
+            // The placed-design lookup follows the layer's block data in what the client holds (BuildUpdate); built before
+            // the store lock, as there: it reads the ownership grids, which have their own.
+            byte[] instances = baseVersion == 0 ? null
+                : TemplateInstanceLookup.BlobFor(zone, cell, (c, placer) => VoxelOwnership.OwnedIn(zone, c, placer));
+            byte[] raw;
+            lock (sync)
+            {
+                BlockData blocks = Of(zone).TryGetValue(Key(cell, BuildLayer), out Overlay overlay) ? overlay.Blocks : null;
+                bool empty = blocks == null || Array.TrueForAll(blocks.Flags, f => f == 0);
+                if (baseVersion == 0 || empty)
+                    return baseVersion == 0 && empty;
+                raw = instances != null ? blocks.Serialize().Concat(instances).ToArray() : blocks.Serialize();
+            }
+            return ClientLayerCodec.Version(raw) == baseVersion;
+        }
+
+        /// <summary>
         /// Second half of a build edit: writes the result's values at the prepared voxels into the layer (one pass) and
         /// returns them as the undo record's "after". Solid voxels become <paramref name="owner"/>'s, the rest nobody's.
         /// </summary>
@@ -1907,11 +1957,23 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 // The client sends the version it gave the layer after this edit (CRC32 of its compressed layer,
                 // CompressBlockData); adopting it keeps the server's and the client's versions equal, so its cached copy
                 // stays valid (no re-download) and the next edit's base version can be checked.
-                // When the client sends NewVersion 0 (seen on 0.695 Add-tool clicks, 2026-10-24), do NOT increment: a
-                // solo builder is left out of Broadcast and only learns versions from their own NewVersion / a manifest
-                // note. Incrementing to 1,2,3… while they keep BaseVersion 0 made every other brush click "not applied"
-                // (stale). Leaving the version unchanged keeps Base 0 matching until a real CRC arrives.
-                overlay.Version = clientVersion != 0 ? clientVersion : overlay.Version;
+                // NewVersion 0 (seen on 0.695 Add-tool clicks, 2026-10-24): the builder keeps sending BaseVersion 0 on the
+                // next clicks, so a new version made them "not applied" (stale) — the org's #12 kept the old version for
+                // that. But the content changed, and everything keyed by version (manifest notes, the zone-in manifest,
+                // the remote service's body cache, LOD copies; a new cell left at 0 was not listed at all) then treated
+                // the cell as unchanged: other players and later logins never saw the edit (trace/0695/phaseE4-logic.md
+                // F1). So the layer gets a new non-zero version, and the editor's next BaseVersion 0 is accepted for as
+                // long as nobody else changed the cell (<see cref="AcceptsBaseZero"/>).
+                if (clientVersion != 0)
+                {
+                    overlay.Version = clientVersion;
+                    lastZeroEdit.Remove((Of(zone), Key(id, layer)));
+                }
+                else
+                {
+                    overlay.Version = overlay.Version + 1 == 0 ? 1 : overlay.Version + 1;
+                    lastZeroEdit[(Of(zone), Key(id, layer))] = (owner, overlay.Version);
+                }
                 MarkDirty(zone, Key(id, layer), overlay);
             }
             VoxelOwnership.Set(zone, id, indices, i => (result.Flags[i] & 1) != 0 && result.Materials[i] != 0, owner);
@@ -2202,6 +2264,49 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
             }
         }
 
+        /// <summary>
+        /// Copies one edited cell layer's voxels into <paramref name="into"/> (every voxel overwritten), or returns false
+        /// when the layer has no overlay there (<paramref name="into"/> untouched). An overlay whose bytes cannot be read
+        /// is copied as empty. The store's lock is held only to pick up the arrays (an expanded cell is copied) or the
+        /// compact bytes (decompressed after the lock is released); the overlay itself is neither expanded nor packed again,
+        /// unlike <see cref="WithCell"/>. For <see cref="TerrainLod"/>, which reads the cells next to the ones it builds
+        /// from (VoxelFarm's LOD rule looks up to 3 voxels into the neighbours) into blocks it reuses.
+        /// </summary>
+        internal static bool CopyCell(uint zone, ulong id, uint layer, BlockData into)
+        {
+            byte[] saved;
+            lock (sync)
+            {
+                if (!Of(zone).TryGetValue(Key(id, layer), out Overlay overlay))
+                    return false;
+                if (overlay.Expanded)
+                {
+                    BlockData blocks = overlay.Blocks;
+                    Array.Copy(blocks.Flags, into.Flags, BlockData.Count);
+                    Array.Copy(blocks.Materials, into.Materials, BlockData.Count);
+                    Array.Copy(blocks.Offsets, into.Offsets, BlockData.Count * 3);
+                    return true;
+                }
+                saved = overlay.SavedBytes();
+            }
+            try
+            {
+                if (saved != null)
+                {
+                    into.Load(saved);
+                    return true;
+                }
+            }
+            catch (Exception e) when (e is InvalidDataException or EndOfStreamException)
+            {
+                log.Warn($"Terrain cell {id:X16} layer {layer} on landscape {zone} unreadable for the LOD copies ({e.Message}): read as empty.");
+            }
+            Array.Clear(into.Flags);
+            Array.Clear(into.Materials);
+            Array.Clear(into.Offsets);
+            return true;
+        }
+
         /// <summary>One number for "what the server would send for this cell now" (all layers; for de-duplication).</summary>
         public static uint CurrentVersion(ulong cellId, uint zone)
         {
@@ -2257,10 +2362,23 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
             return versions;
         }
 
-        /// <summary>Edit overlay version, plus the vein layer's for layer 2 (both only grow).</summary>
+        /// <summary>
+        /// Edit overlay version, plus the vein layer's for layer 2 (both only grow). A dug cell without ore gets the
+        /// landscape's vein version base instead (<see cref="OreVeins.DigVersionBase"/>, 0 on the classic islands): where the
+        /// vein layout changed (the Pioneer lands), a cell whose ore went away but whose overlay stayed would otherwise give
+        /// the overlay's version alone, which can equal an old overlay + ore version the client's mesh cache holds (it then
+        /// draws the old lump or hole). Neither overlay nor ore: 0.
+        /// </summary>
         private static uint VersionOf(ulong cellId, uint zone, uint layer)
-            => (Of(zone).TryGetValue(Key(cellId, layer), out Overlay overlay) ? overlay.Version : 0)
-                + (layer == DigLayer ? OreVeins.VersionOf(cellId, zone) : 0);
+        {
+            bool edited = Of(zone).TryGetValue(Key(cellId, layer), out Overlay overlay);
+            if (layer != DigLayer)
+                return edited ? overlay.Version : 0;
+            uint ore = OreVeins.VersionOf(cellId, zone);
+            if (!edited)
+                return ore;
+            return overlay.Version + (ore != 0 ? ore : OreVeins.DigVersionBase(zone));
+        }
 
         /// <summary>
         /// CellsUpdate (block data, version 0) for a cell: every layer, with its own version, empty where the server
@@ -2273,6 +2391,10 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 return TerrainLod.BuildUpdate(cellId, zone == 0 ? Home : zone);
             var layers = new List<(uint Layer, uint Version, byte[] Blob)>();
             bool any = false;
+            // Placed Player Studio designs in the building layer (Voxel Vision's "Templates"): the client reads their
+            // VoxelTemplateLookup after the layer's block data (FUN_144049ef0 → FUN_14406dca0). Built before the store
+            // lock: it reads the ownership grids, which have their own.
+            byte[] instances = TemplateInstanceLookup.BlobFor(zone, cellId, (cell, placer) => VoxelOwnership.OwnedIn(zone, cell, placer));
             lock (sync)
             {
                 for (uint layer = 0; layer < LayerCount; layer++)
@@ -2295,13 +2417,36 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                     }
                     if (blocks != null)
                         any = true;
-                    layers.Add((layer, VersionOf(cellId, zone, layer), (blocks ?? Empty).ToLayerBlob()));
+                    byte[] blob = layer == BuildLayer && blocks != null && instances != null
+                        ? TerrainStore.Pack(blocks.Serialize().Concat(instances).ToArray())
+                        : (blocks ?? Empty).ToLayerBlob();
+                    layers.Add((layer, VersionOf(cellId, zone, layer), blob));
                 }
             }
             return any || always ? TerrainStore.BuildBlocksUpdate(cellId, layers) : null;
         }
 
         private static readonly BlockData Empty = new();
+
+        /// <summary>
+        /// A new version for the building layer of each listed cell that has one (its placed designs changed,
+        /// <see cref="TemplateInstanceLookup.Replace"/>), so clients holding the old copy fetch it again. Returns those cells.
+        /// </summary>
+        public static List<ulong> TouchBuildLayers(uint zone, IEnumerable<ulong> cells)
+        {
+            var touched = new List<ulong>();
+            lock (sync)
+                foreach (ulong cell in cells.Distinct())
+                {
+                    ulong key = Key(cell, BuildLayer);
+                    if (!Of(zone).TryGetValue(key, out Overlay overlay))
+                        continue;
+                    overlay.Version++;
+                    MarkDirty(zone, key, overlay);
+                    touched.Add(cell);
+                }
+            return touched;
+        }
 
         /// <summary>Manifest entries (cell, layer version) of one layer, for the zone-in modified-cell manifest.</summary>
         public static List<(ulong Cell, uint Version)> ManifestEntries(uint zone, uint layer)
@@ -2313,8 +2458,20 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                     if (LayerOf(key) == layer)
                         entries[CellOf(key)] = overlay.Version;
                 if (layer == DigLayer)
-                    foreach ((ulong id, uint version) in OreVeins.Entries(zone))
+                {
+                    // Same sum as VersionOf: overlay + ore, or overlay + the vein version base where the cell has no ore.
+                    var ore = OreVeins.Entries(zone);
+                    uint versionBase = OreVeins.DigVersionBase(zone);
+                    if (versionBase != 0)
+                    {
+                        var oreCells = new HashSet<ulong>(ore.Select(e => e.Cell));
+                        foreach (ulong id in entries.Keys.ToList())
+                            if (!oreCells.Contains(id))
+                                entries[id] += versionBase;
+                    }
+                    foreach ((ulong id, uint version) in ore)
                         entries[id] = entries.GetValueOrDefault(id) + version;
+                }
             }
             foreach ((ulong id, uint version) in TerrainLod.Entries(zone == 0 ? Home : zone, layer))
                 entries[id] = version;

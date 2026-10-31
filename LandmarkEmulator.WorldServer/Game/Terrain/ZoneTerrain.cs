@@ -137,6 +137,38 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 }
         }
 
+        /// <summary>
+        /// Changed cells for the sessions on the landscape that are between their zone-in manifest and
+        /// PlayerManager.Enter: <see cref="Broadcast"/> reaches only entered players, and the client fetches only the cells
+        /// its manifest or a ModifiedCellManifestUpdate names (docs/terrain.md "Getting cells to the client"; everything
+        /// else is answered "up to date"), so a cell written after the manifest was built (MiscHandler.ClientIsReady) and
+        /// sent out before the player entered (the first position update after ClientFinishedLoading, 1-5 s later in the
+        /// dev world's logs) would show the generated ground until a re-zone or relog [P code, review 2026-11-01]. Each
+        /// such session gets a 21-byte note per layer the server holds, as Broadcast's far-away fallback; its client fetches
+        /// the cell when it draws it. Sessions not yet sent their manifest are skipped (it will list the cells), as are
+        /// entered ones (Broadcast has them). Used for the Pioneer slab (a new player's own slab can finish in that window
+        /// when stamps queue up or a remote Environment Server is slow); about 4 KB per loading player for a 210 m slab.
+        /// </summary>
+        public static void NoteLoading(IReadOnlyList<ulong> cellIds, uint zone = 0)
+        {
+            if (cellIds.Count == 0)
+                return;
+            uint z = zone == 0 ? Home : zone;
+            var entered = PlayerManager.Snapshot().ToHashSet();
+            var loading = ZoneSessions.All().Where(s => s.ReadySent && !s.Disconnected && !s.Replaced && s.ZoneId == z
+                && !entered.Contains(s)).ToList();
+            if (loading.Count == 0)
+                return;
+            foreach (ulong id in cellIds)
+            {
+                uint[] versions = Env.LayerVersions(id, zone);
+                foreach (WorldSession session in loading)
+                    for (uint layer = 0; layer < TerrainEdits.LayerCount; layer++)
+                        if (versions[layer] != 0)
+                            SendManifestEntry(session, id, layer, versions[layer], 0);
+            }
+        }
+
         // ---- manifests -----------------------------------------------------------------------------------------------
 
         /// <summary>

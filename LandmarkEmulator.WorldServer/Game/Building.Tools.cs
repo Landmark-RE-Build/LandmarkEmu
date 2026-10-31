@@ -45,7 +45,7 @@ namespace LandmarkEmulator.WorldServer.Game
             TriggerVolume = 4,      // Area Tool
             HealingBrush = 5,       // Heal Tool
             SubtractiveBrush = 6,   // Remove Tool
-            Location = 7,
+            Location = 7,           // ToolLocation: no build tool; the client switches to it whenever the held item changes (FUN_143458f20 → FUN_143464780("Location"))
             Props = 8,              // Prop Tool
             PasteVoxel = 9,         // Paste Cursor
             StampBrush = 10,        // Add Tool (shapes and Mesh Shapes)

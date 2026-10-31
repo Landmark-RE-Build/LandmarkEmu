@@ -7,7 +7,7 @@
 | Command | Who | What it does |
 |---|---|---|
 | `/emotelist` | Everyone | Lists the emote commands in chat. |
-| `/emote <0-33>` | Everyone | Plays emote clip n. |
+| `/emoteclip <0-33>` | Everyone | Plays emote clip n. (/emote, /em and /me are the free-text emote line of the game itself.) |
 | `/<emote word>  (the words below)` | Everyone | Plays that emote, with its chat lines ("You wave." / "[name] waves.", the "[target]" forms with a target). Moods (angry, happy, sad; `/calm` ends them) colour the idle stance and later emotes; stances (dance, kneel, lie, playdead) loop until `/stand`, another stance or walking away; the walk stances (skip, drunk, sneak) last while walking, until `/stand`; `/talking` talks until `/stop`. Players who meet you later see your stance and mood too. |
 | `/playdead` | Everyone (0.695 clients) | The Play Dead stance, with its chat lines (with your target when you have one). |
 | `/duel <name>` | Everyone | Challenges a player to a duel (a world-channel encounter). |
@@ -15,7 +15,7 @@
 | `/duelleave` | Everyone | Leaves the duel you are in. |
 | `/who [text]` | Everyone | Lists the players online on this world whose name contains the text (all of them without one; at most 50; hidden admins left out). |
 
-Emote words: `/beg`, `/bow`, `/cheer`, `/congratulate`, `/cry`, `/flirt`, `/groan`, `/giggle`, `/shoo`, `/laugh`, `/point`, `/shrug`, `/sob`, `/talk`, `/taunt`, `/wave`, `/no`, `/nod`, `/cough`, `/flex`, `/sneeze`, `/welcome`, `/yawn`, `/beckon`, `/stretch`, `/hug`, `/talking`, `/stop`, `/dance`, `/kneel`, `/lie`, `/skip`, `/drunk`, `/sneak`, `/stand`, `/calm`, `/angry`, `/happy`, `/sad`, `/playdead`.
+Emote words: `/beg`, `/bow`, `/cheer`, `/congratulate`, `/cry`, `/flirt`, `/groan`, `/giggle`, `/shoo`, `/laugh`, `/point`, `/shrug`, `/sob`, `/talk`, `/taunt`, `/wave`, `/no`, `/nod`, `/cough`, `/flex`, `/sneeze`, `/welcome`, `/yawn`, `/beckon`, `/stretch`, `/hug`, `/yell`, `/talking`, `/stop`, `/dance`, `/kneel`, `/lie`, `/skip`, `/drunk`, `/sneak`, `/stand`, `/calm`, `/angry`, `/happy`, `/sad`, `/playdead`.
 
 ## Admin slash commands
 

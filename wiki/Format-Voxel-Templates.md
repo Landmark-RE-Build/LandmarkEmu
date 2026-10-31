@@ -8,7 +8,9 @@ Back to [Asset Documentation](Asset-Documentation).
 ## Voxel templates (`CommonData/Voxel/templates/*.otd`)
 
 Prefab structures: the Spire base, castles, floating islands, building platforms, outpost ruins, the cavern
-graveyards, the Pioneer site slabs. The server stamps them into the terrain (layer 0) and places their props.
+graveyards, the Pioneer site slabs (`claim*.otd`; the server's default Pioneer slab is built voxel by voxel instead,
+because live's was a full 210 m square that none of these templates is). The server stamps them into the terrain
+(layer 0) and places their props.
 Version 6:
 
 | Field | Meaning |

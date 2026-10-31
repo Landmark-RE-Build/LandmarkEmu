@@ -40,16 +40,13 @@ namespace LandmarkEmulator.WorldServer.Network.Handlers
         }
 
         /// <summary>
-        /// RemoveTemporaryAppearance: the player drops a temporary look. Everyone on the landscape is told (S→C 0x0A
-        /// {u64 character}; client case FUN_142e2b750 restores the normal appearance).
+        /// RemoveTemporaryAppearance: the player drops a temporary look (an admin's /setmodel, Game.TemporaryAppearance).
+        /// Everyone on the landscape is told (S→C 0x0A {u64 character}; 0.695 case 9 → FUN_142eca480 restores the normal
+        /// appearance) and later arrivals no longer get it.
         /// </summary>
         [ZoneMessageHandler(ZoneMessageOpcode.PlayerUpdateRemoveTemporaryAppearanceWire)]
         public static void HandleRemoveTemporaryAppearance(WorldSession session, PlayerUpdateRemoveTemporaryAppearanceRequest request)
-        {
-            byte[] packet = System.BitConverter.GetBytes(session.PlayerGuid);
-            foreach (WorldSession p in Game.PlayerManager.InZone(session.ZoneId))
-                p.EnqueueMessage(ZoneMessageOpcode.PlayerUpdateRemoveTemporaryAppearanceWire, packet);
-        }
+            => Game.TemporaryAppearance.Clear(session);
 
         /// <summary>SafeEject: the client was launched (see <see cref="Game.SafeEject"/>); bit 26 is cleared when it lands.</summary>
         [ZoneMessageHandler(ZoneMessageOpcode.PlayerUpdateSafeEjectWire)]

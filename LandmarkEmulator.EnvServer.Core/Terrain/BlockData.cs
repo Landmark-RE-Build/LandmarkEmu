@@ -14,7 +14,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
     {
         public const int Size = 40;
         public const int Count = Size * Size * Size;
-        /// <summary>The offset byte for 0.5 (client DAT_14552de88).</summary>
+        /// <summary>The offset byte for 0.5 (client DAT_14552de88 (0.589; 0.695 DAT_14560e128)).</summary>
         public const byte CentreOffset = 128;
 
         public byte[] Flags { get; } = new byte[Count];

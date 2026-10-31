@@ -207,7 +207,9 @@ namespace LandmarkEmulator.WorldServer.Game
         ///   2. an underground cavern of a Pioneer land, near the surface (<see cref="FindCavern"/>);
         ///   3. the surface of the least-crowded classic landscape.
         /// Returns the landscape and the local spot to stand on, or null when every step is full (no site then). A site on a
-        /// Pioneer surface gets the slate slab (<see cref="QueueSlab"/>, Pioneer.Slab.cs, L180).
+        /// Pioneer surface gets the slate slab (<see cref="QueueSlab"/>, Pioneer.Slab.cs, L180); under a "site" slab the
+        /// first login arrives <see cref="FirstLoginDrop"/> above the slab's top at the site's middle (live: a drop of about
+        /// 3 m onto the slab, trace/0695/pioneer-slab-live.md [I]) instead of 1 m above the ground, which is inside the slab.
         /// </summary>
         public static (uint Zone, Vector3 At)? Place(ulong ownerGuid, string ownerName)
         {
@@ -219,8 +221,8 @@ namespace LandmarkEmulator.WorldServer.Game
             var global = Terrain.TerrainEdits.ToGlobal(centre);
             ClaimModel claim = Claims.Grant(ownerGuid, ownerName, zone, global.X, global.Y, global.Z);
             log.Info($"{ownerName}: starting site on {zone} ({step}) at {centre}.");
-            if (step == StepPioneerSurface)
-                QueueSlab(claim);
+            if (step == StepPioneerSurface && QueueSlab(claim))
+                arrival = SlabArrival(claim, arrival);
             return (zone, arrival);
         }
 
@@ -278,6 +280,8 @@ namespace LandmarkEmulator.WorldServer.Game
                         var global = Terrain.TerrainEdits.ToGlobal(new Vector3(x, y, z));
                         if (spire is var (lo, hi) && global.X > lo.X && global.X < hi.X && global.Z > lo.Z && global.Z < hi.Z)
                             continue;
+                        if (Spire.BlocksSite(zone, global.X, global.Y, global.Z, SiteHalfWidthDm, SiteHalfHeightDm))
+                            continue;   // the Spire area (90 m round the Hub): no build sites, as for players
                         if (Claims.IsFree(zone, global.X, global.Z))
                             return new Vector3(x, y, z);
                     }
@@ -289,6 +293,9 @@ namespace LandmarkEmulator.WorldServer.Game
 
         /// <summary>Half a build site's width (Claims: 210 m sites), decimetres.</summary>
         private const double SiteHalfWidthDm = 1050;
+
+        /// <summary>Half a build site's height (Claims: 180 m), decimetres.</summary>
+        private const double SiteHalfHeightDm = 900;
 
         /// <summary>The cavern piece of the client's cave placements (Caves.CavernPiece: CavernMiddle01, verified open).</summary>
         private const uint CavernPiece = 104;

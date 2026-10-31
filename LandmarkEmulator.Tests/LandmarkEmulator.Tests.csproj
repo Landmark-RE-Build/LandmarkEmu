@@ -49,6 +49,10 @@
   <ItemGroup>
     <!-- The 0.695 client's packet-id table (OpcodeCodecTests.SubCarryingValues_MatchThe695IdTable). -->
     <None Include="Data\packet_ids_695.tsv" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Server layer-1 bytes from the dev log, named by the version the client gave them (ClientLayerCodecTests). -->
+    <None Include="Data\ClientLayerVersions\*.raw" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Level-2 build-layer cells of one dev-world parent (TestPlayer2's Mesh Shapes cylinder, TerrainLodQefTests). -->
+    <None Include="Data\TerrainLod\*.cells" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />

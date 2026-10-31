@@ -93,6 +93,9 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         private readonly List<Action> deferred = new();
         /// <summary>Every permanent-cell mark so far (the service keeps them in memory): sent again on every connect.</summary>
         private readonly Dictionary<uint, HashSet<ulong>> permanent = new();
+
+        /// <summary>Each landscape's placed Player Studio designs as last set (the service keeps them in memory): sent again on every connect.</summary>
+        private readonly Dictionary<uint, List<TemplateInstanceLookup.Instance>> templateInstances = new();
         private byte[] lastKeepOut;
         private DateTime nextKeepOut, nextPositions;
 
@@ -187,6 +190,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
             synced = true;
             firstSync.Set();
             worldQueue.Enqueue(Reconnected);
+            worldQueue.Enqueue(ResendTemplateInstances);
             log.Info($"Environment Server linked: {snapshot.Landscapes.Values.Sum(l => l.Count)} index entries on "
                 + $"{snapshot.Landscapes.Count} landscape(s), sequence {snapshot.Sequence}.");
         }
@@ -727,6 +731,40 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
 
         public void SetRegenerationDelay(TimeSpan delay)
             => Call(EnvironmentMessages.TerrainCellFamily, EnvironmentMessages.RegenerationDelaySub, 0, w => EnvWire.F64(w, delay.TotalSeconds), CallTimeout);
+
+        public List<ulong> SetTemplateInstances(uint zone, IReadOnlyList<TemplateInstanceLookup.Instance> instances, bool announce = true)
+        {
+            List<TemplateInstanceLookup.Instance> list = instances.ToList();
+            lock (templateInstances)
+                templateInstances[zone] = list;
+            (bool ok, uint result, InternalReader r) = Call(EnvironmentMessages.TerrainCellFamily, EnvironmentMessages.TemplateInstancesSub, zone, w =>
+            {
+                w.U32((uint)list.Count);
+                foreach (TemplateInstanceLookup.Instance instance in list)
+                {
+                    w.U64(instance.Guid).U64(instance.Placer);
+                    EnvWire.Box(w, instance.Box.MinX, instance.Box.MinY, instance.Box.MinZ, instance.Box.MaxX, instance.Box.MaxY, instance.Box.MaxZ);
+                }
+                w.Bool(announce);
+            }, CallTimeout);
+            if (ok && result == 0)
+                return EnvWire.Cells(r);
+            log.Warn($"Placed designs of landscape {zone}: Environment Server away, sent when it is back.");
+            return new List<ulong>();
+        }
+
+        /// <summary>
+        /// After a (re)connect, on the world thread: every landscape's placed designs again, without new versions (the
+        /// service's cells were built from the same records before).
+        /// </summary>
+        private void ResendTemplateInstances()
+        {
+            List<(uint Zone, List<TemplateInstanceLookup.Instance> List)> sets;
+            lock (templateInstances)
+                sets = templateInstances.Select(s => (s.Key, s.Value)).ToList();
+            foreach ((uint zone, List<TemplateInstanceLookup.Instance> list) in sets)
+                SetTemplateInstances(zone, list, announce: false);
+        }
 
         public void MarkPermanent(IEnumerable<ulong> cells, uint zone)
         {

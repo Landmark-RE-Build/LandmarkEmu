@@ -53,6 +53,9 @@ services:
       Continent: ${HOME_CONTINENT:-406}
       TerrainLodCopies: ${TERRAIN_LOD_COPIES:-true}
       KeepVertexOnlyVoxels: ${KEEP_VERTEX_ONLY_VOXELS:-true}
+      # The Pioneer lands' surface ore veins and surface iron: the world's .env lines (PIONEER_SURFACE_VEINS / _IRON).
+      PioneerSurfaceVeins: ${PIONEER_SURFACE_VEINS:-buried}
+      PioneerSurfaceIron: ${PIONEER_SURFACE_IRON:-false}
       # The persisted heal queue (spec §4.3); false pauses heals (nothing is lost, they catch up when switched on).
       HealQueue: ${ENVSERVER_HEAL_QUEUE:-true}
       # Ruin-layer records (ruins.tsv / ruin-layers.tsv, spec §4.5); placement itself stays in the world for now.
