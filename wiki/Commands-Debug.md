@@ -14,7 +14,8 @@ The retail client's own commands, available to admins only (see [Who is an admin
 
 | Command | Who | What the server does |
 |---|---|---|
-| `/vehicle, /setmodel, /ammo, /weaponset, /placedeffect, free-fly hide, /profile …` | Admins | Decoded and logged with their fields; the systems behind them (vehicles, model override, ammo, weapon sets, placed effects, job profiles) are not built. |
+| `/setmodel id` | Admins | Shows you (or your admin target) as that model to everyone on the landscape until `/setmodel 0` or a relog. |
+| `/vehicle, /ammo, /weaponset, /placedeffect, free-fly hide, /profile …` | Admins | Decoded and logged with their fields; the systems behind them (vehicles, ammo, weapon sets, placed effects, job profiles) are not built. |
 | `Admin monitor requests (pathing data, zone player count, Storybricks diagnostics)` | Admins | Logged at most once a minute per admin and kind; the retail client never sends them and has no reader for a reply. |
 
 ## Dev commands
@@ -28,8 +29,8 @@ Run from `dev_commands.txt` or the admin menu's *Any command* (see [Running dev 
 | `blockcell` | `blockcell <level> <x> <y> <z> <x0> <y0> <z0> <x1> <y1> <z1> [material] [layer] [prefixSize]` | Console / admins | Push a voxel box as block data (live). |
 | `blockdmg` | `blockdmg <level> <x> <y> <z> <firstBlock> <lastBlock> <health%>` | Console / admins | Probe CellBlockDamage on real terrain. |
 | `caveair` | `caveair <gx gy gz> (global dm)` | Console / admins | Is the client's generated world cave air there? |
-| `cellcompare` | `cellcompare on\|off` | Console / admins | Log how the stored cell compares with each edit's cell (Building.CompareWithClient). |
-| `digmode` | `digmode <n>` | Console / admins | Test switch for smoothed hole surfaces (0 off). |
+| `cellcompare` | `cellcompare on\|off` | Console / admins | Log how the stored cell compares with each edit's cell, and whether a selection Delete / Cut's client layer versions name the server's result (Building.CompareWithClient). |
+| `digmode` | `digmode <n>` | Console / admins | How digs shape holes (TerrainEdits.OffsetMode): 8 the client's own surface (default), 5 the old solid shell, 0 no vertices. For side-by-side checks. |
 | `durability` | `durability <item def> <value>` | Console / admins | Sends a carried item's consumed-count field (the client calls it ConsumedCount, not durability). Test only. |
 | `gamelabels` | `gamelabels [off]` | Console / admins | Switches the labels over site-game control points on or off. |
 | `guildpacket` | `guildpacket <sub hex> <body hex>` | Console / admins | Handle a GuildBase request as if the player's client sent it (tests the roster's right-click requests, which can't be driven through client Lua). |
@@ -38,6 +39,7 @@ Run from `dev_commands.txt` or the admin menu's *Any command* (see [Running dev 
 | `itemslot` | `itemslot <equipment slot id>` | Console / admins | Up to 30 item definitions worn in that slot (8 = chest armour). itemslot &lt;slot&gt; [model text]: optionally only models containing the text (e.g. _Bow_). |
 | `lastmove` | `lastmove` | Console / admins | Writes the player's last full movement packet to the log. |
 | `livecell` | `livecell <level> <x> <y> <z> [height] [variant]` | Console / admins | Change a cell while players are in the world, pushed as a block event (damage + CellsUpdate naming the same transaction). |
+| `loot / content` | `loot reload \| content reload` | Console / admins | Reload ContentTables (baked + /data/content) without a world restart. |
 | `lua` | `lua <Table:Function or Table.Function> [a b c]` | Console / admins | Runs a Lua function of the player's game client with up to three numbers. It reaches only the admin who runs it and other admins, and may not name a function that opens the player's desktop web browser, unless DEV_CLIENT_CODE_ON_OTHERS is true. Every use is logged. |
 | `luacode` | `luacode <Lua code>` | Console / admins | Runs a line of Lua code in the player's game client. Same limits as `lua`. |
 | `luas` | `luas <Table.Method> [arg arg...]` | Console / admins | Calls a Lua function of the player's game client with text arguments. Same limits as `lua`. |

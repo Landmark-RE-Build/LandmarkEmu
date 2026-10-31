@@ -298,12 +298,14 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model
     public class AchievementRequest : SubRequest8 { }
 
     /// <summary>
-    /// A MountBase packet from the client (0xA1, u16 sub; packet ids 1 MountRequest, 3 DismountRequest …). The 0.695 client
-    /// sends DismountRequest (03 00, no body) when an encounter starts (seen at a duel accept, 2026-10-17); Landmark has
-    /// no mounts, so it is only acknowledged in the log (MiscHandler.HandleMount).
+    /// A MountBase packet from the client (0xA1, u8 sub: header writer FUN_142c146b0; packet ids 1 MountRequest, 3
+    /// DismountRequest …). The 0.695 client sends DismountRequest {u8 flag} (sender FUN_142c442b0; flag 0 from
+    /// SendDismountRequest / logout, 1 from FUN_142cbe430) when an encounter starts (seen at a duel accept, 2026-10-17);
+    /// Landmark has no mounts, so it is only acknowledged in the log (MiscHandler.HandleMount). It was read as a u16 sub
+    /// until 2026-10-26, so a flag-1 dismount logged as sub 259 (trace/0695/phaseE4-seen.md F2).
     /// </summary>
     [ZoneMessage(ZoneMessageOpcode.MountBase)]
-    public class MountRequest : SubRequest16 { }
+    public class MountRequest : SubRequest8 { }
 
     /// <summary>A CharacterCustomization packet from the client (0x11C): u8 sub, then its body (see Game.Barbershop).</summary>
     [ZoneMessage(ZoneMessageOpcode.CharacterCustomizationBase)]

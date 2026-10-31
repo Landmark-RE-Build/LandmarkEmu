@@ -43,7 +43,7 @@ namespace LandmarkEmulator.SocialServer
         /// <summary>How long a request waits for its answer (ours, as group invites).</summary>
         private static readonly TimeSpan RequestTimeout = TimeSpan.FromMinutes(2);
         /// <summary>Requests waiting for an answer: (asker, asked) → when they lapse (work loop only).</summary>
-        private readonly Dictionary<(ulong From, ulong To), (DateTime Lapses, string ToName)> pending = new();
+        private readonly Dictionary<(ulong From, ulong To), (DateTime Lapses, string ToName, string FromName)> pending = new();
 
         /// <summary>
         /// An accepted request makes the friendship mutual (live; SocialServer.json FriendRequestsMutual, Docker
@@ -83,6 +83,19 @@ namespace LandmarkEmulator.SocialServer
         {
             OnlineCharacter presence = hub.Presence.Find(row.Guid);
             return new ClientPackets.Friend(row.Guid, presence?.Name ?? row.Name, presence != null, row.LastOnline);
+        }
+
+        /// <summary>
+        /// A character entered the world (CharacterEnteredWorld): the friend requests still waiting for them come again
+        /// (ConfirmFriendRequest, which the client queues as a Friend Invite popup). The client hands its unanswered popups
+        /// to the server at UI shutdown (Notifications ListNotifications) and has no other way to get them back, so a relog
+        /// within the request's two minutes lost the popup while the request still waited (trace/0695/phaseE4-seen.md F1).
+        /// </summary>
+        public void Entered(OnlineCharacter character)
+        {
+            DateTime now = DateTime.UtcNow;
+            foreach (var entry in pending.Where(p => p.Key.To == character.Guid && p.Value.Lapses > now).ToList())
+                hub.SendTo(character, ClientPackets.ConfirmFriendRequest(entry.Key.From, entry.Value.FromName));
         }
 
         /// <summary>SocialStateForZone for a character to the world it is connected to (nothing when it isn't).</summary>
@@ -165,7 +178,7 @@ namespace LandmarkEmulator.SocialServer
                 hub.SendTo(player, ClientPackets.FriendMessage(ClientPackets.FriendMessageNoSpam, target.Guid, target.Name));
                 return;
             }
-            pending[key] = (DateTime.UtcNow + RequestTimeout, target.Name);
+            pending[key] = (DateTime.UtcNow + RequestTimeout, target.Name, player.Name);
             hub.SendTo(other, ClientPackets.ConfirmFriendRequest(player.Guid, player.Name));
             hub.SendTo(player, ClientPackets.FriendMessage(ClientPackets.FriendMessageRequested, target.Guid, target.Name));
             log.Info($"{player} asked {target.Name} to be friends.");

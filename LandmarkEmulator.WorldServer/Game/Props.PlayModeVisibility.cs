@@ -58,13 +58,27 @@ namespace LandmarkEmulator.WorldServer.Game
 
         private static Vector3 PositionOf(PlacedProp prop) => new(prop.Spawn.Position.X, prop.Spawn.Position.Y, prop.Spawn.Position.Z);
 
-        /// <summary>Whether the prop is one of the tools Play Mode hides (Starting Location included).</summary>
+        /// <summary>
+        /// Setting CreaturePropsHideInPlayMode (WorldServer.json, Docker CREATURE_PROPS_HIDE_IN_PLAY_MODE; default true =
+        /// live, read once at start-up so a site that is playing keeps one rule): a placed creature prop (a creature spawner,
+        /// <see cref="IsSpawner"/>) is hidden while its site plays, so only the creature it spawns stands there. Live: Play
+        /// Mode "sets all of the creatures into action" (Creature Prop wiki; P4223 "will come to life"), and owners saw
+        /// their placed NPCs "vanish in Play mode" and "reappear" in Edit Mode (forum 2016-06-24 #161 / #162, 2016-05-13
+        /// wrap-up) [I strong]. The client has no Play Mode rule for props [P], and the creature is a second entity with
+        /// the same model at the prop's spot, so without this both stood there (player report 2026-10-31). With Spawn
+        /// Automatically off the spot stays empty until a Link spawns the creature; between a death and its respawn too.
+        /// </summary>
+        private static readonly System.Lazy<bool> creaturePropsHide = new(() =>
+            Shared.Configuration.ConfigurationManager<WorldServerConfiguration>.Instance.Config?.CreaturePropsHideInPlayMode ?? true);
+
+        /// <summary>Whether the prop is one Play Mode hides: the story tools, the Starting Location, creature props.</summary>
         private static bool HidesInPlayMode(uint propId)
-            => propId == StoryTools.StartingLocationProp || hiddenInPlayMode.Contains(propId);
+            => propId == StoryTools.StartingLocationProp || hiddenInPlayMode.Contains(propId)
+                || (creaturePropsHide.Value && IsSpawner(propId));
 
         /// <summary>
-        /// Who sees a placed prop right now: everyone, unless it is a hidden story tool on a site in Play Mode (the
-        /// Starting Location then only to players in build mode). A prop still being placed is always shown.
+        /// Who sees a placed prop right now: everyone, unless it is a hidden story tool or creature prop on a site in Play
+        /// Mode (the Starting Location then only to players in build mode). A prop still being placed is always shown.
         /// </summary>
         public static PlayModeSight SightOf(PlacedProp prop)
         {
@@ -114,7 +128,9 @@ namespace LandmarkEmulator.WorldServer.Game
                 else
                     SendSpawns(viewer, theirs);
             }
-            log.Info($"Site {claim.Id}: {tools.Count} story tool(s) {(play ? "hidden for Play Mode" : "shown again for Edit Mode")}.");
+            int creatureProps = tools.Count(p => IsSpawner(p.PropId));
+            log.Info($"Site {claim.Id}: {tools.Count - creatureProps} story tool(s) and {creatureProps} creature prop(s) "
+                + $"{(play ? "hidden for Play Mode" : "shown again for Edit Mode")}.");
         }
 
         /// <summary>

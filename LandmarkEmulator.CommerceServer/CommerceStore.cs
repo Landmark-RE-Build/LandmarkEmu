@@ -473,6 +473,16 @@ namespace LandmarkEmulator.CommerceServer
                 .ToLookup(v => v.Product, v => v.Verdict);
 
         /// <summary>Whether this player (guid on any world of the realm) reviewed the product.</summary>
+        /// <summary>
+        /// This reviewer's (any world of the realm) rejections that staff overruled: products they voted down that are
+        /// listed with fewer approvals than the peers' threshold (StudioRules.Overruled / MayStillReview, OPEN-LEADS L185).
+        /// </summary>
+        public int OverruledRejections(string realm, ulong reviewer, uint approvalsNeeded)
+            => (int)Scalar("SELECT COUNT(*) FROM product_review v JOIN commerce_world w ON w.world_id = v.reviewer_world " +
+                "JOIN product p ON p.id = v.product_id WHERE v.reviewer_guid = @g AND w.realm = @r AND v.verdict <> @ok " +
+                "AND p.status = @listed AND p.approvals < @a", ("@g", reviewer), ("@r", realm),
+                ("@ok", Internal.Commerce.StudioRules.VerdictApprove), ("@listed", Listed), ("@a", Math.Max(1u, approvalsNeeded)));
+
         public bool HasReviewed(ulong product, string realm, ulong reviewer)
             => Scalar("SELECT COUNT(*) FROM product_review v JOIN commerce_world w ON w.world_id = v.reviewer_world " +
                 "WHERE v.product_id = @p AND v.reviewer_guid = @g AND w.realm = @r", ("@p", product), ("@g", reviewer), ("@r", realm)) > 0;

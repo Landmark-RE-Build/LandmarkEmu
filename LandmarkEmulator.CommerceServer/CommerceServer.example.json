@@ -12,6 +12,7 @@
   "PlayerStudioRejections": 3,
   "PlayerStudioReviewsPerDay": 2,
   "PlayerStudioStaffReview": true,
+  "PlayerStudioReviewerOverrules": 1,
   "PlayerStudioCreatorSharePercent": 40,
   "ShowcaseFollowDigest": true,
   "ShowcaseDigestHourUtc": 10

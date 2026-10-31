@@ -1,5 +1,7 @@
 # Environment Server: the terrain / voxel service of a world (Phase B spec, agent #14, 2026-10-15)
 
+> 0.695 rebase (2026-10-26): this file mixes builds; its 29 0.589 address citations map to 0.695 in trace/0695/address-map-589-695.md (changes: trace/0695/rebase-695.md)
+
 The world's voxel back end: the layered voxel store (Poi / Permanent / Timed Persistent / Transient), the destruction
 layer and its timed heals, cell versions and the zone-in manifest, build edits, undo / redo, pastes, voxel ownership
 (Voxel Vision), ore veins, LOD copies, exported-template stamps and the ruin layers of the Chaos Caverns. The client

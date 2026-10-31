@@ -331,7 +331,7 @@ namespace LandmarkEmulator.CommerceServer
             // Live's rules (Commerce.cs "Live's review rules"): the zone already held back players who may not review (the
             // spend rule); here the per-day rule (P1209), no product in the staff queue (P1210), and an anonymous copy
             // (wiki Player Studio: reviewers are not shown who made the item).
-            (ProductRow product, int waiting) = ReviewedEnoughToday(world, caller) ? (null, 0)
+            (ProductRow product, int waiting) = ReviewedEnoughToday(world, caller) || Overruled(world, caller) ? (null, 0)
                 : Store.NextForReview(world.Realm, caller.Character, StaffAt);
             hub.SendClient(world, caller, ClientPackets.ReviewProduct(product, "", waiting));
         }
@@ -343,6 +343,16 @@ namespace LandmarkEmulator.CommerceServer
         private bool ReviewedEnoughToday(WorldLink world, CommerceCaller caller)
             => hub.Config.PlayerStudioReviewsPerDay > 0
                 && Store.ReviewsSince(world.Realm, caller.Character, DateTime.UtcNow.AddDays(-1)) >= hub.Config.PlayerStudioReviewsPerDay;
+
+        /// <summary>
+        /// Staff overruled enough of this player's rejections that they get no more reviews (PlayerStudioReviewerOverrules,
+        /// StudioRules.MayStillReview; wiki Player Studio, OPEN-LEADS L185).
+        /// </summary>
+        private bool Overruled(WorldLink world, CommerceCaller caller)
+            => hub.Config.PlayerStudioReviewerOverrules > 0
+                && !Internal.Commerce.StudioRules.MayStillReview(
+                    Store.OverruledRejections(world.Realm, caller.Character, hub.Config.PlayerStudioApprovals),
+                    hub.Config.PlayerStudioReviewerOverrules);
 
         /// <summary>The staff queue for the worlds' admin pages (admin command "psqueue"), every realm.</summary>
         public (bool Ok, string Text) StaffQueue()
@@ -382,7 +392,8 @@ namespace LandmarkEmulator.CommerceServer
             ProductRow product = Store.GetProduct(productId);
             bool own = product != null && product.OwnerGuid == caller.Character && hub.RealmOf(product.WorldId) == world.Realm;
             if (product != null && product.Status == CommerceStore.Pending && product.Rejections < StaffAt && !own
-                && !ReviewedEnoughToday(world, caller) && !Store.HasReviewed(productId, world.Realm, caller.Character))
+                && !ReviewedEnoughToday(world, caller) && !Overruled(world, caller)
+                && !Store.HasReviewed(productId, world.Realm, caller.Character))
             {
                 Store.AddReview(productId, caller.World, caller.Character, verdict);
                 if (verdict == VerdictApprove)

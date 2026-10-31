@@ -550,16 +550,28 @@ namespace LandmarkEmulator.WorldServer.Game
         /// <summary>
         /// /setmodel &lt;model id&gt; — AdminCommandPacketSetModel 0x1E / 0x4F0 (command FUN_1433b4110, writer
         /// FUN_14338bde0): u64 targetGuid (+0x20: the admin target, else the invalid guid), u32 modelId (+0x28) [P];
-        /// the client prints "Processing set model model_id=[%d]". Changing a player's model is not built (no
-        /// server-side appearance override yet: OPEN-LEADS L107): logged.
+        /// the client prints "Processing set model model_id=[%d]". The target (the admin when no admin target is set) is
+        /// shown as that Models.txt model to everyone on the landscape: PlayerUpdate UpdateTemporaryAppearance 0x26 / 9,
+        /// the only client path into ProxiedCharacter::SwitchToTemporaryAppearance (<see cref="TemporaryAppearance"/>).
+        /// <c>/setmodel 0</c> brings the own body back (RemoveTemporaryAppearance 0x26 / 0xA). Until 2026-10-26 logged only.
         /// </summary>
         public static void SetModel(WorldSession session, byte[] body)
         {
             var reader = new GamePacketReader(body);
             ulong target = reader.ReadULong();
             uint modelId = reader.ReadUInt();
-            log.Info($"Admin {session.CharacterName} /setmodel {modelId} for {(NoGuid(target) ? "self" : target.ToString())}: not built (L107).");
-            Chat.System(session, $"/setmodel {modelId}: not built on this server yet.");
+            WorldSession who = NoGuid(target) ? session : PlayerManager.FindByGuid(target);
+            if (who == null)
+            {
+                log.Info($"Admin {session.CharacterName} /setmodel {modelId} for {target}: no such player online.");
+                Chat.System(session, $"/setmodel {modelId}: that player is not online.");
+                return;
+            }
+            log.Info($"Admin {session.CharacterName} /setmodel {modelId} for {who.CharacterName}.");
+            TemporaryAppearance.Set(who, modelId);
+            Chat.System(session, modelId == 0
+                ? $"/setmodel: {who.CharacterName} has their own body again."
+                : $"/setmodel {modelId}: {who.CharacterName} is shown as model {modelId}.");
         }
 
         /// <summary>

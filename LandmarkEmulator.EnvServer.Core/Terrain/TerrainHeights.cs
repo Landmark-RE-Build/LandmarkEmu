@@ -26,7 +26,7 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         /// <summary>A landscape's grid is dropped after this long unused (the home continent's is kept).</summary>
         private static readonly TimeSpan Idle = TimeSpan.FromMinutes(10);
 
-        /// <summary>One landscape's grid (about 32 MB in memory).</summary>
+        /// <summary>One landscape's grid (two u16 arrays of Size²: about 64 MB for a 4000² classic bake, 1 MB for a 501² Pioneer grid).</summary>
         private sealed class Grid
         {
             public ushort[] Heights, Materials;
@@ -38,6 +38,8 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         private static readonly object sync = new();
         private static readonly Dictionary<uint, Grid> grids = new();
         private static readonly HashSet<uint> missing = new();
+        /// <summary>Grid spacings read from the files' headers alone (<see cref="StepOf"/>; null = no readable grid).</summary>
+        private static readonly Dictionary<uint, float?> steps = new();
         private static uint Home => TerrainStore.HomeContinent;
 
         /// <summary>True when the home continent's grid is loaded.</summary>
@@ -126,6 +128,64 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         /// voxel output can be checked against a known surface (Tests/Rules/DigShapeTests.cs). Never set by the servers.
         /// </summary>
         internal static Func<float, float, uint, float?> TestGround;
+
+        /// <summary>Tests only: a grid spacing of their own for a landscape (null = the baked grid's). Never set by the servers.</summary>
+        internal static Func<uint, float?> TestStep;
+
+        /// <summary>
+        /// Spacing of a landscape's grid in metres, or null without one: 2 for a bake of the client's own ground
+        /// (re/run_heightbake.py), 16 for the Pioneer lands' grids made from the client's surface cache
+        /// (re/tools/csc_heights.py: their ground is only known to lie somewhere in a 16 m cell, <see cref="SurfaceCache"/>).
+        /// </summary>
+        /// <remarks>
+        /// Reads only the file's header (f32 at offset 8) unless the grid is loaded anyway: the vein layer asks this of
+        /// every landscape it opens (OreVeins.CoarseGroundOf), and the Environment Server opens every landscape with
+        /// stored edits at start-up (EnvHub.Reconcile → ManifestEntries) and never trims grids, so loading the grid here
+        /// kept a 64 MB grid per edited classic island for the service's life.
+        /// </remarks>
+        public static float? StepOf(uint zone)
+        {
+            if (TestStep?.Invoke(zone) is float test)
+                return test;
+            zone = zone == 0 ? Home : zone;
+            lock (sync)
+            {
+                if (grids.TryGetValue(zone, out Grid g))
+                    return g.Step;
+                if (missing.Contains(zone))
+                    return null;
+                if (steps.TryGetValue(zone, out float? known))
+                    return known;
+            }
+            float? step = null;
+            try
+            {
+                string path = Path.Combine(SharedConfiguration.Configuration.GetValue("GameDataPath", "gameData"), $"TerrainHeights{zone}.bin");
+                if (File.Exists(path))
+                {
+                    using var reader = new BinaryReader(File.OpenRead(path));
+                    if (new string(reader.ReadChars(4)) == "LMH1")
+                    {
+                        reader.ReadInt32();
+                        step = reader.ReadSingle();
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                log.Debug($"No terrain heights header for {zone} ({e.Message}).");
+            }
+            lock (sync)
+                steps[zone] = step;
+            return step;
+        }
+
+        /// <summary>Tests only: is a landscape's grid loaded (in memory)?</summary>
+        internal static bool IsLoaded(uint zone)
+        {
+            lock (sync)
+                return grids.ContainsKey(zone);
+        }
 
         /// <summary>Ground height at a local x/z (bilinear between samples), or null outside the grid or without one.</summary>
         public static float? HeightAt(float x, float z, uint zone = 0)

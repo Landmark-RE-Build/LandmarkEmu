@@ -36,6 +36,8 @@ namespace LandmarkEmulator.EnvServer
             // The same switches the world server sets for its in-process store (WorldServer.json), plus crash-safe writes.
             TerrainLod.Enabled = config.TerrainLodCopies;
             BlockData.KeepVertexOnly = config.KeepVertexOnlyVoxels;
+            OreVeins.PioneerSurfaceVeins = OreVeins.ParseSurfaceVeins(config.PioneerSurfaceVeins);
+            OreVeins.PioneerSurfaceIron = config.PioneerSurfaceIron;
             TerrainEdits.AtomicWrites = true;
             VoxelTemplate.Folder = Path.Combine(config.GameDirectory ?? "", "CommonData", "Voxel", "templates");
             CavePieces.Init(config.GameDirectory);

@@ -22,7 +22,7 @@ namespace LandmarkEmulator.Tests.Rules
     /// </summary>
     public class RightClickHotbarRuleTests : IDisposable
     {
-        private const uint Pick = 41, Axe = 42, Potion = 43, Starter = 44;
+        private const uint Pick = 41, Axe = 42, Potion = 43, Starter = 44, Flare = 45;
         private const uint MainHand = 2;
         private readonly FakeWorld world = new();
         private static ulong nextGuid = 0x7400_0000;
@@ -38,6 +38,8 @@ namespace LandmarkEmulator.Tests.Rules
             world.Define(new ItemDefinitionManager.ItemDefinition { Id = Axe, EquipSlotId = MainHand, MaxStack = 1 });
             world.Define(new ItemDefinitionManager.ItemDefinition { Id = Potion, MaxStack = 20 });
             world.Define(new ItemDefinitionManager.ItemDefinition { Id = Starter, EquipSlotId = MainHand, MaxStack = 1 });
+            // A held item that stacks (no such 0.695 main-hand item is known; the rule is the client's).
+            world.Define(new ItemDefinitionManager.ItemDefinition { Id = Flare, EquipSlotId = MainHand, MaxStack = 10 });
         }
 
         public void Dispose() => world.Dispose();
@@ -197,6 +199,18 @@ namespace LandmarkEmulator.Tests.Rules
             // DefaultSlot (sub 3): the client shows the default again (none in tests: empty), so does our copy.
             s.ForgetActionSlots(1, 3);
             Assert.Equal((0u, 0ul), s.ActionSlot(1, 3));
+        }
+
+        [Fact]
+        public void DefinitionSlotOfAStackingItem_DoesNotCount()
+        {
+            // FUN_14344daa0 shows a type-1 slot as the player's item only when the definition's stack size (+0xe4) is 1;
+            // the placing routine (0.589 FUN_1433a0b80) then compares guids only, so a stacking item still gets its slot.
+            CharacterItemModel flare = FakeWorld.Item(Flare);
+            WorldSession s = Player(new[] { flare }, (0, 1, WorldSession.ActionSlotItemDefinition, Flare));
+            InventoryHandler.HandleInventory(s, RightClick(flare.Id));
+            Assert.Equal(Inventory.EquippedContainer, flare.Container);
+            Assert.Equal((WorldSession.ActionSlotItem, flare.Id), s.ActionSlot(0, 0));
         }
     }
 }

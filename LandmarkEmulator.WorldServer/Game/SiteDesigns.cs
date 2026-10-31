@@ -118,10 +118,14 @@ namespace LandmarkEmulator.WorldServer.Game
 
         /// <summary>
         /// The materials of the owner's voxels as items, at the rate building charged them (BuildMaterials.VoxelsPerItem
-        /// voxels per item, rounded down). Free-to-use materials (no item) give nothing.
+        /// voxels per item, rounded down). Free-to-use materials (no item) give nothing, and nothing at all under
+        /// FreeBuild, where building cost nothing (<see cref="Building.FreeMaterialsNow"/>): otherwise one could build for
+        /// free, delete the site and collect the items (review 2026-10-31).
         /// </summary>
         public static List<(uint Item, uint Count)> RefundItems(Dictionary<ushort, uint> materials)
         {
+            if (Building.FreeMaterialsNow)
+                return new List<(uint Item, uint Count)>();
             var voxelsByItem = new Dictionary<uint, long>();
             foreach ((ushort material, uint voxels) in materials)
                 if (BuildMaterials.ItemFor(material) is uint item and not 0)

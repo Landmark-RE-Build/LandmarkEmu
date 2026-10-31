@@ -41,6 +41,22 @@ namespace LandmarkEmulator.WorldServer.Game
         private const float X = 0f, Z = 0f;
         private const uint BaseModel = 612, SpiresModel = 596;
         private const ulong GuidBase = 0x5350_0000_0000_0000;
+
+        /// <summary>
+        /// The area around a Spire (trace/0695/spire-claims.md): the client's GlobalAreas 3, a 90 m sphere on the prop that
+        /// carries it (GlobalAreaShapes row 1), with TerrainPermission kinds 0-3 (no mining / harvesting / editing) and 4
+        /// (no build sites: ClaimPlacementExclusionZoneSphere, FUN_1436de260), Prevent Spawning and the HubEnter / HubExit
+        /// messages — the hotfix of 6 Oct 2014 (P1829-P1832: the area round the spire suppresses procedural props, no mining
+        /// or harvesting, no claims). Live's server named it on a Spire prop's spawn (StaticAreaId); ours puts it on the Hub
+        /// (1871, the Spire structure) [I which prop]. Setting SpireArea (default on).
+        /// </summary>
+        public const uint AreaId = 3;
+        public const float AreaRadius = 90f;
+        /// <summary>Area guid tag (the area needs a unique guid; the Spire's prop guids use the top 16 bits).</summary>
+        private const ulong AreaTag = 0x5341_0000_0000_0000;
+
+        /// <summary>Setting SpireArea (WorldServer.json / Docker SPIRE_AREA, default true): the Spire area above, as live.</summary>
+        public static bool AreaEnabled { get; set; } = true;
         private const string TemplateFile = "base_portal_spire.otd", Marker = "spire_base.txt";
 
         /// <summary>The Spire of one landscape.</summary>
@@ -262,9 +278,15 @@ namespace LandmarkEmulator.WorldServer.Game
                     if (f.Length == 11 && f[4] == MarkerDeck)
                         oldDeck = new FillBox(long.Parse(f[5]), long.Parse(f[6]), long.Parse(f[7]), long.Parse(f[8]), long.Parse(f[9]), long.Parse(f[10]));
                     Vector3 oldPivot = Local(oldCorner, templateSpire.Position);
-                    // Merge on a steep spot floats the downhill side (deck seats to the high ground). Re-pick.
-                    bool flatEnough = Survey(zone, oldPivot.X, oldPivot.Z, out _, out float deckSpread, out _)
-                        && deckSpread <= MaxDeckSpread;
+                    // Merge on a steep spot floats the downhill side (deck seats to the high ground). Re-pick. Only when
+                    // the ground could be surveyed: without the landscape's heights (a missing or not yet downloaded
+                    // TerrainHeights file) Survey fails too, and a placed Spire must not move for that
+                    // (trace/0695/phaseE4-logic.md F6).
+                    bool surveyed = Survey(zone, oldPivot.X, oldPivot.Z, out _, out float deckSpread, out _);
+                    bool heightsKnown = Terrain.TerrainHeights.HeightAt(oldPivot.X, oldPivot.Z, zone) is float;
+                    bool flatEnough = (surveyed && deckSpread <= MaxDeckSpread) || !heightsKnown;
+                    if (!heightsKnown)
+                        log.Warn($"Landscape {zone}: no ground heights at the Spire's saved spot; keeping it there.");
                     if (!flatEnough)
                     {
                         RevertDeckCarve(zone, oldDeck);
@@ -732,7 +754,7 @@ namespace LandmarkEmulator.WorldServer.Game
         public static bool MayEdit(ulong playerGuid, uint zone, (double X, double Y, double Z) min, (double X, double Y, double Z) max)
         {
             if (!Touches(zone, (min.X - NoEditMargin, min.Y - NoEditMargin, min.Z - NoEditMargin),
-                    (max.X + NoEditMargin, max.Y + NoEditMargin, max.Z + NoEditMargin)))
+                    (max.X + NoEditMargin, max.Y + NoEditMargin, max.Z + NoEditMargin)) && !BoxInArea(zone, min, max))
                 return true;
             DateTime now = DateTime.UtcNow;
             bool tell;
@@ -745,6 +767,17 @@ namespace LandmarkEmulator.WorldServer.Game
             if (tell && PlayerManager.FindByGuid(playerGuid) is WorldSession session)
                 SystemMessages.Show(session, NearSpireText);
             return false;
+        }
+
+        /// <summary>Does a box (global dm) reach into the Spire area (P1831: no mining or harvesting there)?</summary>
+        private static bool BoxInArea(uint zone, (double X, double Y, double Z) min, (double X, double Y, double Z) max)
+        {
+            if (!AreaEnabled || Peek(zone) is not { } site)
+                return false;
+            var hub = Terrain.TerrainEdits.ToGlobal(site.Position);
+            double dx = Math.Max(Math.Max(min.X - hub.X, 0), hub.X - max.X), dy = Math.Max(Math.Max(min.Y - hub.Y, 0), hub.Y - max.Y),
+                dz = Math.Max(Math.Max(min.Z - hub.Z, 0), hub.Z - max.Z);
+            return dx * dx + dy * dy + dz * dz < AreaRadius * 10 * AreaRadius * 10;
         }
 
         /// <summary>
@@ -949,6 +982,17 @@ namespace LandmarkEmulator.WorldServer.Game
         public static uint StationAt(ulong guid)
             => propDefinitions.TryGetValue(guid, out uint def) ? CraftingStations.StationForProp(def) : 0;
 
+        /// <summary>Where a Spire prop stands (local metres, the player's frame), or null when it is not a Spire prop.</summary>
+        public static Vector3? PositionOf(ulong guid)
+        {
+            if (!propDefinitions.ContainsKey(guid))
+                return null;
+            foreach (Site site in sites.Values)
+                if (site?.Props?.FirstOrDefault(p => p.Guid == guid) is PlayerUpdateAddLightweightProp prop)
+                    return new Vector3(prop.Position.X, prop.Position.Y, prop.Position.Z);
+            return null;
+        }
+
         public static bool IsMailbox(ulong guid) => propDefinitions.TryGetValue(guid, out uint def) && def == MailboxProp;
 
         public static bool IsBarber(ulong guid) => propDefinitions.TryGetValue(guid, out uint def) && def == BarberProp;
@@ -984,11 +1028,15 @@ namespace LandmarkEmulator.WorldServer.Game
         private static List<PlayerUpdateAddLightweightProp> BuildProps(Site site)
         {
             if (template == null || site.Corner is not { } corner)
-                return new()
+            {
+                var fallback = new List<PlayerUpdateAddLightweightProp>
                 {
                     Prop(site.Zone, 1, SpiresModel, site.Position, Quaternion.Identity, Vector3.One),
                     Prop(site.Zone, 2, BaseModel, site.Position, Quaternion.Identity, Vector3.One)
                 };
+                GiveArea(fallback[0]);
+                return fallback;
+            }
             var list = new List<PlayerUpdateAddLightweightProp>();
             ulong next = 2;
             ulong spireGuid = GuidOn(site.Zone);
@@ -1004,7 +1052,40 @@ namespace LandmarkEmulator.WorldServer.Game
                 list.Add(spawn);
             }
             log.Info($"Spire of landscape {site.Zone}: {list.Count} template props (prop ids {string.Join(", ", template.Props.Select(p => p.PropId).Distinct().OrderBy(v => v))}).");
+            GiveArea(list.FirstOrDefault(p => p.Guid == spireGuid));
             return list;
+        }
+
+        /// <summary>
+        /// The Spire area on the Hub's spawn (<see cref="AreaId"/>): the client then refuses build sites in it itself (cursor
+        /// red, "Claims.InvalidClaimLocation"; not for a player with FreeBuild, which skips the client's test) and keeps its
+        /// tools from mining and harvesting there. A unique area guid, and a one-space name so the client shows no "area" label
+        /// (FUN_142ec18c0 names an unnamed spawn with an area guid "area").
+        /// </summary>
+        private static void GiveArea(PlayerUpdateAddLightweightProp hub)
+        {
+            if (hub == null || !AreaEnabled)
+                return;
+            hub.StaticAreaId = AreaId;
+            hub.AreaGuid = AreaTag | (hub.Guid & 0x0000_FFFF_FFFF_FFFF);
+            hub.Name = " ";
+        }
+
+        /// <summary>Is a point (local metres) in a landscape's Spire area (the 90 m sphere around the Hub)? Built Spires only.</summary>
+        public static bool InArea(uint zone, Vector3 local)
+            => AreaEnabled && Peek(zone) is { } site && Vector3.Distance(site.Position, local) < AreaRadius;
+
+        /// <summary>
+        /// Does a build site centred at (x, y, z) (global dm) with these half sizes (dm) fall in the Spire area, by the client's
+        /// own test against an exclusion sphere (Claims.InExclusionSphere)? Built Spires only.
+        /// </summary>
+        public static bool BlocksSite(uint zone, double x, double y, double z, double halfSize, double halfHeight)
+        {
+            if (!AreaEnabled || Peek(zone) is not { } site)
+                return false;
+            var origin = Terrain.TerrainStore.ZoneOrigin;
+            var middle = new Vector3((float)((x - origin.X) / 10), (float)((y - origin.Y) / 10), (float)((z - origin.Z) / 10));
+            return Claims.InExclusionSphere(site.Position, AreaRadius, middle, halfSize, halfHeight);
         }
 
         /// <summary>A static Spire prop with a fixed guid so every player sees the same entity.</summary>

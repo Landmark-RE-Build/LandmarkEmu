@@ -98,6 +98,9 @@ bool  +0x1c
 
 ## S2C VoxelConstructionPacketClientSelectionAreaRequest  `0xF4, 0x2`
 - server: probably sent (static check: sent by server (sub in payload)); not in opcode_stats
+- 2026-10-31 (C→S in practice): action 0 Copy, 1 Cut, 2 Delete key, 3 Save Design, 4 Paste / Place Design; cell list
+  {u64 cell, u32 version before, u32 after}; Cut / Delete erase the box on the client first (FUN_143161530) and the
+  server must do the erase (Game/BuildingDelete.cs; trace/0695/voxdel-a-client-delete.md).
 
 ## S2C VoxelConstructionPacketClientOwnershipRequest  `0xF4, 0x4`
 - server: NOT SENT (not in opcode_stats, not in the server code)

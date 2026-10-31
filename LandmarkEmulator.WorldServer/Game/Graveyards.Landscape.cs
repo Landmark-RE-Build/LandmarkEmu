@@ -325,8 +325,9 @@ namespace LandmarkEmulator.WorldServer.Game
                 return false;
             var origin = TerrainStore.ZoneOrigin;
             var middle = new Vector3((float)((x - origin.X) / 10), (float)((y - origin.Y) / 10), (float)((z - origin.Z) / 10));
-            float reach = SafeRadius + (float)(Math.Sqrt(2 * halfSize * halfSize + halfHeight * halfHeight) / 10);
-            return YardsOf(zone, cavern: false).Any(g => Vector3.Distance(g.Centre, middle) < reach);
+            // The client's whole test (Claims.InExclusionSphere): the x / z column overlap as well as the sphere; with the
+            // sphere alone the server refused spots beside a graveyard that the client allows.
+            return YardsOf(zone, cavern: false).Any(g => Claims.InExclusionSphere(g.Centre, SafeRadius, middle, halfSize, halfHeight));
         }
 
         /// <summary>

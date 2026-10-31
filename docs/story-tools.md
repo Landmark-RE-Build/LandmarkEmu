@@ -25,7 +25,11 @@ ActionSelectionMenu, ActionEventSelectionMenu), opened by Lua `Prop.SetupScript`
 | 0x16 RemoveAddBinding | u64 link, u64 source, u64 target, u32 event, u32 action | 11 {u64 link, u64 source, u64 target, u32, u32, u32 result} |
 
 Events and action groups are `{u32 id, u32 text id, u32 sort order}` (`FUN_142ea3b00`, `FUN_142ea3840`; the editor
-sorts by the third field). Result 0 = success; other values are shown through `FUN_142ea8330`.
+sorts by the third field). Result 0 = success. AddBinding's other results (0.695 FUN_142f46ed0 / FUN_142fee7e0; 0.589
+FUN_142ea8330): 1 permission, 2 invalid cycle, 3 duplicate Link, 4 (0.695) the event allows one Link only
+(`AdvancedScripting.UniqueBinding.BindSingle`), else unknown. RemoveAddBinding's reply only tells success from failure
+(0.695 FUN_142fef9b0: "Link successfully modified." / "Link modification failure."; its unused result table FUN_142f47140
+has 4 RemoveFailure and 5 BindSingle); a refused edit keeps the old Link (`StoryTools.ReplaceLink`).
 
 ## Definitions
 
@@ -74,10 +78,15 @@ spawn them for players who arrive meanwhile:
 |---|---|
 | Combat, Counting, Damage, Focus, Reset, Story, Server Time (and Hour) Node; Logic, Probability, Random Link, Timer Filter; Respawn Point; Travel Point; IF Gate | hidden |
 | Starting Location 2655 | shown only to players in build mode (CommandPacketBuilderMode) |
+| Creature props (creature spawners: the Creatures palette, "Spawner:" props) | hidden: the creature they spawn stands there instead, facing the prop's placed rotation (setting `CreaturePropsHideInPlayMode`, default on; owners saw placed NPCs "vanish in Play mode" and "reappear" in Edit Mode, forum 2016-06-24 #161 / #162) |
 | Scoreboard 3000, Game Table 2313, everything else | shown |
 
 A hidden Story Node can't carry a chat bubble: DisplayPropText shows a bubble only over an entity it finds, and its chat
 line then has no "[name] says:" part. Prop states (counter digits, Logic Filter lights) of hidden props are not sent.
+
+A hidden creature prop leaves its spot empty while its creature is not there (Spawn Automatically off until a Link
+spawns it, or between a death and the respawn). A Story Node that speaks for a creature uses the spawner's guid for
+viewers whose client does not hold the creature as a full entity; with the prop hidden those get no bubble either.
 
 ### Respawn Point look
 

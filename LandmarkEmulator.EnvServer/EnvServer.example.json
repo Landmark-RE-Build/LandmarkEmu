@@ -13,5 +13,7 @@
   "RuinLayerDesired": 0,
   "TerrainLodCopies": true,
   "KeepVertexOnlyVoxels": true,
+  "PioneerSurfaceVeins": "buried",
+  "PioneerSurfaceIron": false,
   "HealthFile": ""
 }

@@ -372,7 +372,8 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         // voxel (the vertex-only border, ruin-stamping.md §5), the explicit voxels 1..Size stay inside the box. Voxel model
         // [I strong]: a voxel index i carries a sample (solid / air, material) at grid point i and a surface vertex in the
         // cube from point i to point i + 1 (docs/terrain.md "Offset byte": u is measured from the voxel's corner, 0.5 =
-        // 128 = the client's centre DAT_14552de88; the templates' vertex-only border at index 0 of x / y / z supplies the
+        // 128 = the client's centre DAT_14552de88 (0.589; 0.695 DAT_14560e128); the templates' vertex-only border at
+        // index 0 of x / y / z supplies the
         // cubes in front of the first explicit samples). Mirroring an axis of size S therefore takes sample i to S + 1 − i,
         // but the vertex of cube i to cube S − i with its fraction u to 1 − u (offset byte b to 255 − b, the exact inverse
         // of the codec's floor((u + 1) · 85 + 0.5); the centre 128 is kept as the centre). Material and vertex of one turned

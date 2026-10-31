@@ -177,24 +177,26 @@ NESTED = {
 # The live value of a setting where the .env.example comment does not say it in the "x = live" form the script reads,
 # and "—" for operational settings that have no live counterpart.
 LIVE_OVERRIDES = {
-    'FREE_BUILD': 'false', 'MOVEMENT_EFFECTS': 'true', 'MELEE_TARGETERS': 'true', 'BLOCK_STANCE_VISIBLE': 'true',
+    'FREE_BUILD': 'false', 'MOVEMENT_EFFECTS': 'true', 'MELEE_TARGETERS': 'true', 'BLOCK_STANCE_VISIBLE': 'true', 'DEAD_BODIES_VISIBLE': 'true',
     'SAFE_EJECT_RESET': 'true', 'LIVE_CHARACTER_STATS': 'true', 'PROP_STREAM_RANGE': 'not known',
+    'TREE_STREAM_RANGE': 'not known (2016 videos: trees to at least 300-450 m)',
     'PLAYER_TELEPORT_REQUESTS': 'true', 'HOME_CONTINENT': '406 (the live capture)', 'TERRAIN_LOD_COPIES': 'true',
     'KEEP_VERTEX_ONLY_VOXELS': '—', 'LANDMARKS_WORLD': 'auto', 'CAVERN_LANDSCAPES': 'all', 'SURFACE_GRAVEYARDS': 'not known',
     'CAVERN_GRAVEYARD_STAMPS': 'true', 'CAVERN_ARRIVAL_RESCUE': 'not known', 'OUTPOST_PRELOAD': '—', 'OUTPOST_ROTATION_HOURS': 'not known',
     'OUTPOST_ROTATION_SHARE': 'not known', 'CREATURE_PATHING': 'true', 'SITE_PATHING': 'true', 'CREATURE_WEAPONS': 'not known',
     'PROCEDURAL_RESPAWN': 'minmax', 'PROCEDURAL_RESPAWN_MIN_SHARE': 'not known', 'PROCEDURAL_PLACEMENT': 'not known',
     'PROCEDURAL_PLACEMENT_DECOR': 'not known', 'PROCEDURAL_PLACEMENT_MASKS': 'not known', 'EVENT_ISLAND': 'auto',
-    'EVENT_ISLAND_EXPIRE_ON_CLOSE': 'true', 'MOVE_OLD_PIONEER_SITES': '—', 'PIONEER_SLAB': 'not known (a slab existed)',
-    'PIONEER_SLAB_MATERIAL': 'not known', 'LANDMARK_SEASON': 'auto', 'HAT_DROPS': 'season', 'FREE_STORE': 'false',
+    'EVENT_ISLAND_EXPIRE_ON_CLOSE': 'true', 'MOVE_OLD_PIONEER_SITES': '—', 'PIONEER_SLAB': 'site (a full square over the site, 2016 videos)',
+    'PIONEER_SLAB_MATERIAL': 'a grey slate (exact one not known)', 'PIONEER_SURFACE_VEINS': 'flush patches on the ground (needs the exact ground; buried is the closest)',
+    'PIONEER_SURFACE_IRON': 'false (from 26 Apr 2016)', 'LANDMARK_SEASON': 'auto', 'HAT_DROPS': 'season', 'FREE_STORE': 'false',
     'LUMENS_PER_DBC': '1.3', 'STORE_PRICES': '(empty)', 'PLAYER_STUDIO_CREATOR_SHARE': '40', 'PLAYER_STUDIO_LISTING_FEE': 'true',
     'PLAYER_STUDIO_APPROVALS': 'not known', 'PLAYER_STUDIO_REJECTIONS': 'not known', 'PLAYER_STUDIO_REVIEWER_MIN_SPEND': '1000',
-    'PLAYER_STUDIO_REVIEWS_PER_DAY': '2', 'PLAYER_STUDIO_STAFF_REVIEW': 'true',
+    'PLAYER_STUDIO_REVIEWS_PER_DAY': '2', 'PLAYER_STUDIO_STAFF_REVIEW': 'true', 'PLAYER_STUDIO_REVIEWER_OVERRULES': '1 (the count is ours)',
     'FOUNDER_ENTITLEMENTS': 'false (live gave them to buyers and winners only)', 'ENTITLEMENT_PACKAGES': '—',
     'ENTITLEMENT_DELIVERY': 'auto', 'LANDSCAPE_CAPACITY': 'not known', 'MEMBERSHIP_PRICE_LUMENS': '— (live sold it for money)',
     'MEMBERSHIP_DAYS': '—', 'TRIAL_KEYS': 'true', 'TRIAL_KEY_DAYS': '10', 'VENDOR_SHOPS': 'false', 'BUILD_MENU_PROP_NAME': 'not known (no source shows it)',
-    'CHEST_ACCOUNT_CAP': '0', 'FRIEND_TELEPORT_COOLDOWN_SECONDS': '0', 'FRIEND_REQUESTS_MUTUAL': 'true', 'STORY_POSE_PERSISTS': 'true',
-    'PLACE_OPENS_BUILD_MODE': 'false', 'DAY_CYCLE_SPEED': '8', 'SHOWCASE_FOLLOW_DIGEST': 'true',
+    'CHEST_ACCOUNT_CAP': '0', 'FRIEND_TELEPORT_COOLDOWN_SECONDS': '0', 'TRAVEL_COOLDOWN_SECONDS': '0', 'FRIEND_REQUESTS_MUTUAL': 'true', 'STORY_POSE_PERSISTS': 'true',
+    'PLACE_OPENS_BUILD_MODE': 'false', 'EMOTES_PUT_AWAY_HELD_ITEM': 'false', 'YELL_IS_EMOTE': 'true','DAY_CYCLE_SPEED': '8', 'SHOWCASE_FOLLOW_DIGEST': 'true',
     'SHOWCASE_DIGEST_HOUR_UTC': 'not known', 'FINDER_RETURN_HOME': 'not known', 'CAVERN_TRIPS_OTHER_WORLDS': 'true',
     'SHORT_TELEPORT_DISTANCE': '—', 'ITEM_DEFINITION_CHUNK_SIZE': '0 (one packet)', 'SHORT_TELEPORT_WAIT_SCREEN': 'not known',
     'MEMBER_MONTHLY_LUMENS': '0', 'MEMBER_STORE_DISCOUNT': '0', 'STORE_TRADE_WAIT_HOURS': '12 (up to)',
@@ -758,7 +760,7 @@ GROUPS = OrderedDict([
 DEV_GROUP = {}
 for group, names in {
     'Character': 'hurt revive reviveby god respawn setres calcstats charstats achreset objective resettitles clearunlocks fte '
-                 'anim movement movementeffects safeeject portraittest weartint grief cancelbuff pos',
+                 'anim emotelead movement movementeffects safeeject portraittest weartint grief cancelbuff pos',
     'Items': 'give giveoverflow take coins finditem iteminfo equipped wield unwield itemstats lootbag lootfree activate use '
              'sortbag setwear durabilityof autoresupply itemaudit combatgear weapons abilities resupply founderchest vault '
              'vaultnear chestopen chestput chestpickup craft closecraft cancelcraft station',
@@ -769,7 +771,7 @@ for group, names in {
                 'undo redo placedesign exportdesign designoffer psinstances pioneerslab pioneer launch',
     'Terrain': 'carve carvefwd dig vertexonly veinsweep lodbuild matname cellstats clearcell terrainmem regendelay nearvein '
                'veins wall ownblock cavecheck cavelands outpostrotate',
-    'World': 'timeofday clock treepools treefall outpostwake outpostuse eventexpire barrenrecipes pinata fxat composite',
+    'World': 'timeofday clock treepools treefall treestream outpostwake outpostuse eventexpire barrenrecipes pinata fxat composite',
     'Social': 'sysmail guildof ratevote',
     'Commerce': 'psoffer pstake psfee storespent psreview followdigest studiotake storetoken vendoropen contestphase contests '
                 'contestenter',
@@ -879,10 +881,11 @@ ADMIN_SLASH = [
      'unbuyback <item> [name|guid]', 'Moves the item\'s stacks between the bag and that container. Buyback and the vault '
      'collection have no storage in the 0.695 client, so those two are refused with the reason.',
      ['VaultItemSub', 'CollectionItemSub', 'VaultCollectionItemSub', 'OverflowItemSub', 'BuybackItemSub']),
-    ('Debug', '/vehicle, /setmodel, /ammo, /weaponset, /placedeffect, free-fly hide, /profile …', 'Decoded and logged with '
-     'their fields; the systems behind them (vehicles, model override, ammo, weapon sets, placed effects, job profiles) are '
-     'not built.', ['SpawnVehicleSub', 'SetModelSub', 'AddAmmoSub', 'WeaponSetSub', 'PlacedEffectSub', 'FreeFlyHideSub',
-                    'ProfileSub']),
+    ('Debug', '/setmodel id', 'Shows you (or your admin target) as that model to everyone on the landscape until '
+     '`/setmodel 0` or a relog.', ['SetModelSub']),
+    ('Debug', '/vehicle, /ammo, /weaponset, /placedeffect, free-fly hide, /profile …', 'Decoded and logged with '
+     'their fields; the systems behind them (vehicles, ammo, weapon sets, placed effects, job profiles) are '
+     'not built.', ['SpawnVehicleSub', 'AddAmmoSub', 'WeaponSetSub', 'PlacedEffectSub', 'FreeFlyHideSub', 'ProfileSub']),
     ('Combat', 'The build tool "PathFindVisualize" (two clicks)', 'Runs the server\'s creature pathing between the two points '
      'and answers in chat (straight-line verdict, reached / partial / none, waypoints, length). The retail client has no '
      'palette entry for the tool; the dev command `pathquery` sends the same request.', ['DebugPathQuerySub']),
@@ -894,7 +897,7 @@ ADMIN_SLASH = [
 # Server commands a player types. (group, syntax, who, what it does)
 PLAYER_SLASH = [
     ('Social', '/emotelist', 'Everyone', 'Lists the emote commands in chat.'),
-    ('Social', '/emote <0-33>', 'Everyone', 'Plays emote clip n.'),
+    ('Social', '/emoteclip <0-33>', 'Everyone', 'Plays emote clip n. (/emote, /em and /me are the free-text emote line of the game itself.)'),
     ('Social', '/<emote word>  (EMOTE_WORDS)', 'Everyone', 'Plays that emote, with its chat lines ("You wave." / '
      '"[name] waves.", the "[target]" forms with a target). Moods (angry, happy, sad; `/calm` ends them) colour the idle '
      'stance and later emotes; stances (dance, kneel, lie, playdead) loop until `/stand`, another stance or walking away; '

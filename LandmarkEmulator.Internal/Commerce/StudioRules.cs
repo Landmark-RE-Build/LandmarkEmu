@@ -53,5 +53,25 @@ namespace LandmarkEmulator.Internal.Commerce
             int percentFee = (int)(uint)((double)(int)feePercent * 0.01 * (double)(int)price);
             return (int)minimumFee < percentFee ? (uint)percentFee : minimumFee;
         }
+
+        /// <summary>
+        /// Reviewers whom staff overruled stop being offered reviews (OPEN-LEADS L185). Live [W, wiki Player Studio]: a
+        /// reviewer who rejected an item on anything but the two rules (offensive content, copyright), where Daybreak
+        /// staff then held a different opinion, "will stop getting items to review"; the developers' own description
+        /// (Update Notes 18 Jun 2014) says staff "either uphold the player findings or override them". A rejection is
+        /// overruled when staff list the product: a product the reviewer voted down that is now listed with fewer peer
+        /// approvals than the threshold (so the peers did not list it) [I: the server keeps no separate staff flag].
+        /// <paramref name="allowed"/> = PlayerStudioReviewerOverrules: the reviewer is held back once that many of their
+        /// rejections were overruled; 0 = never (anyone keeps reviewing). Default 1 [I: the wiki's "will stop" after it
+        /// happens; the count live used is not recorded].
+        /// </summary>
+        public static bool MayStillReview(int overruled, uint allowed) => allowed == 0 || overruled < allowed;
+
+        /// <summary>Was this vote a rejection that staff overruled (see <see cref="MayStillReview"/>)?</summary>
+        public static bool Overruled(uint verdict, bool listed, uint approvals, uint approvalsNeeded)
+            => verdict != VerdictApprove && listed && approvals < Math.Max(1u, approvalsNeeded);
+
+        /// <summary>SubmitProductReview's verdict for an approval (Lua ReviewProduct FUN_1435e9f30: approve → 1; rejections 2-7) [P].</summary>
+        public const uint VerdictApprove = 1;
     }
 }

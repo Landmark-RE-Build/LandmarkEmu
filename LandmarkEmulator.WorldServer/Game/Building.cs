@@ -36,13 +36,33 @@ namespace LandmarkEmulator.WorldServer.Game
         /// Log how the stored cell compares with the client's after each edit (dev "cellcompare on|off"). Checked
         /// 2026-10-14 with sphere edits in the real client: the only differences were voxels the server holds and the
         /// sent cell lacks (client 0 / server 2-3), i.e. the cell in an ApplyDiff carries the edit, not the whole layer,
-        /// and the server keeps everything the client sent. Fill / Line / Smooth shapes are the client's own.
+        /// and the server keeps everything the client sent. Fill / Line / Smooth shapes are the client's own. It also switches
+        /// the selection Delete / Cut diagnostic (BuildingDelete.LogClientCopies: does the client's post-erase layer version
+        /// name the server's result). Both work only with Debug logging, and both cost a layer serialise and compress per cell,
+        /// so they are off by default.
         /// </summary>
         public static bool CompareWithClient;
 
         /// <summary>Voxels built (+) or taken down (-) per player and item, not yet settled as whole items.</summary>
         private static readonly Dictionary<(ulong Player, uint Item), int> credit = new();
         private static readonly object sync = new();
+
+        /// <summary>
+        /// FreeBuild (WorldServer.json FreeBuild, Docker FREE_BUILD): voxel materials cost nothing, as props already do
+        /// (Props.FreeBuild). Nothing is checked, charged or given back — a refund for taking down voxels placed for free
+        /// would hand out items. Player report 2026-10-31: with FreeBuild on, the client (SendSelf +0x287 set) treats every
+        /// material as free and sent edits with materials whose item the player did not hold (Raw Ruby, Small Moonstone
+        /// Brick, Black Reinforced Plastic, Light Violet Rough Cloth, ...); the server refused them (Response 0xC
+        /// InsufficientMaterials + the server's copy of the cell), and the voxels reverted at once with the "insufficient"
+        /// message. The player's own login snapshot decides (<see cref="WorldSession.FreeBuildAtLogin"/>): their client
+        /// keeps its flag until it logs in again; the live setting only for a session without one.
+        /// </summary>
+        internal static bool FreeMaterials(WorldSession session)
+            => session?.FreeBuildAtLogin ?? FreeMaterialsNow;
+
+        /// <summary>The live FreeBuild setting (no player involved: a site deleted or lapsing, SiteDesigns.RefundItems).</summary>
+        internal static bool FreeMaterialsNow
+            => Shared.Configuration.ConfigurationManager<WorldServerConfiguration>.Instance.Config?.FreeBuild == true;
 
         /// <summary>
         /// Charges the builder for the materials an edit adds and refunds what it takes away, in whole items
@@ -59,7 +79,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     voxelsByItem[item] = voxelsByItem.GetValueOrDefault(item) + voxels;
             }
             log.Debug($"Build materials: {string.Join(", ", delta.Select(d => $"{d.Key}={d.Value} (item {BuildMaterials.ItemFor(d.Key)})"))}");
-            if (voxelsByItem.Count == 0)
+            if (voxelsByItem.Count == 0 || FreeMaterials(session))
                 return true;
             lock (sync)
             {
@@ -100,9 +120,12 @@ namespace LandmarkEmulator.WorldServer.Game
         /// The player's building materials for the Environment Server's check (terrain-service.md §5.2 / §5.5): per
         /// material item the count in the bag and the voxel credit (what <see cref="PayFor"/> works with), so the service
         /// can refuse an unaffordable edit before it writes anything; the zone then charges exactly the returned delta.
+        /// Null (no check) under <see cref="FreeMaterials"/>.
         /// </summary>
         internal static MaterialBudget Budget(WorldSession session)
         {
+            if (FreeMaterials(session))
+                return null;
             var budget = new MaterialBudget();
             IReadOnlyCollection<uint> materialItems = BuildMaterials.Items;
             foreach (var item in session.Inventory.Items)
@@ -186,6 +209,12 @@ namespace LandmarkEmulator.WorldServer.Game
 
         private static readonly Dictionary<ulong, (List<Edit> Undo, List<Edit> Redo)> history = new();
 
+        /// <summary>
+        /// Most voxel values (before and after) a player's undo history keeps; the oldest steps go first (the newest always
+        /// stays). A selection delete of a big box records up to two million (BuildingDelete).
+        /// </summary>
+        private const long MaxUndoValues = 4_000_000;
+
         /// <summary>Adds a new edit to the player's undo history (and forgets what they could redo).</summary>
         private static void Remember(WorldSession session, Edit edit)
         {
@@ -196,6 +225,12 @@ namespace LandmarkEmulator.WorldServer.Game
                 h.Undo.Add(edit);
                 if (h.Undo.Count > UndoDepth)
                     h.Undo.RemoveAt(0);
+                long values = h.Undo.Sum(e => e.Cells.Sum(c => (long)c.Before.Count + c.After.Count));
+                while (values > MaxUndoValues && h.Undo.Count > 1)
+                {
+                    values -= h.Undo[0].Cells.Sum(c => (long)c.Before.Count + c.After.Count);
+                    h.Undo.RemoveAt(0);
+                }
                 h.Redo.Clear();
             }
             SendUndoStack(session);
@@ -296,6 +331,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 lock (sync)
                     if (history.TryGetValue(session.PlayerGuid, out var h) && (redo ? h.Undo : h.Redo).Remove(edit))
                         (redo ? h.Redo : h.Undo).Add(edit);
+                log.Info($"{session.CharacterName}'s {(redo ? "redo" : "undo")} refused: not enough materials.");
                 SendResponse(session, UndoRedoSub, InsufficientMaterials);
                 SendUndoStack(session);
                 return;
@@ -447,7 +483,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     // held); logged to compare with what the server charges.
                     var counts = new List<string>();
                     for (int m = 0; m < materials; m++)
-                        counts.Add($"{BitConverter.ToUInt16(body, p + 4 + m * 6)}={BitConverter.ToUInt32(body, p + 6 + m * 6)}");
+                        counts.Add($"{BitConverter.ToUInt16(body, p + 4 + m * 6)}={BitConverter.ToInt32(body, p + 6 + m * 6)}");
                     log.Debug($"Client materials: {string.Join(", ", counts)}");
                 }
                 p += 4 + materials * 6;
@@ -728,10 +764,18 @@ namespace LandmarkEmulator.WorldServer.Game
             // here would desync them from everyone else — log only until the delta is proven.
             if (brushAim is { } aim && edits.Count > 0 && WrittenVoxelBounds(edits) is { } written)
             {
+                // The written bounds are global voxels; the aim is a voxel within its cell, so the difference is taken from the
+                // aim's global voxel (aim cell · 40 + aim). Until 2026-11-01 the cell-local aim was subtracted from the global
+                // minimum, a meaningless number. A Mesh Shape is stored exactly as sent: any constant here is the client's
+                // own (OPEN-LEADS L262), not a server shift.
+                string delta = "n/a";
+                if (aim.Cell != 0 && TerrainStore.Decode(aim.Cell) is (uint level, uint cx, uint cy, uint cz) && level == TerrainEdits.Level)
+                    delta = $"{written.MinX - ((long)cx * BlockData.Size + aim.X)},{written.MinY - ((long)cy * BlockData.Size + aim.Y)},"
+                        + $"{written.MinZ - ((long)cz * BlockData.Size + aim.Z)}";
                 log.Info($"{session.CharacterName} brush aim {aim.X},{aim.Y},{aim.Z} size {aim.SizeX}×{aim.SizeY}×{aim.SizeZ} "
                     + $"(cell {aim.Cell:X}) → written min {written.MinX},{written.MinY},{written.MinZ} "
                     + $"max {written.MaxX},{written.MaxY},{written.MaxZ} (n={written.Count}, "
-                    + $"min−aim {written.MinX - aim.X},{written.MinY - aim.Y},{written.MinZ - aim.Z}, kind {kind})");
+                    + $"min−aim {delta}, kind {kind})");
             }
             if (heals.Count > 0)
             {
@@ -790,6 +834,8 @@ namespace LandmarkEmulator.WorldServer.Game
                     + $"{Env.LayerVersion(id, zone, TerrainEdits.BuildLayer):X}; not applied.");
             if (done.Result == InsufficientMaterials)
             {
+                log.Info($"{session.CharacterName}'s build edit refused: not enough materials "
+                    + $"({string.Join(", ", done.Delta.Where(d => d.Value > 0).Select(d => $"{BuildMaterials.NameOf(d.Key)} × {d.Value}"))}).");
                 SendResponse(session, ApplyDiffSub, InsufficientMaterials);
                 SendCellResponses(session, edits.Select(e => e.Id));
                 UndoLocalEdit(session, edits.Select(e => e.Id));

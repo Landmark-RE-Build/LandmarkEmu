@@ -56,6 +56,17 @@ namespace LandmarkEmulator.WorldServer.Game.Inventory
             public List<uint> Categories { get; init; } = new();
             public string TintAlias { get; init; }
             /// <summary>
+            /// The item's second model (record tail string 1 → client definition +0x80, data +0x88; the client's own debug
+            /// dump FUN_142e43c70 names it "secondaryModelName") and its tint alias (tail string 3 → +0xb0 / +0xb8,
+            /// "secondaryTintAlias") [P]: the shield of a sword-and-shield item (3030, 3766, 1528, 3037, 4091), the quiver
+            /// of a bow (3761, 4089), the left gun / dagger / katana / bottle of a pair (3040, 3765, 1517, 3039, 3038).
+            /// Empty for every other item. Shown in the off hand (<see cref="Inventory.OffHandSlot"/>; see
+            /// WorldSession.BuildSecondarySlot).
+            /// </summary>
+            public string SecondaryModelFile { get; init; } = "";
+            /// <summary>The second model's tint alias (see <see cref="SecondaryModelFile"/>); empty = the actor's own.</summary>
+            public string SecondaryTintAlias { get; init; } = "";
+            /// <summary>
             /// Abilities the item gives. Type 3 is the primary use (the pick's swing, ability 1018); the client picks its
             /// tool mode (mining, logging, reaping) from which types the held item has.
             /// </summary>
@@ -396,11 +407,12 @@ namespace LandmarkEmulator.WorldServer.Game.Inventory
             // +0x23c, +0x240, +0xf8 and a list → +0x248). Read defensively: a short record keeps grant 0.
             uint grantId = 0, grantAmount = 0;
             var inputSystems = new List<uint>();
+            string secondaryModel = "", secondaryTint = "";
             try
             {
-                reader.ReadString();
-                reader.ReadString();
-                reader.ReadString();
+                secondaryModel = reader.ReadString();   // +0x80: secondary model (FUN_142e43c70 "secondaryModelName")
+                reader.ReadString();                    // +0x98: its texture alias
+                secondaryTint = reader.ReadString();    // +0xb0: its tint alias ("secondaryTintAlias")
                 reader.ReadUInt();
                 uint u59 = reader.ReadUInt();
                 for (uint i = 0; i < u59; i++) inputSystems.Add(reader.ReadUInt());
@@ -418,6 +430,7 @@ namespace LandmarkEmulator.WorldServer.Game.Inventory
                 DurabilitySet = afterQuality[4], Quality = quality, AmbientEffect = u14[3], NoTrade = (flags0 & 0x80) != 0,
                 UniqueEquip = (flags2 & 0x80) != 0,
                 TypeId = u14[1], GrantId = grantId, GrantAmount = grantAmount, InputSystems = inputSystems,
+                SecondaryModelFile = secondaryModel ?? "", SecondaryTintAlias = secondaryTint ?? "",
                 // FUN_142f1d360: +0x100 > 0, +0x28 > 0, +0xfc > 0, stack size > 1.
                 AutoResupplyAllowed = ue8[6] > 0 && u20[1] > 0 && ue8[5] > 0 && maxStack > 1
             };

@@ -327,6 +327,8 @@ The `SERVER_NAME`, `WEBSITE_URL` and `REQUIRED_CLIENT_BUILD` settings go in the 
 3. Writes `ClientConfig.ini` (`ClientConfigFile.PointAt` in `LandmarkEmulator.PatchPacks/ClientConfig.cs`):
    - `Server=<address>:<loginPort>` (before the first section);
    - `[Marketplace] MarketplaceUrl` = the first world's web pages URL. A loopback host is replaced by the server's address.
+   - `[Marketplace] MarketplaceAssets` = the same URL: the design and build-site screenshots the client downloads come
+     from the server's web pages (before 2026-10-26 Steam's Daybreak address stayed and every screenshot was blank).
    - `[AssetDelivery] DirectThreadCount=2`, or in advanced mode the player's choice (below).
 
    A missing line is added in its own section. The first change keeps the original as `ClientConfig.ini.orig`. The file
@@ -372,6 +374,7 @@ allocator expand **succeeds** on that start; site mismatch shows a separate aler
 |---|---|---|
 | `Server=` | always set | The chosen server's login address. Without it the game can't reach that server; Steam's value is Daybreak's login server, which is gone. |
 | `[Marketplace] MarketplaceUrl=` | always set | The server's in-game web pages (Showcase: store, gallery, following). The world signs the player's Showcase in on its own pages only (`Store.SendSignIn` opens `<WebPagesUrl>/?t=<token>`, and the token works on that world only), so another address shows pages that don't know the player; one that doesn't answer makes the client's browser reload forever, which has frozen the client (`WebPages.cs`). The server owner sets it (`WebPagesUrl`), not the player. |
+| `[Marketplace] MarketplaceAssets=` | always set | The same address as `MarketplaceUrl`: where the game downloads design and build-site screenshots (Designs window tiles, Player Studio and site-management screenshot viewers), which the world's web pages serve (`WebPages.cs` TemplateImage / SiteImage). Steam's value is Daybreak's image server, which is gone. |
 | `[AssetDelivery] DirectThreadCount=` | **LaunchPad sets it** (2, recommended), **Use my value** (a whole number from 1 to 10), or **Leave the file as it is** (PLAY doesn't touch the line, and adds none) | See below. |
 
 `DirectThreadCount` in the 0.695 client: `CreateAssetSystem` (FUN_142caff80) reads it with the integer reader

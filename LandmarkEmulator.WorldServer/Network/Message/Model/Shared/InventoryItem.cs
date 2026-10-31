@@ -408,6 +408,15 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model.Shared
         /// <summary>The byte the SendSelf inventory list reads after the record (<see cref="ExtraData"/>).</summary>
         public ExtraData Extra { get; set; } = new();
 
+        /// <summary>
+        /// Does the SendSelf inventory list read <see cref="Extra"/> after this record? Only for items the player owns in
+        /// containers 0-11: the 0.695 reader FUN_142c47af0 hands each record to FUN_142c98950, which picks container
+        /// (OwnerType == 1 ? ContainerId : 0xe) and only below 0xc reaches FUN_142c987c0, the call that reads the byte [P].
+        /// Writing it for any other item left one byte over and SendSelf failed its exact-length check (no login); no
+        /// current item is like that (trace/0695/phaseE3-wire-a.md F1).
+        /// </summary>
+        public bool HasExtra => OwnerType == 1 && ContainerId < 12;
+
         public void Read(GamePacketReader reader)
         {
             Definition.Read(reader);
@@ -444,7 +453,8 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model.Shared
 
             TimedDeleteSeconds = reader.ReadUInt();
 
-            Extra.Read(reader);
+            if (HasExtra)
+                Extra.Read(reader);
         }
 
         /// <summary>
@@ -454,7 +464,8 @@ namespace LandmarkEmulator.WorldServer.Network.Message.Model.Shared
         public void Write(GamePacketWriter writer)
         {
             WriteRecord(writer);
-            Extra.Write(writer);
+            if (HasExtra)
+                Extra.Write(writer);
         }
 
         /// <summary>

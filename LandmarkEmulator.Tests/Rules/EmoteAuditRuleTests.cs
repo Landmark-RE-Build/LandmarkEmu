@@ -80,15 +80,25 @@ namespace LandmarkEmulator.Tests.Rules
         public void Gestures_PlayTheirOwnClip(string word, string clip)
             => Assert.Equal(clip, clipByIndex[emoteIndexOf[Emotes.SelectionOf(word)]]);
 
-        /// <summary>Live's words (wiki Commands List) are registered, the client's chat-command /yell is not.</summary>
+        /// <summary>
+        /// Live's words (wiki Commands List) are registered, /yell too while YellIsEmote (default, live: the client's own
+        /// word 570042 and yell lines; a zone command replaces the client's /yell shout alias); never "emote", the client's
+        /// own free-text /emote (FUN_14336e150 "emote" / "em" / "me"), which a zone command of that name would replace.
+        /// </summary>
         [Fact]
-        public void ZoneCommandList_HasLivesWords_NotYell()
+        public void ZoneCommandList_HasLivesWords_AndLeavesTheClientsEmote()
         {
+            using var world = new FakeWorld();
             List<string> names = Emotes.ZoneCommandNames();
             foreach (string word in new[] { "beckon", "cough", "flex", "hug", "sneeze", "welcome", "yawn", "stretch", "talking",
-                         "stop", "lie", "sad", "angry", "happy", "calm", "dance", "drunk", "kneel", "playdead", "skip", "sneak", "stand" })
+                         "stop", "lie", "sad", "angry", "happy", "calm", "dance", "drunk", "kneel", "playdead", "skip", "sneak", "stand",
+                         "yell", "emoteclip" })
                 Assert.Contains(word, names);
-            Assert.DoesNotContain("yell", names);
+            Assert.DoesNotContain("emote", names);
+            Assert.DoesNotContain("em", names);
+            Assert.DoesNotContain("me", names);
+            Assert.Equal(450u, Emotes.SelectionOf("yell"));   // the Call clip
+            Assert.Equal(572100u, Emotes.LinesOf("yell")!.Value.Self);   // "You yell loudly."
             Assert.DoesNotContain("sit", names);    // the client's own command (CommandSit)
             Assert.Equal(480u, Emotes.SelectionOf("lie"));
             Assert.Equal(221u, Emotes.SelectionOf("sad"));
@@ -101,7 +111,7 @@ namespace LandmarkEmulator.Tests.Rules
         [Fact]
         public void EveryWord_HasItsChatLines()
         {
-            foreach (string word in Emotes.ZoneCommandNames().Where(n => n != "emote" && n != "emotelist" && n != "stop"))
+            foreach (string word in Emotes.ZoneCommandNames().Where(n => n != Emotes.EmoteClipCommand && n != "emotelist" && n != "stop"))
             {
                 Emotes.Lines? l = Emotes.LinesOf(word);
                 Assert.True(l.HasValue, word);
@@ -191,6 +201,48 @@ namespace LandmarkEmulator.Tests.Rules
             Assert.Equal(0u, Emotes.MoodOf(actor.PlayerGuid));
             Emotes.IntroducePose(At(world, 1f), actor);
             Emotes.Forget(actor);
+        }
+
+        /// <summary>
+        /// /talking is a loop (EmoteLoop 1) the client keeps while the player walks (the network's locomotion leaves its
+        /// emoting branch only on EmoteLoop &lt; 0.5, L192 (b)): remembered for a newcomer, kept while walking, ended by
+        /// /stop (to everyone shown it) or by a single-shot emote.
+        /// </summary>
+        [Fact]
+        public void TalkingLoop_IsRemembered_UntilStopOrAnotherEmote()
+        {
+            using var world = new FakeWorld();
+            WorldSession actor = At(world, 0f), near = At(world, 10f), newcomer = At(world, 500f);
+            var zone = new[] { actor, near, newcomer };
+            Emotes.Emote(actor, "talking", zone);
+            Assert.Equal(new[] { (252u, false) }, Selections(FakeWorld.Outgoing(actor), actor));
+            Assert.Equal(new[] { (252u, false) }, Selections(FakeWorld.Outgoing(near), actor));
+            Assert.Equal(252u, Emotes.LoopOf(actor.PlayerGuid));
+
+            Emotes.Moved(actor, new Vector3(30f, 0f, 0f), () => zone);
+            Assert.Equal(252u, Emotes.LoopOf(actor.PlayerGuid));      // walking keeps it
+            Emotes.IntroducePose(newcomer, actor);
+            Assert.Equal(new[] { (252u, false) }, Selections(FakeWorld.Outgoing(newcomer), actor));
+
+            Emotes.Emote(actor, "stop", zone);
+            Assert.Equal(new[] { (253u, false) }, Selections(FakeWorld.Outgoing(newcomer), actor));   // told it, so told the end
+            Assert.Equal(0u, Emotes.LoopOf(actor.PlayerGuid));
+
+            Emotes.Emote(actor, "talking", zone);
+            FakeWorld.Outgoing(near);
+            Emotes.Emote(actor, "wave", zone);                         // EmoteLoop 0 on the client
+            Assert.Equal(0u, Emotes.LoopOf(actor.PlayerGuid));
+            Assert.Equal(new[] { (253u, false), (217u, false) }, Selections(FakeWorld.Outgoing(near), actor));
+            Emotes.Forget(actor);
+        }
+
+        /// <summary>YellIsEmote off: /yell is left to the client's shout alias (not registered, not run).</summary>
+        [Fact]
+        public void YellIsEmote_Off_LeavesYellToTheClient()
+        {
+            using var world = new FakeWorld(c => c.YellIsEmote = false);
+            Assert.DoesNotContain("yell", Emotes.ZoneCommandNames());
+            Assert.Contains("shoo", Emotes.ZoneCommandNames());
         }
 
         /// <summary>A player in a mood walks up to a player standing still: shown to them once (subject-side scan).</summary>

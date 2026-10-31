@@ -61,6 +61,9 @@ services:
       # A blocking stance (Molten Rebuke, Corrupting Revenge, a creature's shield) is shown to the other players' clients,
       # so their melee swings stop on the blocker with the "blocked" effect (true = live); the server decides damage either way.
       BlockStanceVisible: ${BLOCK_STANCE_VISIBLE:-true}
+      # A dead player's body lies down on the other players' clients (entity state bit 7, the client's only death pose;
+      # true = live); false: the body stands on their screens.
+      DeadBodiesVisible: ${DEAD_BODIES_VISIBLE:-true}
       # A flinger / launcher / thrust pad launch the client reports (SafeEject) ends when the player lands: the server clears
       # the client's "launched" state so the next launch works the same (true = live); false only logs it.
       SafeEjectReset: ${SAFE_EJECT_RESET:-true}
@@ -69,6 +72,9 @@ services:
       # Placed props are sent to a player within this many metres (by 64 m region, nearest first) and dropped 80 m further
       # out. 400 = the client's Render Distance slider at its last bounded step; 0 = the whole landscape at every zone-in.
       PropStreamRange: ${PROP_STREAM_RANGE:-400}
+      # Trees and plants are sent to a player within this many metres (by 64 m region, nearest first: 160 m at once, the
+      # rest at most 200 a second) and dropped 80 m further out. 400 = the placed-prop range; 160 = before 2026-11-01.
+      TreeStreamRange: ${TREE_STREAM_RANGE:-400}
       # Creatures, trees, chests, outposts, warp crystals and the props away from the arrival wait for the player's loading
       # screen to drop (at most StreamHoldLimitSeconds): the 0.695 client's 64 allocator slots on 16+ thread CPUs.
       StreamHoldUntilLoaded: ${STREAM_HOLD_UNTIL_LOADED:-true}
@@ -80,6 +86,10 @@ services:
       # container reads the same two lines, and with ENVSERVER_ADDRESS set its values are the ones that count.
       TerrainLodCopies: ${TERRAIN_LOD_COPIES:-true}
       KeepVertexOnlyVoxels: ${KEEP_VERTEX_ONLY_VOXELS:-true}
+      # Pioneer lands' surface ore veins (buried = kept, under the lowest ground the game can draw; off) and surface iron
+      # there (false = live); the envserver container reads the same two lines (with ENVSERVER_ADDRESS set its count).
+      PioneerSurfaceVeins: ${PIONEER_SURFACE_VEINS:-buried}
+      PioneerSurfaceIron: ${PIONEER_SURFACE_IRON:-false}
       # Message of the day, shown once per login (both empty = none: set them empty in .env to turn it off).
       MotdSubject: "${MOTD_SUBJECT-Welcome to Landmark}"
       MotdBody: "${MOTD_BODY-This server is LandmarkEmu, a fan-made recreation. Have fun building!}"
@@ -117,6 +127,11 @@ services:
       # Surface graveyards (the map's red circles: Flee sites with a creature-free buffer, no build sites on them); their
       # spots are ours (no client file places them). The Chaos Caverns' graveyards are always on.
       SurfaceGraveyards: ${SURFACE_GRAVEYARDS:-true}
+      # The Spire area: the client's 90 m sphere round each Spire (no build sites, mining, harvesting or trees in it), as
+      # live after the 6 Oct 2014 hotfix; false = only the platform itself.
+      SpireArea: ${SPIRE_AREA:-true}
+      # How near a player must be to a creature to see its name and health bar (metres); 0 = as far as creatures stream.
+      CreatureLifeRange: ${CREATURE_LIFE_RANGE:-100}
       # The Chaos Caverns' graveyards stamped into the terrain (the client's graveyard_launch template, turned as each of
       # the cave file's placements says), once per landscape in the background on its first visit; false = no new stamps.
       CavernGraveyardStamps: ${CAVERN_GRAVEYARD_STAMPS:-true}
@@ -144,6 +159,11 @@ services:
       # set after its respawn minutes (state in gathered_nodes.txt); inplace = the older regrow where it stood.
       ProceduralRespawn: ${PROCEDURAL_RESPAWN:-minmax}
       ProceduralRespawnMinShare: ${PROCEDURAL_RESPAWN_MIN_SHARE:-0.67}
+      # How trees are felled (Game/Gathering.Health.cs): health = live's (the client's health per tree size, Very Small 350
+      # to Very Large 3000; each axe swing takes the axe's Harvesting Damage, 80 for the Adventurer's: 10 to 29 swings on the default
+      # tree lists; the harvester sees
+      # the tree's health bar); hits = the older fixed 5 swings (8 for large trees), no bar.
+      TreeHealth: ${TREE_HEALTH:-health}
       # Trees from the client's placement sets (Game/ProceduralPlacement.cs): false (default) = the older per-biome lists
       # (the shipped sets name only 2014 alpha biomes, so live's launch placement is not in the client, L113); the sets'
       # rocks / bushes too (false), and their mask bitmaps (true).
@@ -161,9 +181,10 @@ services:
       # at start-up (a design of the old build saved; the old voxels / props stay behind unseen). Default true.
       MoveOldPioneerSites: ${MOVE_OLD_PIONEER_SITES:-true}
       # The slate slab under each new Pioneer site (live fixed it on new sites, notes 30 Jun 2016):
-      # claim3x3 (default; the client's 210 m plus-shaped slab template) | claim1x1 (its 70 m middle) | off; and its
-      # material (VoxelMaterials ARRAY_INDEX; 26 = Worked Slate; 0 = the template's stored index 53).
-      PioneerSlab: ${PIONEER_SLAB:-claim3x3}
+      # site (default, live: a level 2 m square over the whole 210 m site, ground filled / cut to it) | claim3x3 (the
+      # client's plus-shaped slab template) | claim1x1 (its 70 m middle) | off; and its material (VoxelMaterials
+      # ARRAY_INDEX; 26 = Worked Slate; 0 = a template's stored index 53).
+      PioneerSlab: ${PIONEER_SLAB:-site}
       PioneerSlabMaterial: ${PIONEER_SLAB_MATERIAL:-26}
       # Seasonal outfit drops (Skeletal Bodysuits in Halloween, festive suits / sweaters in winter): auto (live's 2016
       # calendar, default) | halloween | winter | off.
@@ -234,6 +255,9 @@ services:
       PlayerStudioReviewerMinSpend: ${PLAYER_STUDIO_REVIEWER_MIN_SPEND:-1000}
       PlayerStudioReviewsPerDay: ${PLAYER_STUDIO_REVIEWS_PER_DAY:-2}
       PlayerStudioStaffReview: ${PLAYER_STUDIO_STAFF_REVIEW:-true}
+      # A reviewer whose rejections staff overturned this many times gets no more reviews (wiki: live stopped offering
+      # them; 0 = never). In-process commerce here; the commerce service reads the same line.
+      PlayerStudioReviewerOverrules: ${PLAYER_STUDIO_REVIEWER_OVERRULES:-1}
       # Bought Player Studio designs and designs on Player Studio take no design storage (true = live).
       PlayerStudioDesignsFreeStorage: ${PLAYER_STUDIO_DESIGNS_FREE_STORAGE:-true}
       # A new character gets the designs of the account's deleted characters at its world entry (true = live).
@@ -261,13 +285,22 @@ services:
       UpkeepTimeZone: ${UPKEEP_TIME_ZONE:-America/Los_Angeles}
       # Seconds between two Teleport to Friend trips per character (0 = none, live since 5 May 2015; 1800 = 2014's 30 min).
       FriendTeleportCooldownSeconds: ${FRIEND_TELEPORT_COOLDOWN_SECONDS:-0}
+      # Seconds between two Travel menu trips to the Spire / to the own build site (0 = none, live 2016).
+      TravelCooldownSeconds: ${TRAVEL_COOLDOWN_SECONDS:-0}
       # An accepted friend request fills both friends lists (true = live); false = one-way lists (only the asker's).
       FriendRequestsMutual: ${FRIEND_REQUESTS_MUTUAL:-true}
       # Story creatures keep the mood / stance a Story Node gave them, saved with the spawner (true = live from 7 Jun 2016).
       StoryPosePersists: ${STORY_POSE_PERSISTS:-true}
+      # Creature props hidden while their site plays (only the creature stands there), as live.
+      CreaturePropsHideInPlayMode: ${CREATURE_PROPS_HIDE_IN_PLAY_MODE:-true}
       # Placing a prop from the bag opens Build Mode (Props page) and closes it when that placement ends (true = this
       # server's default, asked for by the user; false = live, where the placement runs outside build mode).
       PlaceOpensBuildMode: ${PLACE_OPENS_BUILD_MODE:-true}
+      # Emotes put the held tool / weapon away and bring it back after (false = live, the default: emotes show only with
+      # empty hands; true = put away for the player).
+      EmotesPutAwayHeldItem: ${EMOTES_PUT_AWAY_HELD_ITEM:-false}
+      # /yell = the yell emote (true = live); false = the client's shout alias.
+      YellIsEmote: ${YELL_IS_EMOTE:-true}
       # Day/night clock speed, game seconds per real second (8 = live: a full day lasts 3 real hours).
       DayCycleSpeed: ${DAY_CYCLE_SPEED:-8}
       # Showcase following (Following tab: creators and tags): a daily in-game mail of what they listed on Player Studio and

@@ -75,6 +75,20 @@ namespace LandmarkEmulator.WorldServer.Game
             byte[] note = Build(w => { w.Write(OnlineSub); w.Write(session.CharacterName); w.Write(session.PlayerGuid); w.Write(true); });
             foreach (WorldSession watcher in Watchers(session.PlayerGuid, online))
                 watcher.EnqueueMessage(ZoneMessageOpcode.FriendBase, note);
+
+            // Friend requests still waiting for this player come again: the client handed its unanswered popups to the
+            // server at UI shutdown (ListNotifications) and gets them back no other way, so a relog lost the popup
+            // (trace/0695/phaseE4-seen.md F1; the social service does the same, FriendService.Entered).
+            List<ulong> askers;
+            lock (pending)
+                askers = pending.Where(p => p.Key.To == session.PlayerGuid && p.Value > DateTime.UtcNow).Select(p => p.Key.From).ToList();
+            if (askers.Count > 0)
+            {
+                var names = DatabaseManager.Instance.CharacterDatabase.GetCharacterNames(askers);
+                foreach (ulong asker in askers)
+                    session.EnqueueMessage(ZoneMessageOpcode.CommandBase,
+                        ConfirmRequest(asker, online.TryGetValue(asker, out WorldSession a) ? a.CharacterName : names.GetValueOrDefault(asker) ?? ""));
+            }
         }
 
         /// <summary>World exit: an "offline" note to everyone who lists the player.</summary>

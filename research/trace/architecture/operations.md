@@ -1,5 +1,7 @@
 # Operations: scheduled restarts, health checks, saving, server-side admin data (Phase B items 7 and 8)
 
+> 0.695 rebase (2026-10-26): addresses below are 0.589 unless marked 0.695; their 0.695 partners and changes: trace/0695/address-map-589-695.md, trace/0695/rebase-695.md
+
 Agent register #16 (coordinator). The Environment Server, first planned here, turned out to be the voxel job back end
 and belongs to terrain-service.md (#14): see "Environment Server" below for the evidence handed over.
 

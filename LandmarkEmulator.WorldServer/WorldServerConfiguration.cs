@@ -12,7 +12,7 @@ namespace LandmarkEmulator.WorldServer
     /// ProceduralPlacement (false; Docker PROCEDURAL_PLACEMENT), ProceduralPlacementDecor (false;
     /// PROCEDURAL_PLACEMENT_DECOR), ProceduralPlacementMasks (true; PROCEDURAL_PLACEMENT_MASKS) - Game/Gathering.Load;
     /// ProceduralRespawn ("minmax"; PROCEDURAL_RESPAWN), ProceduralRespawnMinShare (0.67; PROCEDURAL_RESPAWN_MIN_SHARE) -
-    /// Game/Gathering.Respawn; ShortTeleportDistance (60), ShortTeleportWaitScreen (false) - Game/Teleport (a client-hang
+    /// Game/Gathering.Respawn; TreeHealth ("health"; TREE_HEALTH) - Game/Gathering.Health; ShortTeleportDistance (60), ShortTeleportWaitScreen (false) - Game/Teleport (a client-hang
     /// workaround, L116, not an owner setting); ItemDefinitionChunkSize (100; ITEM_DEFINITION_CHUNK_SIZE; 0 = one packet as
     /// the live dump) - Game/Inventory/ItemDefinitionManager (keeps the client's window responding while it takes the list);
     /// AdminMonitorPush (false) - Game/AdminMonitor; WebPagesPort (19001;
@@ -36,8 +36,9 @@ namespace LandmarkEmulator.WorldServer
         public string GameDataPath { get; set; }
         /// <summary>
         /// Lets every player build and place props anywhere, without a claim (the client's claim checks pass when the
-        /// SendSelf flag at +0x287 is set). For testing and creative servers; off by default = live (claims were required;
-        /// props only where you have build permission). Docker: FREE_BUILD.
+        /// SendSelf flag at +0x287 is set), and makes props and voxel materials free (nothing checked, charged or given
+        /// back: Props.FreeBuild, Building.FreeMaterials). For testing and creative servers; off by default = live (claims
+        /// were required; props only where you have build permission). Docker: FREE_BUILD.
         /// </summary>
         public bool FreeBuild { get; set; }
 
@@ -71,6 +72,15 @@ namespace LandmarkEmulator.WorldServer
         public bool BlockStanceVisible { get; set; } = true;
 
         /// <summary>
+        /// A dead player's body lies down on the other players' clients (Game/DeadBodies, OPEN-LEADS L196 OL-2): the client
+        /// plays its death pose only from entity state bit 7 (the animation network's State_Dead, set every frame from
+        /// FUN_142ea9ef0), so the others are sent UpdateCharacterStateDelta {set bit 7} at the death and to newcomers, and
+        /// {clear bit 7} when the player is alive again. true = live (the client's mechanism; live had no other); false
+        /// sends nothing (the body stands on the others' screens, as before 2026-10-26). Docker: DEAD_BODIES_VISIBLE.
+        /// </summary>
+        public bool DeadBodiesVisible { get; set; } = true;
+
+        /// <summary>
         /// A launch the client reports (PlayerUpdate SafeEject 0x26/0x4C: a flinger, launcher or thrust pad threw the player
         /// and the client set its entity state bit 26) is ended when the player lands: UpdateCharacterStateDelta 0x26/0x51
         /// clears bit 26 on that player's client (Game/SafeEject). The client never clears the bit itself, so without it the
@@ -95,6 +105,16 @@ namespace LandmarkEmulator.WorldServer
         /// Dev "propstream &lt;metres&gt;" changes it until the restart. Docker: PROP_STREAM_RANGE.
         /// </summary>
         public float PropStreamRange { get; set; } = 400f;
+
+        /// <summary>
+        /// Trees and plants are streamed by 64 m region: a player is sent those within this many metres (nearest first: the
+        /// regions within 160 m at once, the rest about 200 nodes a second, at most 32 regions) and loses them again 80 m
+        /// further out (Game/Gathering.Stream.cs). 400 (default) = the placed-prop range; the client itself draws trees out
+        /// to their models' own cull distances (440-2,500 m for ours), so this range is the tree line players see. Live's
+        /// own range is not known (2016 videos show trees to at least 300-450 m). 160 = the range before 2026-11-01.
+        /// 64-1000; dev "treestream &lt;metres&gt;" changes it until the restart. Docker: TREE_STREAM_RANGE.
+        /// </summary>
+        public float TreeStreamRange { get; set; } = 400f;
 
         /// <summary>
         /// While a player's loading screen is up (after a login or a re-zone, until the client's ClientLoading {0}), the
@@ -138,6 +158,33 @@ namespace LandmarkEmulator.WorldServer
         public bool TerrainLodCopies { get; set; } = true;
 
         /// <summary>
+        /// Surface ore veins on the landscapes whose ground the server knows only from the client's surface cache: the
+        /// Pioneer lands 464-468 (their heights come from re/tools/csc_heights.py, which only says the ground lies somewhere
+        /// in a 16 m cell; the plateau is taken as 1029.0 m while the client draws 1027.4-1029.5 m). The client's own vein
+        /// code only repaints voxels its generated ground has solid (FUN_143fdb110) [P], but an ore voxel the server sends
+        /// is solid whatever the client generated, so veins started on the estimate stood as blocks on the grass (report
+        /// 2026-11-01, trace/0695/pioneer-veins.md). "buried" (default) = the veins are kept (same kinds, counts and x / z)
+        /// but start at the surface cache's floor, the lowest the client's ground can lie less 1.2 m (OreVeins.SurfaceStart,
+        /// SurfaceCache.FloorAt), so no ore stands in the client's air; on the plateau they lie from about 4.6 m under the
+        /// grass down, on slopes and coasts about 17-50 m down (the floor follows the lowest of the 3 × 3 neighbouring
+        /// 16 m columns), on the seabed at 734.8 m. "off" = no surface veins there (cave veins stay). Without the surface
+        /// cache file there are no surface veins either, and cave ore uses the estimated ground. Live had surface ore on the Pioneer lands as patches
+        /// flush with the ground (wiki: "All landscape surfaces"), which needs the exact ground; "buried" is the closest
+        /// without it. Classic islands (a 2 m bake of the client's ground) are not affected.
+        /// <para>Read by the vein layer at start-up: with <see cref="EnvServerAddress"/> set the Environment Server's own
+        /// EnvServer.json PioneerSurfaceVeins counts; Docker sets both from one .env line, PIONEER_SURFACE_VEINS.</para>
+        /// </summary>
+        public string PioneerSurfaceVeins { get; set; } = "buried";
+
+        /// <summary>
+        /// Surface iron (ResourceVeins 247, the surface group's iron) on the Pioneer lands. false (default) = as live: the
+        /// 26 Apr 2016 hotfix made iron "available on the surface of (non-Pioneer) Landscapes as well" (design/forum
+        /// 2016-04-26-56999) [P], though the shipped ContinentVeinData440-444.vdt list it like every surface vein. Cave iron
+        /// stays either way. Read at start-up, like <see cref="PioneerSurfaceVeins"/> (Docker: PIONEER_SURFACE_IRON).
+        /// </summary>
+        public bool PioneerSurfaceIron { get; set; } = false;
+
+        /// <summary>
         /// The Landmark 0.695 install the server reads world data from (biome maps, cave placements, models; read-only,
         /// game files are never changed). Required: with Docker it is GAME_DIR in .env, mounted at /game (README.md,
         /// docs/docker.md); without Docker set it in WorldServer.json.
@@ -154,8 +201,8 @@ namespace LandmarkEmulator.WorldServer
         /// This world's name in the server list: a client text id (0 = keep the stored one; a new row then gets 62147). The
         /// client has the live server names: 560911 Courage, 560912 Liberation, 560913 Satisfaction (EU), 560914
         /// Understanding (EU), 560915 Rebellion, 560916 Serenity, 560917 Determination, 560918 Confidence, 560919
-        /// Adventure, 560920 Gratitude, 560921 Prosperity, 560922 Success, 560923 Triumph, 560924 Victory, 560925
-        /// Opportunity, 560926 Inspiration; 62147 is "Dev Server". Default 560916 Serenity. A live name is also the name
+        /// Adventure, 560920 Gratitude, 560921 Prosperity, 560922 Success, 560923 Triumph, 560925 Opportunity, 560926
+        /// Inspiration; 62147 is "Dev Server" (560924, "Victory" in 0.589, reads "Victory Node" in 0.695: not a name). Default 560916 Serenity. A live name is also the name
         /// shown in game (<see cref="ClientWorldNameText"/>) and picks the Landmarks of Landmark set
         /// (<see cref="LandmarksOfLandmarkWorld"/> auto). Docker: WORLD_NAME_ID.
         /// </summary>
@@ -269,6 +316,22 @@ namespace LandmarkEmulator.WorldServer
         public bool SurfaceGraveyards { get; set; } = true;
 
         /// <summary>
+        /// The Spire area (Game/Spire.cs): the client's own 90 m sphere round each Spire (GlobalAreas 3), as live after the
+        /// 6 Oct 2014 hotfix — no build sites in it (the client's cursor and the server), no mining, harvesting or building,
+        /// no trees or plants. Off = only the platform (no trees on it, no mining or building within 10 m of it) and build
+        /// sites allowed. Read at start-up. Docker: SPIRE_AREA.
+        /// </summary>
+        public bool SpireArea { get; set; } = true;
+
+        /// <summary>
+        /// How near (metres, 3D) a player must be to a creature to see its name and health bar (Game/Creatures.cs
+        /// SyncLife): the creature's Life goes to players within it and is taken back 10 m beyond it. Default 100 = where
+        /// the client fades the name out, about where live's bars stopped in 2016 footage [I]; 0 = every player the
+        /// creature is streamed to (~300 m). Read at start-up. Docker: CREATURE_LIFE_RANGE.
+        /// </summary>
+        public float CreatureLifeRange { get; set; } = 100f;
+
+        /// <summary>
         /// Build the Chaos Caverns' graveyards into the terrain (Game/Graveyards.Landscape.cs): the client's own
         /// graveyard_launch template (a raised plinth, gravestones, glowing mushrooms, four gargoyles) stamped once at each
         /// of the 81 graveyard placements of a landscape's Underground cave file, turned as the placement says, in the
@@ -321,23 +384,32 @@ namespace LandmarkEmulator.WorldServer
         public bool MoveOldPioneerSites { get; set; } = true;
 
         /// <summary>
-        /// The slate slab under a new Pioneer site (Game/Pioneer.Slab.cs, OPEN-LEADS L180): live fixed how the slate
-        /// slab is placed on new player sites (patch notes 30 Jun 2016, design/forum/patches/ 2016-06-29-57596) [P that
-        /// new player sites had one]. The client ships the slabs as CommonData/Voxel/templates/
-        /// claim*.otd, which no client code loads [P negative], so they are server-side assets (trace/0695/agent-leadsC.md
-        /// L180). "claim3x3" (default) = the 210 m plus-shaped 2 m slab (525 × 5 × 524 voxels, the launch site's
-        /// footprint); "claim1x1" = its 70 m middle tile only; "off" = none. Which template live stamped and at what height
-        /// are not known [I]; the slab is centred under the site, flush with the ground at its middle. Only sites granted
-        /// on a Pioneer land's surface from now on get one (never moved, cavern or classic-landscape sites), once each.
+        /// The slate slab under a new Pioneer site (Game/Pioneer.Slab.cs, OPEN-LEADS L180 / L260): live fixed how the
+        /// slate slab is placed on new player sites (patch notes 30 Jun 2016, design/forum/patches/ 2016-06-29-57596) [P
+        /// that new player sites had one]. "site" (default, live) = one solid square over exactly the 210 m site footprint,
+        /// 2 m thick and level, its top 1.8-2.2 m above the ground at the site's middle; the ground under it is filled down
+        /// to and the ground above it cut away inside the footprint, so the edges show a face down to lower ground and a
+        /// bank up to higher ground; the Starting Location stands on it 3 m in from the north-west corner. That is what the
+        /// 2016 videos and the wiki's 1 Jul 2016 screenshot show [P shape and placement, I exact height]
+        /// (trace/0695/pioneer-slab-live.md). The older choices stamp the client's own slab templates (CommonData/Voxel/
+        /// templates/claim*.otd, which no client code loads [P negative]), centred and flush with the ground: "claim3x3" =
+        /// the 210 m plus-shaped 2 m slab (525 × 5 × 524 voxels, its 70 m corners left as ground); "claim1x1" = its 70 m
+        /// middle tile only; "off" = none. Only sites granted on a Pioneer land's surface from now on get one (never moved,
+        /// cavern or classic-landscape sites), once each; dev "pioneerslab [again]" stamps an existing surface site with
+        /// nothing built on it ("force": over a build too; Pioneer.HasBuilding).
         /// Docker: PIONEER_SLAB.
         /// </summary>
-        public string PioneerSlab { get; set; } = "claim3x3";
+        public string PioneerSlab { get; set; } = "site";
 
         /// <summary>
         /// The slab's material, a VoxelMaterials ARRAY_INDEX. The templates store ARRAY_INDEX 53, which in the 0.589 and
-        /// 0.695 tables is "Raw Amaranthine" (an ore), not a slate: a stale index from an older table [I]. Default 26 =
+        /// 0.695 tables is "Raw Amaranthine" (an ore), not a slate: a stale index from an older table [I]; the oldest
+        /// material table the client still ships, CommonData/Voxel/VoxelMaterials1.xml (55 VoxelFarm materials), has id 53
+        /// "Biome_Everfrost_Snow02", no slate either, and VoxelMaterialRemaps.txt maps neither 53 nor 427 (OPEN-LEADS L180,
+        /// trace/0695/phaseE2-social.md). Default 26 =
         /// plain Worked Slate, the free slate the client's starter shapes use (starter_pillars = 41 / 46 / 26) [I: the
-        /// patch note says "slate"]. 0 = the template's own stored material. Docker: PIONEER_SLAB_MATERIAL.
+        /// patch note says "slate"; live's slab looks cracked grey slate in the 2016 videos]. 0 = a template's own stored
+        /// material (the "site" slab, which has none, then uses 26). Docker: PIONEER_SLAB_MATERIAL.
         /// </summary>
         public uint PioneerSlabMaterial { get; set; } = 26;
 
@@ -377,6 +449,16 @@ namespace LandmarkEmulator.WorldServer
         /// <see cref="CommerceAddress"/> set, the commerce service's own value counts. Docker: PLAYER_STUDIO_STAFF_REVIEW.
         /// </summary>
         public bool PlayerStudioStaffReview { get; set; } = true;
+
+        /// <summary>
+        /// A reviewer whose rejections staff overturned this many times (a product they voted down that staff then listed)
+        /// is offered no more reviews; 0 = never held back. 1 = live as the wiki describes it (Player Studio: a reviewer whose
+        /// rejection Daybreak staff disagreed with "will stop getting items to review" [W]; the count is ours [I]) —
+        /// Internal/Commerce/StudioRules.MayStillReview, OPEN-LEADS L185. In-process commerce only: with
+        /// <see cref="CommerceAddress"/> set, the commerce service's own value counts. Docker: PLAYER_STUDIO_REVIEWER_OVERRULES
+        /// (world and commerce alike).
+        /// </summary>
+        public uint PlayerStudioReviewerOverrules { get; set; } = 1;
 
         /// <summary>
         /// The Player Studio creator's share of what a buyer pays for their design, in percent (Game/Commerce.TakeDesign;
@@ -657,6 +739,15 @@ namespace LandmarkEmulator.WorldServer
         public int FriendTeleportCooldownSeconds { get; set; }
 
         /// <summary>
+        /// Seconds a character must wait between two trips with Travel to Spire (ability 185) and, separately, Travel to My
+        /// Site (186) (Game/Abilities.TravelCooldownSeconds); 0 (default) = none, as live 2016: the Stone of Recall these
+        /// replaced (21 Mar 2016 notes) lost its cooldown on 5 May 2015, and no later source names one (OPEN-LEADS L188).
+        /// 1800 / 3600 = the 2014 alpha's 30 minutes / one hour. Sent in both casts' caster info (+0x70), so the client
+        /// refuses a repeat itself; the server refuses too. Docker: TRAVEL_COOLDOWN_SECONDS.
+        /// </summary>
+        public int TravelCooldownSeconds { get; set; }
+
+        /// <summary>
         /// An accepted friend request makes the friendship mutual (Game/Friends.HandleResponse, rules in
         /// Internal/Social/FriendAccept.cs): the asker's list gets the one who accepted and theirs gets the asker, both
         /// told at once with FriendAdd. On (default) = live (wiki "Friends List": people "you either sent friend requests
@@ -676,6 +767,14 @@ namespace LandmarkEmulator.WorldServer
         public bool StoryPosePersists { get; set; } = true;
 
         /// <summary>
+        /// A placed creature prop (creature spawner) is hidden while its site is in Play Mode, so only the creature it spawns
+        /// stands there; back in Edit Mode the prop returns (Game/Props.PlayModeVisibility.cs). Default true = live (owners
+        /// saw placed NPCs "vanish in Play mode" and "reappear" in Edit Mode, 2016 forum); false = the prop stays visible
+        /// next to its creature. Read at start-up. Docker: CREATURE_PROPS_HIDE_IN_PLAY_MODE.
+        /// </summary>
+        public bool CreaturePropsHideInPlayMode { get; set; } = true;
+
+        /// <summary>
         /// Placing a prop from the bag (using a prop item) opens Build Mode on its Props page, as Tab would
         /// (Game/BuildModeHolster). Cancel before the first Save closes it again; a successful place leaves it open
         /// (Tab out when done — closing on first Save killed the placement gizmo). <b>On by default although live did
@@ -684,6 +783,26 @@ namespace LandmarkEmulator.WorldServer
         /// Off = live (the placement runs outside build mode). Docker: PLACE_OPENS_BUILD_MODE.
         /// </summary>
         public bool PlaceOpensBuildMode { get; set; } = true;
+
+        /// <summary>
+        /// Emotes, stances, /playdead and the client's /sit put the held tool or weapon away (to the bag) and bring it
+        /// back when the player walks off, or at /stand (Game/EmoteHolster). With anything in hand the 0.695 client plays
+        /// no emote at all (its animation network has emotes only for empty hands). Off by default = live (the client never
+        /// puts an item away for an emote; players put the tool away themselves). On: the client first plays the tool's
+        /// put-away clip (StandPoses WeaponSwitchCombo, ~1.1 s in which no emote shows), and handing the tool back plays
+        /// the take-out clip, which ends an emote still running (trace/0695/emotes-client.md; the user chose live
+        /// 2026-10-21). Docker: EMOTES_PUT_AWAY_HELD_ITEM.
+        /// </summary>
+        public bool EmotesPutAwayHeldItem { get; set; }
+
+        /// <summary>
+        /// /yell is the yell emote (the Call clip, "You yell loudly.", Game/Emotes): registered with the zone's command list,
+        /// which replaces the client's own /yell alias of /shout (one client command table). On (default) = live: the client's
+        /// own emote word text "yell" (570042) and its four yell lines, and the 2016 wiki's emote table (OPEN-LEADS L192 (c));
+        /// off = /yell stays the client's shout (/shout always is). Takes effect at the next zone-in (the command list).
+        /// Docker: YELL_IS_EMOTE.
+        /// </summary>
+        public bool YellIsEmote { get; set; } = true;
 
         /// <summary>
         /// Speed of the world's day/night clock in game seconds per real second (Game/WorldClock). 8 = live: one day

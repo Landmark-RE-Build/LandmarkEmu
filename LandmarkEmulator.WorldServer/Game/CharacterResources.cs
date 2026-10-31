@@ -12,7 +12,7 @@ namespace LandmarkEmulator.WorldServer.Game
     /// the regeneration itself from Resources.txt, so the pools are sent once, full, on world entry (and Life whenever
     /// health changes, see <see cref="Health"/>).
     ///
-    /// ResourcesBase 0xC4 sub 2 SetCharacterResource (client FUN_143569530): u32 sequence (must grow per player), u8 sub,
+    /// ResourcesBase 0xC4 sub 2 SetCharacterResource (client FUN_143569530): u32 sequence (NextSequence), u8 sub,
     /// u64 character guid, then the record (FUN_142b7f0c0): u32 resource id, u32 resource type, u32 variable count
     /// (0: the maximum comes from Resources.txt), 10 u32 starting with the current value, u32, 4 × u64, 3 bools, u32.
     /// <para>
@@ -30,8 +30,15 @@ namespace LandmarkEmulator.WorldServer.Game
         public const uint EnergyId = 19, EnergyType = 2, EnergyMax = 456;
         public const uint StaminaId = 13, StaminaType = 10, StaminaMax = 100;
 
-        private static readonly object sync = new();
-        private static readonly Dictionary<WorldSession, uint> sequences = new();
+        /// <summary>
+        /// The packet's u32 sequence. The client holds a sub 2 / 3 for a frame when (int)(sequence − its synced clock) > 0
+        /// (FUN_14361cd30; the synced clock is the server's millisecond clock − ~150 ms, FUN_143bf9610 / FUN_142d100d0) and
+        /// compares sequences nowhere else (FUN_14361c410) [P]. A per-player counter (1, 2, 3, …) was "ahead" of that clock
+        /// once the world's millisecond clock passed 2^31 (uptime 24.9-49.7 days): every Set was held, and could land after
+        /// a later clear (<see cref="ClearFor"/>, never held), leaving a creature's bar at any distance. A stamp well behind
+        /// the clock is never held and still grows (review of 38cac522).
+        /// </summary>
+        private static uint NextSequence() => unchecked((uint)ServerClock.Milliseconds - 0x1000_0000u);
 
         /// <summary>Energy and Stamina, full, on world entry.</summary>
         public static void SendInitial(WorldSession session)
@@ -60,12 +67,7 @@ namespace LandmarkEmulator.WorldServer.Game
         public static void SendFor(WorldSession session, ulong guid, uint resourceId, uint resourceType, uint value,
             (uint Base, uint Max)? maximum = null)
         {
-            uint sequence;
-            lock (sync)
-            {
-                sequences.TryGetValue(session, out sequence);
-                sequences[session] = ++sequence;
-            }
+            uint sequence = NextSequence();
             var output = new List<byte>();
             var writer = new GamePacketWriter(output);
             writer.Write(sequence);
@@ -96,11 +98,30 @@ namespace LandmarkEmulator.WorldServer.Game
             session.EnqueueMessage(ZoneMessageOpcode.ResourcesBase, output.ToArray());
         }
 
-        /// <summary>Forgets a player who left.</summary>
+        /// <summary>
+        /// ResourcesBase 0xC4 sub 1 SetCharacterResources with no records: {u32 sequence, u8 1, u64 guid, u32 count 0}. The
+        /// client replaces the entity's whole resource container with the list (FUN_14361c300 → FUN_14354fa00 →
+        /// FUN_14354ef20 removes every record first) [P], so an empty list takes the Life away and with it an NPC's name
+        /// and health bar (requirement 21 TargetCanBeHarmed). A sub 1 is never held by the client's hold (FUN_14361cd30)
+        /// and cancels nothing there (held entries carry a constant, not the guid) [P]; <see cref="NextSequence"/> keeps
+        /// every sub 2 out of that hold, so a Set always lands before a later clear. Every record goes, so only for entities
+        /// whose records the server can send again (creatures: Life only).
+        /// </summary>
+        public static void ClearFor(WorldSession session, ulong guid)
+        {
+            uint sequence = NextSequence();
+            var output = new List<byte>();
+            var writer = new GamePacketWriter(output);
+            writer.Write(sequence);
+            writer.Write((byte)1);
+            writer.Write(guid);
+            writer.Write(0u);
+            session.EnqueueMessage(ZoneMessageOpcode.ResourcesBase, output.ToArray());
+        }
+
+        /// <summary>Forgets a player who left (nothing is kept per player since the sequence follows the server clock).</summary>
         public static void Forget(WorldSession session)
         {
-            lock (sync)
-                sequences.Remove(session);
         }
     }
 }

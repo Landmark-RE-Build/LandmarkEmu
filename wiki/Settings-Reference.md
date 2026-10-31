@@ -125,7 +125,7 @@ Its id in the server list (1, 2, 3...; unique per world, never reused).
 
 ### `WORLD_NAME_ID`
 
-Its name in the server list, a client text id: 62147 Dev Server, 560911 Courage, 560912 Liberation, 560913 Satisfaction (EU), 560914 Understanding (EU), 560915 Rebellion, 560916 Serenity, 560917 Determination, 560918 Confidence, 560919 Adventure, 560920 Gratitude, 560921 Prosperity, 560922 Success, 560923 Triumph, 560924 Victory, 560925 Opportunity, 560926 Inspiration. Default 560916 Serenity.
+Its name in the server list, a client text id: 62147 Dev Server, 560911 Courage, 560912 Liberation, 560913 Satisfaction (EU), 560914 Understanding (EU), 560915 Rebellion, 560916 Serenity, 560917 Determination, 560918 Confidence, 560919 Adventure, 560920 Gratitude, 560921 Prosperity, 560922 Success, 560923 Triumph, 560925 Opportunity, 560926 Inspiration. Default 560916 Serenity.
 
 | `.env` | Service setting | Default | Live |
 |---|---|---|---|
@@ -259,7 +259,7 @@ A player whose game client goes silent this many seconds (a crash, a killed proc
 
 ### `FREE_BUILD`
 
-Build and place props anywhere, without a build site. false = live (only where you have build permission); true for creative or test servers.
+Build and place props anywhere, without a build site; props and building materials are then free (nothing taken from the bag, nothing given back). false = live (only where you have build permission); true for creative or test servers.
 
 | `.env` | Service setting | Default | Live |
 |---|---|---|---|
@@ -289,6 +289,14 @@ A blocking stance (Molten Rebuke, Corrupting Revenge, a creature's shield block)
 |---|---|---|---|
 | `BLOCK_STANCE_VISIBLE` | world: `BlockStanceVisible` | `true` | true |
 
+### `DEAD_BODIES_VISIBLE`
+
+A dead player's body lies down on the other players' game clients (the client shows a death pose only when told the character is knocked out). true = live; false = nothing is sent (the dead player stands on the others' screens).
+
+| `.env` | Service setting | Default | Live |
+|---|---|---|---|
+| `DEAD_BODIES_VISIBLE` | world: `DeadBodiesVisible` | `true` | true |
+
 ### `SAFE_EJECT_RESET`
 
 When a flinger, launcher or thrust pad throws you, your client marks you "launched" and tells the server; the server ends that state when you land, so every later launch behaves like the first. true = live; false = only logged.
@@ -312,6 +320,14 @@ Placed props are sent to each player only within this many metres (in 64 m squar
 | `.env` | Service setting | Default | Live |
 |---|---|---|---|
 | `PROP_STREAM_RANGE` | world: `PropStreamRange` | `400` | not known |
+
+### `TREE_STREAM_RANGE`
+
+Trees (and plants) are sent to each player only within this many metres (in 64 m squares, nearest first: those within 160 m at once, the rest at most 200 trees a second) and taken away again 80 m further out. The game draws a tree as far as its model allows (440-2,500 m for the trees here), so this is where the forest ends on screen. 400 = the same line as the placed props; each tree costs about 300 bytes, so 400 m sends about 4-5 times the trees of the old 160 m (about 80-240 KB per loading screen instead of 17-53 KB, spread over a few seconds). 160 = the range before 2026-11-01; 64-1000. Live's own range is not known (2016 videos show trees to at least 300-450 m).
+
+| `.env` | Service setting | Default | Live |
+|---|---|---|---|
+| `TREE_STREAM_RANGE` | world: `TreeStreamRange` | `400` | not known (2016 videos: trees to at least 300-450 m) |
 
 ### `STREAM_HOLD_UNTIL_LOADED`
 
@@ -379,6 +395,22 @@ Surface graveyards (the map's red circles): Flee sites with a 30 m buffer creatu
 |---|---|---|---|
 | `SURFACE_GRAVEYARDS` | world: `SurfaceGraveyards` | `true` | not known |
 
+### `SPIRE_AREA`
+
+The area round each Spire (90 m, from the game files): no build sites, no mining or harvesting, no trees, as live after October 2014. false = only the Spire's platform is kept clear and build sites may be placed right next to it.
+
+| `.env` | Service setting | Default | Live |
+|---|---|---|---|
+| `SPIRE_AREA` | world: `SpireArea` | `true` | — |
+
+### `CREATURE_LIFE_RANGE`
+
+How near (metres) you must be to a creature to see its name and health bar, as live (bars stopped about where the names fade out). 0 = as far as creatures are sent (~300 m).
+
+| `.env` | Service setting | Default | Live |
+|---|---|---|---|
+| `CREATURE_LIFE_RANGE` | world: `CreatureLifeRange` | `100` | — |
+
 ### `CAVERN_GRAVEYARD_STAMPS`
 
 The Chaos Caverns' graveyards built into the terrain as on live: the client's graveyard_launch template (a raised plinth with gravestones, glowing mushrooms and four gargoyles) at each of a landscape's 81 graveyard spots, written once in the background on the landscape's first visit (a few MB of terrain files) and never again. false = no new stamps: a graveyard not built yet is only its centrepiece on the cave floor; ones built earlier stay.
@@ -437,6 +469,14 @@ Trees (and plants) after they are cut. minmax = as live (a developer's post, Jun
 | `PROCEDURAL_RESPAWN` | world: `ProceduralRespawn` | `minmax` | minmax |
 | `PROCEDURAL_RESPAWN_MIN_SHARE` | world: `ProceduralRespawnMinShare` | `0.67` | not known |
 
+### `TREE_HEALTH`
+
+How trees are cut down. health = as live: every tree has health by its size (from the game files: very small trees 350, small 750, medium 1500, large 2250, very large 3000), each axe swing takes the axe's damage off it (80 with the Adventurer's Axe: 5 to 38 swings, 10 to 29 on the default tree lists) and the player chopping it sees the tree's health bar. hits = the older way: every tree falls after 5 swings (8 for large ones), with no health bar.
+
+| `.env` | Service setting | Default | Live |
+|---|---|---|---|
+| `TREE_HEALTH` | world: `TreeHealth` | `health` | health |
+
 ### `PROCEDURAL_PLACEMENT`, `PROCEDURAL_PLACEMENT_DECOR`, `PROCEDURAL_PLACEMENT_MASKS`
 
 Where trees stand. false (default) = the server's per-biome tree lists. true = the game files' own placement sets and masks; those were made for the 2014 alpha biomes, so live's launch placement is not in the game files and which is closer to live is not known. DECOR also places the sets' rocks, bushes and flowers (not gatherable); MASKS = use the sets' mask pictures.
@@ -473,12 +513,21 @@ true = build sites still on the old Pioneer lands 417-421 (this server's Pioneer
 
 ### `PIONEER_SLAB`, `PIONEER_SLAB_MATERIAL`
 
-The slate slab under each new Pioneer site (live fixed how that slab is placed on new player sites: update notes 30 Jun 2016), from the client's own templates: claim3x3 (default; a 2 m slab over the 210 m site, plus-shaped, the corners left as ground) | claim1x1 (only the site's 70 m middle) | off. Stamped once, flush with the ground, on sites granted from now on. The material is a VoxelMaterials ARRAY_INDEX: 26 = Worked Slate (default); 0 = the template's own index 53.
+The slate slab under each new Pioneer site (live fixed how that slab is placed on new player sites: update notes 30 Jun 2016). site (default, as on live in 2016): one level 2 m slab over exactly the whole 210 m site, standing about 2 m above the ground at its middle; lower ground under it is filled up to it, higher ground cut away down to it, so its edges show a face or a bank; nothing grows on it and the site's Starting Location stands on it 3 m in from the north-west corner. Or the client's own slab templates, flush with the ground: claim3x3 (plus-shaped, the corners left as ground) | claim1x1 (only the site's 70 m middle); or off. Stamped once on sites granted from now on; existing Pioneer sites are left as they are (an admin gives one with nothing built on it the slab with the dev command "@Owner pioneerslab again"; a site with building on it is skipped, as the slab would fill its ground-floor rooms and cut the ground from under it, unless "force" is added). The material is a VoxelMaterials ARRAY_INDEX: 26 = Worked Slate (default); 0 = a template's own index 53.
 
 | `.env` | Service setting | Default | Live |
 |---|---|---|---|
-| `PIONEER_SLAB` | world: `PioneerSlab` | `claim3x3` | not known (a slab existed) |
-| `PIONEER_SLAB_MATERIAL` | world: `PioneerSlabMaterial` | `26` | not known |
+| `PIONEER_SLAB` | world: `PioneerSlab` | `site` | site (a full square over the site, 2016 videos) |
+| `PIONEER_SLAB_MATERIAL` | world: `PioneerSlabMaterial` | `26` | a grey slate (exact one not known) |
+
+### `PIONEER_SURFACE_VEINS`, `PIONEER_SURFACE_IRON`
+
+Surface ore veins on the Pioneer lands. The server knows their ground only roughly (the game's own map of it says "somewhere in this 16 m band"), and ore the server sends is solid rock to the game even where its ground is lower, so veins put on the guessed ground stood as blocks on the grass. buried (default) = the veins stay (same ores, same number, same x / z) but lie under the lowest ground the game can draw there: a few metres under the grass on the plateau (ore from 1022.8 m, about 4.6 m down). That lowest ground follows the lowest neighbouring 16 m column, so on slopes and coasts veins lie about 17-50 m down (13 % of the 440 cache's columns step down one cell or more beside a neighbour), and those on the seabed at 734.8 m. Dig or use a prospecting tool to find them. off = no surface veins there (cave veins stay). Live showed them as coloured patches flush with the ground, which needs the exact ground; buried is the closest. Classic islands are not affected. Surface iron on the Pioneer lands: false = as live (from 26 Apr 2016 surface iron was only on non-Pioneer landscapes); true = as the game's vein files list it. The world and the Environment Server both read these lines; a change counts at the next start (veins are rebuilt from the world's seed at every start).
+
+| `.env` | Service setting | Default | Live |
+|---|---|---|---|
+| `PIONEER_SURFACE_VEINS` | envserver: `PioneerSurfaceVeins`<br>world: `PioneerSurfaceVeins` | `buried` | flush patches on the ground (needs the exact ground; buried is the closest) |
+| `PIONEER_SURFACE_IRON` | envserver: `PioneerSurfaceIron`<br>world: `PioneerSurfaceIron` | `false` | false (from 26 Apr 2016) |
 
 ### `LANDMARK_SEASON`
 
@@ -547,6 +596,14 @@ Who may review: accounts that spent at least this much Daybreak Cash (x LUMENS_P
 | `PLAYER_STUDIO_REVIEWER_MIN_SPEND` | world: `PlayerStudioReviewerMinSpend` | `1000` | 1000 |
 | `PLAYER_STUDIO_REVIEWS_PER_DAY` | commerce: `PlayerStudioReviewsPerDay`<br>world: `PlayerStudioReviewsPerDay` | `2` | 2 |
 | `PLAYER_STUDIO_STAFF_REVIEW` | commerce: `PlayerStudioStaffReview`<br>world: `PlayerStudioStaffReview` | `true` | true |
+
+### `PLAYER_STUDIO_REVIEWER_OVERRULES`
+
+A reviewer whose rejections staff overturned (a design they rejected that an admin then approved) this many times is offered no more reviews: live, a reviewer whose rejection Daybreak's staff disagreed with "will stop getting items to review" (wiki Player Studio). 1 = live (the count is ours); 0 = never held back.
+
+| `.env` | Service setting | Default | Live |
+|---|---|---|---|
+| `PLAYER_STUDIO_REVIEWER_OVERRULES` | commerce: `PlayerStudioReviewerOverrules`<br>world: `PlayerStudioReviewerOverrules` | `1` | 1 (the count is ours) |
 
 ### `PLAYER_STUDIO_DESIGNS_FREE_STORAGE`
 
@@ -633,6 +690,14 @@ Seconds a character waits between two Teleport to Friend trips. 0 = none, as liv
 |---|---|---|---|
 | `FRIEND_TELEPORT_COOLDOWN_SECONDS` | world: `FriendTeleportCooldownSeconds` | `0` | 0 |
 
+### `TRAVEL_COOLDOWN_SECONDS`
+
+Seconds a character waits between two trips to the Spire, and between two trips to their own build site, from the Travel menu. 0 = none, as live 2016 (the Stone of Recall these replaced lost its cooldown on 5 May 2015); 1800 / 3600 = the 2014 alpha's 30 minutes / one hour.
+
+| `.env` | Service setting | Default | Live |
+|---|---|---|---|
+| `TRAVEL_COOLDOWN_SECONDS` | world: `TravelCooldownSeconds` | `0` | 0 |
+
 ### `FRIEND_REQUESTS_MUTUAL`
 
 Accepting a friend request makes the two friends both ways: each gets the other on their friends list at once. true = as live (the wiki's Friends List holds the people you sent friend requests to and those whose requests you accepted); false = one-way lists, only the one who asked gets a new friend. Read by the world and the social service.
@@ -649,6 +714,14 @@ Story creatures keep the mood and stance a Story Node gave them: saved with the 
 |---|---|---|---|
 | `STORY_POSE_PERSISTS` | world: `StoryPosePersists` | `true` | true |
 
+### `CREATURE_PROPS_HIDE_IN_PLAY_MODE`
+
+Placed creature props disappear while their site is in Play Mode, so only the creature they spawn stands there, and come back in Edit Mode. true = as live; false = the prop stays visible next to its creature.
+
+| `.env` | Service setting | Default | Live |
+|---|---|---|---|
+| `CREATURE_PROPS_HIDE_IN_PLAY_MODE` | world: `CreaturePropsHideInPlayMode` | `true` | true |
+
 ### `PLACE_OPENS_BUILD_MODE`
 
 Placing a prop from the bag (right-click a prop item) opens Build Mode on its Props page. Cancel before the first Save closes it again; a successful place leaves Build Mode open (Tab out when done). true = this server's default; false = as live (the placement runs outside build mode; live's client never opened it for one).
@@ -656,6 +729,22 @@ Placing a prop from the bag (right-click a prop item) opens Build Mode on its Pr
 | `.env` | Service setting | Default | Live |
 |---|---|---|---|
 | `PLACE_OPENS_BUILD_MODE` | world: `PlaceOpensBuildMode` | `true` | false |
+
+### `EMOTES_PUT_AWAY_HELD_ITEM`
+
+Emotes (/wave, /dance, /kneel, /playdead, /emoteclip n and the client's /sit) put the held tool or weapon away and bring it back when the player walks off or types /stand. Without it the game shows no emote while anything is in hand (its animations for emotes exist only for empty hands). false = as live, the default (put the tool away yourself first); true = put away for the player.
+
+| `.env` | Service setting | Default | Live |
+|---|---|---|---|
+| `EMOTES_PUT_AWAY_HELD_ITEM` | world: `EmotesPutAwayHeldItem` | `false` | false |
+
+### `YELL_IS_EMOTE`
+
+/yell plays the yell emote ("You yell loudly."). true = as live (the game has its own "yell" emote word and lines, and the 2016 command list shows it); false = /yell is a shout, as /shout always is.
+
+| `.env` | Service setting | Default | Live |
+|---|---|---|---|
+| `YELL_IS_EMOTE` | world: `YellIsEmote` | `true` | true |
 
 ### `DAY_CYCLE_SPEED`
 
@@ -1033,13 +1122,17 @@ Class `WorldServerConfiguration` (`LandmarkEmulator.WorldServer/WorldServerConfi
 | `MovementEffects` | `bool` | `true` | `MOVEMENT_EFFECTS` |
 | `MeleeTargeters` | `bool` | `true` | `MELEE_TARGETERS` |
 | `BlockStanceVisible` | `bool` | `true` | `BLOCK_STANCE_VISIBLE` |
+| `DeadBodiesVisible` | `bool` | `true` | `DEAD_BODIES_VISIBLE` |
 | `SafeEjectReset` | `bool` | `true` | `SAFE_EJECT_RESET` |
 | `LiveCharacterStats` | `bool` | `true` | `LIVE_CHARACTER_STATS` |
 | `PropStreamRange` | `float` | `400` | `PROP_STREAM_RANGE` |
+| `TreeStreamRange` | `float` | `400` | `TREE_STREAM_RANGE` |
 | `StreamHoldUntilLoaded` | `bool` | `true` | `STREAM_HOLD_UNTIL_LOADED` |
 | `StreamHoldLimitSeconds` | `int` | `90` | `STREAM_HOLD_LIMIT_SECONDS` |
 | `KeepVertexOnlyVoxels` | `bool` | `true` | `KEEP_VERTEX_ONLY_VOXELS` |
 | `TerrainLodCopies` | `bool` | `true` | `TERRAIN_LOD_COPIES` |
+| `PioneerSurfaceVeins` | `string` | `buried` | `PIONEER_SURFACE_VEINS` |
+| `PioneerSurfaceIron` | `bool` | `false` | `PIONEER_SURFACE_IRON` |
 | `GameDirectory` | `string` | `C:/Program Files (x86)/Steam/steamapps/common/Landmark (e…` | fixed: `/game` |
 | `ZoneServerId` | `ulong` | `1` | `WORLD_ID` |
 | `WorldNameId` | `uint` | `560916` | `WORLD_NAME_ID` |
@@ -1056,18 +1149,21 @@ Class `WorldServerConfiguration` (`LandmarkEmulator.WorldServer/WorldServerConfi
 | `SitePathing` | `bool` | `true` | `SITE_PATHING` |
 | `CreatureWeapons` | `bool` | `true` | `CREATURE_WEAPONS` |
 | `SurfaceGraveyards` | `bool` | `true` | `SURFACE_GRAVEYARDS` |
+| `SpireArea` | `bool` | `true` | `SPIRE_AREA` |
+| `CreatureLifeRange` | `float` | `100` | `CREATURE_LIFE_RANGE` |
 | `CavernGraveyardStamps` | `bool` | `true` | `CAVERN_GRAVEYARD_STAMPS` |
 | `CavernArrivalRescue` | `bool` | `true` | `CAVERN_ARRIVAL_RESCUE` |
 | `EventIsland` | `string` | `auto` | `EVENT_ISLAND` |
 | `EventIslandExpireOnClose` | `bool` | `true` | `EVENT_ISLAND_EXPIRE_ON_CLOSE` |
 | `MoveOldPioneerSites` | `bool` | `true` | `MOVE_OLD_PIONEER_SITES` |
-| `PioneerSlab` | `string` | `claim3x3` | `PIONEER_SLAB` |
+| `PioneerSlab` | `string` | `site` | `PIONEER_SLAB` |
 | `PioneerSlabMaterial` | `uint` | `26` | `PIONEER_SLAB_MATERIAL` |
 | `PlayerStudioApprovals` | `uint` | `3` | `PLAYER_STUDIO_APPROVALS` |
 | `PlayerStudioRejections` | `uint` | `3` | `PLAYER_STUDIO_REJECTIONS` |
 | `PlayerStudioReviewerMinSpend` | `uint` | `1000` | `PLAYER_STUDIO_REVIEWER_MIN_SPEND` |
 | `PlayerStudioReviewsPerDay` | `uint` | `2` | `PLAYER_STUDIO_REVIEWS_PER_DAY` |
 | `PlayerStudioStaffReview` | `bool` | `true` | `PLAYER_STUDIO_STAFF_REVIEW` |
+| `PlayerStudioReviewerOverrules` | `uint` | `1` | `PLAYER_STUDIO_REVIEWER_OVERRULES` |
 | `PlayerStudioCreatorSharePercent` | `uint` | `40` | `PLAYER_STUDIO_CREATOR_SHARE` |
 | `PlayerStudioListingFee` | `bool` | `true` | `PLAYER_STUDIO_LISTING_FEE` |
 | `MotdSubject` | `string` | `Welcome to Landmark` | `MOTD_SUBJECT` |
@@ -1105,9 +1201,13 @@ Class `WorldServerConfiguration` (`LandmarkEmulator.WorldServer/WorldServerConfi
 | `BuildMenuPropName` | `bool` | `true` | `BUILD_MENU_PROP_NAME` |
 | `ChestAccountCap` | `int` | `0` | `CHEST_ACCOUNT_CAP` |
 | `FriendTeleportCooldownSeconds` | `int` | `0` | `FRIEND_TELEPORT_COOLDOWN_SECONDS` |
+| `TravelCooldownSeconds` | `int` | `0` | `TRAVEL_COOLDOWN_SECONDS` |
 | `FriendRequestsMutual` | `bool` | `true` | `FRIEND_REQUESTS_MUTUAL` |
 | `StoryPosePersists` | `bool` | `true` | `STORY_POSE_PERSISTS` |
+| `CreaturePropsHideInPlayMode` | `bool` | `true` | `CREATURE_PROPS_HIDE_IN_PLAY_MODE` |
 | `PlaceOpensBuildMode` | `bool` | `true` | `PLACE_OPENS_BUILD_MODE` |
+| `EmotesPutAwayHeldItem` | `bool` | `false` | `EMOTES_PUT_AWAY_HELD_ITEM` |
+| `YellIsEmote` | `bool` | `true` | `YELL_IS_EMOTE` |
 | `DayCycleSpeed` | `float` | `8` | `DAY_CYCLE_SPEED` |
 | `ShowcaseFollowDigest` | `bool` | `true` | `SHOWCASE_FOLLOW_DIGEST` |
 | `ShowcaseDigestHourUtc` | `uint` | `10` | `SHOWCASE_DIGEST_HOUR_UTC` |
@@ -1133,6 +1233,7 @@ Class `WorldServerConfiguration` (`LandmarkEmulator.WorldServer/WorldServerConfi
 | `ProceduralPlacement` | `read directly` | `false` | `PROCEDURAL_PLACEMENT` |
 | `ProceduralPlacementDecor` | `read directly` | `false` | `PROCEDURAL_PLACEMENT_DECOR` |
 | `ProceduralPlacementMasks` | `read directly` | `true` | `PROCEDURAL_PLACEMENT_MASKS` |
+| `TreeHealth` | `read directly` | `health` | `TREE_HEALTH` |
 | `ProceduralRespawn` | `read directly` | `minmax` | `PROCEDURAL_RESPAWN` |
 | `ProceduralRespawnMinShare` | `read directly` | `0.67` | `PROCEDURAL_RESPAWN_MIN_SHARE` |
 | `PendingKickPacket` | `read directly` | `true` | `PENDING_KICK_PACKET` |
@@ -1210,6 +1311,7 @@ Class `CommerceServerConfiguration` (`LandmarkEmulator.CommerceServer/CommerceSe
 | `PlayerStudioRejections` | `uint` | `3` | `PLAYER_STUDIO_REJECTIONS` |
 | `PlayerStudioReviewsPerDay` | `uint` | `2` | `PLAYER_STUDIO_REVIEWS_PER_DAY` |
 | `PlayerStudioStaffReview` | `bool` | `true` | `PLAYER_STUDIO_STAFF_REVIEW` |
+| `PlayerStudioReviewerOverrules` | `uint` | `1` | `PLAYER_STUDIO_REVIEWER_OVERRULES` |
 | `PlayerStudioCreatorSharePercent` | `uint` | `40` | `PLAYER_STUDIO_CREATOR_SHARE` |
 | `ShowcaseFollowDigest` | `bool` | `true` | `SHOWCASE_FOLLOW_DIGEST` |
 | `ShowcaseDigestHourUtc` | `uint` | `10` | `SHOWCASE_DIGEST_HOUR_UTC` |
@@ -1232,6 +1334,8 @@ Class `EnvServerConfiguration` (`LandmarkEmulator.EnvServer/EnvServerConfigurati
 | `RuinLayerDesired` | `uint` | `0` | `ENVSERVER_RUIN_LAYER_DESIRED` |
 | `TerrainLodCopies` | `bool` | `true` | `TERRAIN_LOD_COPIES` |
 | `KeepVertexOnlyVoxels` | `bool` | `true` | `KEEP_VERTEX_ONLY_VOXELS` |
+| `PioneerSurfaceVeins` | `string` | `buried` | `PIONEER_SURFACE_VEINS` |
+| `PioneerSurfaceIron` | `bool` | `false` | `PIONEER_SURFACE_IRON` |
 | `HealthFile` | `string` | (empty) | fixed: `/tmp/envserver-alive` |
 
 ### GatewayServer.json
@@ -1312,6 +1416,7 @@ Read with `Environment.GetEnvironmentVariable`, not through the settings files.
 | `SOCIAL_ADDRESS` | `LandmarkEmulator.WorldServer/Game/Social/SocialServices.cs` | yes |
 | `ENVSERVER_ADDRESS` | `LandmarkEmulator.WorldServer/Game/Terrain/EnvironmentServer.cs` | yes |
 | `COMMERCE_ADDRESS` | `LandmarkEmulator.WorldServer/Game/WorldChannel/WorldChannelServices.cs` | yes |
+| `LANDMARKLOCAL_ROOT` | `LandmarkLocal.Core/LocalPaths.cs` | no |
 
 See also: [Server Guide](Server-Guide), [Command Documentation](Command-Documentation) (several settings can be
 changed while the world runs with a dev command), and `docs/docker.md` in the repository.

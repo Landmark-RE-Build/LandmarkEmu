@@ -152,21 +152,24 @@ namespace LandmarkEmulator.WorldServer.Game
                 viewer.EnqueueMessage(ZoneMessageOpcode.PlayerUpdateCustomizationChangeWire, body);
         }
 
-        /// <summary>u32 n × the attachment record of each visible equipment item (see <see cref="SendAttachments"/>).</summary>
+        /// <summary>
+        /// u32 n × the attachment record of each visible equipment item (see <see cref="SendAttachments"/>), with the
+        /// main-hand item's off-hand model (shield, quiver, second gun: WorldSession.BuildSecondarySlot) as its own record:
+        /// the client rebuilds the model from this list alone (FUN_1430a1e60), so a record left out is a hand left empty.
+        /// </summary>
         private static void WriteWorn(WorldSession session, GamePacketWriter writer)
         {
-            var worn = session.VisibleEquipment();
+            var worn = session.EquipmentSlotPackets();
             writer.Write((uint)worn.Count);
-            foreach ((uint slot, var item) in worn)
+            foreach (var shown in worn)
             {
-                var shown = session.BuildEquipmentSlot(slot, item);
                 writer.Write(shown.ModelName ?? "");
                 writer.Write(shown.TextureAlias ?? "");
                 writer.Write(shown.TintAlias ?? "");
                 writer.Write("");
                 writer.Write(shown.TintId);
                 writer.Write(shown.CompositeEffect);
-                writer.Write(slot);
+                writer.Write(shown.EquipSlotId);
                 writer.Write(0u);
                 writer.Write(false);
             }
@@ -175,9 +178,10 @@ namespace LandmarkEmulator.WorldServer.Game
         #region 0.695 price
 
         /// <summary>
-        /// Gender and size change prices when the client has no override (FUN_1430a5f10: DAT_1446f40b8 = 60 for a gender
-        /// change, DAT_144703b10 = 30 for a race change; the overrides are looked up by hash in a client settings map
-        /// this server never fills).
+        /// Gender and size change prices (FUN_1430a5f10: DAT_1446f40b8 = 60 for a gender change, DAT_144703b10 = 30 for a
+        /// race change, unless overridden by hash). The overrides are the client's own table StringHashToValue.txt, whose
+        /// 0.695 copy has CharacterCustomization.GenderChangeCost^60 and RaceChangeCost^30: the same numbers, so the price
+        /// shown and the price charged agree (trace/0695/phaseE3-ui.md F5).
         /// </summary>
         private const uint GenderChangeCost = 60, RaceChangeCost = 30;
 

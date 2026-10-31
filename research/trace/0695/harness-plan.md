@@ -482,7 +482,7 @@ Class: HARNESS / PARTIAL / USER / BLOCKED / OBSOLETE / DUPLICATE. Script: where 
 | 212 | 756 | S47 | Modular Thinking: place the Modular Castle Long Room; paste the Modular Castle Entry; Ctrl-Z; C… | USER |  | build-mode input |
 | 213 | 761 | S47 | Tell me if the order of any steps feels wrong (the live order is inferred), and whether free-fo… | USER |  | opinion |
 | 214 | 771 | S48 | Home landscape (406), Old Growth: the forest now has the sets' mix — clumps of big diamond / gn… | PARTIAL | 13-terrain-world | start-up line; forest look by eye |
-| 215 | 776 | S48 | Chop one with an axe: wood is Burled, 5 hits (8 on the big pines / hollowed ones). It comes bac… | USER |  | chopping needs an axe swing at a tree |
+| 215 | 776 | S48 | Chop one with an axe: wood is Burled, 5 hits (8 on the big pines / hollowed ones) under TREE_HEALTH=hits (health: 10 / 19 / 29 swings). It comes bac… | USER |  | chopping needs an axe swing at a tree |
 | 216 | 778 | S48 | A Desert landscape (391 / 397 / 418): cacti in clumps, paddle / small / thornleaf trees, dead t… | USER |  | looks |
 | 217 | 783 | S48 | No tree inside a build site or on the Spire; teleporting / logging in next to a tree doesn't le… | PARTIAL | 13-terrain-world | tree report; stuck-next-to-tree by hand |
 | 218 | 784 | S48 | Look (not required): set "ProceduralPlacementDecor": true in WorldServer.json (or env), restart… | USER |  | optional config + look |

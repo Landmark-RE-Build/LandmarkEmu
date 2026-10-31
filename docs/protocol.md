@@ -362,7 +362,7 @@ from the client's Lua binding tables and the functions that read each offset.
 | 0x5B | LightweightToFullPc | `bool compressed, byte[] blob, movement body, stat lists`. The appearance field after the 3 strings must be 0, or the body is hidden. |
 | 0x5E | FullCharacterDataRequest (C→S) | `u64 guid` → answer with 0x5B (players) or 0x63 (props/NPCs). |
 | 0x62 | AddLightweightProp | Props, trees, plants, the Spire (see 4.2). |
-| 0x63 | LightweightToFullNpc/Prop | Needed before a placed prop can be edited. The 0.695 apply (FUN_142d532f0) copies the shared full-data base over the entity's defaults unconditionally, so the defaults are sent, not zeros: chat-bubble colours 0xFFFFFF / 0xD4E2F0 / 1 (+0x1c..+0x24), expected speed 8.0 (+0xb4), and for props disposition 2 (+0x90), 100 (+0xb8), 2 (+0x248), −1 at +0x250 / +0x254 (OPEN-LEADS L85). It does nothing for a prop's collision. |
+| 0x63 | LightweightToFullNpc/Prop | Needed before a placed prop can be edited. The 0.695 apply (FUN_142d532f0) copies the shared full-data base over the entity's defaults unconditionally, so the defaults are sent, not zeros: chat-bubble colours 0xFFFFFF / 0xD4E2F0 / 1 (+0x1c..+0x24), expected speed 8.0 (+0xb4), and for props disposition 2 (+0x90; gathering nodes 1, neutral, which the client puts in the harvest target slot 9), 100 (+0xb8), 2 (+0x248), −1 at +0x250 / +0x254 (OPEN-LEADS L85). It does nothing for a prop's collision. |
 | 0x69 / 0x6A | InteractionInfo request / reply | Reply entries `{u64 guid, u32 type (3 = interactable), 4 × u32 colour, u32, f32, f32 range, u8}`. |
 | 0x6B | DynamicInteractionFlagging | `bool, list<u64 guid>`: marks entities the client should ask about. |
 | 0x71 | BindingCustomization (C→S) | Key-binding report; nothing to store. |
@@ -384,6 +384,8 @@ The client places the entity at `(position × 10 + origin) − zone origin`, sca
 
 Base fields the server fills for props (packet offsets as the 0.695 setup FUN_142d54040 reads them;
 `Network/Message/Model/PlayerUpdateAddLightweightProp.cs`):
+- **+0x1a0 profile** (ProfileDefinitions id → entity +0x1474, FUN_142ec55e0): what TargetIsProfile tests. Trees are
+  sent 200-214 ("Tree: size: wood", the axes' target rule); everything else 0.
 - **+0x19c control mode** (signed byte, shared with NPC spawns, copied to entity +0x41A0). The per-frame update
   (FUN_142eb1950 → FUN_142e93340) plays buffered Position 0x7F records only when it is not 0. Creatures and the moving
   part of a platform are sent 2; a static prop 0, which queues its position updates and never plays them.
@@ -478,7 +480,8 @@ Stance_Index 4), so the stance is set but not visible. FUN_1433b4e90 (/sit) chec
 client has no "put your tool away" text (Emote.SitSelf / SitOther are its only emote strings), nor does anything
 holster the item for it, so live behaved the same: the player puts the tool away first (hotbar key / Tab). Observers
 attach the same item and agree with the player's own screen, so the server relays the sit bit as it is. The same holds
-for the server's stances (/kneel, /dance, /playdead ...).
+for the server's stances (/kneel, /dance, /playdead ...) and every emote. The server can put the held item away for
+them and bring it back afterwards (`EmotesPutAwayHeldItem`, default off = live; see "Emotes").
 
 **Relay order (OPEN-LEADS L179):** the server keeps the newest body of each (mover, type) between ticks and sends each
 mover's bodies oldest first by their u32 timestamp (`MovementFanout.InTimeOrder`, both the gateway fan-out and the
@@ -500,6 +503,15 @@ research/trace/0695/agent-leadsB.md §4]; the relay forwards it unchanged.
     first), `u32`, 4 × u64, 3 bools, `u32`.
   - A wrong count crashes the client.
   - Resource types: Health 1, Mana 2, Stamina 10, Armor 11, RevivePoints 12, Shield 14.
+  - The resource id must be a Resources.txt row (the client reads its MAX_VALUE by it, with no null check) unless the
+    record carries the MAX variable 0x2C7CD6E6.
+  - Sub 2 SetCharacterResource creates or replaces the record on any entity found by guid, lightweight or full, props
+    included (FUN_14361c410). LightweightToFullNpc / Prop first delete every resource of the entity, then install the
+    packet's own list (+0x2c8, FUN_143b8aef0), so a record sent before the full data is lost: send it again after.
+  - Health bars read it (trace/0695/healthbar-*.md): a tree's bar (Prop indicator, requirement 13) shows while the tree is
+    the harvest target (TargetBase slot 9) and its Health is below 100 % and above 0 % (integer current × 100 / max); a
+    creature's name and bar need a Health maximum above 0 (requirement 21 "NPC Combatant"); a hostile creature's bar shows
+    at full health, others' only when injured.
 - **ClientUpdate 0x29/0x01 Hitpoints:** combat text only. It does not move the HUD bar.
 - **Character stats** (a separate id space; names in Resources/StringHashToValue.txt `StatId.<name>^id^`, read by
   FUN_142ea2e20): element `u32 id, i8 kind (0 int, 1 float), u32 value, u32 base` (FUN_142c18c40; the getter returns
@@ -595,6 +607,10 @@ already put each slot in that same map, so the weapon stays when the character t
   - Travel asks for 185/186.
 - **3 CasterInfoReply:** includes range (min/max), cast and recovery seconds, cost pool, animation id, tool
   re-pick mode, name/description ids. The server answers from captured bodies and item data.
+  - **+0x90 target rule** (record +0x70): a RequirementExpressions id the entity under the cursor must pass to be the
+    ability's target (FUN_143730e50 → FUN_1432f5a00, the entity as the target); below 1 anything passes, an id not in
+    the table nothing. Axes send 20 "Target is Harvestable Tree" (TargetIsProfile 200-214). The client caches the record
+    per ability for the session (a change reaches it at the next login).
   - The f32 after the two strings (`ArcDegrees`, stored at record +0x60) is the ability's arc width. With the
     min/max range it shapes the sickle's blue plant-harvest wedge (ActionStateReaping → PlantHarvestDecal, set in
     FUN_1433abd90 as reaping params 9/10/11). An arc of 0 draws nothing.
@@ -713,11 +729,16 @@ Full detail in [terrain.md](terrain.md).
   left out because their recipe is unknown. **9 ZoneMissingPropList (S→C)** `{u32 n × i32 name text, u32 n × i32 count}`:
   "Construction.SkippedProps" — left out for lack of the item or materials.
   - Without a response, a later resend of the cell makes the client time out and stop editing.
-- **2 ClientSelectionAreaRequest (C→S), copy and paste:**
-  - Body: `u8 layer (FF), u32 action (0 copy, 4 paste), u64 level-2 cell, u32 x, y, z origin (voxels in that
-    cell), u32 sx, sy, sz size, list<PropData>, 4×4 i32 rotation matrix (rows first), list<{u16 material, u32 n}>,
-    u64, string, u64, list<{u64 cell, u64 version}> (every cell the box touches), list<{u64 key, u64, u32 type,
-    u32 length, packed block, u32 if type is 2 or 3}>, u32, u8, string, u8`.
+- **2 ClientSelectionAreaRequest (C→S), copy, cut, delete, save design, paste:**
+  - Body: `u8 layer (FF), u32 action (0 copy, 1 cut, 2 delete key, 3 save design, 4 paste / place design), u64
+    level-2 cell, u32 x, y, z origin (voxels in that cell), u32 sx, sy, sz size, list<PropData>, 4×4 i32 rotation
+    matrix (rows first), list<{u16 material, u32 n}>, u64 design guid, string name, u64 claim guid,
+    list<{u64 cell, u32 layer-1 version before, u32 after}> (every cell the box touches, one voxel of margin),
+    list<{u64 key, u64, u32 type, u32 length, packed block, u32 if type is 2 or 3}>, u32 paste mode, u8 remove
+    voxels, string tags, u8`.
+  - **Cut (1) and Delete (2)** erase the box in the client's own layer 1 first and mark its cells pending; a Delete
+    carries no blocks. The server must erase it too (terrain.md "Selection Delete key and Cut"); a code ≠ 0 in the
+    Response clears the client's paste clipboard and does not undo the client's erase.
   - Copy (Select tool + Ctrl+C) carries one block: the box's voxels in a 40³ grid with the box origin at (0,0,0),
     same packed format as ApplyDiff (just the 8000-byte mask when nothing is solid). The server answers
     **6 ClipboardData** `{list<PropData>, list<{u16 material, u32 voxels}>, block list, 3 × u32 size, u32,
@@ -728,7 +749,8 @@ Full detail in [terrain.md](terrain.md).
     flipped axis moves one voxel lower: `Building.TurnedVoxels`, terrain.md "Pastes and designs"), charges
     materials, records one undoable edit, answers a Response (sub 7,
     type 2), then TerrainCell sub 3 for every listed cell **before** sending the new voxels. The client holds the
-    listed cells pending (and drops their updates) until it hears sub 3; a copy marks them pending too.
+    listed cells pending (and drops their updates) until it hears sub 3 (a copy marks nothing pending, a cut or
+    delete does).
 - **0x0A ResponseObserved (S→C)** `{u32 operation, double×4 min, double×4 max, u32×3 direction, bool}` (reader
   FUN_1430b11e0, handler FUN_1430bbd60): another player's edit, effect only. Bounds are global VoxelFarm units (dm;
   the client subtracts its scene origin and scales by 0.1), the w components are ignored. Operation → brush effect
@@ -1273,7 +1295,27 @@ Client dispatcher FUN_142dad120; all readers re-read the u16 opcode and u32 sub 
   - Words (wiki Commands List 2016 + the client's emote texts): moods angry, happy, sad, calm; poses dance, drunk,
     kneel, lie, playdead, skip, sneak, stand (sit is the client's own command); gestures beckon, beg, bow, cheer,
     congratulate, cough, cry, flex, flirt, giggle, groan, hug, laugh, no, nod, point, shoo, shrug, sneeze, sob, stretch,
-    talk, talking (loop) / stop, taunt, wave, welcome, yawn. /yell is the client's shout and is not registered.
+    talk, talking (loop) / stop, taunt, wave, welcome, yawn, yell. The zone's command list and the client's own chat
+    commands share one table, and a later registration of a name replaces the earlier one (FUN_142dd7560; the list
+    handler FUN_1433bad50): so /yell is registered as the emote (the Call clip 450, lines 572100 / 572095 / 572114 /
+    572107; the client's own word 570042), replacing the client's /yell alias of /shout as live's list did (setting
+    `YellIsEmote` / `YELL_IS_EMOTE`, default true; off leaves /yell a shout), and "emote" is never registered: /emote,
+    /em and /me are the client's free-text emote on the Emote chat channel (FUN_14336e150 "emote" 0x37), which the
+    server relays like /say. The clip test command is /emoteclip 0-33.
+  - Looping emotes (EmoteLoop rows 236 / 243 / 252 "talking" / 265) are remembered like moods: the player network's
+    locomotion keeps its emoting branch while EmoteLoop > 0.5 (state machine node 206, transitions 1408 / 1415 / 1416),
+    so walking never ends a loop; /stop (253) or any single-shot emote (EmoteLoop 0) does, and reaches everyone shown it.
+  - Held tools and weapons (Game/EmoteHolster.cs, setting `EmotesPutAwayHeldItem` / `EMOTES_PUT_AWAY_HELD_ITEM`, off by
+    default = live; the full client path: trace/0695/emotes-client.md): every emote clip, mood and stance is under `StandPoses|Idle_Stand_2`
+    child 0 `Stand`, and a held item's actor sets WeaponIdle 1, which picks child 1 `Weapon1` (220 nodes, weapon and
+    tool idles only) [P, 0.695 PlayerAnimationNetwork64.mrn node 10129], so with anything in hand no emote shows. The
+    server moves the main-hand and off-hand items with a model to the bag, plays the emote 1.5 s later [P, measured:
+    for ~1.1 s after the EquipmentUnset the client takes a selection but never shows it, and refuses a second one; the
+    network explains it (OPEN-LEADS L201): `StandPoses` (node 10128) leaves Idle_Stand_2 for WeaponSwitchCombo on the
+    WeaponEnd request with Class and WeaponIdle < 0.5 (transition 15157, a 0.6 s blend) and comes back on WeaponIdle
+    < 0.5 (15153, 0.5 s) — 1.1 s in which only those two transitions run and no emote state is active], and
+    equips them again when the player walks half a metre (walk stances: at /stand) or types /stand or /stop. The
+    client's /sit (EmoteStringById) puts them away the same way; moods don't.
 - **HeroicMovement 0x0105 (wire 05 01, u8 sub):** `{u8 sub, u64 entity, body}`, the entity being the sender's own
   guid (0.695 header reader FUN_142c1fd70 / writer FUN_142e5eaf0): 1 FireGrapplingHook `{f32 x4, f32 x4, u32, u32,
   bool}`, 2 SetHeroicMovement `{bool}`, 3 SwimmingUpdate `{u8 flags, f32 depth, [flags & 0x40: f32, f32]}` (writer
@@ -1371,6 +1413,18 @@ Client dispatcher FUN_142dad120; all readers re-read the u16 opcode and u32 sub 
   (an empty VoiceLogin would make the client connect to an empty URL). OPEN-LEADS L181. The only C→S packet, sub 6 VoiceRequestCustomChannel
   `{string room, string password}` (a player asking for a custom room), is logged and gets the system line "Voice chat
   is not available on this server." once per session. Real voice needs a voice service (OPEN-LEADS).
+  What live did with it (patch notes 17 Dec 2014 "Voice chat comes to Landmark!", 23 Dec 2014, 27 Jan 2015, 5 Mar
+  2015) [P dev]: off by default; switched on, the player joined the Proximity channel (20 m falloff from 23 Dec 2014,
+  10 m before), a guild channel named after the guild, and a party channel; push-to-talk or voice-activated. The Vivox
+  account names, server URL and channel URIs were Daybreak's Vivox account's (server-only): the client shows a
+  participant's Vivox display name as given (FUN_1430d5a00 → FUN_143b16e60, a UTF-8 → UTF-16 copy) and parses no URI,
+  and its only built-in host is the debug console's "enlp.vivox.com" (createconnector). OPEN-LEADS L181 closed on best
+  evidence (2026-10-26, trace/0695/phaseE2-social.md).
+- **0xDF PlayerUpdatePacketGuildTag** `{u64 character, string tag}` (S→C, u16 opcode only; reader FUN_142c4c0a0,
+  handler FUN_142cdf330 → FUN_142ec2610, entity +0x21a8): the tag under a character's name (`<tag>`, option
+  Display Player Guild Names). The server sends the guild name to the landscape whenever a player's guild changes; the
+  full character's third string and the guild core's alias (string 2) carry it too (Game/Social/GuildTags.cs,
+  docs/observer-sync.md OL-1).
 
 ### 14.0 Spire Local Travel: WarpNetwork 0x113 (opcode bytes 13 01, u32 sub)
 
@@ -1417,7 +1471,7 @@ client's packet classes and lists the default-branch hits as the runtime truth (
 
 | Request | When | Why there is no answer |
 |---|---|---|
-| InGamePurchase 0x15 CountryCodesRequest, 0x0F Station Cash price list, 0x37 CommerceRequestAccountStore (0.589 0x36) | Store start-up (`RequestStartupDataInternal`, ClientInGamePurchase.log), each login | The real-money Daybreak Cash store; the store is free and in the Showcase instead. 0x1A AccountInfo and 0x40 GetProductForReview are answered now for Player Studio (docs/commerce.md); the AccountInfo reply makes the client ask for the Station Cash price list (0x0F), which stays unanswered, so the cash store stays unavailable. 0x37 (the player's own products) is still open. |
+| InGamePurchase 0x15 CountryCodesRequest, 0x0F Station Cash price list | Store start-up (`RequestStartupDataInternal`, ClientInGamePurchase.log), each login | The real-money Daybreak Cash store; the store is free and in the Showcase instead. 0x1A AccountInfo and 0x40 GetProductForReview are answered now for Player Studio (docs/commerce.md); the AccountInfo reply makes the client ask for the Station Cash price list (0x0F), which stays unanswered, so the cash store stays unavailable. (0x37 CommerceRequestAccountStore, 0.589 0x36, the player's own products, is answered with AccountStore 0x39 since 6f9e9ed.) |
 | InGamePurchase 0x47 type 2 (crafting Point-of-Need; 0.589 0x46) | Crafting window "buy missing" | Opens a store URL in the client; no server reply known. |
 | Notifications 0x01 sub 2 AddNotification | The client queued an entry itself | Informational. |
 | Notifications 0x01 sub 1 ListNotifications | UI shutdown (logout / exit): the unanswered queue entries `{u32 n, n × Data}` | The server keeps invitations itself; at the next login GuildInvitations 0x83/0x14 brings a still-valid guild invitation (and the client's own popup for it) back (Guilds.Enter). |

@@ -20,8 +20,9 @@ namespace LandmarkEmulator.WorldServer.Game
     /// the far clip is the camera's far plane, min(the renderer's far plane, the user's Render Distance), FUN_142e5c4f0 →
     /// camera +0x284; the options slider maps 0-100 % to 120 + 2.81 × % metres (120 m at 0 %, ~400 m at 99 %) and 100 %
     /// (and the default -1) to 99999, i.e. no limit (SetRenderDistanceInPercent FUN_1435cfd10). 400 m is the slider's
-    /// last bounded value; a player on "unlimited" sees props appear at 400 m, as trees and plants appear at 160 m
-    /// (<see cref="Gathering"/>). Live's own server range is not known (no capture, no developer post found).
+    /// last bounded value; a player on "unlimited" sees props appear at 400 m, and trees and plants at the same 400 m
+    /// (<see cref="Gathering"/>, setting TreeStreamRange). Live's own server range is not known (no capture, no developer
+    /// post found).
     /// </para>
     /// <para>
     /// <b>Dropping and re-sending [P].</b> A dropped prop gets the same removal as a picked-up one (<see cref="SendRemove"/>:

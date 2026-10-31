@@ -173,6 +173,7 @@ namespace LandmarkEmulator.WorldServer.Game
                     viewers.Remove(session);
             }
             Combat.GearStats.Forget(session);
+            DeadBodies.Forget(session);
         }
 
         /// <summary>
@@ -224,6 +225,8 @@ namespace LandmarkEmulator.WorldServer.Game
                 Combat.GearStats.Refresh(session);
             if (died)
             {
+                // The body goes down on the other clients (entity state bit 7, DeadBodies; OPEN-LEADS L196 OL-2).
+                DeadBodies.Died(session);
                 // A player in a running site game respawns at the game's spawn points instead (no death window).
                 if (InstancedGames.Died(session, attacker))
                     return;
@@ -330,6 +333,7 @@ namespace LandmarkEmulator.WorldServer.Game
                 graceUntil[session] = DateTime.UtcNow + ReviveGrace;
             }
             ClearRevivePoints(session);
+            DeadBodies.Revived(session);
             SendHitpoints(session, max);
         }
 
@@ -422,7 +426,10 @@ namespace LandmarkEmulator.WorldServer.Game
         public static void IntroduceDead(WorldSession viewer, WorldSession subject)
         {
             if (IsDead(subject))
+            {
                 CharacterResources.SendFor(viewer, subject.PlayerGuid, RevivePointsId, RevivePointsType, RevivePoints);
+                DeadBodies.Introduce(viewer, subject);   // the body lies on the newcomer's copy too (state bit 7)
+            }
             uint max = Max(subject), hp = IsDead(subject) ? 0 : Current(subject);
             if (viewer == subject)
                 return;
@@ -451,6 +458,18 @@ namespace LandmarkEmulator.WorldServer.Game
         private const uint ReviveMilliseconds = 3000;
         /// <summary>Players this close to the dead body are told about the revive (their clients record the reviver).</summary>
         private const float ReviveViewRange = 100f;
+        /// <summary>
+        /// The reviver's animation (OPEN-LEADS L192 (h)) [P data / network; I that live's ability 246 named them]:
+        /// AnimationSelection 840 {AbilityIndex 1, Interacting 1} plays the 0.695 player network's
+        /// Action|Action|Idle_Pass|Interaction switch (on AbilityIndex) child 1 "ReviveAlly" (child 0 Crystal_Interaction is
+        /// 835's); 841 {Interacting 0} ends it, 837 "Cancel" {Interacting 0} breaks it off. Interacting is a lasting
+        /// variable, so every revive that starts it ends with one of the two. Shown to the reviver and the players within
+        /// Emotes.ViewRange (RequestAnimationSelection, no turn). The client plays nothing itself for StartRevive: its case
+        /// (PlayerUpdate dispatcher FUN_142cdfa60 case 0x41) only records the reviver on the body (FUN_142ec9910) and shows
+        /// the reviver's revive bar.
+        /// </summary>
+        public const uint ReviveAllyAnimation = 840, ReviveDoneAnimation = 841, ReviveCancelAnimation = 837;
+
         /// <summary>CombatSpam.txt row 8 "Revive": 564592 "YOU have been revived.", 564593 "YOU have revived [*TargetPlayer*].".</summary>
         private const uint RevivedText = 564592, YouRevivedText = 564593;
 
@@ -491,6 +510,7 @@ namespace LandmarkEmulator.WorldServer.Game
             byte[] start = output.ToArray();
             foreach (WorldSession viewer in NearBody(target, reviver))
                 viewer.EnqueueMessage(ZoneMessageOpcode.PlayerUpdateStartReviveWire, start);
+            Emotes.PlayAnim(reviver, ReviveAllyAnimation);
             log.Info($"{reviver.CharacterName} is reviving {target.CharacterName}.");
         }
 
@@ -538,6 +558,8 @@ namespace LandmarkEmulator.WorldServer.Game
                 byte[] packet = output.ToArray();
                 foreach (WorldSession viewer in NearBody(target, reviver))
                     viewer.EnqueueMessage(ZoneMessageOpcode.PlayerUpdateStopReviveWire, packet);
+                if (!reviver.Disconnected)
+                    Emotes.PlayAnim(reviver, ReviveCancelAnimation);
                 log.Info($"{reviver.CharacterName} stopped reviving {target.CharacterName}.");
             }
             foreach (var (target, reviver) in ask)
@@ -565,13 +587,20 @@ namespace LandmarkEmulator.WorldServer.Game
                     reviver = revival.Reviver;
                 }
             log.Info($"{session.CharacterName} answered the revive: {(accept ? "accept" : "decline")} ({BitConverter.ToString(body)}).");
-            if (reviver == null || !IsDead(session))
+            if (reviver == null)
                 return;
+            if (!IsDead(session))
+            {
+                Emotes.PlayAnim(reviver, ReviveCancelAnimation);   // ends the ReviveAlly loop (Interacting 0)
+                return;
+            }
             if (!accept)
             {
+                Emotes.PlayAnim(reviver, ReviveCancelAnimation);
                 Chat.System(reviver, $"{session.CharacterName} declined the revive.");
                 return;
             }
+            Emotes.PlayAnim(reviver, ReviveDoneAnimation);
             Revive(session);
             Encounters.SendDeathWindow(session, false);
             // The other clients still hold the knocked-out entity: they meet the player again, alive.
@@ -693,6 +722,7 @@ namespace LandmarkEmulator.WorldServer.Game
             // Before any move: the players on the landscape where the player died (a move to another landscape removes the
             // character from them, and the new landscape's players meet it alive).
             ClearRevivePoints(session);
+            DeadBodies.Revived(session);
             // The graveyard choice: the respawn site nearest to where the player fell.
             Graveyards.Site site = type != RespawnHere ? StoryTools.RespawnSite(session, session.Position, respawning: true) : null;
             if (site != null)

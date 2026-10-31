@@ -33,6 +33,19 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
         public static uint Of(uint zone, string gameDirectory)
             => Table(gameDirectory).TryGetValue(zone, out uint continent) && continent != 0 ? continent : zone;
 
+        /// <summary>
+        /// Is <paramref name="zone"/> a Pioneer land: StaticZoneData IS_NEWBIE_ZONE (column 14) = 1, set for exactly 464-468
+        /// and the abandoned 463 [P] (Landscapes.NewbieZone reads the same column for SendZoneDetails)?
+        /// </summary>
+        public static bool IsPioneer(uint zone, string gameDirectory)
+        {
+            Table(gameDirectory);
+            lock (sync)
+                return newbie.TryGetValue(gameDirectory ?? "", out var set) && set.Contains(zone);
+        }
+
+        private static readonly Dictionary<string, HashSet<uint>> newbie = new(StringComparer.OrdinalIgnoreCase);
+
         private static Dictionary<uint, uint> Table(string gameDirectory)
         {
             string key = gameDirectory ?? "";
@@ -41,6 +54,8 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 if (tables.TryGetValue(key, out var table))
                     return table;
                 table = new Dictionary<uint, uint>();
+                var pioneer = new HashSet<uint>();
+                newbie[key] = pioneer;
                 string path = Path.Combine(key, "Resources", "StaticZoneData.txt");
                 IEnumerable<string[]> rows;
                 try
@@ -54,7 +69,11 @@ namespace LandmarkEmulator.WorldServer.Game.Terrain
                 }
                 foreach (string[] f in rows)
                     if (f.Length > 5 && uint.TryParse(f[0], out uint id) && uint.TryParse(f[5], out uint continent))
+                    {
                         table[id] = continent;
+                        if (f.Length > 14 && f[14].Trim() == "1")
+                            pioneer.Add(id);
+                    }
                 tables[key] = table;
                 return table;
             }

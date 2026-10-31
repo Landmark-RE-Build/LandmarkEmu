@@ -1,5 +1,7 @@
 # How the live Landmark servers were built (what can be found; updated 2026-10-16: 0.695 + 2016 patch notes section at the end)
 
+> 0.695 rebase (2026-10-26): this file mixes builds; its 18 0.589 address citations map to 0.695 in trace/0695/address-map-589-695.md (changes: trace/0695/rebase-695.md)
+
 Daybreak never published Landmark's server architecture. No talk, slides, job ad or developer post that describes it
 was found. What is known comes from the 0.589 client, which was built against the live servers (re/out/rtti.tsv,
 re/decomp_all), plus a few interviews.

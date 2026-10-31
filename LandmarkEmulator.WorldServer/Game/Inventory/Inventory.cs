@@ -46,6 +46,14 @@ namespace LandmarkEmulator.WorldServer.Game.Inventory
         public const uint CurrencyItem = 1579;
 
         /// <summary>
+        /// The client's weapon slots (StringHashToValue: PrimaryWeaponSlotName "Main Hand", SecondaryWeaponSlotName "Off
+        /// Hand" = EquipmentSlotDefinitions 2 / 11; read by FUN_142d12360 into the slot manager +0x1f0 / +0x1f4 through
+        /// FUN_143d49c90) [P]. No item is equipped in the off hand: it shows the main-hand item's second model
+        /// (<see cref="ItemDefinitionManager.ItemDefinition.SecondaryModelFile"/>).
+        /// </summary>
+        public const uint MainHandSlot = 2, OffHandSlot = 11;
+
+        /// <summary>
         /// Bag size of a new character (the live game's default bag held 40); Inventory Expansions raise it by 20 up to
         /// 100 (stored as an <see cref="Unlocks.BagSize"/> row).
         /// </summary>

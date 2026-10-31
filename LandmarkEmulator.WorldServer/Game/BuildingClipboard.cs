@@ -10,22 +10,26 @@ namespace LandmarkEmulator.WorldServer.Game
     /// Copy and paste with the Select tool (Ctrl+C / Ctrl+V), both through VoxelConstruction sub 2
     /// ClientSelectionAreaRequest (writer FUN_1430b96a0 for paste; constructor FUN_1430b3990):
     /// <code>
-    /// u8 layer (FF), u32 action (0 copy, 4 paste), u64 level-2 cell id, u32 x, y, z origin (voxels in that cell),
+    /// u8 layer (FF), u32 action (0 copy, 1 cut, 2 delete, 3 save design, 4 paste / place design), u64 level-2 cell id, u32 x, y, z origin (voxels in that cell),
     /// u32 sx, sy, sz size (voxels), PropData list, 4 × 4 i32 rotation matrix (paste; identity = no turn),
     /// material map {u32 n × (u16 material, u32 voxels)}, u64, string, u64,
-    /// cell-version list {u32 n × (u64 cell, u64 version)} (every cell the box touches),
+    /// cell-version list {u32 n × (u64 cell, u32 layer-1 version before, u32 after)} (every cell the box touches),
     /// block list {u32 n × (u64 key, u64, u32 type, u32 len + packed block, u32 if type is 2 or 3)}, u32, u8, string, u8
     /// </code>
     /// A copy carries one block per cell of the box (key = a level-2 cell id holding the cell's place from the box's
-    /// corner; a box within 40 voxels a side is one block): the selection's voxels with the box's origin at (0, 0, 0) (the same
-    /// packed format as a build edit: 8000-byte mask + SerializeBlockData format 2; index y fastest, then x, then z;
-    /// the box's (size + 1) vertices per axis). The server keeps that grid as the player's clipboard and answers
+    /// corner; a box within 40 voxels a side is one block): the client's own copy of the selection (the same packed format
+    /// as a build edit: 8000-byte mask + SerializeBlockData format 2; index y fastest, then x, then z), size + 1 grid points
+    /// per axis starting one voxel below the request's origin: clipboard grid point 0 is global grid point origin − 1 on
+    /// every axis (FUN_143160530 → FUN_143c18800: origin − 1, size + 1 [P]), and grid points 1 .. size are the voxels of
+    /// the visible box (BuildingSelectionBox.cs). The props copied with it are measured from that grid point 0 too
+    /// (<see cref="ClipboardGridZero(ulong, uint, uint, uint)"/>). The server keeps that grid as the player's clipboard and answers
     /// ClipboardData (sub 6, reader FUN_1430b0d80): {PropData list, material map, block list, 3 × u32 size, u32,
     /// bool has voxels}. The client only lets the paste tool start when the material map is not empty (cursor
     /// FUN_1436d6ac0), and checks the player holds that many of each material before it places (FUN_1436d6b20).
     /// A paste sends no voxels at all — only where the box goes and how it is turned — so the server places its own
     /// copy: solid voxels overwrite the target (empty ones leave it as it is), under the same permission and material
-    /// rules as any build, as one undoable edit, and every player (the paster included) gets the changed cells.
+    /// rules as any build, as one undoable edit, and every player (the paster included) gets the changed cells. Cut and
+    /// the Delete key erase the box (BuildingDelete.cs).
     /// </summary>
     public static partial class Building
     {
@@ -40,17 +44,17 @@ namespace LandmarkEmulator.WorldServer.Game
         /// </summary>
         internal const int PasteOriginAdjust = -1;
 
-        /// <summary>What a player last copied: the selection's voxels (grid origin = the box's minimum corner).</summary>
         /// <summary>
         /// What a paste places: blocks by cell relative to the box's corner (a copy or a saved design is one block, a
-        /// prefab design many), and the box size in voxels.
+        /// prefab design many), and the box size in voxels. For a copy, grid point 0 is the global grid point one voxel
+        /// below the selection's origin on every axis (see the class summary).
         /// </summary>
         internal sealed record Clipboard(Dictionary<(int X, int Y, int Z), BlockData> Cells, uint SizeX, uint SizeY, uint SizeZ)
         {
             public Clipboard(BlockData voxels, uint sizeX, uint sizeY, uint sizeZ)
                 : this(new Dictionary<(int, int, int), BlockData> { [(0, 0, 0)] = voxels }, sizeX, sizeY, sizeZ) { }
 
-            /// <summary>The props that stood in the box (offsets from its minimum corner).</summary>
+            /// <summary>The props that stood in the box (offsets in metres from grid point 0, <see cref="Props.DesignProp"/>).</summary>
             public List<Props.DesignProp> Props { get; init; } = new();
 
             /// <summary>The block and index of a voxel of the box, or null where nothing is stored.</summary>
@@ -80,6 +84,14 @@ namespace LandmarkEmulator.WorldServer.Game
             /// </summary>
             public Dictionary<(int X, int Y, int Z), BlockData> BlockCells = new();
             public List<ulong> Cells = new();
+            /// <summary>
+            /// Each listed cell's layer-1 version before and after the client's own action (CellIdAndPermanentVersion,
+            /// FUN_143161b30 / FUN_143161530 [P]: "after" is the layer's CellBlocks +0x14 read again after the action [P]; for
+            /// a Copy it equals "before" (sample sel-0-20261013 [P]); for a Cut / Delete it is the version the client gave the
+            /// layer with its local erase only if that erase re-stamps the layer at once [I], voxdel-a step 6, voxdel-c
+            /// section 9). Read for the diagnostics only (BuildingDelete.LogClientCopies).
+            /// </summary>
+            public Dictionary<ulong, (uint Before, uint After)> CellVersions = new();
             /// <summary>Paste of a design: its guid (0 for the clipboard). Saving a design: its name and tags.</summary>
             public ulong TemplateGuid;
             public string Name = "", Tags = "";
@@ -89,8 +101,8 @@ namespace LandmarkEmulator.WorldServer.Game
             /// Paste mode (request +0x148, constructor default 1; the paste writer FUN_1430b96a0 copies the paste cursor's
             /// +0x2c8: 2 Paste Air, 3 Paste Interior Air, 1 when Remove voxels is set) and the Remove voxels ("Paste as
             /// Delete") flag (+0x14c, cursor +0x2c4). The paste applies the mode to interior empty space (0xFFFC: air in modes
-            /// 2 and 3, else not written; <see cref="PastedMaterial"/>); surrounding air and Remove voxels are read for the
-            /// tutorial goals only.
+            /// 2 and 3, else not written; <see cref="PastedMaterial"/>); surrounding air is not applied; Remove voxels erases the
+            /// copy's shape (<see cref="AsErase"/>).
             /// </summary>
             public uint PasteMode;
             public bool AsDelete;
@@ -125,12 +137,21 @@ namespace LandmarkEmulator.WorldServer.Game
             p += 8;
             r.Name = ReadString(body, ref p);
             p += 8;
-            uint cellCount = BitConverter.ToUInt32(body, p);   // every cell the box touches, with the client's version
+            // Every cell the box touches: {u64 cell, u32 layer-1 version before, u32 after} (CellIdAndPermanentVersion;
+            // a Cut / Delete has already erased the box on the client, so its two versions should differ [I]).
+            uint cellCount = BitConverter.ToUInt32(body, p);
             p += 4;
-            if (cellCount > MaxCellsPerEdit)
+            if ((long)cellCount * 16 > body.Length - p)
                 throw new System.IO.InvalidDataException($"{cellCount} cells");
             for (uint i = 0; i < cellCount; i++, p += 16)
-                r.Cells.Add(BitConverter.ToUInt64(body, p));
+            {
+                ulong cell = BitConverter.ToUInt64(body, p);
+                r.Cells.Add(cell);
+                r.CellVersions[cell] = (BitConverter.ToUInt32(body, p + 8), BitConverter.ToUInt32(body, p + 12));
+            }
+            // Read first, refused after: the cells are pending on the client until each is answered (else ~50 s).
+            if (cellCount > MaxCellsPerEdit)
+                throw new System.IO.InvalidDataException($"{cellCount} cells");
             r.BlocksStart = p;
             r.Blocks = BitConverter.ToUInt32(body, p);
             p += 4;
@@ -206,11 +227,23 @@ namespace LandmarkEmulator.WorldServer.Game
                 // The client holds every cell the box touches as pending until each is answered; without the answers
                 // the build tools stayed locked after a refused (e.g. too big) request (2026-10-14).
                 log.Warn($"Unreadable selection request from {session.CharacterName}: {e.Message}");
-                SendResponse(session, AddTemporaryBlockSub, Failed);
-                SendCellResponses(session, request.Cells);
+                if (request.Action is CutAction or DeleteAction || request.Action > PasteAction)
+                    Refuse(session, request, Failed, null);   // its box was erased on the client: take that back
+                else
+                {
+                    SendResponse(session, AddTemporaryBlockSub, Failed);
+                    SendCellResponses(session, request.Cells);
+                }
                 return;
             }
-            if (request.LargerThanCell && request.Action is not (PasteAction or CopyAction or SaveDesignAction))
+            if (request.Action > PasteAction)
+            {
+                // Not one the client sends (FUN_14315e0a0's four callers use 0-4); refused, not taken for a copy.
+                Network.OpcodeStats.Unanswered("VoxelConstruction 0xF4 selection action", request.Action);
+                Refuse(session, request, Failed, $"{session.CharacterName}: selection action {request.Action} is unknown.");
+                return;
+            }
+            if (request.LargerThanCell && request.Action is not (PasteAction or CopyAction or SaveDesignAction or CutAction or DeleteAction))
             {
                 log.Info($"{session.CharacterName}: selection {request.SizeX}×{request.SizeY}×{request.SizeZ} (action {request.Action}) "
                     + "is larger than one cell; only copies, design saves and pastes may be.");
@@ -224,6 +257,11 @@ namespace LandmarkEmulator.WorldServer.Game
                 catch (Exception) { }
                 SendResponse(session, AddTemporaryBlockSub, Failed);
                 SendCellResponses(session, request.Cells);
+                return;
+            }
+            if (request.Action is CutAction or DeleteAction)
+            {
+                HandleDeleteOrCut(session, body, request);
                 return;
             }
             if (request.Action == PasteAction)
@@ -275,20 +313,20 @@ namespace LandmarkEmulator.WorldServer.Game
                 SendResponse(session, AddTemporaryBlockSub, 0);
                 Copy(session, body, request);
             }
-            SendCellResponses(session, request.Cells);   // a copy marks the cells pending too (edits there wait for it)
+            // A copy marks no cell pending (FUN_143161530 does for Cut / Delete only); the answers just let the client
+            // write its own copy of each cell to its cache (FUN_144016840).
+            SendCellResponses(session, request.Cells);
         }
 
         /// <summary>Does every cell the selection covers lie where the player may copy (Get Inspired)?</summary>
         private static bool MayCopy(WorldSession session, SelectionRequest request)
         {
-            // The selection box itself (world units, as CoversTemplateInstance): the props copied or saved with it are read
-            // from the server's own list inside that box (PropsInSelection), not from the cells the request lists, so a
-            // request listing no cells (or fewer than its box covers) copied the props of a site without Get Inspired
-            // (bughunt-build B9).
-            (double bx, double by, double bz) = TerrainStore.CellOrigin(request.Cell);
-            double voxel = TerrainEdits.VoxelSize;
-            var boxMin = (bx + request.X * voxel, by + request.Y * voxel, bz + request.Z * voxel);
-            var boxMax = (boxMin.Item1 + (request.SizeX + 1) * voxel, boxMin.Item2 + (request.SizeY + 1) * voxel, boxMin.Item3 + (request.SizeZ + 1) * voxel);
+            // The visible selection box itself (global units, BuildingSelectionBox.cs; as CoversTemplateInstance): the props
+            // copied or saved with it are read from the server's own list inside that box (PropsInSelection), not from the
+            // cells the request lists, so a request listing no cells (or fewer than its box covers) copied the props of a
+            // site without Get Inspired (bughunt-build B9). Until 2026-11-01 this was [origin, origin + size + 1 voxels],
+            // half a voxel to 1.5 voxels past the visible box.
+            ((double X, double Y, double Z) boxMin, (double X, double Y, double Z) boxMax) = VisibleBox(request);
             if (!Claims.MayCopyIn(session.PlayerGuid, session.ZoneId, boxMin, boxMax))
                 return false;
             double size = TerrainEdits.CellSize;
@@ -305,16 +343,16 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>
-        /// Does the copy / design-save box overlap a placed Player Studio design on a site the player doesn't own
-        /// (<see cref="TemplateInstances.Protects"/>)? The box in world units: from the origin voxel's corner, size + 1
-        /// voxels per axis (as <see cref="SelectionBox"/>).
+        /// Does the copy / design-save / cut box overlap a placed Player Studio design on a site the player doesn't own
+        /// (<see cref="TemplateInstances.Protects"/>)? The box in global units: the visible selection box
+        /// (<see cref="VisibleBox(SelectionRequest)"/>; until 2026-11-01 [origin, origin + size + 1 voxels]). A placed
+        /// design's own box is recorded as [lowest grid point · v, (highest + 1) · v] (Paste), half a voxel + of its blocks,
+        /// so a design whose highest grid point is just below the selection (G − 1) still counts as overlapping on that axis
+        /// [I: kept, the safe side for copy protection].
         /// </summary>
         private static bool CoversTemplateInstance(WorldSession session, SelectionRequest request)
         {
-            (double ox, double oy, double oz) = TerrainStore.CellOrigin(request.Cell);
-            double v = TerrainEdits.VoxelSize;
-            var min = (ox + request.X * v, oy + request.Y * v, oz + request.Z * v);
-            var max = (min.Item1 + (request.SizeX + 1) * v, min.Item2 + (request.SizeY + 1) * v, min.Item3 + (request.SizeZ + 1) * v);
+            ((double X, double Y, double Z) min, (double X, double Y, double Z) max) = VisibleBox(request);
             return TemplateInstances.Protects(session.PlayerGuid, session.ZoneId, min, max);
         }
 
@@ -346,25 +384,15 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>
-        /// The selection box of a copy or design save in local metres: from the origin voxel's corner, (size + 1) voxels
-        /// per axis (the box spans size + 1 vertices).
+        /// The placed props a copy / design save / cut takes (the client sends none; live kept them): those whose pivot
+        /// stands in the visible selection box (<see cref="HoldsPivot"/>, the box a Cut / Delete takes props down from),
+        /// measured from the clipboard's grid point 0 (<see cref="ClipboardGridZero(ulong, uint, uint, uint)"/>) so each
+        /// lands with its voxel on a paste.
         /// </summary>
-        private static (System.Numerics.Vector3 Min, System.Numerics.Vector3 Max) SelectionBox(SelectionRequest request)
-        {
-            (double ox, double oy, double oz) = TerrainStore.CellOrigin(request.Cell);
-            double v = TerrainEdits.VoxelSize;
-            var origin = TerrainStore.ZoneOrigin;
-            var min = new System.Numerics.Vector3((float)((ox + request.X * v - origin.X) / 10), (float)((oy + request.Y * v - origin.Y) / 10),
-                (float)((oz + request.Z * v - origin.Z) / 10));
-            var size = new System.Numerics.Vector3((request.SizeX + 1) * (float)v / 10, (request.SizeY + 1) * (float)v / 10, (request.SizeZ + 1) * (float)v / 10);
-            return (min, min + size);
-        }
-
-        /// <summary>The placed props inside a copy / design selection (the client sends none; live kept them).</summary>
         private static List<Props.DesignProp> PropsInSelection(WorldSession session, SelectionRequest request)
         {
-            (System.Numerics.Vector3 min, System.Numerics.Vector3 max) = SelectionBox(request);
-            return Props.InBox(session.ZoneId, min, max);
+            (System.Numerics.Vector3 min, System.Numerics.Vector3 max) = VisibleBoxLocal(request);
+            return Props.InBox(session.ZoneId, min, max, ClipboardGridZero(request.Cell, request.X, request.Y, request.Z));
         }
 
         /// <summary>
@@ -505,7 +533,9 @@ namespace LandmarkEmulator.WorldServer.Game
             long baseZ = (long)cellZ * BlockData.Size + request.Z + shift[2] + adjZ;
 
             Dictionary<ulong, List<TerrainEdits.VoxelValue>> byCell = TurnedVoxels(clipboard, m, baseX, baseY, baseZ, request.PasteMode);
-            if ((byCell.Count == 0 && clipboard.Props.Count == 0) || byCell.Count > (request.TemplateGuid != 0 ? MaxCellsPerDesign : MaxCellsPerEdit))
+            if (request.AsDelete)
+                byCell = AsErase(byCell);
+            if ((byCell.Count == 0 && (clipboard.Props.Count == 0 || request.AsDelete)) || byCell.Count > (request.TemplateGuid != 0 ? MaxCellsPerDesign : MaxCellsPerEdit))
             {
                 SendResponse(session, AddTemporaryBlockSub, Failed);
                 return null;
@@ -568,23 +598,27 @@ namespace LandmarkEmulator.WorldServer.Game
             }
             if (written.Result == InsufficientMaterials)
             {
+                log.Info($"{session.CharacterName}'s paste refused: not enough materials.");
                 SendResponse(session, AddTemporaryBlockSub, InsufficientMaterials);
                 return null;
             }
             if (!PayFor(session, written.Delta))
                 log.Warn($"{session.CharacterName}'s paste was written but its materials could not be taken any more.");
 
-            var record = new Edit(zone, request.TemplateGuid != 0 ? "Place design" : "Paste");
+            var record = new Edit(zone, request.AsDelete ? "Paste (Remove voxels)" : request.TemplateGuid != 0 ? "Place design" : "Paste");
             record.Cells.AddRange(written.Cells);
             int voxels = byCell.Values.Sum(v => v.Count);
-            PlaceProps(session, clipboard.Props, m, baseX, baseY, baseZ, record);
+            if (!request.AsDelete)
+                PlaceProps(session, clipboard.Props, m, baseX, baseY, baseZ, record);
+            else
+                Observe(session, zone, ObservedDelete, record, false);
             Remember(session, record);
             string designName = request.TemplateGuid != 0 ? Templates.NameOf(session, request.TemplateGuid) : "";
-            if (request.TemplateGuid != 0)
+            if (request.TemplateGuid != 0 && !request.AsDelete)
                 Achievements.DesignPlaced(session, designName);
             Achievements.Pasted(session, designName, request.PasteMode, request.AsDelete);   // tutorial goals
-            if (studioMin is { } placedMin && studioMax is { } placedMax)
-                TemplateInstances.Record(session, zone, request.TemplateGuid, placedMin, placedMax);
+            if (studioMin is { } placedMin && studioMax is { } placedMax && !request.AsDelete)
+                TemplateInstances.Record(session, zone, request.TemplateGuid, placedMin, placedMax);   // nothing placed when erasing
             SendResponse(session, AddTemporaryBlockSub, 0);
             // Every listed cell the server holds goes out (the paster's client dropped its preview of them).
             List<ulong> changed = byCell.Keys.Concat(request.Cells.Where(c => Env.Has(c, zone))).Distinct().ToList();
@@ -596,6 +630,29 @@ namespace LandmarkEmulator.WorldServer.Game
                 + $"first voxel at {baseX},{baseY},{baseZ}) "
                 + $"turned [{m[0]} {m[1]} {m[2]}; {m[4]} {m[5]} {m[6]}; {m[8]} {m[9]} {m[10]}].");
             return changed;
+        }
+
+        /// <summary>
+        /// Paste with "Remove voxels" (Voxel.SetRemoveVoxels, request +0x14c; the tutorial's "Paste as Delete into a wall"),
+        /// on-grid and off-grid: the copy's solid voxels are taken out of the target instead of written — material 0, keeping
+        /// their flags and vertex, so the hole has the copy's smooth surface — and its vertex-only voxels keep their vertex,
+        /// as the client's own rule does (CClipboardData FUN_142a7eeb0 with Remove voxels: a solid becomes material 0 with its
+        /// extra data cleared, every vertex voxel keeps its vertex); empty voxels and the props leave the target alone. Until
+        /// 2026-10-31 the server ignored the flag and pasted the voxels in.
+        /// </summary>
+        internal static Dictionary<ulong, List<TerrainEdits.VoxelValue>> AsErase(Dictionary<ulong, List<TerrainEdits.VoxelValue>> byCell)
+        {
+            var erased = new Dictionary<ulong, List<TerrainEdits.VoxelValue>>();
+            foreach ((ulong cell, List<TerrainEdits.VoxelValue> values) in byCell)
+            {
+                List<TerrainEdits.VoxelValue> kept = values
+                    .Where(v => (v.Flags & 1) != 0 ? v.Material != 0 : (v.Flags & 2) != 0)
+                    .Select(v => (v.Flags & 1) != 0 ? v with { Material = 0 } : v)
+                    .ToList();
+                if (kept.Count > 0)
+                    erased[cell] = kept;
+            }
+            return erased;
         }
 
         /// <summary>
@@ -720,7 +777,7 @@ namespace LandmarkEmulator.WorldServer.Game
         /// by the build, FUN_143f9a150 → FUN_143f9c330; every castle design is mostly that — Castle Long Room 480,372 of
         /// its 782,232 set voxels) is written as <b>air</b> (material 0) in the Paste Air (2) and Paste Interior Air (3)
         /// modes, except on the box's first slice (index 0 on any axis), and not at all in the others;</item>
-        /// <item>surrounding air (material 0) is not written (the client writes it in modes 2 and 4: not applied yet, like
+        /// <item>surrounding air (material 0) is not written (the client writes it in modes 2 and 4: not applied yet; unlike
         /// Remove voxels; TASKS 6.57).</item>
         /// </list>
         /// Until 2026-10-21 interior empty space was written raw, as material 0xFFFC. The client's mesher draws 0xFFFC as
@@ -771,8 +828,8 @@ namespace LandmarkEmulator.WorldServer.Game
         }
 
         /// <summary>
-        /// The props of a paste: each goes where its spot in the box lands (the same turn as the voxels: a point p of
-        /// the box, in voxels, goes to base + M·p, plus one voxel on each axis the turn flips), turned with the paste.
+        /// The props of a paste: each goes where its spot in the clipboard lands (<see cref="PastedPropAt"/>: the same map
+        /// as the voxels, clipboard point q → base + M·q), turned with the paste (<see cref="PasteTurn"/>).
         /// Each is paid with an item of it from the player's bag, else built from its recipe materials when the player
         /// knows the recipe (<see cref="Props.PlaceDesignProp"/>, TASKS 6.40). The ones left out are listed in the
         /// client's two messages:
@@ -790,29 +847,53 @@ namespace LandmarkEmulator.WorldServer.Game
         {
             if (props.Count == 0)
                 return;
+            System.Numerics.Quaternion turn = PasteTurn(m);
+            PlaceProps(session, props, prop => (PastedPropAt(prop, m, baseX, baseY, baseZ), turn), record);
+        }
+
+        /// <summary>
+        /// Where an on-grid paste puts a clipboard prop (local metres): its offset from clipboard grid point 0 in voxels,
+        /// q = offset · 10 / v, goes to base + M·q (<see cref="Dot"/>: the map <see cref="TurnedVoxels"/> uses for grid
+        /// point s, from the client's paste preview FUN_14315feb0 [P]), so a prop on the centre of clipboard voxel s lands on
+        /// the centre of the voxel s is pasted to, and one standing on a face of it on the face that face is turned to.
+        /// <para>
+        /// Until 2026-11-01 one voxel was added on every axis the turn flips, and the offsets were measured from the
+        /// selection's origin voxel rather than grid point 0: props landed one voxel low and towards −x / −z unturned, two
+        /// voxels off on the flipped axes.
+        /// </para>
+        /// </summary>
+        internal static System.Numerics.Vector3 PastedPropAt(Props.DesignProp prop, int[] m, long baseX, long baseY, long baseZ)
+        {
             double v = TerrainEdits.VoxelSize;
             var origin = TerrainStore.ZoneOrigin;
-            var turn = System.Numerics.Quaternion.CreateFromRotationMatrix(new System.Numerics.Matrix4x4(
-                m[0], m[4], m[8], 0, m[1], m[5], m[9], 0, m[2], m[6], m[10], 0, 0, 0, 0, 1));
-            PlaceProps(session, props, prop =>
-            {
-                double[] p = { prop.Offset.X * 10 / v, prop.Offset.Y * 10 / v, prop.Offset.Z * 10 / v };
-                double[] g = new double[3];
-                long[] b = { baseX, baseY, baseZ };
-                for (int i = 0; i < 3; i++)
-                {
-                    g[i] = b[i];
-                    for (int j = 0; j < 3; j++)
-                    {
-                        g[i] += m[j * 4 + i] * p[j];
-                        if (m[j * 4 + i] < 0)
-                            g[i] += 1;
-                    }
-                }
-                var at = new System.Numerics.Vector3((float)((g[0] * v - origin.X) / 10), (float)((g[1] * v - origin.Y) / 10), (float)((g[2] * v - origin.Z) / 10));
-                return (at, turn);
-            }, record);
+            double[] q = { prop.Offset.X * 10 / v, prop.Offset.Y * 10 / v, prop.Offset.Z * 10 / v };
+            double gx = baseX + m[0] * q[0] + m[4] * q[1] + m[8] * q[2];
+            double gy = baseY + m[1] * q[0] + m[5] * q[1] + m[9] * q[2];
+            double gz = baseZ + m[2] * q[0] + m[6] * q[1] + m[10] * q[2];
+            return new System.Numerics.Vector3((float)((gx * v - origin.X) / 10), (float)((gy * v - origin.Y) / 10), (float)((gz * v - origin.Z) / 10));
         }
+
+        /// <summary>
+        /// The turn an on-grid paste gives its props (applied after each prop's own rotation): a direction d goes to
+        /// Σ d_j·row_j, the same map as the voxels (<see cref="Dot"/>), so the System.Numerics matrix (row vectors) has the
+        /// request's rows as its rows — what the off-grid paste builds from its transform as well. Until 2026-11-01 it was
+        /// built from the columns: right for the map before the org's #12 (b3fccd0a, 2026-10-25) turned the voxels and the
+        /// props' positions the client's way (row·s → Σ s_j·row_j), but not changed with them, so a prop pasted with a
+        /// quarter turn faced the opposite quarter turn (a half turn and the mirrors are their own transposes) [P: map;
+        /// I: the client applies a prop's quaternion as System.Numerics does, as everywhere else in Props].
+        /// <para>
+        /// A mirror (det −1, the V flip; IsRotation lets all 24 through) has no quaternion, and the conversion gives no
+        /// mirror: a plane mirror (one axis negated, or two axes swapped; the 9 symmetric ones, trace 1) gives (0, 0, 0, √½),
+        /// which normalises to the identity, so the prop keeps the facing it was copied with while its position is mirrored
+        /// (<see cref="PastedPropAt"/>); a turn and a mirror together give an unrelated turn (−I gives a half turn about x).
+        /// A chair facing +x towards a desk, pasted mirrored in x, lands on the desk's other side still facing +x. Facing the
+        /// mirrored way would need each prop's own symmetry plane (the proper rotation S_local·R·M), which is not traced, so
+        /// it is left open rather than guessed.
+        /// </para>
+        /// </summary>
+        internal static System.Numerics.Quaternion PasteTurn(int[] m)
+            => System.Numerics.Quaternion.CreateFromRotationMatrix(new System.Numerics.Matrix4x4(
+                m[0], m[1], m[2], 0, m[4], m[5], m[6], 0, m[8], m[9], m[10], 0, 0, 0, 0, 1));
 
         /// <summary>
         /// Places a paste's props where <paramref name="place"/> puts each (local metres, and the paste's turn, which is

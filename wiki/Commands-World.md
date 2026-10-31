@@ -28,3 +28,4 @@ Run from `dev_commands.txt` or the admin menu's *Any command* (see [Running dev 
 | `timeofday` | `timeofday <hour 0-24>` | Console / admins | Moves the world clock; everyone online is synced at once. |
 | `treefall` | `treefall [u64 u32 u32 u32 u32 u32 f f f f]` | Console / admins | PlayerUpdate 0x2D Destroyed for the nearest tree. |
 | `treepools` | `treepools` | Console / admins | The min / max pools of the player's landscape (most short of their minimum first). treepools fell &lt;n&gt;: fell n standing trees of the nearest tree's pool (no drops) to push it below its minimum; treepools now: make the landscape's queued respawns due (Gathering.Respawn.cs). |
+| `treestream` | `treestream [<metres>]` | Console / admins | With a value, the tree / plant stream range (setting TreeStreamRange, 64-1000) until the restart, applied on each player's next stream tick; then (or alone) each targeted player's tree stream in the log (Gathering.Stream.cs). |
